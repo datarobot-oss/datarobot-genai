@@ -1,0 +1,108 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "datarobot-genai"
+version = "0.1.0"
+description = "Generic helpers for GenAI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "DataRobot, Inc." }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/datarobot-oss/datarobot-genai"
+
+[tool.hatch.build]
+packages = [
+  "src/datarobot_genai",
+]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+  "ruff>=0.6.0",
+  "mypy>=1.10.0",
+  "pytest",
+  "pytest-cov",
+  "pre-commit",
+  "twine>=5.0.0",
+  "pip-audit>=2.7.0",
+]
+
+
+[tool.mypy]
+disallow_untyped_defs = true
+disable_error_code = ["import-untyped"]
+files = ["src"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+select = [
+    "E",  # Pyflakes
+    "F",  # pycodestyle
+    "I",  # isort
+    "N",  # pep8-naming
+    "D",  # pydocstyle
+    "PL", # pylint
+    "UP", # pyupgrade
+    "INP", # check missing __init__.py
+    "B006", # mutable-argument-default
+]
+extend-ignore = [
+    # D100-D106: Ignore undocumented module, class, method, function & inner class
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106",
+    # 1 blank line required between summary line and description
+    "D205",
+    # Too many arguments
+    "PLR0913",
+    # Too many statements
+    "PLR0915",
+    # Too many branches
+    "PLR0912",
+]
+fixable = [
+    "I",    # isort
+    "D",    # pydocstyle
+    "UP",   # pyupgrade
+    "F401", # Imported but unused
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "D104", # Missing docstring in public package
+    "F401"  # Imported but unused
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["int", "str", "bytes"]
+max-args = 8
+
+[tool.pytest.ini_options]
+filterwarnings = []
+
+[tool.coverage.run]
+source = ["datarobot_genai"]
+omit = [
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "raise NotImplementedError",
+    "pass",
+]
+fail_under = 80
