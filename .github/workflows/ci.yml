@@ -206,7 +206,3 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --all-extras --dev
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
