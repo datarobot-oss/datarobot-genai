@@ -1,0 +1,88 @@
+name: Publish (TestPyPI)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-testpypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Stamp dev version for PR builds
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' -m1 pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          DEV_VERSION="${BASE_VERSION}.dev${GITHUB_RUN_NUMBER}"
+          # replace only the first version occurrence
+          sed -i -E "0,/^version\s*=\s*\"[^\"]*\"/s//version = \"${DEV_VERSION}\"/" pyproject.toml
+          echo "Stamped dev version: ${DEV_VERSION}"
+
+      - name: Build distribution
+        run: |
+          uv build
+
+      - name: Extract package version
+        if: github.event_name == 'pull_request'
+        id: get_version
+        run: |
+          VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' -m1 pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "PACKAGE_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: |
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
+          skip-existing: true
+
+      - name: Comment on PR with TestPyPI link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const version = process.env.PACKAGE_VERSION;
+            const pkg = 'datarobot-genai';
+            const projectUrl = `https://test.pypi.org/project/${pkg}/${version}/`;
+            const install = `pip install -i https://test.pypi.org/simple/ ${pkg}==${version}`;
+            const body = [
+              `Published dev build to TestPyPI: ${projectUrl}`,
+              '',
+              'Install locally:',
+              '```bash',
+              install,
+              '```'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
