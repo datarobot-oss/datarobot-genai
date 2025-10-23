@@ -1,0 +1,55 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: debug-statements
+
+-   repo: https://github.com/lk16/detect-missing-init
+    rev: v0.1.6
+    hooks:
+    -   id: detect-missing-init
+        args: [
+            "--create",
+            "--track",
+            "--python-folders",
+            "src"
+        ]
+
+-   repo: https://github.com/asottile/pyupgrade
+    rev: v3.19.0
+    hooks:
+    -   id: pyupgrade
+
+-   repo: local
+    hooks:
+    -   id: ruff-format
+        name: ruff-format
+        entry: make fix-ruff-format
+        language: system
+        types: [ python ]
+        pass_filenames: false
+    -   id: ruff
+        name: ruff
+        entry: make fix-ruff
+        language: system
+        types: [ python ]
+        require_serial: true
+        pass_filenames: false
+    -   id: mypy
+        name: mypy
+        entry: make mypy
+        language: system
+        types: [ python ]
+        require_serial: true
+        pass_filenames: false
+    -   id: fix-licenses
+        name: fix-licenses
+        entry: make fix-licenses
+        language: system
+        require_serial: true
