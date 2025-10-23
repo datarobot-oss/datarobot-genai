@@ -15,3 +15,12 @@ the review may happen while you are asleep / otherwise not able to respond quick
 ## TESTING
 ## RELATED
 ## REVIEWERS -->
+
+---
+
+## REVIEWERS
+
+- Code Owners team: @datarobot-oss/genai-oss
+- Code Owners users: @cavitcakir, @jpclemens0
+
+When this PR is ready for review, manually request the reviewers above from the right sidebar.
