@@ -15,9 +15,18 @@ dependencies = []
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
-[tool.hatch.build]
+[tool.hatch.build.targets.wheel]
 packages = [
   "src/datarobot_genai",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/datarobot_genai",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+  "AUTHORS",
 ]
 
 [tool.uv]
