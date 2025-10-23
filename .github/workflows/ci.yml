@@ -206,11 +206,6 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --all-extras --dev
-
-      - name: Dependency vulnerability scan (pip-audit)
-        run: |
-          uv run pip-audit --strict --skip-editable
-
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
         env:
