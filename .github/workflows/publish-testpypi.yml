@@ -1,0 +1,52 @@
+name: Publish (TestPyPI)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-testpypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Stamp dev version for PR builds
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' -m1 pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          DEV_VERSION="${BASE_VERSION}.dev${GITHUB_RUN_NUMBER}"
+          # replace only the first version occurrence
+          sed -i -E "0,/^version\s*=\s*\"[^\"]*\"/s//version = \"${DEV_VERSION}\"/" pyproject.toml
+          echo "Stamped dev version: ${DEV_VERSION}"
+
+      - name: Build distribution
+        run: |
+          uv build
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: |
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
+          skip-existing: true
