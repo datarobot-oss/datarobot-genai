@@ -58,7 +58,11 @@ pip install "datarobot-genai[llamaindex]"
 # NVIDIA NAT
 pip install "datarobot-genai[nat]"
 
+# PydanticAI
+pip install "datarobot-genai[pydanticai]"
+
 
 # Combine extras
-pip install "datarobot-genai[crewai,langgraph]"
+pip install "datarobot-genai[crewai,nat]"
+pip install "datarobot-genai[crewai,langgraph,llamaindex,nat]"
 ```

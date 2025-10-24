@@ -10,7 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11, <3.13"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
-dependencies = []
+dependencies = [
+  "requests>=2.32.4",
+]
 
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
@@ -29,8 +31,8 @@ langgraph = [
   "langgraph-prebuilt>=0.2.3",
 ]
 llamaindex = [
-  "llama-index<0.14.0",
-  "llama-index-core<0.14.0",
+  "llama-index>=0.13.6,<0.14.0",
+  "llama-index-core>=0.13.6,<0.14.0",
   "llama-index-llms-langchain>=0.6.1",
   "llama-index-llms-litellm>=0.4.1",
   "llama-index-llms-openai>=0.3.38",
