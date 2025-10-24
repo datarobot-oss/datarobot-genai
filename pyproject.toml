@@ -7,7 +7,7 @@ name = "datarobot-genai"
 version = "0.1.4"
 description = "Generic helpers for GenAI"
 readme = "README.md"
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.10, <3.13"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
 dependencies = [
@@ -40,10 +40,10 @@ llamaindex = [
   "pypdf>=6.0.0",
 ]
 nat = [
-  "nvidia-nat==1.3.0rc3",
-  "nvidia-nat-opentelemetry==1.3.0rc3",
-  "nvidia-nat-crewai==1.3.0rc3",
-  "nvidia-nat-langchain==1.3.0rc3",
+  "nvidia-nat==1.3.0rc6; python_version >= '3.11'",
+  "nvidia-nat-opentelemetry==1.3.0rc6; python_version >= '3.11'",
+  "nvidia-nat-crewai==1.3.0rc6; python_version >= '3.11'",
+  "nvidia-nat-langchain==1.3.0rc6; python_version >= '3.11'",
 ]
 pydanticai = [
   "logfire>=4.6.0",
