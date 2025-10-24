@@ -38,3 +38,27 @@ pre-commit install
 # run tests
 make test
 ```
+
+Python requirement: >= 3.11,< 3.13
+
+## Optional dependencies (extras)
+
+Install specific integrations only when needed:
+
+```bash
+# CrewAI
+pip install "datarobot-genai[crewai]"
+
+# LangGraph
+pip install "datarobot-genai[langgraph]"
+
+# LlamaIndex
+pip install "datarobot-genai[llamaindex]"
+
+# NVIDIA NAT
+pip install "datarobot-genai[nat]"
+
+
+# Combine extras
+pip install "datarobot-genai[crewai,langgraph]"
+```
