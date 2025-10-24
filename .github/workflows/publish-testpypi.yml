@@ -71,14 +71,26 @@ jobs:
             const version = process.env.PACKAGE_VERSION;
             const pkg = 'datarobot-genai';
             const projectUrl = `https://test.pypi.org/project/${pkg}/${version}/`;
-            const install = `pip install -i https://test.pypi.org/simple/ ${pkg}==${version}`;
+            const uvInstall = `uv pip install --refresh --prerelease=allow --index-strategy=unsafe-best-match -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "${pkg}[llamaindex]==${version}"`;
+            const pipInstall = `python -m pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "${pkg}[llamaindex]==${version}"`;
+            const simpleLine = `https://test.pypi.org/simple/ ${pkg}==${version}`;
             const body = [
               `Published dev build to TestPyPI: ${projectUrl}`,
               '',
-              'Install locally:',
-              '```bash',
-              install,
-              '```'
+            'uv (TestPyPI + PyPI):',
+            '```bash',
+            uvInstall,
+            '```',
+            '',
+            'pip (TestPyPI + PyPI):',
+            '```bash',
+            pipInstall,
+            '```',
+            '',
+            'Index + spec:',
+            '```',
+            simpleLine,
+            '```'
             ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,

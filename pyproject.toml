@@ -4,16 +4,51 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.3"
+version = "0.1.4"
 description = "Generic helpers for GenAI"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10, <3.13"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
-dependencies = []
+dependencies = [
+  "requests>=2.32.4",
+]
 
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
+
+[project.optional-dependencies]
+crewai = [
+  "crewai>=0.193.2",
+  "crewai-tools>=0.69.0",
+  "fastmcp>2.12.0",
+  "opentelemetry-instrumentation-crewai>=0.40.5",
+  "pybase64>=1.4.2",
+  "pylance<=0.38.1",
+]
+langgraph = [
+  "langgraph>=0.4.10",
+  "langgraph-prebuilt>=0.2.3",
+]
+llamaindex = [
+  "llama-index>=0.13.6,<0.14.0",
+  "llama-index-core>=0.13.6,<0.14.0",
+  "llama-index-llms-langchain>=0.6.1",
+  "llama-index-llms-litellm>=0.4.1",
+  "llama-index-llms-openai>=0.3.38",
+  "opentelemetry-instrumentation-llamaindex>=0.40.5",
+  "pypdf>=6.0.0",
+]
+nat = [
+  "nvidia-nat==1.3.0rc6; python_version >= '3.11'",
+  "nvidia-nat-opentelemetry==1.3.0rc6; python_version >= '3.11'",
+  "nvidia-nat-crewai==1.3.0rc6; python_version >= '3.11'",
+  "nvidia-nat-langchain==1.3.0rc6; python_version >= '3.11'",
+]
+pydanticai = [
+  "logfire>=4.6.0",
+  "pydantic-ai>=1.0.5",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = [
