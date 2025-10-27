@@ -55,13 +55,19 @@ def to_custom_model_chat_response(
     else:
         model = str(model)
 
+    required_usage_metrics: dict[str, int] = {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+    }
+
     return CustomModelChatResponse(
         id=str(uuid.uuid4()),
         object="chat.completion",
         choices=[choice],
         created=int(time.time()),
         model=model,
-        usage=CompletionUsage.model_validate(usage_metrics),
+        usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics),
         pipeline_interactions=pipeline_interactions.model_dump_json()
         if pipeline_interactions
         else None,
@@ -84,6 +90,12 @@ def to_custom_model_streaming_response(
     else:
         model = str(model)
 
+    required_usage_metrics: dict[str, int] = {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+    }
+
     for (
         response_text,
         pipeline_interactions,
@@ -104,7 +116,9 @@ def to_custom_model_streaming_response(
                 created=created,
                 model=model,
                 choices=[choice],
-                usage=CompletionUsage.model_validate(usage_metrics) if usage_metrics else None,
+                usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
+                if usage_metrics
+                else None,
             )
 
     choice = ChunkChoice(
@@ -118,7 +132,9 @@ def to_custom_model_streaming_response(
         created=created,
         model=model,
         choices=[choice],
-        usage=CompletionUsage.model_validate(last_usage_metrics) if last_usage_metrics else None,
+        usage=CompletionUsage.model_validate(required_usage_metrics | last_usage_metrics)
+        if last_usage_metrics
+        else None,
         pipeline_interactions=last_pipeline_interactions.model_dump_json()
         if last_pipeline_interactions
         else None,
