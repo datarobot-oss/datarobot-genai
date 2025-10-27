@@ -881,10 +881,35 @@ wheels = [
 ]
 
 [[package]]
+name = "datarobot"
+version = "3.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.3.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pandas" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+    { name = "strenum" },
+    { name = "trafaret" },
+    { name = "typing-extensions" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ec/90/90c0a143f7e1564b0d7e909e70b70a1358c701528a8205b3f8e51bdf9a03/datarobot-3.9.1.tar.gz", hash = "sha256:1c35fee01c06c8077973bbf4b5cf012ed40520903a038afa4fe72e137bc27135", size = 735758, upload-time = "2025-10-10T18:02:58.234Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/d3/d49cb61bf83220bc34764abe82f31ef64500513ab82d78a24cddc2114d63/datarobot-3.9.1-py3-none-any.whl", hash = "sha256:4aa1f47ca96c3aa031fdaea43faf6410e8ed90c57e09f4b1335ec2369a49c83d", size = 792560, upload-time = "2025-10-10T18:02:55.969Z" },
+]
+
+[[package]]
 name = "datarobot-genai"
-version = "0.1.4"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
+    { name = "datarobot" },
+    { name = "datarobot-predict" },
+    { name = "openai" },
+    { name = "pandas" },
     { name = "requests" },
 ]
 
@@ -935,6 +960,8 @@ dev = [
 requires-dist = [
     { name = "crewai", marker = "extra == 'crewai'", specifier = ">=0.193.2" },
     { name = "crewai-tools", marker = "extra == 'crewai'", specifier = ">=0.69.0" },
+    { name = "datarobot" },
+    { name = "datarobot-predict" },
     { name = "fastmcp", marker = "extra == 'crewai'", specifier = ">2.12.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=0.4.10" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=0.2.3" },
@@ -948,8 +975,10 @@ requires-dist = [
     { name = "nvidia-nat-crewai", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0rc6" },
     { name = "nvidia-nat-langchain", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0rc6" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0rc6" },
+    { name = "openai" },
     { name = "opentelemetry-instrumentation-crewai", marker = "extra == 'crewai'", specifier = ">=0.40.5" },
     { name = "opentelemetry-instrumentation-llamaindex", marker = "extra == 'llamaindex'", specifier = ">=0.40.5" },
+    { name = "pandas" },
     { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2" },
     { name = "pydantic-ai", marker = "extra == 'pydanticai'", specifier = ">=1.0.5" },
     { name = "pylance", marker = "extra == 'crewai'", specifier = "<=0.38.1" },
@@ -966,6 +995,23 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff", specifier = ">=0.6.0" },
     { name = "twine", specifier = ">=5.0.0" },
+]
+
+[[package]]
+name = "datarobot-predict"
+version = "1.13.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "datarobot" },
+    { name = "pandas" },
+    { name = "py4j" },
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+    { name = "urllib3" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/73/a055301c6465d3681ecd203cf1283ecebb2acf976864b26b5d1174f2ccb0/datarobot_predict-1.13.3-py3-none-any.whl", hash = "sha256:813558ea9334ca5e4f0ddf890d2fe288a8c433a3c940299703ed849ecd793e6e", size = 16720076, upload-time = "2025-10-20T22:17:50.141Z" },
 ]
 
 [[package]]
@@ -4203,6 +4249,15 @@ wheels = [
 ]
 
 [[package]]
+name = "py4j"
+version = "0.10.9.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/31/0b210511177070c8d5d3059556194352e5753602fa64b85b7ab81ec1a009/py4j-0.10.9.9.tar.gz", hash = "sha256:f694cad19efa5bd1dee4f3e5270eb406613c974394035e5bfc4ec1aba870b879", size = 761089, upload-time = "2025-01-15T03:53:18.624Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/db/ea0203e495be491c85af87b66e37acfd3bf756fd985f87e46fc5e3bf022c/py4j-0.10.9.9-py2.py3-none-any.whl", hash = "sha256:c7c26e4158defb37b0bb124933163641a2ff6e3a3913f7811b0ddbe07ed61533", size = 203008, upload-time = "2025-01-15T03:53:15.648Z" },
+]
+
+[[package]]
 name = "pyarrow"
 version = "22.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5339,6 +5394,15 @@ wheels = [
 ]
 
 [[package]]
+name = "strenum"
+version = "0.4.15"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/ad/430fb60d90e1d112a62ff57bdd1f286ec73a2a0331272febfddd21f330e1/StrEnum-0.4.15.tar.gz", hash = "sha256:878fb5ab705442070e4dd1929bb5e2249511c0bcf2b0eeacf3bcd80875c82eff", size = 23384, upload-time = "2023-06-29T22:02:58.399Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/69/297302c5f5f59c862faa31e6cb9a4cd74721cd1e052b38e464c5b402df8b/StrEnum-0.4.15-py3-none-any.whl", hash = "sha256:a30cda4af7cc6b5bf52c8055bc4bf4b2b6b14a93b574626da33df53cf7740659", size = 8851, upload-time = "2023-06-29T22:02:56.947Z" },
+]
+
+[[package]]
 name = "striprtf"
 version = "0.0.26"
 source = { registry = "https://pypi.org/simple" }
@@ -5499,6 +5563,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737, upload-time = "2024-11-24T20:12:22.481Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2", size = 78540, upload-time = "2024-11-24T20:12:19.698Z" },
+]
+
+[[package]]
+name = "trafaret"
+version = "2.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/ed/aac034e566f8846aee6472dcc90da6011a0b1829e3ffc768407df519a3b0/trafaret-2.1.1.tar.gz", hash = "sha256:d9d00800318fbd343fdfb3353e947b2ebb5557159c844696c5ac24846f76d41c", size = 26249, upload-time = "2022-04-01T17:36:25.91Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/32/17b47745df926eff2e5b89d79838337de88258f65a936f70416a15190142/trafaret-2.1.1-py3-none-any.whl", hash = "sha256:1966f432586797aed663edd54cbc201fd7ba59eed1638f1a7a33f17977b3a569", size = 28399, upload-time = "2022-04-01T17:36:29.066Z" },
 ]
 
 [[package]]
