@@ -65,7 +65,7 @@ def to_custom_model_chat_response(
 
 def to_custom_model_streaming_response(
     streaming_response_generator: Generator[tuple[str, Any | None, dict[str, int]], None, None],
-    model: str | None = None,
+    model: str,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
     completion_id = str(uuid.uuid4())
@@ -92,9 +92,9 @@ def to_custom_model_streaming_response(
                 id=completion_id,
                 object="chat.completion.chunk",
                 created=created,
-                model=model,  # type: ignore[arg-type]
+                model=model,
                 choices=[choice],
-                usage=CompletionUsage(**usage_metrics) if usage_metrics else None,  # type: ignore[arg-type]
+                usage=CompletionUsage.model_validate(usage_metrics) if usage_metrics else None,
             )
 
     choice = ChunkChoice(
