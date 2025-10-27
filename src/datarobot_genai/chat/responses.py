@@ -18,7 +18,6 @@ import time
 import uuid
 from collections.abc import Generator
 from collections.abc import Iterator
-from typing import Any
 
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
@@ -27,6 +26,7 @@ from openai.types.chat import ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
+from ragas import MultiTurnSample
 
 
 class CustomModelChatResponse(ChatCompletion):
@@ -39,7 +39,7 @@ class CustomModelStreamingResponse(ChatCompletionChunk):
 
 def to_custom_model_chat_response(
     response_text: str,
-    pipeline_interactions: Any | None,
+    pipeline_interactions: MultiTurnSample | None,
     usage_metrics: dict[str, int],
     model: str | object | None,
 ) -> CustomModelChatResponse:
@@ -75,7 +75,9 @@ def to_custom_model_chat_response(
 
 
 def to_custom_model_streaming_response(
-    streaming_response_generator: Generator[tuple[str, Any | None, dict[str, int]], None, None],
+    streaming_response_generator: Generator[
+        tuple[str, MultiTurnSample | None, dict[str, int]], None, None
+    ],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
