@@ -1,9 +1,24 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
+from .chat import CustomModelChatResponse
+from .chat import CustomModelStreamingResponse
+from .chat import ToolClient
+from .chat import initialize_authorization_context
+from .chat import to_custom_model_chat_response
+from .chat import to_custom_model_streaming_response
 from .utils.urls import get_api_base
 
-__all__ = ["get_api_base", "__version__"]
+__all__ = [
+    "get_api_base",
+    "CustomModelChatResponse",
+    "CustomModelStreamingResponse",
+    "ToolClient",
+    "initialize_authorization_context",
+    "to_custom_model_chat_response",
+    "to_custom_model_streaming_response",
+    "__version__",
+]
 
 try:
     __version__ = version("datarobot-genai")
