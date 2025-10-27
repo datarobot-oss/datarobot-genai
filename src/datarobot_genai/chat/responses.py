@@ -24,6 +24,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat import ChatCompletionMessage
+from openai.types.chat.chat_completion import Choice
 
 
 class CustomModelChatResponse(ChatCompletion):
@@ -38,11 +39,9 @@ def to_custom_model_chat_response(
     response_text: str,
     pipeline_interactions: Any | None,
     usage_metrics: dict[str, int],
-    model: str | None = None,
+    model: str,
 ) -> CustomModelChatResponse:
     """Convert the OpenAI ChatCompletion response to CustomModelChatResponse."""
-    from openai.types.chat.chat_completion import Choice  # noqa: PLC0415
-
     choice = Choice(
         index=0,
         message=ChatCompletionMessage(role="assistant", content=response_text),
@@ -54,8 +53,8 @@ def to_custom_model_chat_response(
         object="chat.completion",
         choices=[choice],
         created=int(time.time()),
-        model=model,  # type: ignore[arg-type]
-        usage=CompletionUsage(**usage_metrics),  # type: ignore[arg-type]
+        model=model,
+        usage=CompletionUsage.model_validate(usage_metrics),
         pipeline_interactions=pipeline_interactions.model_dump_json()
         if pipeline_interactions
         else None,
