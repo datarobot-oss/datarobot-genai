@@ -1,6 +1,7 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
+from .agent import Agent
 from .chat import CustomModelChatResponse
 from .chat import CustomModelStreamingResponse
 from .chat import ToolClient
@@ -18,6 +19,7 @@ __all__ = [
     "to_custom_model_chat_response",
     "to_custom_model_streaming_response",
     "__version__",
+    "Agent",
 ]
 
 try:

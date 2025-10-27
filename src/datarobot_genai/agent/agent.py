@@ -27,7 +27,6 @@ class Agent:
         api_key: str | None = None,
         api_base: str | None = None,
         model: str | None = None,
-        llm_deployment_id: str | None = None,
         verbose: bool | str | None = True,
         timeout: int | None = 90,
         **kwargs: Any,
@@ -42,8 +41,6 @@ class Agent:
                 Defaults to None, in which case it will use the DATAROBOT_ENDPOINT environment
                 variable.
             model: Optional[str]: The LLM model to use.
-                Defaults to None.
-            llm_deployment_id: Optional[str]: The LLM deployment ID to use.
                 Defaults to None.
             verbose: Optional[Union[bool, str]]: Whether to enable verbose logging.
                 Accepts boolean or string values ("true"/"false"). Defaults to True.
@@ -60,7 +57,6 @@ class Agent:
         self.api_base: str = (
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
         )
-        self.llm_deployment_id = llm_deployment_id
         self.model = model
         self.timeout = timeout
         if isinstance(verbose, str):
