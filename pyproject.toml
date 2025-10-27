@@ -154,6 +154,3 @@ exclude_lines = [
     "pass",
 ]
 fail_under = 80
-
-[tool.uv.sources]
-datarobot-genai = { path = "/Users/james.clemens/workspace/datarobot_genai/", editable = true }
