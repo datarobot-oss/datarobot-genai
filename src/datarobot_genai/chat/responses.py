@@ -41,7 +41,7 @@ def to_custom_model_chat_response(
     response_text: str,
     pipeline_interactions: Any | None,
     usage_metrics: dict[str, int],
-    model: str,
+    model: str | object | None,
 ) -> CustomModelChatResponse:
     """Convert the OpenAI ChatCompletion response to CustomModelChatResponse."""
     choice = Choice(
@@ -49,6 +49,11 @@ def to_custom_model_chat_response(
         message=ChatCompletionMessage(role="assistant", content=response_text),
         finish_reason="stop",
     )
+
+    if model is None:
+        model = "unspecified-model"
+    else:
+        model = str(model)
 
     return CustomModelChatResponse(
         id=str(uuid.uuid4()),
@@ -65,7 +70,7 @@ def to_custom_model_chat_response(
 
 def to_custom_model_streaming_response(
     streaming_response_generator: Generator[tuple[str, Any | None, dict[str, int]], None, None],
-    model: str,
+    model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
     completion_id = str(uuid.uuid4())
@@ -73,6 +78,11 @@ def to_custom_model_streaming_response(
 
     last_pipeline_interactions = None
     last_usage_metrics = None
+
+    if model is None:
+        model = "unspecified-model"
+    else:
+        model = str(model)
 
     for (
         response_text,
@@ -106,9 +116,9 @@ def to_custom_model_streaming_response(
         id=completion_id,
         object="chat.completion.chunk",
         created=created,
-        model=model,  # type: ignore[arg-type]
+        model=model,
         choices=[choice],
-        usage=CompletionUsage(**last_usage_metrics) if last_usage_metrics else None,  # type: ignore[arg-type]
+        usage=CompletionUsage.model_validate(last_usage_metrics) if last_usage_metrics else None,
         pipeline_interactions=last_pipeline_interactions.model_dump_json()
         if last_pipeline_interactions
         else None,
