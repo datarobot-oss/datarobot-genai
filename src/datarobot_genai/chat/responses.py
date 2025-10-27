@@ -25,6 +25,8 @@ from openai.types.chat import ChatCompletion
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat import ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
+from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
 
 class CustomModelChatResponse(ChatCompletion):
@@ -66,9 +68,6 @@ def to_custom_model_streaming_response(
     model: str | None = None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
-    from openai.types.chat.chat_completion_chunk import Choice  # noqa: PLC0415
-    from openai.types.chat.chat_completion_chunk import ChoiceDelta  # noqa: PLC0415
-
     completion_id = str(uuid.uuid4())
     created = int(time.time())
 
@@ -84,7 +83,7 @@ def to_custom_model_streaming_response(
         last_usage_metrics = usage_metrics
 
         if response_text:
-            choice = Choice(
+            choice = ChunkChoice(
                 index=0,
                 delta=ChoiceDelta(role="assistant", content=response_text),
                 finish_reason=None,
@@ -98,7 +97,7 @@ def to_custom_model_streaming_response(
                 usage=CompletionUsage(**usage_metrics) if usage_metrics else None,  # type: ignore[arg-type]
             )
 
-    choice = Choice(
+    choice = ChunkChoice(
         index=0,
         delta=ChoiceDelta(role="assistant"),
         finish_reason="stop",
