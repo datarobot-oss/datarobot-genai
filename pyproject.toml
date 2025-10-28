@@ -12,11 +12,12 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
 dependencies = [
   "requests>=2.32.4",
-  "datarobot",
-  "datarobot-predict",
-  "openai",
-  "pandas",
-  "ragas",
+  "datarobot>=3.9.1",
+  "datarobot-predict>=1.13.2",
+  "openai>=1.76.2",
+  "pandas>=2.2.3",
+  "ragas @ git+https://github.com/explodinggradients/ragas@5d59549ad5ef511f621502c563bc55ac5aeb9188#subdirectory=ragas",
+  "pyarrow<21.0.0",
 ]
 
 [project.urls]
@@ -68,6 +69,9 @@ include = [
   "LICENSE",
   "AUTHORS",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.uv]
 package = true

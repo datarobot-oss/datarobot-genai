@@ -14,11 +14,10 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
-from langchain_core.messages import ToolMessage
 from ragas import MultiTurnSample
-from ragas.integrations.langgraph import convert_to_ragas_messages
 
 
 def create_pipeline_interactions_from_events(
@@ -27,10 +26,14 @@ def create_pipeline_interactions_from_events(
     """Convert a list of LangGraph events into Ragas MultiTurnSample."""
     if not events:
         return None
+    tool_message_cls = importlib.import_module("langchain_core.messages").ToolMessage
+    convert_to_ragas_messages_fn = importlib.import_module(
+        "ragas.integrations.langgraph"
+    ).convert_to_ragas_messages
     messages = []
     for e in events:
         for _, v in e.items():
             messages.extend(v.get("messages", []))
-    messages = [m for m in messages if not isinstance(m, ToolMessage)]
-    ragas_trace = convert_to_ragas_messages(messages)
+    messages = [m for m in messages if not isinstance(m, tool_message_cls)]
+    ragas_trace = convert_to_ragas_messages_fn(messages)
     return MultiTurnSample(user_input=ragas_trace)

@@ -2,7 +2,6 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
 from .agents import BaseAgent
-from .agents import choose_model
 from .agents import extract_user_prompt_content
 from .agents import make_system_prompt
 from .chat import CustomModelChatResponse
@@ -23,7 +22,6 @@ __all__ = [
     "to_custom_model_streaming_response",
     "BaseAgent",
     "make_system_prompt",
-    "choose_model",
     "extract_user_prompt_content",
     "__version__",
 ]

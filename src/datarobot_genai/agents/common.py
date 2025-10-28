@@ -19,7 +19,7 @@ from typing import Any
 
 from ragas import MultiTurnSample
 
-from .. import get_api_base
+from ..utils.urls import get_api_base
 
 
 class BaseAgent:
@@ -57,20 +57,6 @@ class BaseAgent:
 
     def litellm_api_base(self, deployment_id: str | None) -> str:
         return get_api_base(self.api_base, deployment_id)
-
-
-def choose_model(
-    *,
-    preferred_model: str | None,
-    default_model: str,
-    use_gateway: bool,
-) -> str:
-    """Select a model honoring preferred value and gateway availability."""
-    if preferred_model:
-        return preferred_model
-    if not use_gateway:
-        return default_model
-    return default_model
 
 
 def extract_user_prompt_content(completion_create_params: dict[str, Any]) -> Any:
