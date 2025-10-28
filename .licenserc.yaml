@@ -62,6 +62,7 @@ header:
     - '.gitignore'
     - '.pre-commit-config.yaml'
     - '.mkfiles/**'
+    - 'py.typed'
 
 
   comment: on-failure
