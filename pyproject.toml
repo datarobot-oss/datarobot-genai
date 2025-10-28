@@ -16,6 +16,7 @@ dependencies = [
   "datarobot-predict",
   "openai",
   "pandas",
+  "ragas",
 ]
 
 [project.urls]
