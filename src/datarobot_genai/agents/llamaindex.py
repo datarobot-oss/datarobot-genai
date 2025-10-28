@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Sequence
+from typing import cast
 
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.workflow import Event
 from llama_index.llms.litellm import LiteLLM
 from ragas import MultiTurnSample
 from ragas.integrations.llama_index import convert_to_ragas_messages
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
+from ragas.messages import ToolMessage
 
 
 class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
@@ -36,9 +39,11 @@ class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
 
 
 def create_pipeline_interactions_from_events(
-    events: Sequence[Event] | None,
+    events: list[Event] | None,
 ) -> MultiTurnSample | None:
     if not events:
         return None
-    ragas_trace = convert_to_ragas_messages(events)
-    return MultiTurnSample(user_input=ragas_trace)
+    # convert_to_ragas_messages expects a list[Event]
+    ragas_trace = convert_to_ragas_messages(list(events))
+    ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
+    return MultiTurnSample(user_input=ragas_messages)
