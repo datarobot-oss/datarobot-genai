@@ -22,6 +22,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
+[project.entry-points.'nat.plugins']
+datarobot_llm = "datarobot_genai.nat_adaptors.register"
+
 [project.optional-dependencies]
 crewai = [
   "crewai>=0.193.2",
@@ -98,6 +101,7 @@ dev = [
   "ruff>=0.6.0",
   "mypy>=1.10.0",
   "pytest",
+  "pytest-asyncio",
   "pytest-cov",
   "pre-commit",
   "twine>=5.0.0",
