@@ -116,6 +116,9 @@ def run_smoke(extras: Iterable[str]) -> None:
         )
 
         assert create_events_llamaindex(None) is None
+        # Instantiate the LlamaIndex adapter to ensure basic construction works
+        llm = DataRobotLiteLLM(model="dr/model", max_tokens=8)  # type: ignore[arg-type]
+        assert llm.metadata.is_chat_model is True
         print("llamaindex smoke OK")
 
 
