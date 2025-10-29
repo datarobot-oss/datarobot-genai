@@ -23,7 +23,7 @@ from datarobot_genai.nat_adaptors.datarobot_llm_clients import (
 from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 
 
-async def test_datarobot_langchain_agent():
+async def test_datarobot_llm_gateway_langchain():
     prompt = ChatPromptTemplate.from_messages(
         [("system", "You are a helpful AI assistant."), ("human", "{input}")]
     )
@@ -43,3 +43,24 @@ async def test_datarobot_langchain_agent():
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "3" in response.content.lower()
+
+
+async def test_datarobot_llm_gateway_crewai():
+    input = "What is 1+2?"
+    messages = [
+        {"role": "system", "content": "You are a helpful AI assistant."},
+        {"role": "user", "content": f"{input}"},
+    ]
+
+    llm_config = DataRobotLLMGatewayModelConfig(
+        model_name="azure/gpt-4o-2024-11-20", temperature=0.0
+    )
+
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+
+        response = llm.call(messages)
+        assert isinstance(response, str)
+        assert response is not None
+        assert "3" in response

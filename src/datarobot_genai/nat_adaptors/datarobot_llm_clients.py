@@ -14,6 +14,7 @@
 
 from collections.abc import AsyncGenerator
 
+from crewai import LLM
 from langchain_openai import ChatOpenAI
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
@@ -31,3 +32,15 @@ async def datarobot_llm_gateway_langchain(
     yield ChatOpenAI(
         **llm_config.model_dump(exclude={"type", "thinking", "datarobot_endpoint"}, by_alias=True)
     )
+
+
+@register_llm_client(
+    config_type=DataRobotLLMGatewayModelConfig, wrapper_type=LLMFrameworkEnum.CREWAI
+)
+async def datarobot_llm_gateway_crewai(
+    llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True)
+    config["model"] = "datarobot/" + config["model"]
+    config["base_url"] = config.pop("datarobot_endpoint").removesuffix("/api/v2")
+    yield LLM(**config)
