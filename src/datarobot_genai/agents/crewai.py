@@ -12,16 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
-from typing import Any
-
+from crewai import LLM
 from ragas import MultiTurnSample
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
+from ragas.messages import ToolMessage
 
 from ..utils.urls import get_api_base
-
-# Lazily-resolved handle to CrewAI's LLM class so tests can monkeypatch
-# the symbol without requiring the extra to be installed at import time.
-LLM: Any | None = None
 
 
 def build_llm(
@@ -31,19 +28,14 @@ def build_llm(
     model: str,
     deployment_id: str | None,
     timeout: int,
-) -> Any:
+) -> LLM:
     """Create a CrewAI LLM configured for DataRobot LLM Gateway or deployment."""
     base = get_api_base(api_base, deployment_id)
-    # Resolve CrewAI's LLM lazily so importing this module doesn't require the extra
-    if LLM is not None:
-        llm_cls = LLM
-    else:
-        llm_cls = importlib.import_module("crewai").LLM
-    return llm_cls(model=model, api_base=base, api_key=api_key, timeout=timeout)
+    return LLM(model=model, api_base=base, api_key=api_key, timeout=timeout)
 
 
 def create_pipeline_interactions_from_messages(
-    messages: list[Any] | None,
+    messages: list[HumanMessage | AIMessage | ToolMessage] | None,
 ) -> MultiTurnSample | None:
     if not messages:
         return None

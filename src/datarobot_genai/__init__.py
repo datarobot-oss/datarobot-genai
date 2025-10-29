@@ -1,9 +1,9 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
-from .agents import BaseAgent
-from .agents import extract_user_prompt_content
-from .agents import make_system_prompt
+from .agents.common import BaseAgent
+from .agents.common import extract_user_prompt_content
+from .agents.common import make_system_prompt
 from .chat import CustomModelChatResponse
 from .chat import CustomModelStreamingResponse
 from .chat import ToolClient
