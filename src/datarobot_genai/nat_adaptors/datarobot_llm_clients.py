@@ -19,12 +19,14 @@ from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
 
-from ..nat_adaptors.datarobot_llm_providers import DataRobotModelConfig
+from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 
 
-@register_llm_client(config_type=DataRobotModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+@register_llm_client(
+    config_type=DataRobotLLMGatewayModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN
+)
 async def datarobot_langchain(
-    llm_config: DataRobotModelConfig, builder: Builder
+    llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
     yield ChatOpenAI(
         **llm_config.model_dump(exclude={"type", "thinking", "datarobot_endpoint"}, by_alias=True)

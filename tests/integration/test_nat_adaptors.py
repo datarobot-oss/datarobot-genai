@@ -17,7 +17,7 @@ from langchain_core.prompts.chat import ChatPromptTemplate
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
 
-from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotModelConfig
+from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 
 
 async def test_datarobot_langchain_agent():
@@ -25,7 +25,9 @@ async def test_datarobot_langchain_agent():
         [("system", "You are a helpful AI assistant."), ("human", "{input}")]
     )
 
-    llm_config = DataRobotModelConfig(model_name="azure/gpt-4o-2024-11-20", temperature=0.0)
+    llm_config = DataRobotLLMGatewayModelConfig(
+        model_name="azure/gpt-4o-2024-11-20", temperature=0.0
+    )
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
