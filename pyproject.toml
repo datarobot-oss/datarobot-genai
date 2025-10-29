@@ -17,7 +17,6 @@ dependencies = [
   "openai>=1.76.2",
   "pandas>=2.2.3",
   "ragas>=0.3.8",
-  "pyarrow<21.0.0",
 ]
 
 [project.urls]

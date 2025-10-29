@@ -26,7 +26,6 @@ class BaseAgent:
     Fields:
       - api_key: DataRobot API token
       - api_base: Endpoint for DataRobot, normalized for LLM Gateway usage
-      - config: Arbitrary config object provided by the template (assigned by subclass)
       - model: Preferred model name
       - timeout: Request timeout
       - verbose: Verbosity flag
