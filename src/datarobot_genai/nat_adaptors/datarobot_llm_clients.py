@@ -16,11 +16,37 @@ from collections.abc import AsyncGenerator
 
 from crewai import LLM
 from langchain_openai import ChatOpenAI
+from llama_index.core.base.llms.types import LLMMetadata
+from llama_index.llms.litellm import LiteLLM
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
 
 from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
+
+
+class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
+    """DataRobotLiteLLM is a small LiteLLM wrapper class that makes all LiteLLM endpoints
+    compatible with the LlamaIndex library.
+    """
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        """Returns the metadata for the LLM.
+
+        This is required to enable the is_chat_model and is_function_calling_model, which are
+        mandatory for LlamaIndex agents. By default, LlamaIndex assumes these are false unless each
+        individual model config in LiteLLM explicitly sets them to true. To use custom LLM
+        endpoints with LlamaIndex agents, you must override this method to return the appropriate
+        metadata.
+        """
+        return LLMMetadata(
+            context_window=128000,
+            num_output=self.max_tokens or -1,
+            is_chat_model=True,
+            is_function_calling_model=True,
+            model_name=self.model,
+        )
 
 
 @register_llm_client(
@@ -30,7 +56,9 @@ async def datarobot_llm_gateway_langchain(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
     yield ChatOpenAI(
-        **llm_config.model_dump(exclude={"type", "thinking", "datarobot_endpoint"}, by_alias=True)
+        **llm_config.model_dump(
+            exclude={"type", "thinking", "datarobot_endpoint"}, by_alias=True, exclude_none=True
+        )
     )
 
 
@@ -40,7 +68,19 @@ async def datarobot_llm_gateway_langchain(
 async def datarobot_llm_gateway_crewai(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
-    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True)
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     config["model"] = "datarobot/" + config["model"]
     config["base_url"] = config.pop("datarobot_endpoint").removesuffix("/api/v2")
     yield LLM(**config)
+
+
+@register_llm_client(
+    config_type=DataRobotLLMGatewayModelConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
+)
+async def datarobot_llm_gateway_llamaindex(
+    llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    config["model"] = "datarobot/" + config["model"]
+    config["api_base"] = config.pop("datarobot_endpoint").removesuffix("/api/v2")
+    yield DataRobotLiteLLM(**config)

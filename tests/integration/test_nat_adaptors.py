@@ -14,6 +14,8 @@
 
 from langchain_core.messages.ai import AIMessage
 from langchain_core.prompts.chat import ChatPromptTemplate
+from llama_index.core.llms import ChatMessage
+from llama_index.core.llms import ChatResponse
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
 
@@ -35,9 +37,7 @@ async def test_datarobot_llm_gateway_langchain():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-
         agent = prompt | llm
-
         response = await agent.ainvoke({"input": "What is 1+2?"})
         assert isinstance(response, AIMessage)
         assert response.content is not None
@@ -59,8 +59,27 @@ async def test_datarobot_llm_gateway_crewai():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
-
         response = llm.call(messages)
         assert isinstance(response, str)
         assert response is not None
         assert "3" in response
+
+
+async def test_datarobot_llm_gateway_llamaindex():
+    input = "What is 1+2?"
+    messages = [
+        ChatMessage.from_str("You are a helpful AI assistant.", "system"),
+        ChatMessage.from_str(input, "user"),
+    ]
+
+    llm_config = DataRobotLLMGatewayModelConfig(
+        model_name="azure/gpt-4o-2024-11-20", temperature=0.0
+    )
+
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
+        response = await llm.achat(messages)
+        assert isinstance(response, ChatResponse)
+        assert response is not None
+        assert "3" in response.message.content
