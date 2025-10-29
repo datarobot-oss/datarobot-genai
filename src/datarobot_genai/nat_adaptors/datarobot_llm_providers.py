@@ -25,7 +25,7 @@ from pydantic import model_validator
 load_dotenv()
 
 
-class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot"):  # type: ignore[call-arg]
+class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gateway"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     api_key: str | None = Field(
@@ -42,7 +42,9 @@ class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot"):  # ty
 
 
 @register_llm_provider(config_type=DataRobotLLMGatewayModelConfig)
-async def datarobot_llm(
+async def datarobot_llm_gateway(
     config: DataRobotLLMGatewayModelConfig, _builder: Builder
 ) -> LLMProviderInfo:
-    yield LLMProviderInfo(config=config, description="A DataRobot LLM for use with an LLM client.")
+    yield LLMProviderInfo(
+        config=config, description="DataRobot LLM Gateway for use with an LLM client."
+    )
