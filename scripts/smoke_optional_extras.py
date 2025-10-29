@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import sys
 from collections.abc import Iterable
 
@@ -52,10 +53,17 @@ def run_smoke(extras: Iterable[str]) -> None:
     )
     print("Top-level OK")
 
-    # Validate import behavior per extras
-    expect_import("datarobot_genai.agents.crewai", "crewai" in extras_set)
-    expect_import("datarobot_genai.agents.langgraph", "langgraph" in extras_set)
-    expect_import("datarobot_genai.agents.llamaindex", "llamaindex" in extras_set)
+    # Validate import behavior per extras, but permit import if underlying deps are present.
+    def dep_present(modname: str) -> bool:
+        return importlib.util.find_spec(modname) is not None
+
+    allow_crewai = ("crewai" in extras_set) or dep_present("crewai")
+    allow_langgraph = ("langgraph" in extras_set) or dep_present("langgraph")
+    allow_llamaindex = ("llamaindex" in extras_set) or dep_present("llama_index")
+
+    expect_import("datarobot_genai.agents.crewai", allow_crewai)
+    expect_import("datarobot_genai.agents.langgraph", allow_langgraph)
+    expect_import("datarobot_genai.agents.llamaindex", allow_llamaindex)
 
     # Minimal functional smoke per installed extra
     if "crewai" in extras_set:
