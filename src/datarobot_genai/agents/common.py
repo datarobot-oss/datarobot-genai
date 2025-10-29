@@ -65,14 +65,32 @@ def extract_user_prompt_content(completion_create_params: dict[str, Any]) -> Any
     return user_prompt.get("content", {})
 
 
-def make_system_prompt(suffix: str) -> str:
-    return (
+def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:
+    """Build a system prompt with optional prefix and suffix.
+
+    Parameters
+    ----------
+    suffix : str, default ""
+        Text appended after the prefix. If non-empty, it is placed on a new line.
+    prefix : str | None, keyword-only, default None
+        Custom prefix text. When ``None``, a default collaborative assistant
+        instruction is used.
+
+    Returns
+    -------
+    str
+        The composed system prompt string.
+    """
+    default_prefix = (
         "You are a helpful AI assistant, collaborating with other assistants."
         " Use the provided tools to progress towards answering the question."
         " If you are unable to fully answer, that's OK, another assistant with different tools "
         " will help where you left off. Execute what you can to make progress."
-        f"\n{suffix}"
     )
+    head = prefix if prefix is not None else default_prefix
+    if suffix:
+        return head + "\n" + suffix
+    return head
 
 
 def create_pipeline_interactions_from_events_simple(
