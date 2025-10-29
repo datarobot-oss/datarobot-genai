@@ -1,6 +1,9 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
+from .agents.common import BaseAgent
+from .agents.common import extract_user_prompt_content
+from .agents.common import make_system_prompt
 from .chat import CustomModelChatResponse
 from .chat import CustomModelStreamingResponse
 from .chat import ToolClient
@@ -17,6 +20,9 @@ __all__ = [
     "initialize_authorization_context",
     "to_custom_model_chat_response",
     "to_custom_model_streaming_response",
+    "BaseAgent",
+    "make_system_prompt",
+    "extract_user_prompt_content",
     "__version__",
 ]
 
