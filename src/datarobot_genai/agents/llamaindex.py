@@ -24,11 +24,12 @@ from ragas.messages import HumanMessage
 from ragas.messages import ToolMessage
 
 
-class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
+class DataRobotLiteLLM(LiteLLM):
     """LiteLLM wrapper providing chat/function capability metadata for LlamaIndex."""
 
     @property
-    def metadata(self) -> LLMMetadata:  # noqa: D401
+    def metadata(self) -> LLMMetadata:
+        """Return LLM metadata."""
         return LLMMetadata(
             context_window=128000,
             num_output=self.max_tokens or -1,

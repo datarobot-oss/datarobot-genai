@@ -14,9 +14,10 @@
 
 import pytest
 
-pytest.importorskip("llama_index")
-
-import datarobot_genai.agents.llamaindex as mod  # noqa: E402
+try:
+    import datarobot_genai.agents.llamaindex as mod
+except ModuleNotFoundError:  # pragma: no cover - environment without extra
+    pytest.skip("llamaindex extra not installed", allow_module_level=True)
 
 
 def test_llamaindex_exports_exist() -> None:

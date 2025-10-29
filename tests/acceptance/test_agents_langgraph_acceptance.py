@@ -14,9 +14,10 @@
 
 import pytest
 
-pytest.importorskip("langgraph")
-
-import datarobot_genai.agents.langgraph as mod  # noqa: E402
+try:
+    import datarobot_genai.agents.langgraph as mod
+except ModuleNotFoundError:  # pragma: no cover - environment without extra
+    pytest.skip("langgraph extra not installed", allow_module_level=True)
 
 
 def test_langgraph_exports_exist() -> None:

@@ -17,7 +17,7 @@ from datarobot_genai.agents.llamaindex import create_pipeline_interactions_from_
 
 
 def test_datarobot_litellm_metadata_properties() -> None:
-    llm = DataRobotLiteLLM(model="dr/model", max_tokens=256)  # type: ignore[arg-type]
+    llm = DataRobotLiteLLM(model="dr/model", max_tokens=256)
     meta = llm.metadata
 
     assert meta.context_window == 128000

@@ -25,8 +25,8 @@ from pathlib import Path
 
 try:
     import tomllib  # Python 3.11+
-except Exception:  # pragma: no cover
-    import tomli as tomllib  # type: ignore
+except ImportError:  # pragma: no cover
+    import tomli as tomllib
 
 
 PYPROJECT = Path("pyproject.toml")

@@ -14,9 +14,10 @@
 
 import pytest
 
-pytest.importorskip("crewai")
-
-import datarobot_genai.agents.crewai as mod  # noqa: E402
+try:
+    import datarobot_genai.agents.crewai as mod
+except ModuleNotFoundError:  # pragma: no cover - environment without extra
+    pytest.skip("crewai extra not installed", allow_module_level=True)
 
 
 def test_crewai_exports_exist() -> None:

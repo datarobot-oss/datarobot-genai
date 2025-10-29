@@ -65,7 +65,7 @@ def test_make_system_prompt() -> None:
 
 def test_create_pipeline_interactions_from_events_simple() -> None:
     assert create_pipeline_interactions_from_events_simple(None) is None
-    msgs = [HumanMessage(content="hi"), AIMessage(content="ok")]
-    sample = create_pipeline_interactions_from_events_simple(msgs)  # type: ignore[arg-type]
+    msgs: list[Any] = [HumanMessage(content="hi"), AIMessage(content="ok")]
+    sample = create_pipeline_interactions_from_events_simple(msgs)
     assert sample is not None
     assert sample.user_input == msgs

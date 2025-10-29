@@ -56,7 +56,7 @@ def test_build_llm_uses_get_api_base_and_params(monkeypatch: Any) -> None:
 def test_create_pipeline_interactions_from_messages_returns_sample(monkeypatch: Any) -> None:
     assert create_pipeline_interactions_from_messages(None) is None
 
-    msgs = [HumanMessage(content="hi")]  # type: ignore[call-arg]
+    msgs = [HumanMessage(content="hi")]
     sample = create_pipeline_interactions_from_messages(msgs)
     assert sample is not None
     assert sample.user_input == msgs

@@ -19,6 +19,7 @@ import importlib
 import importlib.util
 import sys
 from collections.abc import Iterable
+from typing import Any
 
 
 def parse_extras_arg(value: str) -> set[str]:
@@ -35,7 +36,7 @@ def expect_import(module: str, should_succeed: bool) -> None:
         if not should_succeed:
             sys.exit(f"Unexpected: {module} imported without its extras")
         print(f"Imported OK: {module}")
-    except Exception as exc:  # noqa: BLE001 - intentional broad to surface any failure
+    except ModuleNotFoundError as exc:
         if should_succeed:
             raise
         print(f"Expected missing: {module} -> {type(exc).__name__}")
@@ -45,13 +46,15 @@ def run_smoke(extras: Iterable[str]) -> None:
     extras_set = set(extras)
 
     print("Top-level import...")
-    import datarobot_genai  # noqa: F401  # import validates no optional deps imported
+    import datarobot_genai as _drg
     from datarobot_genai.agents.common import (
-        BaseAgent,  # noqa: F401
-        extract_user_prompt_content,  # noqa: F401
-        make_system_prompt,  # noqa: F401
+        BaseAgent,
+        extract_user_prompt_content,
+        make_system_prompt,
     )
     print("Top-level OK")
+    # Touch imported symbols to avoid unused-import warnings
+    _ = (_drg.__name__, BaseAgent, extract_user_prompt_content, make_system_prompt)
 
     # Validate import behavior per extras, but permit import if underlying deps are present.
     def dep_present(modname: str) -> bool:
@@ -67,11 +70,11 @@ def run_smoke(extras: Iterable[str]) -> None:
 
     # Minimal functional smoke per installed extra
     if "crewai" in extras_set:
-        from datarobot_genai.agents.crewai import (  # noqa: E402, I001
+        from datarobot_genai.agents.crewai import (
             build_llm,
             create_pipeline_interactions_from_messages,
         )
-        from ragas.messages import HumanMessage  # noqa: E402, I001
+        from ragas.messages import HumanMessage
 
         _ = build_llm(
             api_base="https://tenant.datarobot.com/api/v2",
@@ -85,16 +88,16 @@ def run_smoke(extras: Iterable[str]) -> None:
         print("crewai smoke OK")
 
     if "langgraph" in extras_set:
-        from datarobot_genai.agents.langgraph import (  # noqa: E402, I001
+        from datarobot_genai.agents.langgraph import (
             create_pipeline_interactions_from_events as create_events_langgraph,
         )
-        from langchain_core.messages import (  # noqa: E402, I001
+        from langchain_core.messages import (
             AIMessage as LC_AIMessage,
             HumanMessage as LC_HumanMessage,
             ToolMessage as LC_ToolMessage,
         )
 
-        events = [
+        events: list[dict[str, Any]] = [
             {
                 "node1": {
                     "messages": [
@@ -105,19 +108,19 @@ def run_smoke(extras: Iterable[str]) -> None:
             },
             {"node2": {"messages": [LC_AIMessage(content="ok")] }},
         ]
-        sample = create_events_langgraph(events)  # type: ignore[arg-type]
+        sample = create_events_langgraph(events)
         assert sample is not None and len(sample.user_input) == 2
         print("langgraph smoke OK")
 
     if "llamaindex" in extras_set:
-        from datarobot_genai.agents.llamaindex import (  # noqa: E402, I001
-            DataRobotLiteLLM,  # noqa: F401 - class import validation
+        from datarobot_genai.agents.llamaindex import (
+            DataRobotLiteLLM,
             create_pipeline_interactions_from_events as create_events_llamaindex,
         )
 
         assert create_events_llamaindex(None) is None
         # Instantiate the LlamaIndex adapter to ensure basic construction works
-        llm = DataRobotLiteLLM(model="dr/model", max_tokens=8)  # type: ignore[arg-type]
+        llm = DataRobotLiteLLM(model="dr/model")
         assert llm.metadata.is_chat_model is True
         print("llamaindex smoke OK")
 
