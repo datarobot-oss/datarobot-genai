@@ -23,7 +23,8 @@ dependencies = [
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
 [project.entry-points.'nat.plugins']
-datarobot_llm = "datarobot_genai.nat_adaptors.register"
+datarobot_llm_providers = "datarobot_genai.nat_adaptors.datarobot_llm_providers"
+datarobot_llm_clients = "datarobot_genai.nat_adaptors.datarobot_llm_clients"
 
 [project.optional-dependencies]
 crewai = [

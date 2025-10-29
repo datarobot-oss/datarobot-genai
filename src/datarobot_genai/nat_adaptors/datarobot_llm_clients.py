@@ -25,7 +25,7 @@ from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfi
 @register_llm_client(
     config_type=DataRobotLLMGatewayModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN
 )
-async def datarobot_langchain(
+async def datarobot_llm_gateway_langchain(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
     yield ChatOpenAI(

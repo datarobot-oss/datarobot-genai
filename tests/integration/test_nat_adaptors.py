@@ -17,6 +17,9 @@ from langchain_core.prompts.chat import ChatPromptTemplate
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
 
+from datarobot_genai.nat_adaptors.datarobot_llm_clients import (
+    datarobot_llm_gateway_langchain,  # noqa: F401
+)
 from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 
 
