@@ -135,6 +135,12 @@ fixable = [
     "D104", # Missing docstring in public package
     "F401"  # Imported but unused
 ]
+"scripts/*.py" = [
+    "INP001", # implicit-namespace-package: allow scripts without package semantics
+    "E402",   # module-import-not-at-top-of-file: allow local imports in smoke script
+    "I001",   # isort import order within functions
+    "PLC0415",# pylint import-outside-toplevel for controlled local imports
+]
 
 [tool.ruff.lint.isort]
 force-single-line = true

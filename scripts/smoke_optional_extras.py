@@ -1,0 +1,130 @@
+# Copyright 2025 DataRobot, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import sys
+from collections.abc import Iterable
+
+
+def parse_extras_arg(value: str) -> set[str]:
+    if value == "all":
+        return {"crewai", "langgraph", "llamaindex"}
+    if value == "none" or not value:
+        return set()
+    return {v.strip() for v in value.split(",") if v.strip()}
+
+
+def expect_import(module: str, should_succeed: bool) -> None:
+    try:
+        importlib.import_module(module)
+        if not should_succeed:
+            sys.exit(f"Unexpected: {module} imported without its extras")
+        print(f"Imported OK: {module}")
+    except Exception as exc:  # noqa: BLE001 - intentional broad to surface any failure
+        if should_succeed:
+            raise
+        print(f"Expected missing: {module} -> {type(exc).__name__}")
+
+
+def run_smoke(extras: Iterable[str]) -> None:
+    extras_set = set(extras)
+
+    print("Top-level import...")
+    import datarobot_genai  # noqa: F401  # import validates no optional deps imported
+    from datarobot_genai.agents.common import (
+        BaseAgent,  # noqa: F401
+        extract_user_prompt_content,  # noqa: F401
+        make_system_prompt,  # noqa: F401
+    )
+    print("Top-level OK")
+
+    # Validate import behavior per extras
+    expect_import("datarobot_genai.agents.crewai", "crewai" in extras_set)
+    expect_import("datarobot_genai.agents.langgraph", "langgraph" in extras_set)
+    expect_import("datarobot_genai.agents.llamaindex", "llamaindex" in extras_set)
+
+    # Minimal functional smoke per installed extra
+    if "crewai" in extras_set:
+        from datarobot_genai.agents.crewai import (  # noqa: E402, I001
+            build_llm,
+            create_pipeline_interactions_from_messages,
+        )
+        from ragas.messages import HumanMessage  # noqa: E402, I001
+
+        _ = build_llm(
+            api_base="https://tenant.datarobot.com/api/v2",
+            api_key="tok",
+            model="mistral",
+            deployment_id="dep-1",
+            timeout=1,
+        )
+        sample = create_pipeline_interactions_from_messages([HumanMessage(content="hi")])
+        assert sample is not None
+        print("crewai smoke OK")
+
+    if "langgraph" in extras_set:
+        from datarobot_genai.agents.langgraph import (  # noqa: E402, I001
+            create_pipeline_interactions_from_events as create_events_langgraph,
+        )
+        from langchain_core.messages import (  # noqa: E402, I001
+            AIMessage as LC_AIMessage,
+            HumanMessage as LC_HumanMessage,
+            ToolMessage as LC_ToolMessage,
+        )
+
+        events = [
+            {
+                "node1": {
+                    "messages": [
+                        LC_ToolMessage(content="tool", tool_call_id="tc_1"),
+                        LC_HumanMessage(content="hi"),
+                    ]
+                }
+            },
+            {"node2": {"messages": [LC_AIMessage(content="ok")] }},
+        ]
+        sample = create_events_langgraph(events)  # type: ignore[arg-type]
+        assert sample is not None and len(sample.user_input) == 2
+        print("langgraph smoke OK")
+
+    if "llamaindex" in extras_set:
+        from datarobot_genai.agents.llamaindex import (  # noqa: E402, I001
+            DataRobotLiteLLM,  # noqa: F401 - class import validation
+            create_pipeline_interactions_from_events as create_events_llamaindex,
+        )
+
+        assert create_events_llamaindex(None) is None
+        print("llamaindex smoke OK")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Smoke test optional extras behavior")
+    parser.add_argument(
+        "--extras",
+        default="none",
+        help=(
+            "Extras to enable: one of 'none', 'all', or comma-separated list "
+            "(e.g., 'crewai,llamaindex')"
+        ),
+    )
+    args = parser.parse_args()
+    extras = parse_extras_arg(args.extras)
+    run_smoke(extras)
+
+
+if __name__ == "__main__":
+    main()
