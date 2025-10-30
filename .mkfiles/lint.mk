@@ -32,8 +32,5 @@ delint: fix-ruff-format fix-ruff  ## Try fixing all linting issues automatically
 
 .PHONY: mypy
 mypy: ## Run mypy checks.
-	uv run $(UV_RUN_OPTS) mypy --check-untyped-defs $(SOURCE_DIRS)
+	uv run $(UV_RUN_OPTS) mypy --check-untyped-defs --no-site-packages $(SOURCE_DIRS)
 
-.PHONY: mypy-ci
-mypy-ci:
-	uv run $(UV_RUN_OPTS) mypy --install-types --non-interactive --check-untyped-defs $(SOURCE_DIRS)

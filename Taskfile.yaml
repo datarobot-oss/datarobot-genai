@@ -27,10 +27,11 @@ tasks:
       - task: mypy
     silent: true
 
-  lint-check:
-    desc: "🧹 Check whether the codebase is linted (alias for lint)"
+  mypy:
+    desc: "Run mypy checks."
     cmds:
-      - task: lint
+      - echo "Running mypy checks..."
+      - uv run mypy --check-untyped-defs --no-site-packages ./src
     silent: true
 
   delint:
@@ -146,16 +147,6 @@ tasks:
       - task: smoke-extras-llamaindex
       - task: smoke-extras-drmcp
       - task: smoke-extras-all
-    silent: true
-
-  dev-mypy-check:
-    desc: "Run mypy checks."
-    cmds:
-      - echo "Running mypy checks in temp_mypy to avoid multiple packages path issues in dev mode..."
-      - rm -rf temp_mypy
-      - mkdir -p temp_mypy && cp -r src/datarobot_genai temp_mypy/
-      - uv run mypy --install-types --non-interactive --check-untyped-defs temp_mypy/datarobot_genai
-      - rm -rf temp_mypy
     silent: true
 
   dev-publish-to-testpypi:

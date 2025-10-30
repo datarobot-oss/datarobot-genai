@@ -78,5 +78,3 @@ dist/
 
 # Responses
 tests/acceptance/drmcp/.ete_responses/
-
-temp_mypy/

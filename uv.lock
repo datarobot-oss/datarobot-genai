@@ -946,6 +946,7 @@ dependencies = [
     { name = "datarobot-predict" },
     { name = "openai" },
     { name = "pandas" },
+    { name = "ragas" },
     { name = "requests" },
 ]
 
@@ -956,7 +957,6 @@ crewai = [
     { name = "opentelemetry-instrumentation-crewai" },
     { name = "pybase64" },
     { name = "pylance" },
-    { name = "ragas" },
 ]
 drmcp = [
     { name = "aiohttp" },
@@ -980,7 +980,6 @@ drmcp = [
 langgraph = [
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
-    { name = "ragas" },
 ]
 llamaindex = [
     { name = "llama-index" },
@@ -990,7 +989,6 @@ llamaindex = [
     { name = "llama-index-llms-openai" },
     { name = "opentelemetry-instrumentation-llamaindex" },
     { name = "pypdf" },
-    { name = "ragas" },
 ]
 nat = [
     { name = "nvidia-nat", marker = "python_full_version >= '3.11'" },
@@ -1058,9 +1056,7 @@ requires-dist = [
     { name = "pylance", marker = "extra == 'crewai'", specifier = "<=0.38.1" },
     { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0" },
-    { name = "ragas", marker = "extra == 'crewai'", specifier = ">=0.3.8" },
-    { name = "ragas", marker = "extra == 'langgraph'", specifier = ">=0.3.8" },
-    { name = "ragas", marker = "extra == 'llamaindex'", specifier = ">=0.3.8" },
+    { name = "ragas", specifier = ">=0.3.8" },
     { name = "requests", specifier = ">=2.32.4" },
 ]
 provides-extras = ["crewai", "langgraph", "llamaindex", "nat", "pydanticai", "drmcp"]

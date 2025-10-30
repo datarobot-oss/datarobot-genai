@@ -52,7 +52,7 @@ jobs:
 
       - name: Type check (mypy)
         run: |
-          make mypy-ci
+          make mypy
 
   build-test:
     runs-on: ubuntu-latest

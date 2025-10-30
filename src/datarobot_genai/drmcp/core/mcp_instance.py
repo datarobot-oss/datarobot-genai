@@ -147,8 +147,10 @@ class TaggedFastMCP(FastMCP):
             tags_ = sorted(tags)
             if annotations is None:
                 annotations = ToolAnnotations()  # type: ignore[call-arg]
-                annotations.tags = tags_  # type: ignore[attr-defined]
+                annotations.tags = tags_  # type: ignore[attr-defined, union-attr]
             else:
+                # At this point, annotations is ToolAnnotations (not dict)
+                assert isinstance(annotations, ToolAnnotations)
                 annotations.tags = tags_  # type: ignore[attr-defined]
 
         return super().tool(

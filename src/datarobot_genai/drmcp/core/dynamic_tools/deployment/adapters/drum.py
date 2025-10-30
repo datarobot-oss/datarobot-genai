@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-from enum import StrEnum
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -24,7 +24,7 @@ from .base import MetadataBase
 SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
 
 
-class DrumTargetType(StrEnum):
+class DrumTargetType(str, Enum):
     BINARY = "binary"
     REGRESSION = "regression"
     ANOMALY = "anomaly"
