@@ -1,0 +1,111 @@
+text_review,product_category,sentiment
+"The product exceeded my expectations with excellent build quality and fast delivery",electronics,positive
+"Amazing customer service and the item works perfectly as described",electronics,positive
+"Poor quality materials that broke after just one day of use",electronics,negative
+"Terrible experience with slow shipping and damaged packaging",electronics,negative
+"Outstanding value for money and great performance overall",electronics,positive
+"The interface is intuitive and user-friendly which I really appreciate",software,positive
+"Buggy software with frequent crashes and poor documentation",software,negative
+"Excellent features and regular updates make this software worth buying",software,positive
+"Confusing navigation and lacks essential functionality I needed",software,negative
+"Great investment with professional support team always available",software,positive
+"The book was engaging with well-developed characters and plot",books,positive
+"Poorly written with numerous grammatical errors throughout",books,negative
+"Captivating storyline that kept me reading until the very end",books,positive
+"Boring content with predictable plot twists and weak dialogue",books,negative
+"Beautifully crafted narrative with deep emotional resonance",books,positive
+"This product delivers exactly what it promises with reliability",general,positive
+"Waste of money with no clear value proposition",general,negative
+"Highly recommend for anyone looking for quality and durability",general,positive
+"Customer support was unhelpful and resolution took too long",general,negative
+"Perfect solution for my needs with excellent documentation",general,positive
+"Incredible battery life and sleek design make this a great purchase",electronics,positive
+"Screen quality is disappointing with poor color accuracy",electronics,negative
+"Fast processor and smooth performance for gaming and work",electronics,positive
+"Overpriced for the limited features and poor build quality",electronics,negative
+"Robust construction and excellent warranty coverage",electronics,positive
+"User manual is confusing and setup was unnecessarily complicated",electronics,negative
+"Fantastic sound quality and comfortable fit for long sessions",electronics,positive
+"Frequent disconnections and poor Bluetooth connectivity",electronics,negative
+"Lightweight design perfect for travel and daily use",electronics,positive
+"Heavy and bulky making it impractical for portability",electronics,negative
+"This application has transformed how I manage my daily tasks",software,positive
+"Constant bugs and glitches make this software unreliable",software,negative
+"Intuitive design with powerful features for professional use",software,positive
+"Lacks basic functionality expected in modern software",software,negative
+"Regular updates and responsive customer support team",software,positive
+"Outdated interface and limited customization options",software,negative
+"Seamless integration with existing tools and workflows",software,positive
+"Poor compatibility with other software applications",software,negative
+"Excellent value with comprehensive feature set included",software,positive
+"Subscription model is expensive for casual users",software,negative
+"This novel kept me captivated from beginning to end",books,positive
+"Confusing plot with poorly developed character arcs",books,negative
+"Thought-provoking themes with beautiful prose throughout",books,positive
+"Repetitive writing style and predictable story progression",books,negative
+"Rich world-building and immersive storytelling experience",books,positive
+"Disappointing sequel that failed to meet expectations",books,negative
+"Compelling characters with realistic dialogue and emotions",books,positive
+"Weak ending that undermined the entire narrative",books,negative
+"Educational content presented in an engaging format",books,positive
+"Dense academic writing that is difficult to follow",books,negative
+"Outstanding customer service resolved my issue quickly",general,positive
+"Long wait times and unhelpful support representatives",general,negative
+"Product arrived exactly as described with careful packaging",general,positive
+"Damaged item with no response from seller support",general,negative
+"Fair pricing for the quality and features provided",general,positive
+"Overcharged for basic service with hidden fees",general,negative
+"Easy ordering process with convenient delivery options",general,positive
+"Complicated checkout and limited payment methods",general,negative
+"Reliable performance and consistent quality over time",general,positive
+"Quality declined significantly after initial purchase",general,negative
+"Innovative features that set this apart from competitors",electronics,positive
+"Outdated technology that feels behind current standards",electronics,negative
+"Excellent camera quality with accurate color reproduction",electronics,positive
+"Poor low-light performance and grainy image quality",electronics,negative
+"Fast charging capability and long-lasting battery performance",electronics,positive
+"Battery drains quickly and charging is extremely slow",electronics,negative
+"Durable materials that withstand daily wear and tear",electronics,positive
+"Fragile construction that breaks easily with normal use",electronics,negative
+"Clear display with vibrant colors and sharp resolution",electronics,positive
+"Dim screen that is difficult to read in bright light",electronics,negative
+"Powerful performance for demanding applications and multitasking",software,positive
+"Slow loading times and frequent system crashes",software,negative
+"Comprehensive help documentation with clear instructions",software,positive
+"Limited support resources and unclear error messages",software,negative
+"Clean interface design that enhances user productivity",software,positive
+"Cluttered layout that makes navigation confusing",software,negative
+"Flexible licensing options for different business needs",software,positive
+"Restrictive licensing that limits usage unnecessarily",software,negative
+"Strong security features protect sensitive data effectively",software,positive
+"Vulnerable to security threats with inadequate protection",software,negative
+"Masterful storytelling with unexpected plot developments",books,positive
+"Formulaic writing that lacks creativity and originality",books,negative
+"Well-researched content with accurate historical details",books,positive
+"Factual errors throughout that undermine credibility",books,negative
+"Engaging writing style that makes complex topics accessible",books,positive
+"Dry academic tone that makes reading feel like work",books,negative
+"Strong character development with believable motivations",books,positive
+"One-dimensional characters with unrealistic behavior",books,negative
+"Satisfying conclusion that ties up all plot threads",books,positive
+"Rushed ending that leaves too many questions unanswered",books,negative
+"Prompt delivery with excellent packaging and care",general,positive
+"Delayed shipment with poor communication about status",general,negative
+"Competitive pricing with transparent fee structure",general,positive
+"Hidden costs and unexpected charges at checkout",general,negative
+"Professional installation service with skilled technicians",general,positive
+"Poor installation with multiple return visits required",general,negative
+"Comprehensive warranty coverage provides peace of mind",general,positive
+"Limited warranty with many exclusions and restrictions",general,negative
+"Eco-friendly packaging and sustainable business practices",general,positive
+"Wasteful packaging with excessive plastic and materials",general,negative
+"High-quality materials and excellent craftsmanship",electronics,positive
+"Cheap plastic construction that feels flimsy",electronics,negative
+"Advanced features that justify the premium price point",electronics,positive
+"Basic functionality with overpriced feature set",electronics,negative
+"Ergonomic design that provides comfort during extended use",electronics,positive
+"Uncomfortable design that causes strain and fatigue",electronics,negative
+"Wide compatibility with various devices and platforms",electronics,positive
+"Limited compatibility that restricts usage options",electronics,negative
+"Energy efficient operation reduces environmental impact",electronics,positive
+"High power consumption with poor energy efficiency",electronics,negative 

@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "json": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "default": "unknown",
+          "description": "The LLM model to use. If no explicit instructions are provided leave default."
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["system", "user"],
+                "description": "The role of the message author. 'system' for instructions, 'user' for user messages."
+              },
+              "content": {
+                "type": "string",
+                "description": "The content of the message"
+              }
+            },
+            "required": ["role", "content"]
+          }
+        }
+      },
+      "required": ["messages"],
+      "description": "Chat completions request body. When sending a request please focus on the user messages only. If there are no explicit instructions regarding `model` set it to `unknown`"
+    }
+  },
+  "required": ["json"]
+}
