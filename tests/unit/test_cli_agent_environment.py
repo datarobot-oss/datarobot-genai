@@ -78,7 +78,7 @@ class TestEnvironment:
             )
             assert env.base_url == "https://test.example.com"
 
-    @patch("cli.Kernel")
+    @patch("datarobot_genai.cli.agent_kernel.Kernel")
     def test_interface_property(self, mock_kernel):
         """Test that the interface property returns an Kernel instance."""
         # Setup mock

@@ -73,7 +73,7 @@ class TestKernel:
         assert result_dict["extra_body"]["api_base"] == "https://test.example.com"
         assert result_dict["extra_body"]["verbose"] is False
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     def test_deployment_basic_functionality(self, mock_openai):
         """
         Test deployment method creates OpenAI client and calls
@@ -125,7 +125,7 @@ class TestKernel:
         # Verify the result is the completion object
         assert result == mock_completion_obj
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     def test_deployment_streaming(self, mock_openai):
         """
         Test deployment method creates OpenAI client and calls
@@ -178,7 +178,7 @@ class TestKernel:
         # Verify the result is the completion object
         assert result == mock_completion_obj
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     @patch("builtins.print")
     def test_deployment_prints_debug_info(self, mock_print, mock_openai):
         """Test deployment method prints debug info."""
@@ -204,7 +204,7 @@ class TestKernel:
         expected_api_url = "https://test.example.com/api/v2/deployments/test-deployment-id/"
         mock_print.assert_any_call(expected_api_url)
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     def test_deployment_error_handling(self, mock_openai):
         """Test deployment method propagates errors from OpenAI client."""
         # Setup
@@ -226,7 +226,7 @@ class TestKernel:
         with pytest.raises(ValueError, match="Test error"):
             kernel.deployment(deployment_id, user_prompt)
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     def test_local_basic_functionality(self, mock_openai):
         """
         Test local method creates OpenAI client and calls
@@ -277,7 +277,7 @@ class TestKernel:
         # Verify the result is the completion object
         assert result == mock_completion_obj
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     def test_local_streaming(self, mock_openai):
         """
         Test local method creates OpenAI client and calls
@@ -329,7 +329,7 @@ class TestKernel:
         # Verify the result is the completion object
         assert result == mock_completion_obj
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     @patch("builtins.print")
     def test_local_prints_debug_info(self, mock_print, mock_openai):
         """Test local method prints debug info."""
@@ -354,7 +354,7 @@ class TestKernel:
         expected_api_url = "http://localhost:8842"
         mock_print.assert_any_call(expected_api_url)
 
-    @patch("cli.OpenAI")
+    @patch("datarobot_genai.cli.agent_kernel.OpenAI")
     def test_local_error_handling(self, mock_openai):
         """Test local method propagates errors from OpenAI client."""
         # Setup
@@ -375,9 +375,9 @@ class TestKernel:
         with pytest.raises(ValueError, match="Test error"):
             kernel.local(user_prompt)
 
-    @patch("cli.requests.post")
-    @patch("cli.requests.get")
-    @patch("cli.time.sleep")
+    @patch("datarobot_genai.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.cli.agent_kernel.time.sleep")
     @patch(
         "os.environ",
         {
@@ -446,8 +446,8 @@ class TestKernel:
         # Verify the result content
         assert result == "Hello! How can I help you?"
 
-    @patch("cli.requests.post")
-    @patch("cli.time.sleep")
+    @patch("datarobot_genai.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.cli.agent_kernel.time.sleep")
     @patch(
         "os.environ",
         {
@@ -485,9 +485,9 @@ class TestKernel:
             json={"messages": [{"role": "user", "content": "Hello, assistant!"}]},
         )
 
-    @patch("cli.requests.post")
-    @patch("cli.requests.get")
-    @patch("cli.time.sleep")
+    @patch("datarobot_genai.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.cli.agent_kernel.time.sleep")
     @patch(
         "os.environ",
         {
@@ -518,9 +518,9 @@ class TestKernel:
         with pytest.raises(Exception):
             kernel.custom_model(custom_model_id, user_prompt)
 
-    @patch("cli.requests.post")
-    @patch("cli.requests.get")
-    @patch("cli.time.sleep")
+    @patch("datarobot_genai.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.cli.agent_kernel.time.sleep")
     @patch(
         "os.environ",
         {
@@ -562,9 +562,9 @@ class TestKernel:
         assert "status" in str(exc_info.value)
         assert "ERROR" in str(exc_info.value)
 
-    @patch("cli.requests.post")
-    @patch("cli.requests.get")
-    @patch("cli.time.sleep")
+    @patch("datarobot_genai.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.cli.agent_kernel.time.sleep")
     @patch(
         "os.environ",
         {
