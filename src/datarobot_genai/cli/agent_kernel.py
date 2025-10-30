@@ -78,7 +78,7 @@ class Kernel:
                     ),
                 ],
                 n=1,
-                temperature=0.01,
+                temperature=1,
                 stream=True,
                 extra_body=extra_body,  # type: ignore[typeddict-unknown-key]
             )
@@ -96,7 +96,7 @@ class Kernel:
                     ),
                 ],
                 n=1,
-                temperature=0.01,
+                temperature=1,
                 extra_body=extra_body,  # type: ignore[typeddict-unknown-key]
             )
 

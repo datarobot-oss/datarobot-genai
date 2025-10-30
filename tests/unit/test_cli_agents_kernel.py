@@ -46,7 +46,7 @@ class TestKernel:
         assert result_dict["messages"][1]["content"] == "Hello, how are you?"
         assert result_dict["messages"][1]["role"] == "user"
         assert result_dict["n"] == 1
-        assert result_dict["temperature"] == 0.01
+        assert result_dict["temperature"] == 1
         assert result_dict["extra_body"]["api_key"] == "test-key"
         assert result_dict["extra_body"]["api_base"] == "https://test.example.com"
         assert result_dict["extra_body"]["verbose"] is True
@@ -68,7 +68,7 @@ class TestKernel:
         assert result_dict["messages"][1]["content"] == "Tell me about Python"
         assert result_dict["messages"][1]["role"] == "user"
         assert result_dict["n"] == 1
-        assert result_dict["temperature"] == 0.01
+        assert result_dict["temperature"] == 1
         assert result_dict["extra_body"]["api_key"] == "test-key"
         assert result_dict["extra_body"]["api_base"] == "https://test.example.com"
         assert result_dict["extra_body"]["verbose"] is False
@@ -114,7 +114,7 @@ class TestKernel:
                 {"content": "Hello, assistant!", "role": "user"},
             ],
             n=1,
-            temperature=0.01,
+            temperature=1,
             extra_body={
                 "api_key": "test-token",
                 "api_base": "https://test.example.com",
@@ -166,7 +166,7 @@ class TestKernel:
                 {"content": "Hello, assistant!", "role": "user"},
             ],
             n=1,
-            temperature=0.01,
+            temperature=1,
             extra_body={
                 "api_key": "test-token",
                 "api_base": "https://test.example.com",
@@ -266,7 +266,7 @@ class TestKernel:
                 {"content": "Hello, assistant!", "role": "user"},
             ],
             n=1,
-            temperature=0.01,
+            temperature=1,
             extra_body={
                 "api_key": "test-token",
                 "api_base": "https://test.example.com",
@@ -317,7 +317,7 @@ class TestKernel:
                 {"content": "Hello, assistant!", "role": "user"},
             ],
             n=1,
-            temperature=0.01,
+            temperature=1,
             extra_body={
                 "api_key": "test-token",
                 "api_base": "https://test.example.com",
