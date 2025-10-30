@@ -75,3 +75,8 @@ dist/
 .ruff_cache/
 .mypy_cache/
 .cache/
+
+# Responses
+tests/acceptance/drmcp/.ete_responses/
+
+temp_mypy/

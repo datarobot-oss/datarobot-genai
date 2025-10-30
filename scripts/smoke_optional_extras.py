@@ -24,7 +24,7 @@ from typing import Any
 
 def parse_extras_arg(value: str) -> set[str]:
     if value == "all":
-        return {"crewai", "langgraph", "llamaindex"}
+        return {"crewai", "langgraph", "llamaindex", "drmcp"}
     if value == "none" or not value:
         return set()
     return {v.strip() for v in value.split(",") if v.strip()}
@@ -63,10 +63,12 @@ def run_smoke(extras: Iterable[str]) -> None:
     allow_crewai = ("crewai" in extras_set) or dep_present("crewai")
     allow_langgraph = ("langgraph" in extras_set) or dep_present("langgraph")
     allow_llamaindex = ("llamaindex" in extras_set) or dep_present("llama_index")
+    allow_drmcp = ("drmcp" in extras_set) or dep_present("fastmcp")
 
     expect_import("datarobot_genai.agents.crewai", allow_crewai)
     expect_import("datarobot_genai.agents.langgraph", allow_langgraph)
     expect_import("datarobot_genai.agents.llamaindex", allow_llamaindex)
+    expect_import("datarobot_genai.drmcp", allow_drmcp)
 
     # Minimal functional smoke per installed extra
     if "crewai" in extras_set:
@@ -123,6 +125,15 @@ def run_smoke(extras: Iterable[str]) -> None:
         llm = DataRobotLiteLLM(model="dr/model")
         assert llm.metadata.is_chat_model is True
         print("llamaindex smoke OK")
+
+    if "drmcp" in extras_set:
+        from datarobot_genai.drmcp import (
+            DataRobotMCPServer,
+        )
+
+        # Just verify the module can be imported and basic classes exist
+        assert DataRobotMCPServer is not None
+        print("drmcp smoke OK")
 
 
 def main() -> None:

@@ -1,0 +1,293 @@
+---
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  install:
+    desc: "🔧 Install dependencies (all extras)"
+    cmds:
+      - echo "🔧 Installing dependencies (all extras)..."
+      - uv sync --all-extras
+    silent: true
+
+  build:
+    desc: "Build distribution packages"
+    cmds:
+      - echo "Building distribution packages..."
+      - rm -rf dist/
+      - uv build
+      - echo "Build complete! Distribution files in dist/"
+
+  lint:
+    desc: "🧹 Run all linters (check only, no fixes)"
+    cmds:
+      - echo "🧹 Running linters (check mode)..."
+      - task: check-ruff-format
+      - task: check-ruff
+      - task: mypy
+    silent: true
+
+  lint-check:
+    desc: "🧹 Check whether the codebase is linted (alias for lint)"
+    cmds:
+      - task: lint
+    silent: true
+
+  delint:
+    desc: "🧹 Fix all linting issues automatically"
+    cmds:
+      - echo "🧹 Fixing linting issues..."
+      - task: fix-ruff-format
+      - task: fix-ruff
+    silent: true
+
+  check-ruff:
+    desc: "Check ruff linter rules, but don't apply fixers. Used by CI."
+    cmds:
+      - uv run ruff check ./src
+      - uv run ruff check ./tests
+    silent: true
+
+  check-ruff-format:
+    desc: "Check formatting with ruff."
+    cmds:
+      - uv run ruff format --check ./src
+      - uv run ruff format --check ./tests
+    silent: true
+
+  fix-ruff:
+    desc: "Run ruff linter, applying fixers. Used by pre-commit."
+    cmds:
+      - uv run ruff check --fix ./src
+      - uv run ruff check --fix ./tests
+    silent: true
+
+  fix-ruff-format:
+    desc: "Run ruff linter, applying formatting fixes."
+    cmds:
+      - uv run ruff format ./src
+      - uv run ruff format ./tests
+    silent: true
+  
+  copyright:
+    aliases: [license]
+    desc: 📜 Apply license headers
+    cmds:
+      - echo "📜 Applying license headers"
+      - >-
+        docker run  --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header fix
+
+  copyright-check:
+    aliases: [license-check]
+    desc: 📜 Checking for license headers
+    cmds:
+      - echo "📜 Checking license headers"
+      - >-
+        docker run  --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header check
+
+  #########################################################
+  # Development tasks
+  #########################################################
+
+  smoke-extras:
+    desc: "🧪 Test optional extras (smoke test matching CI). Usage: EXTRAS=crewai task smoke-extras"
+    vars:
+      EXTRAS: "{{.EXTRAS}}"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "{{.EXTRAS}}"
+    silent: true
+
+  smoke-extras-none:
+    desc: "🧪 Test with no extras"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "none"
+    silent: true
+
+  smoke-extras-crewai:
+    desc: "🧪 Test with crewai extra"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "crewai"
+    silent: true
+
+  smoke-extras-langgraph:
+    desc: "🧪 Test with langgraph extra"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "langgraph"
+    silent: true
+
+  smoke-extras-llamaindex:
+    desc: "🧪 Test with llamaindex extra"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "llamaindex"
+    silent: true
+
+  smoke-extras-drmcp:
+    desc: "🧪 Test with drmcp extra"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "drmcp"
+    silent: true
+
+  smoke-extras-all:
+    desc: "🧪 Test with all extras"
+    cmds:
+      - uv run python scripts/smoke_optional_extras.py --extras "all"
+    silent: true
+
+  smoke-extras-matrix:
+    desc: "🧪 Test all optional extras combinations (like CI matrix)"
+    cmds:
+      - echo "🧪 Testing all extras combinations..."
+      - task: install
+      - task: smoke-extras-none
+      - task: smoke-extras-crewai
+      - task: smoke-extras-langgraph
+      - task: smoke-extras-llamaindex
+      - task: smoke-extras-drmcp
+      - task: smoke-extras-all
+    silent: true
+
+  dev-mypy-check:
+    desc: "Run mypy checks."
+    cmds:
+      - echo "Running mypy checks in temp_mypy to avoid multiple packages path issues in dev mode..."
+      - rm -rf temp_mypy
+      - mkdir -p temp_mypy && cp -r src/datarobot_genai temp_mypy/
+      - uv run mypy --install-types --non-interactive --check-untyped-defs temp_mypy/datarobot_genai
+      - rm -rf temp_mypy
+    silent: true
+
+  dev-publish-to-testpypi:
+    desc: "Publish to TestPyPI"
+    cmds:
+      - echo "Publishing to TestPyPI for development..."
+      - |
+        if [ -z "${TEST_PYPI_API_TOKEN}" ]; then
+          echo "ERROR: TEST_PYPI_API_TOKEN environment variable is not set"
+          echo "Set it with: export TEST_PYPI_API_TOKEN='your_token_here'"
+          exit 1
+        fi
+      - task: build
+      - echo "Uploading packages to TestPyPI for development..."
+      - |
+        uv run twine upload \
+          --repository-url https://test.pypi.org/legacy/ \
+          --username __token__ \
+          --password "${TEST_PYPI_API_TOKEN}" \
+          --skip-existing \
+          dist/*
+      - |
+        echo "Published to TestPyPI for development: https://test.pypi.org/project/datarobot-genai/"
+        PKG_VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' -m1 pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+        echo "Install with: pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ datarobot-genai==${PKG_VERSION}"
+
+  #########################################################
+  # DR MCP Library tasks
+  #########################################################
+
+  drmcp-install:
+    desc: "🔧 Install drmcp and dev dependencies for development"
+    cmds:
+      - echo "🔧 Installing DR MCP Library and dev dependencies for development"
+      - uv sync --extra drmcp --dev
+    silent: true
+
+  drmcp-dev:
+    desc: "🔨 Running DR MCP Library locally"
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server"
+      - task: drmcp-install 
+      - uv run src/datarobot_genai/drmcp/server.py
+    silent: true
+
+
+  drmcp-dev-background:
+    desc: "🔨 Running DR MCP Library locally in background"
+    vars:
+      PORT: 8082
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server"
+      - echo "MCP Server running on port {{.PORT}}"
+      # Kill any existing process on the port
+      - |
+        if lsof -i :{{.PORT}} > /dev/null 2>&1; then
+          echo "Killing existing process on port {{.PORT}}"
+          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+        fi
+      # Start server
+      - |
+        OTEL_ATTRIBUTES='{"environment":"test","service.instance.id":"ete-tests"}' \
+        OTEL_COLLECTOR_BASE_URL=http://localhost:4318 \
+        OTEL_ENTITY_ID=deployment-68924b8b51102f055bef861c \
+        MCP_SERVER_PORT={{.PORT}} task drmcp-dev &
+      # Wait for server to be ready
+      - |
+        for i in {1..30}; do
+          if curl -s http://localhost:{{.PORT}}/ > /dev/null 2>&1; then
+            echo "Server is ready"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "Server failed to start"
+            exit 1
+          fi
+          sleep 1
+        done
+    silent: true
+
+  drmcp-dev-otel-background:
+    desc: "🔨 Running DR MCP Library locally in background with OTEL"
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server with OTEL"
+      - >-
+        docker run -d --name jaeger -p 16686:16686 -p 4318:4318 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:1.54
+        || docker start jaeger || true
+    silent: true
+
+  drmcp-test:
+    silent: true
+    desc: "🧪 Run DR MCP Library tests"
+    cmds:
+      - rm -rf .coverage .coverage.xml htmlcov
+      - echo "🧪 Running all DR MCP Library tests.."
+      - task: install
+      - task: drmcp-unit
+      - task: drmcp-integration
+      - task: drmcp-acceptance
+      - task: smoke-extras-matrix
+
+  drmcp-unit:
+    desc: "Run DR MCP Library unit tests"
+    cmds:
+      - rm -rf .coverage .coverage.xml htmlcov
+      - echo "Running DR MCP Library unit tests"
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/unit/drmcp/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml
+        --cov-report=html --cov-report=term-missing -s -vv
+    silent: true
+  
+  drmcp-integration:
+    desc: "Run DR MCP Library integration tests"
+    cmds:
+      - echo "Running DR MCP Library integration tests"
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/integration/drmcp/{{end}} -s -vv
+    silent: true
+  
+  drmcp-acceptance:
+    desc: "Run DR MCP Library acceptance tests"
+    cmds:
+      # Start jaeger in background
+      - task: drmcp-dev-otel-background
+      # Start MCP Server with default port 8082
+      - task: drmcp-dev-background
+      # Set up cleanup to run on exit
+      - defer: |
+          echo "Stopping DR MCP Library MCP Server"
+          lsof -i :8082 | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+          echo "Stopping Jaeger"
+          docker stop jaeger || true
+      # Run tests
+      - echo "Running DR MCP Library acceptance tests"
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/acceptance/drmcp/{{end}} -s -vv
+    silent: true
+
