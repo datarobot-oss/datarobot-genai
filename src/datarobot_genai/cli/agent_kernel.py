@@ -102,12 +102,12 @@ class Kernel:
 
     def local(
         self,
-        config: Any,
         user_prompt: str,
         completion_json: str = "",
         stream: bool = False,
+        config: Any | None = None,
     ) -> ChatCompletion | Stream[ChatCompletionChunk]:
-        chat_api_url = config.agent_endpoint
+        chat_api_url = config.agent_endpoint if config else self.base_url
         print(chat_api_url)
 
         return self._do_chat_completion(chat_api_url, user_prompt, completion_json, stream=stream)
