@@ -16,7 +16,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-from cli import Kernel
+from datarobot_genai.cli.agent_kernel import Kernel
 from openai.types.chat import ChatCompletion
 
 
