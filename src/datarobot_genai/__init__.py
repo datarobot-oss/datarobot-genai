@@ -10,6 +10,8 @@ from .chat import ToolClient
 from .chat import initialize_authorization_context
 from .chat import to_custom_model_chat_response
 from .chat import to_custom_model_streaming_response
+from .cli import AgentEnvironment
+from .cli import AgentKernel
 from .utils.urls import get_api_base
 
 __all__ = [
@@ -23,6 +25,8 @@ __all__ = [
     "BaseAgent",
     "make_system_prompt",
     "extract_user_prompt_content",
+    "AgentEnvironment",
+    "AgentKernel",
     "__version__",
 ]
 

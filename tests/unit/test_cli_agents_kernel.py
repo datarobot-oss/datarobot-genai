@@ -18,13 +18,13 @@ from unittest.mock import patch
 import pytest
 from openai.types.chat import ChatCompletion
 
-from datarobot_genai.cli.agent_kernel import Kernel
+from datarobot_genai.cli.agent_kernel import AgentKernel
 
 
-class TestKernel:
+class TestAgentKernel:
     def test_headers_property(self):
         """Test headers property returns correct authorization header."""
-        kernel = Kernel(api_token="api-123456", base_url="https://test.example.com")
+        kernel = AgentKernel(api_token="api-123456", base_url="https://test.example.com")
 
         headers = kernel.headers
 
@@ -33,7 +33,7 @@ class TestKernel:
     def test_construct_prompt_with_verbose(self):
         """Test construct_prompt with verbose set to True."""
         # Setup
-        kernel = Kernel(api_token="test-key", base_url="https://test.example.com")
+        kernel = AgentKernel(api_token="test-key", base_url="https://test.example.com")
         user_prompt = "Hello, how are you?"
 
         # Execute
@@ -55,7 +55,7 @@ class TestKernel:
     def test_construct_prompt_without_verbose(self):
         """Test construct_prompt with verbose set to False."""
         # Setup
-        kernel = Kernel(api_token="test-key", base_url="https://test.example.com")
+        kernel = AgentKernel(api_token="test-key", base_url="https://test.example.com")
         user_prompt = "Tell me about Python"
 
         # Execute
@@ -81,7 +81,7 @@ class TestKernel:
         chat.completions.create correctly.
         """
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -133,7 +133,7 @@ class TestKernel:
         chat.completions.create correctly with streaming.
         """
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -184,7 +184,7 @@ class TestKernel:
     def test_deployment_prints_debug_info(self, mock_print, mock_openai):
         """Test deployment method prints debug info."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -209,7 +209,7 @@ class TestKernel:
     def test_deployment_error_handling(self, mock_openai):
         """Test deployment method propagates errors from OpenAI client."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -234,7 +234,7 @@ class TestKernel:
         chat.completions.create correctly.
         """
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -285,7 +285,7 @@ class TestKernel:
         chat.completions.create correctly with streaming.
         """
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -337,7 +337,7 @@ class TestKernel:
     def test_local_prints_debug_info(self, mock_print, mock_openai):
         """Test local method prints debug info."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="http://localhost:8842",
         )
@@ -361,7 +361,7 @@ class TestKernel:
     def test_local_error_handling(self, mock_openai):
         """Test local method propagates errors from OpenAI client."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -393,7 +393,7 @@ class TestKernel:
     ):
         """Test custom_model method makes HTTP requests to DataRobot API correctly."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -461,7 +461,7 @@ class TestKernel:
     def test_custom_model_initial_request_failure(self, mock_sleep, mock_requests_post):
         """Test custom_model handles initial POST request failure."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -503,7 +503,7 @@ class TestKernel:
     ):
         """Test custom_model handles missing Location header in successful response."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -534,7 +534,7 @@ class TestKernel:
     def test_custom_model_status_error(self, mock_sleep, mock_requests_get, mock_requests_post):
         """Test custom_model handles ERROR status from status endpoint."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )
@@ -580,7 +580,7 @@ class TestKernel:
     ):
         """Test custom_model handles error message in agent response."""
         # Setup
-        kernel = Kernel(
+        kernel = AgentKernel(
             api_token="test-token",
             base_url="https://test.example.com",
         )

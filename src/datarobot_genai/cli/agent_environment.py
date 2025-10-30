@@ -14,10 +14,10 @@
 
 import os
 
-from datarobot_genai.cli.agent_kernel import Kernel
+from datarobot_genai.cli.agent_kernel import AgentKernel
 
 
-class Environment:
+class AgentEnvironment:
     def __init__(
         self,
         api_token: str | None = None,
@@ -40,8 +40,8 @@ class Environment:
         self.base_url = self.base_url.replace("/api/v2", "")
 
     @property
-    def interface(self) -> Kernel:
-        return Kernel(
+    def interface(self) -> AgentKernel:
+        return AgentKernel(
             api_token=str(self.api_token),
             base_url=str(self.base_url),
         )

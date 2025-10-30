@@ -28,7 +28,7 @@ from openai.types.chat.completion_create_params import CompletionCreateParamsNon
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
 
 
-class Kernel:
+class AgentKernel:
     def __init__(
         self,
         api_token: str,

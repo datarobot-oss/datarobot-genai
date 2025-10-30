@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .agent_environment import Environment
-from .agent_kernel import Kernel
+from .agent_environment import AgentEnvironment
+from .agent_kernel import AgentKernel
 
-__all__ = ["Environment", "Kernel"]
+__all__ = ["AgentEnvironment", "AgentKernel"]

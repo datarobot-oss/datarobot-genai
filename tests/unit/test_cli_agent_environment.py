@@ -18,22 +18,22 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.cli.agent_environment import Environment
-from datarobot_genai.cli.agent_kernel import Kernel
+from datarobot_genai.cli.agent_environment import AgentEnvironment
+from datarobot_genai.cli.agent_kernel import AgentKernel
 
 
-class TestEnvironment:
+class TestAgentEnvironment:
     def test_init_default_values(self):
         """Test initialization with default values."""
         # Clear environment variables to test default behavior
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError):
-                Environment()
+                AgentEnvironment()
 
     def test_init_with_parameters(self):
         """Test initialization with explicitly provided parameters."""
         with patch.dict(os.environ, {}, clear=True):
-            env = Environment(
+            env = AgentEnvironment(
                 api_token="test-token",
                 base_url="https://test.example.com",
             )
@@ -49,7 +49,7 @@ class TestEnvironment:
         }
 
         with patch.dict(os.environ, env_vars):
-            env = Environment()
+            env = AgentEnvironment()
 
             assert env.api_token == "env-token"
             assert env.base_url == "https://env.example.com"
@@ -62,7 +62,7 @@ class TestEnvironment:
         }
 
         with patch.dict(os.environ, env_vars):
-            env = Environment(
+            env = AgentEnvironment(
                 api_token="test-token",
                 base_url="https://test.example.com",
             )
@@ -73,28 +73,28 @@ class TestEnvironment:
     def test_api_v2_removed_from_base_url(self):
         """Test that '/api/v2' is removed from base_url."""
         with patch.dict(os.environ, {}, clear=True):
-            env = Environment(
+            env = AgentEnvironment(
                 api_token="test-token",
                 base_url="https://test.example.com/api/v2",
             )
             assert env.base_url == "https://test.example.com"
 
-    @patch("datarobot_genai.cli.agent_environment.Kernel")
+    @patch("datarobot_genai.cli.agent_environment.AgentKernel")
     def test_interface_property(self, mock_kernel):
-        """Test that the interface property returns an Kernel instance."""
+        """Test that the interface property returns an AgentKernel instance."""
         # Setup mock
         with patch.dict(os.environ, {}, clear=True):
-            mock_kernel_instance = MagicMock(spec=Kernel)
+            mock_kernel_instance = MagicMock(spec=AgentKernel)
             mock_kernel.return_value = mock_kernel_instance
 
             # Create environment and access interface
-            env = Environment(
+            env = AgentEnvironment(
                 api_token="test-token",
                 base_url="https://test.example.com",
             )
             interface = env.interface
 
-            # Verify Kernel was created with correct parameters
+            # Verify AgentKernel was created with correct parameters
             mock_kernel.assert_called_once_with(
                 api_token="test-token",
                 base_url="https://test.example.com",
