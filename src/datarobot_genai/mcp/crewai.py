@@ -19,8 +19,9 @@ This module provides MCP server connection management for CrewAI agents.
 """
 
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator, List
+from typing import Any
 
 from crewai_tools import MCPServerAdapter
 
@@ -42,7 +43,8 @@ class MCPConfig:
         """
         Get MCP server configuration.
 
-        Returns:
+        Returns
+        -------
             Server configuration dict with url, transport, and optional headers, or None if not configured.
         """
         if self.external_mcp_url:
@@ -55,9 +57,7 @@ class MCPConfig:
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
             auth_header = (
-                self.api_key
-                if self.api_key.startswith("Bearer ")
-                else f"Bearer {self.api_key}"
+                self.api_key if self.api_key.startswith("Bearer ") else f"Bearer {self.api_key}"
             )
 
             return {
@@ -72,7 +72,7 @@ class MCPConfig:
 @contextmanager
 def mcp_tools_context(
     api_base: str | None = None, api_key: str | None = None
-) -> Generator[List[Any], None, None]:
+) -> Generator[list[Any], None, None]:
     """Context manager for MCP tools that handles connection lifecycle."""
     config = MCPConfig(api_base=api_base, api_key=api_key)
 

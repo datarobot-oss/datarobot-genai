@@ -53,9 +53,7 @@ class TestMCPConfig:
                 == f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
             )
             assert config.server_config["transport"] == "streamable-http"
-            assert (
-                config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
-            )
+            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
 
     def test_mcp_config_with_datarobot_deployment_id_and_bearer_token(self):
         """Test MCP config with DataRobot deployment ID and Bearer token already formatted."""
@@ -185,9 +183,7 @@ class TestMCPToolsContext:
                 mock_adapter.assert_called_once()
                 # Check that the server config was passed correctly
                 call_args = mock_adapter.call_args[0][0]
-                expected_url = (
-                    f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-                )
+                expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
                 assert call_args["url"] == expected_url
                 assert call_args["transport"] == "streamable-http"
                 assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
