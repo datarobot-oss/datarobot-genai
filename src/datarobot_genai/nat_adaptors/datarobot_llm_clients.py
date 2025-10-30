@@ -57,11 +57,9 @@ class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
 async def datarobot_llm_gateway_langchain(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    yield ChatOpenAI(
-        **llm_config.model_dump(
-            exclude={"type", "thinking", "datarobot_endpoint"}, by_alias=True, exclude_none=True
-        )
-    )
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    config["base_url"] = config["base_url"] + "/genai/llmgw"
+    yield ChatOpenAI(**config)
 
 
 @register_llm_client(
@@ -72,7 +70,7 @@ async def datarobot_llm_gateway_crewai(
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     config["model"] = "datarobot/" + config["model"]
-    config["base_url"] = config.pop("datarobot_endpoint").removesuffix("/api/v2")
+    config["base_url"] = config["base_url"].removesuffix("/api/v2")
     yield LLM(**config)
 
 
@@ -84,7 +82,7 @@ async def datarobot_llm_gateway_llamaindex(
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     config["model"] = "datarobot/" + config["model"]
-    config["api_base"] = config.pop("datarobot_endpoint").removesuffix("/api/v2")
+    config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
     yield DataRobotLiteLLM(**config)
 
 
@@ -110,7 +108,7 @@ async def datarobot_llm_deployment_crewai(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+        exclude={"type", "thinking"},
         by_alias=True,
         exclude_none=True,
     )
@@ -126,7 +124,7 @@ async def datarobot_llm_deployment_llamaindex(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+        exclude={"type", "thinking"},
         by_alias=True,
         exclude_none=True,
     )
@@ -141,7 +139,7 @@ async def datarobot_nim_langchain(
 ) -> AsyncGenerator[ChatOpenAI]:
     yield ChatOpenAI(
         **llm_config.model_dump(
-            exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+            exclude={"type", "thinking"},
             by_alias=True,
             exclude_none=True,
         )
@@ -153,7 +151,7 @@ async def datarobot_nim_crewai(
     llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id", "max_retries"},
+        exclude={"type", "thinking", "max_retries"},
         by_alias=True,
         exclude_none=True,
     )
@@ -167,7 +165,7 @@ async def datarobot_nim_llamaindex(
     llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+        exclude={"type", "thinking"},
         by_alias=True,
         exclude_none=True,
     )

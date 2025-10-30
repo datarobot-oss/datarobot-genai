@@ -90,7 +90,6 @@ async def test_datarobot_llm_gateway_llamaindex():
 async def test_datarobot_llm_deployment_langchain():
     prompt = ChatPromptTemplate.from_messages(
         [("system", "You are a helpful AI assistant."), ("human", "{input}")]
-        # [("human", "{input}")]
     )
 
     llm_config = DataRobotLLMDeploymentModelConfig(temperature=0.0)

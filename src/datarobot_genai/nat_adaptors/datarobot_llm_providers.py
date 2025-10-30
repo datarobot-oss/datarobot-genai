@@ -12,34 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
-from dotenv import load_dotenv
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
 from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
 from pydantic import Field
-from pydantic import model_validator
 
-load_dotenv()
+
+class Config(DataRobotAppFrameworkBaseSettings):
+    """
+    Finds variables in the priority order of: env
+    variables (including Runtime Parameters), .env, file_secrets, then
+    Pulumi output variables.
+    """
+
+    datarobot_endpoint: str = "https://app.datarobot.com/api/v2"
+    datarobot_api_token: str | None = None
+    llm_deployment_id: str | None = None
+    nim_deployment_id: str | None = None
+
+
+config = Config()
 
 
 class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gateway"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     api_key: str | None = Field(
-        default=os.getenv("DATAROBOT_API_TOKEN"), description="DataRobot API key."
+        default=config.datarobot_api_token, description="DataRobot API key."
     )
-    datarobot_endpoint: str | None = Field(
-        default=os.getenv("DATAROBOT_ENDPOINT"), description="DataRobot endpoint URL."
+    base_url: str | None = Field(
+        default=config.datarobot_endpoint.rstrip("/"), description="DataRobot LLM gateway URL."
     )
-
-    @model_validator(mode="after")  # type: ignore[misc]
-    def set_base_url(self) -> None:
-        if self.datarobot_endpoint and not self.base_url:  # type: ignore[has-type]
-            self.base_url = self.datarobot_endpoint + "/genai/llmgw"
 
 
 @register_llm_provider(config_type=DataRobotLLMGatewayModelConfig)
@@ -55,13 +61,10 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
     """A DataRobot LLM provider to be used with an LLM client."""
 
     api_key: str | None = Field(
-        default=os.getenv("DATAROBOT_API_TOKEN"), description="DataRobot API key."
+        default=config.datarobot_api_token, description="DataRobot API key."
     )
-    datarobot_endpoint: str | None = Field(
-        default=os.getenv("DATAROBOT_ENDPOINT"), description="DataRobot endpoint URL."
-    )
-    llm_deployment_id: str | None = Field(
-        default=os.getenv("LLM_DEPLOYMENT_ID"), description="DataRobot LLM deployment ID."
+    base_url: str | None = Field(
+        default=config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
     )
     model_name: str = Field(
         validation_alias=AliasChoices("model_name", "model"),
@@ -69,11 +72,6 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         description="The model name to pass through to the deployment.",
         default="datarobot-deployed-llm",
     )
-
-    @model_validator(mode="after")  # type: ignore[misc]
-    def set_base_url(self) -> None:
-        if self.datarobot_endpoint and self.llm_deployment_id and not self.base_url:  # type: ignore[has-type]
-            self.base_url = self.datarobot_endpoint + f"/deployments/{self.llm_deployment_id}"
 
 
 @register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
@@ -88,8 +86,8 @@ async def datarobot_llm_deployment(
 class DataRobotNIMModelConfig(DataRobotLLMDeploymentModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
     """A DataRobot NIM LLM provider to be used with an LLM client."""
 
-    llm_deployment_id: str | None = Field(
-        default=os.getenv("NIM_DEPLOYMENT_ID"), description="DataRobot NIM deployment ID."
+    base_url: str | None = Field(
+        default=config.datarobot_endpoint + f"/deployments/{config.nim_deployment_id}"
     )
 
 
