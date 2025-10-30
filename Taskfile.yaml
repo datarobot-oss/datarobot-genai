@@ -92,55 +92,82 @@ tasks:
   # Development tasks
   #########################################################
 
-  smoke-extras:
-    desc: "🧪 Test optional extras (smoke test matching CI). Usage: EXTRAS=crewai task smoke-extras"
-    vars:
-      EXTRAS: "{{.EXTRAS}}"
-    cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "{{.EXTRAS}}"
-    silent: true
-
   smoke-extras-none:
     desc: "🧪 Test with no extras"
     cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "none"
+      - echo "🧪 Testing with no extras (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install .
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "none"
+      - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-crewai:
     desc: "🧪 Test with crewai extra"
     cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "crewai"
+      - echo "🧪 Testing with crewai extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[crewai]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "crewai"
+      - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-langgraph:
     desc: "🧪 Test with langgraph extra"
     cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "langgraph"
+      - echo "🧪 Testing with langgraph extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[langgraph]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "langgraph"
+      - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-llamaindex:
     desc: "🧪 Test with llamaindex extra"
     cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "llamaindex"
+      - echo "🧪 Testing with llamaindex extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[llamaindex]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "llamaindex"
+      - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-drmcp:
     desc: "🧪 Test with drmcp extra"
     cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "drmcp"
+      - echo "🧪 Testing with drmcp extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[drmcp]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "drmcp"
+      - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-all:
     desc: "🧪 Test with all extras"
     cmds:
-      - uv run python scripts/smoke_optional_extras.py --extras "all"
+      - echo "🧪 Testing with all extras (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[crewai,langgraph,llamaindex,drmcp]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "all"
+      - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-matrix:
     desc: "🧪 Test all optional extras combinations (like CI matrix)"
     cmds:
       - echo "🧪 Testing all extras combinations..."
-      - task: install
       - task: smoke-extras-none
       - task: smoke-extras-crewai
       - task: smoke-extras-langgraph
@@ -246,7 +273,7 @@ tasks:
       - task: drmcp-unit
       - task: drmcp-integration
       - task: drmcp-acceptance
-      - task: smoke-extras-matrix
+      - task: smoke-extras-drmcp
 
   drmcp-unit:
     desc: "Run DR MCP Library unit tests"
