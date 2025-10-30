@@ -24,6 +24,7 @@ from nat.cli.register_workflow import register_llm_client
 
 from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
+from ..nat_adaptors.datarobot_llm_providers import DataRobotNIMModelConfig
 
 
 class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
@@ -123,6 +124,47 @@ async def datarobot_llm_deployment_crewai(
 )
 async def datarobot_llm_deployment_llamaindex(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    config = llm_config.model_dump(
+        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+        by_alias=True,
+        exclude_none=True,
+    )
+    config["model"] = "datarobot/" + config["model"]
+    config["api_base"] = config.pop("base_url") + "/chat/completions"
+    yield DataRobotLiteLLM(**config)
+
+
+@register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+async def datarobot_nim_langchain(
+    llm_config: DataRobotNIMModelConfig, builder: Builder
+) -> AsyncGenerator[ChatOpenAI]:
+    yield ChatOpenAI(
+        **llm_config.model_dump(
+            exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+            by_alias=True,
+            exclude_none=True,
+        )
+    )
+
+
+@register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.CREWAI)
+async def datarobot_nim_crewai(
+    llm_config: DataRobotNIMModelConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    config = llm_config.model_dump(
+        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id", "max_retries"},
+        by_alias=True,
+        exclude_none=True,
+    )
+    config["model"] = "datarobot/" + config["model"]
+    config["api_base"] = config.pop("base_url") + "/chat/completions"
+    yield LLM(**config)
+
+
+@register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
+async def datarobot_nim_llamaindex(
+    llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(
         exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},

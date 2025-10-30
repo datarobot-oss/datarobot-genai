@@ -83,3 +83,18 @@ async def datarobot_llm_deployment(
     yield LLMProviderInfo(
         config=config, description="DataRobot LLM deployment for use with an LLM client."
     )
+
+
+class DataRobotNIMModelConfig(DataRobotLLMDeploymentModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
+    """A DataRobot NIM LLM provider to be used with an LLM client."""
+
+    llm_deployment_id: str | None = Field(
+        default=os.getenv("NIM_DEPLOYMENT_ID"), description="DataRobot NIM deployment ID."
+    )
+
+
+@register_llm_provider(config_type=DataRobotNIMModelConfig)
+async def datarobot_nim(config: DataRobotNIMModelConfig, _builder: Builder) -> LLMProviderInfo:
+    yield LLMProviderInfo(
+        config=config, description="DataRobot NIM deployment for use with an LLM client."
+    )

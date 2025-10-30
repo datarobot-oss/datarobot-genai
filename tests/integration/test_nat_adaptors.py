@@ -24,6 +24,7 @@ from datarobot_genai.nat_adaptors.datarobot_llm_clients import (
 )
 from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
+from datarobot_genai.nat_adaptors.datarobot_llm_providers import DataRobotNIMModelConfig
 
 
 async def test_datarobot_llm_gateway_langchain():
@@ -89,6 +90,7 @@ async def test_datarobot_llm_gateway_llamaindex():
 async def test_datarobot_llm_deployment_langchain():
     prompt = ChatPromptTemplate.from_messages(
         [("system", "You are a helpful AI assistant."), ("human", "{input}")]
+        # [("human", "{input}")]
     )
 
     llm_config = DataRobotLLMDeploymentModelConfig(temperature=0.0)
@@ -130,6 +132,54 @@ async def test_datarobot_llm_deployment_llamaindex():
     ]
 
     llm_config = DataRobotLLMDeploymentModelConfig(temperature=0.0)
+
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
+        response = await llm.achat(messages)
+        assert isinstance(response, ChatResponse)
+        assert response is not None
+        assert "3" in response.message.content
+
+
+async def test_datarobot_nim_langchain():
+    prompt = ChatPromptTemplate.from_messages([("human", "{input}")])
+
+    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+        agent = prompt | llm
+        response = await agent.ainvoke({"input": "What is 1+2?"})
+        assert isinstance(response, AIMessage)
+        assert response.content is not None
+        assert isinstance(response.content, str)
+        assert "3" in response.content.lower()
+
+
+async def test_datarobot_nim_crewai():
+    input = "What is 1+2?"
+    messages = [{"role": "user", "content": f"{input}"}]
+
+    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+        response = llm.call(messages)
+        assert isinstance(response, str)
+        assert response is not None
+        assert "3" in response
+
+
+async def test_datarobot_nim_llamaindex():
+    input = "What is 1+2?"
+    messages = [
+        ChatMessage.from_str(input, "user"),
+    ]
+
+    llm_config = DataRobotNIMModelConfig(temperature=0.0)
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
