@@ -18,7 +18,9 @@ repos:
             "--create",
             "--track",
             "--python-folders",
-            "src"
+            "src/datarobot_genai",
+            "--python-folders",
+            "tests",
         ]
 
 -   repo: https://github.com/asottile/pyupgrade
