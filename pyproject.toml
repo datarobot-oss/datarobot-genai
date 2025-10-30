@@ -102,7 +102,6 @@ dev = [
   "ruff>=0.6.0",
   "mypy>=1.10.0",
   "pytest",
-  "pytest-asyncio",
   "pytest-cov",
   "pre-commit",
   "twine>=5.0.0",
