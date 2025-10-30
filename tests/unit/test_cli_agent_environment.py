@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
-
-from cli import Environment, Kernel
+from cli import Environment
+from cli import Kernel
 
 
 class TestEnvironment:

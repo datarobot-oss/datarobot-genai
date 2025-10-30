@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+from unittest.mock import patch
 
 import pytest
-from openai.types.chat import ChatCompletion
-
 from cli import Kernel
+from openai.types.chat import ChatCompletion
 
 
 class TestKernel:
@@ -75,7 +75,10 @@ class TestKernel:
 
     @patch("cli.OpenAI")
     def test_deployment_basic_functionality(self, mock_openai):
-        """Test deployment method creates OpenAI client and calls chat.completions.create correctly."""
+        """
+        Test deployment method creates OpenAI client and calls
+        chat.completions.create correctly.
+        """
         # Setup
         kernel = Kernel(
             api_token="test-token",
@@ -124,7 +127,10 @@ class TestKernel:
 
     @patch("cli.OpenAI")
     def test_deployment_streaming(self, mock_openai):
-        """Test deployment method creates OpenAI client and calls chat.completions.create correctly with streming."""
+        """
+        Test deployment method creates OpenAI client and calls
+        chat.completions.create correctly with streaming.
+        """
         # Setup
         kernel = Kernel(
             api_token="test-token",
@@ -222,7 +228,10 @@ class TestKernel:
 
     @patch("cli.OpenAI")
     def test_local_basic_functionality(self, mock_openai):
-        """Test local method creates OpenAI client and calls chat.completions.create correctly."""
+        """
+        Test local method creates OpenAI client and calls
+        chat.completions.create correctly.
+        """
         # Setup
         kernel = Kernel(
             api_token="test-token",
@@ -270,7 +279,10 @@ class TestKernel:
 
     @patch("cli.OpenAI")
     def test_local_streaming(self, mock_openai):
-        """Test local method creates OpenAI client and calls chat.completions.create correctly with streming."""
+        """
+        Test local method creates OpenAI client and calls
+        chat.completions.create correctly with streaming.
+        """
         # Setup
         kernel = Kernel(
             api_token="test-token",
