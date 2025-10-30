@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from cli import Environment
-from cli import Kernel
+from datarobot_genai.cli.agent_environment import Environment
+from datarobot_genai.cli.agent_kernel import Kernel
 
 
 class TestEnvironment:
