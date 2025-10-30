@@ -16,8 +16,9 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-from datarobot_genai.cli.agent_kernel import Kernel
 from openai.types.chat import ChatCompletion
+
+from datarobot_genai.cli.agent_kernel import Kernel
 
 
 class TestKernel:
@@ -248,7 +249,7 @@ class TestKernel:
         mock_completions.create.return_value = mock_completion_obj
 
         # Execute
-        result = kernel.local(user_prompt)
+        result = kernel.local(user_prompt, config=Mock(agent_endpoint="http://localhost:8842"))
 
         # Assert
         # Verify OpenAI client was created with correct parameters
@@ -299,7 +300,9 @@ class TestKernel:
         mock_completions.create.return_value = mock_completion_obj
 
         # Execute
-        result = kernel.local(user_prompt, stream=True)
+        result = kernel.local(
+            user_prompt, stream=True, config=Mock(agent_endpoint="http://localhost:8842")
+        )
 
         # Assert
         # Verify OpenAI client was created with correct parameters
@@ -336,7 +339,7 @@ class TestKernel:
         # Setup
         kernel = Kernel(
             api_token="test-token",
-            base_url="https://test.example.com",
+            base_url="http://localhost:8842",
         )
         user_prompt = "Hello, assistant!"
 
@@ -348,7 +351,7 @@ class TestKernel:
         mock_completions.create.return_value = Mock(spec=ChatCompletion)
 
         # Execute
-        kernel.local(user_prompt)
+        kernel.local(user_prompt, config=Mock(agent_endpoint="http://localhost:8842"))
 
         # Assert print statements were called with expected arguments
         expected_api_url = "http://localhost:8842"
@@ -373,7 +376,7 @@ class TestKernel:
 
         # Execute and Assert
         with pytest.raises(ValueError, match="Test error"):
-            kernel.local(user_prompt)
+            kernel.local(user_prompt, config=Mock(agent_endpoint="http://localhost:8842"))
 
     @patch("datarobot_genai.cli.agent_kernel.requests.post")
     @patch("datarobot_genai.cli.agent_kernel.requests.get")
