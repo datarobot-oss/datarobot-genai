@@ -45,7 +45,8 @@ class MCPConfig:
 
         Returns
         -------
-            Server configuration dict with url, transport, and optional headers, or None if not configured.
+            Server configuration dict with url, transport, and optional headers,
+            or None if not configured.
         """
         if self.external_mcp_url:
             # External MCP URL - no authentication needed
