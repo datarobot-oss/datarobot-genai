@@ -55,7 +55,7 @@ repos:
         require_serial: true
     -   id: version-check-and-bump
         name: version-check-and-bump (PyPI)
-        entry: python scripts/check_and_bump_version.py --repo pypi --bump patch --apply
+        entry: uv run python scripts/check_and_bump_version.py --repo pypi --bump patch --apply
         language: system
         pass_filenames: false
         stages: [ pre-commit ]

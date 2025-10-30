@@ -9,9 +9,9 @@ This package provides:
   - llamaindex: DataRobotLiteLLM, create_pipeline_interactions_from_events
 """
 
-from .common import BaseAgent
-from .common import extract_user_prompt_content
-from .common import make_system_prompt
+from .base import BaseAgent
+from .base import extract_user_prompt_content
+from .base import make_system_prompt
 
 __all__ = [
     "BaseAgent",

@@ -18,10 +18,10 @@ import pytest
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
-from datarobot_genai.agents.common import BaseAgent
-from datarobot_genai.agents.common import create_pipeline_interactions_from_events_simple
-from datarobot_genai.agents.common import extract_user_prompt_content
-from datarobot_genai.agents.common import make_system_prompt
+from datarobot_genai.agents.base import BaseAgent
+from datarobot_genai.agents.base import create_pipeline_interactions_from_events_simple
+from datarobot_genai.agents.base import extract_user_prompt_content
+from datarobot_genai.agents.base import make_system_prompt
 
 
 def test_base_agent_env_defaults_and_verbose(monkeypatch: pytest.MonkeyPatch) -> None:
