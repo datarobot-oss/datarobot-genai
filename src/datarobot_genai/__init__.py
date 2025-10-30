@@ -10,8 +10,6 @@ from .chat import ToolClient
 from .chat import initialize_authorization_context
 from .chat import to_custom_model_chat_response
 from .chat import to_custom_model_streaming_response
-from .mcp import MCPConfig
-from .mcp import mcp_tools_context
 from .utils.urls import get_api_base
 
 __all__ = [
@@ -25,8 +23,6 @@ __all__ = [
     "BaseAgent",
     "make_system_prompt",
     "extract_user_prompt_content",
-    "MCPConfig",
-    "mcp_tools_context",
     "__version__",
 ]
 
