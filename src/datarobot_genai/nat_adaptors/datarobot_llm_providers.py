@@ -48,3 +48,33 @@ async def datarobot_llm_gateway(
     yield LLMProviderInfo(
         config=config, description="DataRobot LLM Gateway for use with an LLM client."
     )
+
+
+class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-deployment"):  # type: ignore[call-arg]
+    """A DataRobot LLM provider to be used with an LLM client."""
+
+    api_key: str | None = Field(
+        default=os.getenv("DATAROBOT_API_TOKEN"), description="DataRobot API key."
+    )
+    datarobot_endpoint: str | None = Field(
+        default=os.getenv("DATAROBOT_ENDPOINT"), description="DataRobot endpoint URL."
+    )
+    llm_deployment_id: str | None = Field(
+        default=os.getenv("LLM_DEPLOYMENT_ID"), description="DataRobot LLM deployment ID."
+    )
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def set_base_url(self) -> None:
+        if self.datarobot_endpoint and self.llm_deployment_id and not self.base_url:  # type: ignore[has-type]
+            self.base_url = (
+                self.datarobot_endpoint + f"/deployments/{self.llm_deployment_id}/chat/completions"
+            )
+
+
+@register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
+async def datarobot_llm_deployment(
+    config: DataRobotLLMDeploymentModelConfig, _builder: Builder
+) -> LLMProviderInfo:
+    yield LLMProviderInfo(
+        config=config, description="DataRobot LLM deployment for use with an LLM client."
+    )
