@@ -19,6 +19,7 @@ from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
 from nat.llm.openai_llm import OpenAIModelConfig
+from pydantic import AliasChoices
 from pydantic import Field
 from pydantic import model_validator
 
@@ -62,13 +63,17 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
     llm_deployment_id: str | None = Field(
         default=os.getenv("LLM_DEPLOYMENT_ID"), description="DataRobot LLM deployment ID."
     )
+    model_name: str = Field(
+        validation_alias=AliasChoices("model_name", "model"),
+        serialization_alias="model",
+        description="The model name to pass through to the deployment.",
+        default="datarobot-deployed-llm",
+    )
 
     @model_validator(mode="after")  # type: ignore[misc]
     def set_base_url(self) -> None:
         if self.datarobot_endpoint and self.llm_deployment_id and not self.base_url:  # type: ignore[has-type]
-            self.base_url = (
-                self.datarobot_endpoint + f"/deployments/{self.llm_deployment_id}/chat/completions"
-            )
+            self.base_url = self.datarobot_endpoint + f"/deployments/{self.llm_deployment_id}"
 
 
 @register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
