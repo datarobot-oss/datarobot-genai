@@ -15,6 +15,7 @@
 """OpenAI-compatible response helpers for chat interactions."""
 
 import time
+import traceback as tb
 import uuid
 from asyncio import AbstractEventLoop
 from collections.abc import AsyncGenerator
@@ -99,52 +100,68 @@ def to_custom_model_streaming_response(
         "prompt_tokens": 0,
         "total_tokens": 0,
     }
+    try:
+        agent_response = streaming_response_generator.__aiter__()
+        while True:
+            try:
+                (
+                    response_text,
+                    pipeline_interactions,
+                    usage_metrics,
+                ) = event_loop.run_until_complete(agent_response.__anext__())
+                last_pipeline_interactions = pipeline_interactions
+                last_usage_metrics = usage_metrics
 
-    agent_response = streaming_response_generator.__aiter__()
-    while True:
-        try:
-            (
-                response_text,
-                pipeline_interactions,
-                usage_metrics,
-            ) = event_loop.run_until_complete(agent_response.__anext__())
-            last_pipeline_interactions = pipeline_interactions
-            last_usage_metrics = usage_metrics
-
-            if response_text:
-                choice = ChunkChoice(
-                    index=0,
-                    delta=ChoiceDelta(role="assistant", content=response_text),
-                    finish_reason=None,
-                )
-                yield CustomModelStreamingResponse(
-                    id=completion_id,
-                    object="chat.completion.chunk",
-                    created=created,
-                    model=model,
-                    choices=[choice],
-                    usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
-                    if usage_metrics
-                    else None,
-                )
-        except StopAsyncIteration:
-            break
-    # Yield final chunk indicating end of stream
-    choice = Choice(
-        index=0,
-        delta=ChoiceDelta(role="assistant"),
-        finish_reason="stop",
-    )
-    yield CustomModelStreamingResponse(
-        id=completion_id,
-        object="chat.completion.chunk",
-        created=created,
-        model=model,
-        choices=[choice],
-        usage=CompletionUsage.model_validate(required_usage_metrics | last_usage_metrics)
-        if last_usage_metrics
-        else None,
-        pipeline_interactions=last_pipeline_interactions.model_dump_json()
-        if last_pipeline_interactions
-        else None,
-    )
+                if response_text:
+                    choice = ChunkChoice(
+                        index=0,
+                        delta=ChoiceDelta(role="assistant", content=response_text),
+                        finish_reason=None,
+                    )
+                    yield CustomModelStreamingResponse(
+                        id=completion_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=model,
+                        choices=[choice],
+                        usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
+                        if usage_metrics
+                        else None,
+                    )
+            except StopAsyncIteration:
+                break
+        # Yield final chunk indicating end of stream
+        choice = Choice(
+            index=0,
+            delta=ChoiceDelta(role="assistant"),
+            finish_reason="stop",
+        )
+        yield CustomModelStreamingResponse(
+            id=completion_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model,
+            choices=[choice],
+            usage=CompletionUsage.model_validate(required_usage_metrics | last_usage_metrics)
+            if last_usage_metrics
+            else None,
+            pipeline_interactions=last_pipeline_interactions.model_dump_json()
+            if last_pipeline_interactions
+            else None,
+        )
+    except Exception as e:
+        tb.print_exc()
+        created = int(time.time())
+        choice = Choice(
+            index=0,
+            delta=ChoiceDelta(role="assistant", content=str(e), refusal="error"),
+            finish_reason="stop",
+        )
+        yield CustomModelStreamingResponse(
+            id=completion_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model,
+            choices=[choice],
+            usage=None,
+        )
