@@ -1,7 +1,7 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
-from .utils.urls import get_api_base
+from datarobot_genai.core.utils.urls import get_api_base
 
 """
 Only add common imports with the core dependencies here at the top level.
