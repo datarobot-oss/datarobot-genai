@@ -15,7 +15,6 @@ import abc
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
-from typing import Union
 
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
@@ -28,6 +27,8 @@ from ragas import MultiTurnSample
 from ragas.integrations.langgraph import convert_to_ragas_messages
 
 from datarobot_genai.core.agents.base import BaseAgent
+from datarobot_genai.core.agents.base import InvokeReturn
+from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 
 logger = logging.getLogger(__name__)
@@ -59,12 +60,7 @@ class LangGraphAgent(BaseAgent, abc.ABC):
         )
         return command
 
-    async def invoke(
-        self, completion_create_params: CompletionCreateParams
-    ) -> Union[  # noqa: UP007
-        AsyncGenerator[tuple[str, Any | None, dict[str, int]], None],
-        tuple[str, Any | None, dict[str, int]],
-    ]:
+    async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the agent with the provided completion parameters.
 
         Args:
@@ -95,7 +91,7 @@ class LangGraphAgent(BaseAgent, abc.ABC):
             subgraphs=True,
         )
 
-        usage_metrics: dict[str, int] = {
+        usage_metrics: UsageMetrics = {
             "completion_tokens": 0,
             "prompt_tokens": 0,
             "total_tokens": 0,
@@ -107,7 +103,7 @@ class LangGraphAgent(BaseAgent, abc.ABC):
         if completion_create_params.get("stream"):
             # Streaming response: yield each message as it is generated
             async def stream_generator() -> AsyncGenerator[
-                tuple[str, Any | None, dict[str, int]], None
+                tuple[str, Any | None, UsageMetrics], None
             ]:
                 # Iterate over the graph stream. For message events, yield the content.
                 # For update events, accumulate the usage metrics.
