@@ -99,6 +99,9 @@ package = true
 override-dependencies = [
   "ragas>=0.3.8",
 ]
+exclude-dependencies = [
+  "uv",
+]
 
 [dependency-groups]
 dev = [
