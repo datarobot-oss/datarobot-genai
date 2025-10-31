@@ -18,6 +18,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
@@ -38,23 +39,57 @@ from datarobot_genai.chat import to_custom_model_chat_response
 class SimpleLangGraphAgent(LangGraphAgent):
     @cached_property
     def workflow(self) -> StateGraph[MessagesState]:
+        def to_message_chunk(s):
+            return AIMessageChunk(content=s)
+
         async def mock_stream_generator():
-            yield {
-                "first_agent": {
-                    "messages": [
-                        HumanMessage(content="Hi, tell me about Paris."),
-                        AIMessage(content="Here is the information you requested about Paris....."),
-                    ]
-                }
-            }
-            yield {
-                "final_agent": {
-                    "messages": [
-                        HumanMessage(content="Hi, tell me about Paris."),
-                        AIMessage(content="Paris is the capital city of France."),
-                    ]
-                }
-            }
+            # stream the first agent
+            yield (
+                "first_agent",
+                "messages",
+                (to_message_chunk("Here is the information"), {}),
+            )
+            yield (
+                "first_agent",
+                "messages",
+                (to_message_chunk(" you requested about Paris....."), {}),
+            )
+            yield (
+                "first_agent",
+                "updates",
+                {
+                    "first_agent": {
+                        "messages": [
+                            HumanMessage(content="Hi, tell me about Paris."),
+                            AIMessage(
+                                content="Here is the information you requested about Paris....."
+                            ),
+                        ]
+                    }
+                },
+            )
+            yield (
+                "final_agent",
+                "messages",
+                (to_message_chunk("Paris is the capital"), {}),
+            )
+            yield (
+                "final_agent",
+                "messages",
+                (to_message_chunk(" city of France."), {}),
+            )
+            yield (
+                "final_agent",
+                "updates",
+                {
+                    "final_agent": {
+                        "messages": [
+                            HumanMessage(content="Hi, tell me about Paris."),
+                            AIMessage(content="Paris is the capital city of France."),
+                        ]
+                    }
+                },
+            )
 
         mock_graph_stream = Mock(astream=Mock(return_value=mock_stream_generator()))
 
@@ -107,6 +142,8 @@ async def test_langgraph_non_streaming():
         input=expected_command,
         config={},
         debug=True,
+        stream_mode=["updates", "messages"],
+        subgraphs=True,
     )
 
     # THEN the response is a custom model chat response
@@ -151,6 +188,8 @@ async def test_langgraph_streaming():
         input=expected_command,
         config={},
         debug=True,
+        stream_mode=["updates", "messages"],
+        subgraphs=True,
     )
 
     # THEN the streaming response iterator returns the expected responses
@@ -162,7 +201,6 @@ async def test_langgraph_streaming():
         usage_metrics,
     ) in streaming_response_iterator:
         # Create the streaming response manually for testing
-
         completion_id = str(uuid.uuid4())
         created = int(time.time())
 
@@ -183,14 +221,19 @@ async def test_langgraph_streaming():
 
             assert isinstance(response, CustomModelStreamingResponse)
             if idx == 0:
-                assert (
-                    response.choices[0].delta.content
-                    == "Here is the information you requested about Paris....."
-                )
+                assert response.choices[0].delta.content == "Here is the information"
                 assert response.choices[0].finish_reason is None
                 assert response.pipeline_interactions is None
             elif idx == 1:
-                assert response.choices[0].delta.content == "Paris is the capital city of France."
+                assert response.choices[0].delta.content == " you requested about Paris....."
+                assert response.choices[0].finish_reason is None
+                assert response.pipeline_interactions is None
+            elif idx == 2:
+                assert response.choices[0].delta.content == "Paris is the capital"
+                assert response.choices[0].finish_reason is None
+                assert response.pipeline_interactions is None
+            elif idx == 3:
+                assert response.choices[0].delta.content == " city of France."
                 assert response.choices[0].finish_reason is None
                 assert response.pipeline_interactions is None
         else:

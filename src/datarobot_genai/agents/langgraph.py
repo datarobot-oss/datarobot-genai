@@ -19,6 +19,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from typing import Union
 
+from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
@@ -91,6 +92,9 @@ class LangGraphAgent(BaseAgent, abc.ABC):
             input=input_command,
             config=self.langgraph_config,
             debug=self.verbose,
+            # Streaming updates and messages from all the nodes
+            stream_mode=["updates", "messages"],
+            subgraphs=True,
         )
 
         usage_metrics: dict[str, int] = {
@@ -107,24 +111,31 @@ class LangGraphAgent(BaseAgent, abc.ABC):
             async def stream_generator() -> AsyncGenerator[
                 tuple[str, Any | None, dict[str, int]], None
             ]:
-                # For each event in the graph stream, yield the latest message content
-                # along with updated usage metrics.
+                # Iterate over the graph stream. For message events, yield the content.
+                # For update events, accumulate the usage metrics.
                 events = []
-                async for event in graph_stream:
-                    events.append(event)
-                    current_node = next(iter(event))
-                    yield (
-                        str(event[current_node]["messages"][-1].content),
-                        None,
-                        usage_metrics,
-                    )
-                    current_usage = event[current_node].get("usage", {})
-                    if current_usage:
-                        usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
-                        usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
-                        usage_metrics["completion_tokens"] += current_usage.get(
-                            "completion_tokens", 0
+                async for _, mode, event in graph_stream:
+                    if mode == "messages":
+                        message_event: tuple[AIMessageChunk, dict[str, Any]] = event  # type: ignore[assignment]
+                        llm_token, _ = message_event
+                        yield (
+                            str(llm_token.content),
+                            None,
+                            usage_metrics,
                         )
+                    elif mode == "updates":
+                        update_event: dict[str, Any] = event  # type: ignore[assignment]
+                        events.append(update_event)
+                        current_node = next(iter(update_event))
+                        current_usage = update_event[current_node].get("usage", {})
+                        if current_usage:
+                            usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
+                            usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
+                            usage_metrics["completion_tokens"] += current_usage.get(
+                                "completion_tokens", 0
+                            )
+                    else:
+                        raise ValueError(f"Invalid mode: {mode}")
 
                 # Create a list of events from the event listener
                 pipeline_interactions = self.create_pipeline_interactions_from_events(events)
@@ -135,7 +146,12 @@ class LangGraphAgent(BaseAgent, abc.ABC):
             return stream_generator()
         else:
             # Synchronous response: collect all events and return the final message
-            events = [event async for event in graph_stream]
+            events: list[dict[str, Any]] = [
+                event  # type: ignore[misc]
+                async for _, mode, event in graph_stream
+                if mode == "updates"
+            ]
+
             pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
             # Extract the final event from the graph stream as the synchronous response
