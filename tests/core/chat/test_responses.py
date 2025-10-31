@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import asyncio
 from collections.abc import Generator
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from datarobot_genai.core.chat.responses import CustomModelChatResponse
 from datarobot_genai.core.chat.responses import CustomModelStreamingResponse
@@ -37,7 +37,7 @@ def test_to_custom_model_chat_response_basic() -> None:
 
 
 def test_to_custom_model_streaming_response_sequence() -> None:
-    def gen() -> Generator[tuple[str, Any | None, dict[str, int]], None, None]:
+    async def gen() -> AsyncGenerator[tuple[str, Any | None, dict[str, int]], None]:
         yield ("Hello ", None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
         yield ("World", None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
         # final: no text, but returns last usage + last pipeline interactions when present
@@ -46,8 +46,9 @@ def test_to_custom_model_streaming_response_sequence() -> None:
             type("X", (), {"model_dump_json": lambda self: "{}"})(),
             {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         )
-
-    chunks = list(to_custom_model_streaming_response(gen(), model="m"))
+    event_loop = asyncio.get_event_loop()
+    response_generator = to_custom_model_streaming_response(event_loop, gen(), model="m")
+    chunks = list(response_generator)
     assert isinstance(chunks[0], CustomModelStreamingResponse)
     assert chunks[0].choices[0].delta.content == "Hello "
     assert chunks[0].choices[0].finish_reason is None
