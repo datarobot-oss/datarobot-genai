@@ -93,7 +93,7 @@ jobs:
           if [ "${{ matrix.module }}" = "core" ]; then
             uv sync --dev
           else
-            uv sync --extras ${{ matrix.module }} --dev
+            uv sync --extra ${{ matrix.module }} --dev
           fi
 
       - name: Run tests
