@@ -21,4 +21,4 @@ except ModuleNotFoundError:  # pragma: no cover - environment without extra
 
 
 def test_langgraph_exports_exist() -> None:
-    assert hasattr(mod, "create_pipeline_interactions_from_events")
+    assert hasattr(mod, "LangGraphAgent")
