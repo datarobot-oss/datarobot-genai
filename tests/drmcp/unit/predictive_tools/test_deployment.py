@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from dotenv import load_dotenv
 
-from datarobot_genai.drmcp.core import common
+from datarobot_genai.drmcp.core.shared import get_sdk_client
 from datarobot_genai.drmcp.tools.predictive import deployment
 
 
@@ -161,7 +161,7 @@ async def test_get_sdk_client_uses_bearer_token() -> None:
     ctx.request = MagicMock()
     ctx.request.headers = {"Authorization": "Bearer test-user-token"}
     with patch("datarobot.Client") as mock_client:
-        common.get_sdk_client(ctx)
+        get_sdk_client(ctx)
         mock_client.assert_called_once()
         args, kwargs = mock_client.call_args
         assert kwargs["token"] == "test-user-token"
@@ -175,13 +175,13 @@ async def test_get_sdk_client_falls_back_to_env() -> None:
     ctx.request.headers = {}
     with (
         patch("datarobot.Client") as mock_client,
-        patch("datarobot_genai.drmcp.core.common.get_credentials") as mock_get_creds,
+        patch("datarobot_genai.drmcp.core.shared.get_credentials") as mock_get_creds,
     ):
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "env-token"
         mock_creds.datarobot.endpoint = "env-endpoint"
         mock_get_creds.return_value = mock_creds
-        common.get_sdk_client(ctx)
+        get_sdk_client(ctx)
         mock_client.assert_called_once()
         _, kwargs = mock_client.call_args
         assert kwargs["token"] == "env-token"
@@ -192,13 +192,13 @@ async def test_get_sdk_client_no_ctx() -> None:
     # No context provided, should use environment token
     with (
         patch("datarobot.Client") as mock_client,
-        patch("datarobot_genai.drmcp.core.common.get_credentials") as mock_get_creds,
+        patch("datarobot_genai.drmcp.core.shared.get_credentials") as mock_get_creds,
     ):
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "env-token"
         mock_creds.datarobot.endpoint = "env-endpoint"
         mock_get_creds.return_value = mock_creds
-        common.get_sdk_client()
+        get_sdk_client()
         mock_client.assert_called_once()
         _, kwargs = mock_client.call_args
         assert kwargs["token"] == "env-token"

@@ -23,7 +23,6 @@ from typing import Any
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 
-from .common import prefix_mount_path
 from .config import get_config
 from .credentials import get_credentials
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
@@ -31,6 +30,7 @@ from .logging import MCPLogging
 from .mcp_instance import mcp
 from .memory_management import MemoryManager
 from .routes import register_routes
+from .shared import prefix_mount_path
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
 

@@ -17,7 +17,6 @@ from unittest.mock import MagicMock
 import pytest
 import responses
 
-from datarobot_genai.drmcp.core.common import get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
@@ -25,6 +24,7 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
 )
 from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
+from datarobot_genai.drmcp.core.shared import get_sdk_client
 
 
 @pytest.fixture

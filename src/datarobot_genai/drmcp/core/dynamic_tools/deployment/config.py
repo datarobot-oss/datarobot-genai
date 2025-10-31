@@ -24,10 +24,10 @@ from urllib.parse import urljoin
 
 import datarobot as dr
 
-from datarobot_genai.drmcp.core.common import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.base import MetadataBase
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
+from datarobot_genai.drmcp.core.shared import get_api_client
 
 
 def create_deployment_tool_config(

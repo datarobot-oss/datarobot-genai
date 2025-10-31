@@ -4,7 +4,7 @@ from importlib.metadata import version
 from datarobot_genai.core.utils.urls import get_api_base
 
 """
-Only add common imports with the core dependencies here at the top level.
+Only add imports with the core dependencies here at the top level.
 For the optional extras, these need to be imported from their respective sub packages.
 """
 

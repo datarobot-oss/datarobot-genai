@@ -15,8 +15,8 @@
 import logging
 import os
 
-from datarobot_genai.drmcp.core.common import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.core.shared import get_sdk_client
 
 logger = logging.getLogger(__name__)
 

@@ -80,7 +80,7 @@ def save_response_to_file(response: "LLMResponse", name: str | None = None) -> N
     """
     # Create responses directory with timestamp
     timestamp = datetime.datetime.now().strftime("%Y%m%d")
-    dir_path = "tests/acceptance/drmcp/.ete_responses/" + timestamp
+    dir_path = "test_results/drmcp/.ete_responses/" + timestamp
     os.makedirs(dir_path, exist_ok=True)
 
     # Save both raw JSON and formatted text

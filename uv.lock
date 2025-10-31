@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -939,7 +939,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.1.20"
+version = "0.1.22"
 source = { editable = "." }
 dependencies = [
     { name = "datarobot" },

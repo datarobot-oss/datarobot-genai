@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from .common import load_env
+from .shared import load_env
 
 load_env()
 
