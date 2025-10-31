@@ -129,3 +129,32 @@ def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:
     if suffix:
         return head + "\n" + suffix
     return head
+
+
+# Canonical return type for DRUM-compatible invoke implementations
+InvokeReturn = (
+    AsyncGenerator[tuple[str, MultiTurnSample | None, dict[str, int]], None]
+    | tuple[str, MultiTurnSample | None, dict[str, int]]
+)
+
+
+def default_usage_metrics() -> dict[str, int]:
+    """Return a metrics dict with required keys for OpenAI-compatible responses."""
+    return {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+    }
+
+
+def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str, Any]) -> bool:
+    """Return True when the request asks for streaming, False otherwise.
+
+    Accepts both pydantic types and plain dictionaries.
+    """
+    params = cast(Mapping[str, Any], completion_create_params)
+    value = params.get("stream", False)
+    # Handle non-bool truthy values defensively (e.g., "true")
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return bool(value)
