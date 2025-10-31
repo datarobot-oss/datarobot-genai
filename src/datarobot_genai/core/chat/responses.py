@@ -101,14 +101,14 @@ def to_custom_model_streaming_response(
         "total_tokens": 0,
     }
     try:
-        agent_response = streaming_response_generator.__aiter__()
+        agent_response = aiter(streaming_response_generator)
         while True:
             try:
                 (
                     response_text,
                     pipeline_interactions,
                     usage_metrics,
-                ) = event_loop.run_until_complete(agent_response.__anext__())
+                ) = event_loop.run_until_complete(anext(agent_response))
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
@@ -130,6 +130,7 @@ def to_custom_model_streaming_response(
                     )
             except StopAsyncIteration:
                 break
+        event_loop.run_until_complete(streaming_response_generator.aclose())
         # Yield final chunk indicating end of stream
         choice = ChunkChoice(
             index=0,
