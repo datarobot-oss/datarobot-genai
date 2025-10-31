@@ -51,6 +51,8 @@ def mock_all_telemetry(request: pytest.FixtureRequest) -> Generator[None, None, 
         patch("datarobot_genai.drmcp.core.telemetry.initialize_telemetry", return_value=None),
         patch("opentelemetry.trace.get_tracer"),
         patch("opentelemetry.trace.get_tracer_provider"),
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_logging", return_value=None),
+        patch("opentelemetry.exporter.otlp.proto.http._log_exporter.OTLPLogExporter"),
         patch.dict(
             "os.environ",
             {
