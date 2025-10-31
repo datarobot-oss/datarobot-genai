@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import abc
+import json
 import os
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
@@ -89,8 +90,17 @@ def extract_user_prompt_content(
     """Extract first user message content from OpenAI messages."""
     params = cast(Mapping[str, Any], completion_create_params)
     user_messages = [msg for msg in params.get("messages", []) if msg.get("role") == "user"]
-    user_prompt = user_messages[0] if user_messages else {}
-    return user_prompt.get("content", {})
+    # Get the last user message
+    user_prompt = user_messages[-1] if user_messages else {}
+    content = user_prompt.get("content", {})
+    # Try converting prompt from json to a dict
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+    return content
 
 
 def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:

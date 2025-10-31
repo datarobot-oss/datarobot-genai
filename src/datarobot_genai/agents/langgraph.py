@@ -14,12 +14,13 @@
 
 
 import abc
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 from typing import Union
 
-from langchain_core.messages import HumanMessage
 from langchain_core.messages import ToolMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Command
@@ -30,6 +31,8 @@ from ragas.integrations.langgraph import convert_to_ragas_messages
 from .base import BaseAgent
 from .base import extract_user_prompt_content
 
+logger = logging.getLogger(__name__)
+
 
 class LangGraphAgent(BaseAgent, abc.ABC):
     @property
@@ -39,16 +42,20 @@ class LangGraphAgent(BaseAgent, abc.ABC):
 
     @property
     @abc.abstractmethod
-    def prompt_template(self) -> str:
+    def prompt_template(self) -> ChatPromptTemplate:
         raise NotImplementedError("Not implemented")
 
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {
+            "recursion_limit": 150,  # Maximum number of steps to take in the graph
+        }
+
     def convert_input_message(self, completion_create_params: CompletionCreateParams) -> Command:
-        user_prompt_content = extract_user_prompt_content(completion_create_params)
+        user_prompt = extract_user_prompt_content(completion_create_params)
         command = Command(  # type: ignore[var-annotated]
             update={
-                "messages": [
-                    HumanMessage(content=self.prompt_template.format(user_prompt_content))
-                ],
+                "messages": self.prompt_template.invoke(user_prompt).to_messages(),
             },
         )
         return command
@@ -73,10 +80,8 @@ class LangGraphAgent(BaseAgent, abc.ABC):
             pipeline_interactions, usage_metrics).
         """
         input_command = self.convert_input_message(completion_create_params)
-        # Print commands may need flush=True to ensure they are displayed in real-time.
-        print(
-            f"Running agent with user prompt: {input_command.update['messages'][0].content}",  # type: ignore[index]
-            flush=True,
+        logger.info(
+            f"Running a langgraph agent with a command: {input_command}",
         )
 
         # Create and invoke the Langgraph Agentic Workflow with the inputs
@@ -84,8 +89,8 @@ class LangGraphAgent(BaseAgent, abc.ABC):
 
         graph_stream = langgraph_execution_graph.astream(
             input=input_command,
-            config={"recursion_limit": 150},  # Maximum number of steps to take in the graph
-            debug=True,
+            config=self.langgraph_config,
+            debug=self.verbose,
         )
 
         usage_metrics: dict[str, int] = {
