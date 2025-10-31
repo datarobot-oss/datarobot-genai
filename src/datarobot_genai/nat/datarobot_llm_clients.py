@@ -22,9 +22,9 @@ from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
 
-from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
-from ..nat_adaptors.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
-from ..nat_adaptors.datarobot_llm_providers import DataRobotNIMModelConfig
+from ..nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
+from ..nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
+from ..nat.datarobot_llm_providers import DataRobotNIMModelConfig
 
 
 class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
