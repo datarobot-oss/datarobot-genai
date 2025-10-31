@@ -47,7 +47,7 @@ def run_smoke(extras: Iterable[str]) -> None:
 
     print("Top-level import...")
     import datarobot_genai as _drg
-    from datarobot_genai.agents.common import (
+    from datarobot_genai.agents.base import (
         BaseAgent,
         extract_user_prompt_content,
         make_system_prompt,
