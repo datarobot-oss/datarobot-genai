@@ -52,16 +52,43 @@ def test_base_agent_litellm_api_base_normalization(monkeypatch: pytest.MonkeyPat
     assert api == "https://app.datarobot.com/api/v2/deployments/dep-123/chat/completions"
 
 
-def test_extract_user_prompt_content() -> None:
+def test_extract_user_prompt_content_no_user_messages() -> None:
+    # GIVEN a completion create params with no user messages
+    params: dict[str, Any] = {"messages": []}
+    # WHEN extracting the user prompt content
+    user_prompt = extract_user_prompt_content(params)
+    # THEN the user prompt is empty
+    assert user_prompt == {}
+
+
+def test_extract_user_prompt_content_the_last_user_message() -> None:
+    # GIVEN a completion create params with multiple user messages
     params: dict[str, Any] = {
         "messages": [
             {"role": "system", "content": "x"},
-            {"role": "user", "content": {"foo": "bar"}},
             {"role": "user", "content": "ignored"},
+            {"role": "user", "content": {"foo": "bar"}},
         ]
     }
-    assert extract_user_prompt_content(params) == {"foo": "bar"}
-    assert extract_user_prompt_content({"messages": []}) == {}
+    # WHEN extracting the user prompt content
+    user_prompt = extract_user_prompt_content(params)
+    # THEN the user prompt is the last user message
+    assert user_prompt == {"foo": "bar"}
+
+
+def test_extract_user_prompt_content_the_last_user_message_is_a_json_string() -> None:
+    # GIVEN a completion create params with a user message that is a json string
+    params: dict[str, Any] = {
+        "messages": [
+            {"role": "system", "content": "x"},
+            {"role": "user", "content": "ignored"},
+            {"role": "user", "content": '{"foo": "bar"}'},
+        ]
+    }
+    # WHEN extracting the user prompt content
+    user_prompt = extract_user_prompt_content(params)
+    # THEN the user prompt is the last user message
+    assert user_prompt == {"foo": "bar"}
 
 
 def test_make_system_prompt() -> None:
