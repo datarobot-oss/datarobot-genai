@@ -131,7 +131,7 @@ def to_custom_model_streaming_response(
             except StopAsyncIteration:
                 break
         # Yield final chunk indicating end of stream
-        choice = Choice(
+        choice = ChunkChoice(
             index=0,
             delta=ChoiceDelta(role="assistant"),
             finish_reason="stop",
@@ -152,7 +152,7 @@ def to_custom_model_streaming_response(
     except Exception as e:
         tb.print_exc()
         created = int(time.time())
-        choice = Choice(
+        choice = ChunkChoice(
             index=0,
             delta=ChoiceDelta(role="assistant", content=str(e), refusal="error"),
             finish_reason="stop",
