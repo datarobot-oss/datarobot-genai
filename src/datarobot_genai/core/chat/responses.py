@@ -16,7 +16,8 @@
 
 import time
 import uuid
-from collections.abc import Generator
+from asyncio import AbstractEventLoop
+from collections.abc import AsyncGenerator
 from collections.abc import Iterator
 
 from openai.types import CompletionUsage
@@ -75,8 +76,9 @@ def to_custom_model_chat_response(
 
 
 def to_custom_model_streaming_response(
-    streaming_response_generator: Generator[
-        tuple[str, MultiTurnSample | None, dict[str, int]], None, None
+    event_loop: AbstractEventLoop,
+    streaming_response_generator: AsyncGenerator[
+        tuple[str, MultiTurnSample | None, dict[str, int]], None
     ],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
@@ -98,32 +100,37 @@ def to_custom_model_streaming_response(
         "total_tokens": 0,
     }
 
-    for (
-        response_text,
-        pipeline_interactions,
-        usage_metrics,
-    ) in streaming_response_generator:
-        last_pipeline_interactions = pipeline_interactions
-        last_usage_metrics = usage_metrics
+    agent_response = streaming_response_generator.__aiter__()
+    while True:
+        try:
+            (
+                response_text,
+                pipeline_interactions,
+                usage_metrics,
+            ) = event_loop.run_until_complete(agent_response.__anext__())
+            last_pipeline_interactions = pipeline_interactions
+            last_usage_metrics = usage_metrics
 
-        if response_text:
-            choice = ChunkChoice(
-                index=0,
-                delta=ChoiceDelta(role="assistant", content=response_text),
-                finish_reason=None,
-            )
-            yield CustomModelStreamingResponse(
-                id=completion_id,
-                object="chat.completion.chunk",
-                created=created,
-                model=model,
-                choices=[choice],
-                usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
-                if usage_metrics
-                else None,
-            )
-
-    choice = ChunkChoice(
+            if response_text:
+                choice = ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(role="assistant", content=response_text),
+                    finish_reason=None,
+                )
+                yield CustomModelStreamingResponse(
+                    id=completion_id,
+                    object="chat.completion.chunk",
+                    created=created,
+                    model=model,
+                    choices=[choice],
+                    usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
+                    if usage_metrics
+                    else None,
+                )
+        except StopAsyncIteration:
+            break
+    # Yield final chunk indicating end of stream
+    choice = Choice(
         index=0,
         delta=ChoiceDelta(role="assistant"),
         finish_reason="stop",
