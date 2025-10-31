@@ -18,12 +18,12 @@ from langchain_core.messages import AIMessage
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import ToolMessage
 
-from datarobot_genai.agents.langgraph import create_pipeline_interactions_from_events
+from datarobot_genai.agents.langgraph import LangGraphAgent
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:
     # None returns None
-    assert create_pipeline_interactions_from_events(None) is None
+    assert LangGraphAgent.create_pipeline_interactions_from_events(None) is None
 
     # Prepare events structure expected by the function using real message classes
     t1 = ToolMessage(content="tool", tool_call_id="tc_1")
@@ -38,7 +38,7 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
         {"node2": {"messages": [ai]}},
     ]
 
-    sample = create_pipeline_interactions_from_events(events)
+    sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
     assert sample is not None
     # ToolMessage filtered out; order preserved
     msgs = sample.user_input

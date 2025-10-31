@@ -35,8 +35,11 @@ source .venv/bin/activate
 # enable git hooks
 pre-commit install
 
-# run tests
+# run unit tests
 make test
+
+# run acceptance tests
+make test-acceptance
 ```
 
 Python requirement: >= 3.11,< 3.13
@@ -61,8 +64,11 @@ pip install "datarobot-genai[nat]"
 # PydanticAI
 pip install "datarobot-genai[pydanticai]"
 
+# DataRobot MCP
+pip install "datarobot-genai[drmcp]"
+
 
 # Combine extras
 pip install "datarobot-genai[crewai,nat]"
-pip install "datarobot-genai[crewai,langgraph,llamaindex,nat]"
+pip install "datarobot-genai[crewai,langgraph,llamaindex,nat,drmcp]"
 ```

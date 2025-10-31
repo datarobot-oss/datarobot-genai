@@ -15,10 +15,11 @@
 import abc
 import os
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
 from typing import Any
 from typing import Union
+from typing import cast
 
-from openai.types.chat import ChatCompletionUserMessageParam
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -42,8 +43,8 @@ class BaseAgent(abc.ABC):
         api_key: str | None = None,
         api_base: str | None = None,
         model: str | None = None,
-        verbose: bool | str = True,
-        timeout: int = 90,
+        verbose: bool | str | None = True,
+        timeout: int | None = 90,
         **_: Any,
     ) -> None:
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
@@ -51,9 +52,11 @@ class BaseAgent(abc.ABC):
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
         )
         self.model = model
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else 90
         if isinstance(verbose, str):
             self.verbose = verbose.lower() == "true"
+        elif verbose is None:
+            self.verbose = True
         else:
             self.verbose = bool(verbose)
 
@@ -80,13 +83,14 @@ class BaseAgent(abc.ABC):
         return MultiTurnSample(user_input=events)
 
 
-def extract_user_prompt_content(completion_create_params: CompletionCreateParams) -> Any:
+def extract_user_prompt_content(
+    completion_create_params: CompletionCreateParams | Mapping[str, Any],
+) -> Any:
     """Extract first user message content from OpenAI messages."""
-    user_messages = [
-        msg for msg in completion_create_params.get("messages", []) if msg.get("role") == "user"
-    ]
-    user_prompt: ChatCompletionUserMessageParam | None = user_messages[0] if user_messages else None  # type: ignore[assignment]
-    return user_prompt.get("content", {}) if user_prompt else ""
+    params = cast(Mapping[str, Any], completion_create_params)
+    user_messages = [msg for msg in params.get("messages", []) if msg.get("role") == "user"]
+    user_prompt = user_messages[0] if user_messages else {}
+    return user_prompt.get("content", {})
 
 
 def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:

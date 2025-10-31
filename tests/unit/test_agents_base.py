@@ -15,20 +15,27 @@
 from typing import Any
 
 import pytest
+from openai.types import CompletionCreateParams
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.agents.base import BaseAgent
-from datarobot_genai.agents.base import create_pipeline_interactions_from_events_simple
 from datarobot_genai.agents.base import extract_user_prompt_content
 from datarobot_genai.agents.base import make_system_prompt
+
+
+class SimpleAgent(BaseAgent):
+    async def invoke(
+        self, completion_create_params: CompletionCreateParams
+    ) -> tuple[str, Any | None, dict[str, int]]:
+        return "ok", None, {}
 
 
 def test_base_agent_env_defaults_and_verbose(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "env-token")
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")
 
-    agent = BaseAgent(verbose="false")
+    agent = SimpleAgent(verbose="false")
 
     assert agent.api_key == "env-token"
     # Stored as provided; normalization happens in litellm_api_base
@@ -40,7 +47,7 @@ def test_base_agent_litellm_api_base_normalization(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")
 
-    agent = BaseAgent()
+    agent = SimpleAgent()
     api = agent.litellm_api_base("dep-123")
     assert api == "https://app.datarobot.com/api/v2/deployments/dep-123/chat/completions"
 
@@ -64,8 +71,8 @@ def test_make_system_prompt() -> None:
 
 
 def test_create_pipeline_interactions_from_events_simple() -> None:
-    assert create_pipeline_interactions_from_events_simple(None) is None
+    assert BaseAgent.create_pipeline_interactions_from_events(None) is None
     msgs: list[Any] = [HumanMessage(content="hi"), AIMessage(content="ok")]
-    sample = create_pipeline_interactions_from_events_simple(msgs)
+    sample = BaseAgent.create_pipeline_interactions_from_events(msgs)
     assert sample is not None
     assert sample.user_input == msgs
