@@ -67,5 +67,6 @@ header:
     - 'py.typed'
     - '**/*.csv'
     - '**/*.json'
+    - '.cursor/**'
 
   comment: on-failure
