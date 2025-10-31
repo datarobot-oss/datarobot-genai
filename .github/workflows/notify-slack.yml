@@ -20,6 +20,11 @@ jobs:
           PR_ADDITIONS="${{ github.event.pull_request.additions }}"
           PR_DELETIONS="${{ github.event.pull_request.deletions }}"
           REPO_NAME="${{ github.event.repository.name }}"
+          
+          # Escape special characters for JSON
+          PR_TITLE_ESCAPED=$(echo "$PR_TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+          PR_AUTHOR_ESCAPED=$(echo "$PR_AUTHOR" | sed 's/\\/\\\\/g; s/"/\\"/g')
+          REPO_NAME_ESCAPED=$(echo "$REPO_NAME" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
           curl -X POST -H 'Content-type: application/json' \
           --data "{
@@ -29,9 +34,9 @@ jobs:
                 \"type\": \"section\",
                 \"text\": {
                   \"type\": \"mrkdwn\",
-                  \"text\": \"@buzok-team: :rocket: PR by ${PR_AUTHOR} needs a review: \`+${PR_ADDITIONS} -${PR_DELETIONS}\` <${PR_URL}|${REPO_NAME}#${PR_NR}: ${PR_TITLE}>\"
+                  \"text\": \"@buzok-team: :rocket: PR by ${PR_AUTHOR_ESCAPED} needs a review: \`+${PR_ADDITIONS} -${PR_DELETIONS}\` <${PR_URL}|${REPO_NAME_ESCAPED}#${PR_NR}: ${PR_TITLE_ESCAPED}>\"
                 }
               }
             ]
           }" \
-          $SLACK_WEBHOOK_URL
+          "${SLACK_WEBHOOK_URL}"
