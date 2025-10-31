@@ -3,6 +3,11 @@ from importlib.metadata import version
 
 from .utils.urls import get_api_base
 
+"""
+Only add common imports with the core dependencies here at the top level.
+For the optional extras, these need to be imported from their respective sub packages.
+"""
+
 __all__ = [
     "get_api_base",
     "__version__",

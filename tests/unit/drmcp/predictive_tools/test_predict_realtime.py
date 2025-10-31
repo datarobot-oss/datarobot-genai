@@ -17,6 +17,7 @@ import json
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pandas as pd
@@ -25,6 +26,8 @@ import pytest
 from datarobot_genai.drmcp.core.common import MCPError
 from datarobot_genai.drmcp.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcp.tools.predictive import predict_realtime
+from datarobot_genai.drmcp.tools.predictive.predict_realtime import make_output_settings
+from datarobot_genai.drmcp.tools.predictive.predict_realtime import predict_by_ai_catalog_rt
 
 THRESHOLD_HIGH = 0.8
 THRESHOLD_LOW = 0.2
@@ -672,3 +675,309 @@ async def test_predict_realtime_dataset_takes_precedence(
     assert isinstance(args[0], io.StringIO)
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
     assert kwargs["data_frame"].equals(df)
+
+
+class TestMakeOutputSettings:
+    """Test cases for make_output_settings function."""
+
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_s3_bucket_info")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.uuid.uuid4")
+    def test_make_output_settings_success(self, mock_uuid4, mock_get_s3_bucket_info):
+        """Test successful creation of output settings."""
+        mock_uuid4.return_value = "test-uuid-123"
+        mock_get_s3_bucket_info.return_value = {"bucket": "test-bucket", "prefix": "test-prefix/"}
+
+        result = make_output_settings()
+
+        assert result.bucket == "test-bucket"
+        assert result.key == "test-prefix/test-uuid-123.csv"
+        mock_get_s3_bucket_info.assert_called_once()
+
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_s3_bucket_info")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.uuid.uuid4")
+    def test_make_output_settings_with_empty_prefix(self, mock_uuid4, mock_get_s3_bucket_info):
+        """Test make_output_settings with empty prefix."""
+        mock_uuid4.return_value = "test-uuid-456"
+        mock_get_s3_bucket_info.return_value = {"bucket": "test-bucket", "prefix": ""}
+
+        result = make_output_settings()
+
+        assert result.bucket == "test-bucket"
+        assert result.key == "test-uuid-456.csv"
+
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_s3_bucket_info")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.uuid.uuid4")
+    def test_make_output_settings_with_none_prefix(self, mock_uuid4, mock_get_s3_bucket_info):
+        """Test make_output_settings with None prefix."""
+        mock_uuid4.return_value = "test-uuid-789"
+        mock_get_s3_bucket_info.return_value = {"bucket": "test-bucket", "prefix": None}
+
+        result = make_output_settings()
+
+        assert result.bucket == "test-bucket"
+        assert result.key == "Nonetest-uuid-789.csv"
+
+
+class TestPredictByAiCatalogRt:
+    """Test cases for predict_by_ai_catalog_rt function."""
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    async def test_predict_by_ai_catalog_rt_with_get_as_dataframe(
+        self,
+        mock_get_sdk_client,
+        mock_dr_predict,
+        mock_make_output_settings,
+        mock_predictions_result_response,
+    ):
+        """Test predict_by_ai_catalog_rt with get_as_dataframe method."""
+        # Setup mocks
+        mock_client = Mock()
+        mock_dataset = Mock()
+        mock_dataset.get_as_dataframe.return_value = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_deployment = Mock()
+        mock_client.Deployment.get.return_value = mock_deployment
+        mock_get_sdk_client.return_value = mock_client
+
+        mock_result = Mock()
+        mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
+        mock_dr_predict.return_value = mock_result
+
+        mock_bucket_info = Mock()
+        mock_bucket_info.bucket = "test-bucket"
+        mock_bucket_info.key = "test-key"
+        mock_make_output_settings.return_value = mock_bucket_info
+
+        mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
+
+        # Call function
+        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+
+        # Verify calls
+        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_dataset.get_as_dataframe.assert_called_once()
+        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dr_predict.assert_called_once_with(
+            mock_deployment, mock_dataset.get_as_dataframe.return_value, timeout=600
+        )
+        mock_make_output_settings.assert_called_once()
+        mock_predictions_result_response.assert_called_once()
+
+        assert result == {"type": "inline", "data": "test_data"}
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    async def test_predict_by_ai_catalog_rt_with_download(
+        self,
+        mock_get_sdk_client,
+        mock_read_csv,
+        mock_dr_predict,
+        mock_make_output_settings,
+        mock_predictions_result_response,
+    ):
+        """Test predict_by_ai_catalog_rt with download method."""
+        # Setup mocks
+        mock_client = Mock()
+        mock_dataset = Mock()
+        # Remove get_as_dataframe attribute entirely
+        del mock_dataset.get_as_dataframe
+        mock_dataset.download.return_value = "dataset.csv"
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_deployment = Mock()
+        mock_client.Deployment.get.return_value = mock_deployment
+        mock_get_sdk_client.return_value = mock_client
+
+        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = mock_df
+
+        mock_result = Mock()
+        mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
+        mock_dr_predict.return_value = mock_result
+
+        mock_bucket_info = Mock()
+        mock_bucket_info.bucket = "test-bucket"
+        mock_bucket_info.key = "test-key"
+        mock_make_output_settings.return_value = mock_bucket_info
+
+        mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
+
+        # Call function
+        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+
+        # Verify calls
+        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_dataset.download.assert_called_once_with("dataset.csv")
+        mock_read_csv.assert_called_once_with("dataset.csv")
+        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+
+        assert result == {"type": "inline", "data": "test_data"}
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    async def test_predict_by_ai_catalog_rt_with_get_file(
+        self,
+        mock_get_sdk_client,
+        mock_read_csv,
+        mock_dr_predict,
+        mock_make_output_settings,
+        mock_predictions_result_response,
+    ):
+        """Test predict_by_ai_catalog_rt with get_file method."""
+        # Setup mocks
+        mock_client = Mock()
+        mock_dataset = Mock()
+        # Remove get_as_dataframe and download attributes entirely
+        del mock_dataset.get_as_dataframe
+        del mock_dataset.download
+        mock_dataset.get_file.return_value = "dataset.csv"
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_deployment = Mock()
+        mock_client.Deployment.get.return_value = mock_deployment
+        mock_get_sdk_client.return_value = mock_client
+
+        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = mock_df
+
+        mock_result = Mock()
+        mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
+        mock_dr_predict.return_value = mock_result
+
+        mock_bucket_info = Mock()
+        mock_bucket_info.bucket = "test-bucket"
+        mock_bucket_info.key = "test-key"
+        mock_make_output_settings.return_value = mock_bucket_info
+
+        mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
+
+        # Call function
+        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+
+        # Verify calls
+        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_dataset.get_file.assert_called_once()
+        mock_read_csv.assert_called_once_with("dataset.csv")
+        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+
+        assert result == {"type": "inline", "data": "test_data"}
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    async def test_predict_by_ai_catalog_rt_with_get_bytes(
+        self,
+        mock_get_sdk_client,
+        mock_read_csv,
+        mock_dr_predict,
+        mock_make_output_settings,
+        mock_predictions_result_response,
+    ):
+        """Test predict_by_ai_catalog_rt with get_bytes method."""
+        # Setup mocks
+        mock_client = Mock()
+        mock_dataset = Mock()
+        # Remove get_as_dataframe, download, and get_file attributes entirely
+        del mock_dataset.get_as_dataframe
+        del mock_dataset.download
+        del mock_dataset.get_file
+        mock_dataset.get_bytes.return_value = b"col1,col2\n1,3\n2,4\n"
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_deployment = Mock()
+        mock_client.Deployment.get.return_value = mock_deployment
+        mock_get_sdk_client.return_value = mock_client
+
+        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = mock_df
+
+        mock_result = Mock()
+        mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
+        mock_dr_predict.return_value = mock_result
+
+        mock_bucket_info = Mock()
+        mock_bucket_info.bucket = "test-bucket"
+        mock_bucket_info.key = "test-key"
+        mock_make_output_settings.return_value = mock_bucket_info
+
+        mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
+
+        # Call function
+        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+
+        # Verify calls
+        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_dataset.get_bytes.assert_called_once()
+        mock_read_csv.assert_called_once()
+        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+
+        assert result == {"type": "inline", "data": "test_data"}
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    async def test_predict_by_ai_catalog_rt_with_url_fallback(
+        self,
+        mock_get_sdk_client,
+        mock_read_csv,
+        mock_dr_predict,
+        mock_make_output_settings,
+        mock_predictions_result_response,
+    ):
+        """Test predict_by_ai_catalog_rt with URL fallback."""
+        # Setup mocks
+        mock_client = Mock()
+        mock_dataset = Mock()
+        # Remove get_as_dataframe, download, get_file, and get_bytes attributes entirely
+        del mock_dataset.get_as_dataframe
+        del mock_dataset.download
+        del mock_dataset.get_file
+        del mock_dataset.get_bytes
+        mock_dataset.url = "https://example.com/dataset.csv"
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_deployment = Mock()
+        mock_client.Deployment.get.return_value = mock_deployment
+        mock_get_sdk_client.return_value = mock_client
+
+        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = mock_df
+
+        mock_result = Mock()
+        mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
+        mock_dr_predict.return_value = mock_result
+
+        mock_bucket_info = Mock()
+        mock_bucket_info.bucket = "test-bucket"
+        mock_bucket_info.key = "test-key"
+        mock_make_output_settings.return_value = mock_bucket_info
+
+        mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
+
+        # Call function
+        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+
+        # Verify calls
+        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_read_csv.assert_called_once_with("https://example.com/dataset.csv")
+        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+
+        assert result == {"type": "inline", "data": "test_data"}
