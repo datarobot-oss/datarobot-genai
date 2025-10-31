@@ -11,6 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# ruff: noqa: E402
+import sys
+
+import pytest
+
+# Skip the entire module if the Python version is 3.10, nat is not available
+pytestmark = pytest.mark.skipif(
+    sys.version_info.major == 3 and sys.version_info.minor == 10,
+    reason="NAT is not available for Python 3.10",
+)
+
 from crewai import LLM
 from langchain_openai import ChatOpenAI
 from nat.builder.framework_enum import LLMFrameworkEnum
