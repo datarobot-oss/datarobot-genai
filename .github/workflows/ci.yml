@@ -54,6 +54,60 @@ jobs:
         run: |
           make mypy
 
+  test-module:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10', '3.11', '3.12' ]
+        module: [ 'core', 'crewai', 'langgraph', 'llamaindex', 'drmcp']
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ matrix.module }}" = "core" ]; then
+            uv sync --dev
+          else
+            uv sync --extra ${{ matrix.module }} --dev
+          fi
+
+      - name: Run tests
+        run: |
+          make test-module MODULE=${{ matrix.module }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.python-version }}
+          path: test_results/test-results.xml
+          if-no-files-found: ignore
+
   build-test:
     runs-on: ubuntu-latest
     strategy:
@@ -91,7 +145,7 @@ jobs:
         run: |
           uv sync --all-extras --dev
 
-      - name: Run tests
+      - name: Run all tests
         run: |
           make test
 
@@ -121,56 +175,6 @@ jobs:
         with:
           name: dist-${{ matrix.python-version }}
           path: dist
-          if-no-files-found: ignore
-
-
-  acceptance-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ '3.10', '3.11', '3.12' ]
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Cache uv and virtualenv
-        uses: actions/cache@v4
-        with:
-          path: |
-            .venv
-            ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-${{ matrix.python-version }}-
-
-      - name: Install dependencies
-        run: |
-          uv sync --all-extras --dev
-
-      - name: Run acceptance tests
-        run: |
-          make test-acceptance
-
-      - name: Upload acceptance test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: junit-acceptance-${{ matrix.python-version }}
-          path: test_results/test-results.xml
           if-no-files-found: ignore
 
   security:
@@ -206,47 +210,3 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --all-extras --dev
-
-
-  smoke-optional-extras:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ '3.10', '3.11', '3.12' ]
-        extras: [ 'none', 'crewai', 'langgraph', 'llamaindex', 'drmcp', 'all' ]
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Create venv and install selected extras
-        shell: bash
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          python -m pip install -U pip wheel setuptools
-          if [ "${{ matrix.extras }}" = "none" ]; then
-            echo "Installing base package (no extras)"
-            pip install .
-          elif [ "${{ matrix.extras }}" = "all" ]; then
-            echo "Installing package with all extras"
-            pip install ".[crewai,langgraph,llamaindex,drmcp]"
-          else
-            echo "Installing package with extras: ${{ matrix.extras }}"
-            pip install ".[${{ matrix.extras }}]"
-          fi
-
-      - name: Smoke test imports and minimal calls
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          python scripts/smoke_optional_extras.py --extras "${{ matrix.extras }}"

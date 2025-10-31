@@ -8,8 +8,7 @@ PYTEST_OPTS_W_COVERAGE ?= $(JUNIT_FLAGS) --cov=datarobot_genai --cov-branch --co
 
 .PHONY: test
 test: ## Run repo unit tests via pytest
-	uv run $(UV_RUN_OPTS) pytest $(PYTEST_OPTS_W_COVERAGE) tests/unit
+	uv run $(UV_RUN_OPTS) pytest $(PYTEST_OPTS_W_COVERAGE) tests --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance
 
-.PHONY: test-acceptance
-test-acceptance: ## Run acceptance tests via pytest (excluding drmcp)
-	uv run $(UV_RUN_OPTS) pytest $(PYTEST_OPTS) tests/acceptance --ignore=tests/acceptance/drmcp
+test-module: ## Run repo unit tests via pytest for a specific module
+	uv run $(UV_RUN_OPTS) pytest tests/$(MODULE) --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance
