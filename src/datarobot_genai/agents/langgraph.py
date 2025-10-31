@@ -20,7 +20,6 @@ from typing import Union
 
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import ToolMessage
-from langgraph.graph import START
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Command
@@ -33,25 +32,24 @@ from .base import extract_user_prompt_content
 
 
 class LangGraphAgent(BaseAgent, abc.ABC):
-    @abc.abstractmethod
     @property
+    @abc.abstractmethod
     def workflow(self) -> StateGraph[MessagesState]:
         raise NotImplementedError("Not implemented")
 
-    @abc.abstractmethod
     @property
+    @abc.abstractmethod
     def prompt_template(self) -> str:
         raise NotImplementedError("Not implemented")
 
     def convert_input_message(self, completion_create_params: CompletionCreateParams) -> Command:
         user_prompt_content = extract_user_prompt_content(completion_create_params)
-        command = Command(
+        command = Command(  # type: ignore[var-annotated]
             update={
                 "messages": [
                     HumanMessage(content=self.prompt_template.format(user_prompt_content))
                 ],
             },
-            goto=START,
         )
         return command
 
