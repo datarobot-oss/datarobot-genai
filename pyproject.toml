@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.16"
+version = "0.1.17"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -103,6 +103,7 @@ dev = [
   "twine>=5.0.0",
   "pytest-asyncio>=0.23.5",
   "responses>=0.25.8",
+  "ipdb>=0.13.13",
 ]
 
 
@@ -170,6 +171,7 @@ max-args = 8
 
 [tool.pytest.ini_options]
 filterwarnings = []
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["datarobot_genai"]
@@ -183,4 +185,3 @@ exclude_lines = [
     "pass",
 ]
 fail_under = 80
-

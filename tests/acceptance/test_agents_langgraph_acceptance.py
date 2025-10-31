@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import pytest
 
 try:
@@ -21,4 +20,4 @@ except ModuleNotFoundError:  # pragma: no cover - environment without extra
 
 
 def test_langgraph_exports_exist() -> None:
-    assert hasattr(mod, "create_pipeline_interactions_from_events")
+    assert hasattr(mod, "LangGraphAgent")

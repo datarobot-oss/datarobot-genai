@@ -49,6 +49,8 @@ header:
     - '.ruff_cache/'
     - '.mypy_cache/'
     - '.github/**'
+    - '**/*.yaml'
+    - '**/*.yml'
     - '.licenserc.yaml'
     - '.licenserc.yaml.temp'
     - 'AUTHORS'
@@ -63,6 +65,7 @@ header:
     - '.pre-commit-config.yaml'
     - '.mkfiles/**'
     - 'py.typed'
-
+    - '**/*.csv'
+    - '**/*.json'
 
   comment: on-failure

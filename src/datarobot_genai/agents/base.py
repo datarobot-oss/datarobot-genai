@@ -12,18 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import abc
+import json
 import os
+from collections.abc import AsyncGenerator
 from collections.abc import Mapping
 from typing import Any
+from typing import Union
 from typing import cast
 
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
-from ..utils.urls import get_api_base
+from datarobot_genai.utils.urls import get_api_base
 
 
-class BaseAgent:
+class BaseAgent(abc.ABC):
     """BaseAgent centralizes common initialization for agent templates.
 
     Fields:
@@ -60,6 +64,25 @@ class BaseAgent:
     def litellm_api_base(self, deployment_id: str | None) -> str:
         return get_api_base(self.api_base, deployment_id)
 
+    @abc.abstractmethod
+    async def invoke(
+        self, completion_create_params: CompletionCreateParams
+    ) -> Union[  # noqa: UP007
+        AsyncGenerator[tuple[str, Any | None, dict[str, int]], None],
+        tuple[str, Any | None, dict[str, int]],
+    ]:
+        raise NotImplementedError("Not implemented")
+
+    @classmethod
+    def create_pipeline_interactions_from_events(
+        cls,
+        events: list[Any] | None,
+    ) -> MultiTurnSample | None:
+        """Create a simple MultiTurnSample from a list of generic events/messages."""
+        if not events:
+            return None
+        return MultiTurnSample(user_input=events)
+
 
 def extract_user_prompt_content(
     completion_create_params: CompletionCreateParams | Mapping[str, Any],
@@ -67,8 +90,17 @@ def extract_user_prompt_content(
     """Extract first user message content from OpenAI messages."""
     params = cast(Mapping[str, Any], completion_create_params)
     user_messages = [msg for msg in params.get("messages", []) if msg.get("role") == "user"]
-    user_prompt = user_messages[0] if user_messages else {}
-    return user_prompt.get("content", {})
+    # Get the last user message
+    user_prompt = user_messages[-1] if user_messages else {}
+    content = user_prompt.get("content", {})
+    # Try converting prompt from json to a dict
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+    return content
 
 
 def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:
@@ -97,12 +129,3 @@ def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:
     if suffix:
         return head + "\n" + suffix
     return head
-
-
-def create_pipeline_interactions_from_events_simple(
-    events: list[Any] | None,
-) -> MultiTurnSample | None:
-    """Create a simple MultiTurnSample from a list of generic events/messages."""
-    if not events:
-        return None
-    return MultiTurnSample(user_input=events)

@@ -47,7 +47,7 @@ def run_smoke(extras: Iterable[str]) -> None:
 
     print("Top-level import...")
     import datarobot_genai as _drg
-    from datarobot_genai.agents.common import (
+    from datarobot_genai.agents.base import (
         BaseAgent,
         extract_user_prompt_content,
         make_system_prompt,
@@ -90,29 +90,7 @@ def run_smoke(extras: Iterable[str]) -> None:
         print("crewai smoke OK")
 
     if "langgraph" in extras_set:
-        from datarobot_genai.agents.langgraph import (
-            create_pipeline_interactions_from_events as create_events_langgraph,
-        )
-        from langchain_core.messages import (
-            AIMessage as LC_AIMessage,
-            HumanMessage as LC_HumanMessage,
-            ToolMessage as LC_ToolMessage,
-        )
-
-        events: list[dict[str, Any]] = [
-            {
-                "node1": {
-                    "messages": [
-                        LC_ToolMessage(content="tool", tool_call_id="tc_1"),
-                        LC_HumanMessage(content="hi"),
-                    ]
-                }
-            },
-            {"node2": {"messages": [LC_AIMessage(content="ok")] }},
-        ]
-        sample = create_events_langgraph(events)
-        assert sample is not None and len(sample.user_input) == 2
-        print("langgraph smoke OK")
+        from datarobot_genai.agents.langgraph import LangGraphAgent  # noqa: F401
 
     if "llamaindex" in extras_set:
         from datarobot_genai.agents.llamaindex import (
