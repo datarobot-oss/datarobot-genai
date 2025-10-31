@@ -45,7 +45,7 @@ def test_tool_client_config(base_url: str, api_key: str) -> None:
 
 
 def test_tool_client_config_defaults() -> None:
-    with patch.dict(os.environ,{}, clear=True):
+    with patch.dict(os.environ, {}, clear=True):
         tool_client = ToolClient()
         assert tool_client.api_key is None
         assert tool_client.base_url == "https://app.datarobot.com/"
