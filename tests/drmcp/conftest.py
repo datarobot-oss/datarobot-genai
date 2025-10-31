@@ -18,13 +18,13 @@ from typing import Any
 import datarobot as dr
 import pytest
 
-from datarobot_genai.drmcp.core.common import get_sdk_client
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 
 
 @pytest.fixture(scope="session")
 def test_data_dir() -> Path:
     """Path to the test data directory."""
-    return Path(__file__).parent / "data"
+    return Path("tests/data")
 
 
 # Only used for fixtures, the tests use the MCP session directly

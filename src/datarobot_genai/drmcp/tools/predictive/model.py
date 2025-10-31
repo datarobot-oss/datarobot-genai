@@ -18,7 +18,7 @@ from typing import Any
 
 from datarobot.models.model import Model
 
-from datarobot_genai.drmcp.core.common import get_sdk_client
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 
 logger = logging.getLogger(__name__)

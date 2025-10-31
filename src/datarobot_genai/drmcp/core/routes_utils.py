@@ -12,16 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-DataRobot MCP tools for interacting with DataRobot platform.
+from .config import get_config
 
-This package contains pre-built tools for DataRobot operations:
-- data: Upload and manage datasets
-- project: Create and manage projects
-- model: List and interact with models
-- training: Train models with autopilot
-- deployment: Deploy and manage models
-- predict: Make batch predictions
-- predict_realtime: Make real-time predictions
-- deployment_info: Get deployment information
-"""
+
+def prefix_mount_path(endpoint: str) -> str:
+    config = get_config()
+    mount_path = config.mount_path
+
+    if mount_path == "/":
+        return endpoint
+
+    if mount_path.endswith("/"):
+        mount_path = mount_path[:-1]
+
+    if not endpoint.startswith("/"):
+        endpoint = "/" + endpoint
+    return mount_path + endpoint

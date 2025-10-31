@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from datarobot_genai.drmcp.core.common import MCPError
+from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive.deployment_info import generate_prediction_data_template
 from datarobot_genai.drmcp.tools.predictive.deployment_info import get_deployment_features
 from datarobot_genai.drmcp.tools.predictive.deployment_info import get_deployment_info

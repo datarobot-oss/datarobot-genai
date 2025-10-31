@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import Any
 from typing import TypeVar
 
-from .common import MCPError
+from .exceptions import MCPError
 
 # Secret patterns to redact from logs
 SECRET_PATTERNS = [

@@ -18,7 +18,7 @@ from typing import Any
 import datarobot as dr
 from datarobot.utils import from_api
 
-from datarobot_genai.drmcp.core.common import get_api_client
+from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.base import MetadataBase
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.default import Metadata
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import DrumMetadataAdapter

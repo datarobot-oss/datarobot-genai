@@ -22,7 +22,7 @@ from mcp.types import ListToolsResult
 from mcp.types import TextContent
 from openai.types.chat.chat_completion import ChatCompletion
 
-from .common import save_response_to_file
+from .utils import save_response_to_file
 
 
 class ToolCall:
