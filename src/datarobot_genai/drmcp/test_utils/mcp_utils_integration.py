@@ -22,7 +22,7 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from .shared import load_env
+from .utils import load_env
 
 load_env()
 

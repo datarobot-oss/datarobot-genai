@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 
 from datarobot_genai.drmcp.core.constants import MAX_INLINE_SIZE
-from datarobot_genai.drmcp.core.shared import MCPError
+from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive import predict_realtime
 from datarobot_genai.drmcp.tools.predictive.predict_realtime import make_output_settings
 from datarobot_genai.drmcp.tools.predictive.predict_realtime import predict_by_ai_catalog_rt

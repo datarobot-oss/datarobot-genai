@@ -21,10 +21,10 @@ import datarobot as dr
 from fastmcp.resources import HttpResource
 from fastmcp.resources import ResourceManager
 
+from datarobot_genai.drmcp.core.clients import get_credentials
+from datarobot_genai.drmcp.core.clients import get_s3_bucket_info
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
-from datarobot_genai.drmcp.core.shared import get_credentials
-from datarobot_genai.drmcp.core.shared import get_s3_bucket_info
-from datarobot_genai.drmcp.core.shared import get_sdk_client
 from datarobot_genai.drmcp.core.utils import generate_presigned_url
 
 logger = logging.getLogger(__name__)

@@ -22,7 +22,7 @@ from .dynamic_tools.deployment.controllers import delete_registered_tool_deploym
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
 from .memory_management import get_memory_manager
-from .shared import prefix_mount_path
+from .routes_utils import prefix_mount_path
 
 logger = getLogger(__name__)
 

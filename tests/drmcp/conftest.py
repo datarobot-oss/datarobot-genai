@@ -18,7 +18,7 @@ from typing import Any
 import datarobot as dr
 import pytest
 
-from datarobot_genai.drmcp.core.shared import get_sdk_client
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 
 
 @pytest.fixture(scope="session")

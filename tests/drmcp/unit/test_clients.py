@@ -16,11 +16,11 @@ from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from datarobot_genai.drmcp.core.shared import dr
-from datarobot_genai.drmcp.core.shared import get_api_client
-from datarobot_genai.drmcp.core.shared import get_s3_bucket_info
-from datarobot_genai.drmcp.core.shared import get_sdk_client
-from datarobot_genai.drmcp.core.shared import prefix_mount_path
+from datarobot_genai.drmcp.core.clients import dr
+from datarobot_genai.drmcp.core.clients import get_api_client
+from datarobot_genai.drmcp.core.clients import get_s3_bucket_info
+from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
 
 
 def test_get_sdk_client_returns_dr() -> None:
@@ -28,8 +28,8 @@ def test_get_sdk_client_returns_dr() -> None:
     mock_creds.datarobot.application_api_token = "token"
     mock_creds.datarobot.endpoint = "url"
     with (
-        patch("datarobot_genai.drmcp.core.shared.dr.Client") as mock_client,
-        patch("datarobot_genai.drmcp.core.shared.get_credentials", return_value=mock_creds),
+        patch("datarobot_genai.drmcp.core.clients.dr.Client") as mock_client,
+        patch("datarobot_genai.drmcp.core.clients.get_credentials", return_value=mock_creds),
     ):
         result = get_sdk_client()
         mock_client.assert_called_once_with(token="token", endpoint="url")
@@ -40,7 +40,7 @@ def test_get_s3_bucket_info() -> None:
     mock_creds = MagicMock()
     mock_creds.aws_predictions_s3_bucket = "bucket"
     mock_creds.aws_predictions_s3_prefix = "prefix"
-    with patch("datarobot_genai.drmcp.core.shared.get_credentials", return_value=mock_creds):
+    with patch("datarobot_genai.drmcp.core.clients.get_credentials", return_value=mock_creds):
         result = get_s3_bucket_info()
         assert result == {"bucket": "bucket", "prefix": "prefix"}
 
@@ -48,7 +48,7 @@ def test_get_s3_bucket_info() -> None:
 class TestGetApiClient:
     """Test cases for get_api_client function."""
 
-    @patch("datarobot_genai.drmcp.core.shared.get_sdk_client")
+    @patch("datarobot_genai.drmcp.core.clients.get_sdk_client")
     def test_get_api_client_returns_client(self, mock_get_sdk_client):
         """Test that get_api_client returns the REST client."""
         mock_dr = Mock()
@@ -68,7 +68,7 @@ class TestGetApiClient:
 class TestPrefixMountPath:
     """Test cases for prefix_mount_path function."""
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_mount_path_root(self, mock_get_config):
         """Test with mount_path as root."""
         mock_config = Mock()
@@ -78,7 +78,7 @@ class TestPrefixMountPath:
         result = prefix_mount_path("/test/endpoint")
         assert result == "/test/endpoint"
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_mount_path_with_trailing_slash(self, mock_get_config):
         """Test with mount_path ending with slash."""
         mock_config = Mock()
@@ -88,7 +88,7 @@ class TestPrefixMountPath:
         result = prefix_mount_path("/test/endpoint")
         assert result == "/api/test/endpoint"
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_mount_path_without_trailing_slash(self, mock_get_config):
         """Test with mount_path not ending with slash."""
         mock_config = Mock()
@@ -98,7 +98,7 @@ class TestPrefixMountPath:
         result = prefix_mount_path("/test/endpoint")
         assert result == "/api/test/endpoint"
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_endpoint_without_leading_slash(self, mock_get_config):
         """Test with endpoint not starting with slash."""
         mock_config = Mock()
@@ -108,7 +108,7 @@ class TestPrefixMountPath:
         result = prefix_mount_path("test/endpoint")
         assert result == "/api/test/endpoint"
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_endpoint_with_leading_slash(self, mock_get_config):
         """Test with endpoint starting with slash."""
         mock_config = Mock()
@@ -118,7 +118,7 @@ class TestPrefixMountPath:
         result = prefix_mount_path("/test/endpoint")
         assert result == "/api/test/endpoint"
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_empty_endpoint(self, mock_get_config):
         """Test with empty endpoint."""
         mock_config = Mock()
@@ -128,7 +128,7 @@ class TestPrefixMountPath:
         result = prefix_mount_path("")
         assert result == "/api/"
 
-    @patch("datarobot_genai.drmcp.core.shared.get_config")
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
     def test_root_mount_path_with_empty_endpoint(self, mock_get_config):
         """Test with root mount_path and empty endpoint."""
         mock_config = Mock()

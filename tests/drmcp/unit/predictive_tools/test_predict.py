@@ -21,7 +21,7 @@ from unittest.mock import patch
 import datarobot as dr
 import pytest
 
-from datarobot_genai.drmcp.core.shared import MCPError
+from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive import predict
 
 FEATURE_VALUE = 0.5

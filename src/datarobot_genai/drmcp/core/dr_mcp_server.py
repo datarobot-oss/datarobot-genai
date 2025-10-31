@@ -30,7 +30,7 @@ from .logging import MCPLogging
 from .mcp_instance import mcp
 from .memory_management import MemoryManager
 from .routes import register_routes
-from .shared import prefix_mount_path
+from .routes_utils import prefix_mount_path
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
 

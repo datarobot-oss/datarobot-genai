@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from dotenv import load_dotenv
 
-from datarobot_genai.drmcp.core.shared import get_sdk_client
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.tools.predictive import deployment
 
 
@@ -175,7 +175,7 @@ async def test_get_sdk_client_falls_back_to_env() -> None:
     ctx.request.headers = {}
     with (
         patch("datarobot.Client") as mock_client,
-        patch("datarobot_genai.drmcp.core.shared.get_credentials") as mock_get_creds,
+        patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
     ):
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "env-token"
@@ -192,7 +192,7 @@ async def test_get_sdk_client_no_ctx() -> None:
     # No context provided, should use environment token
     with (
         patch("datarobot.Client") as mock_client,
-        patch("datarobot_genai.drmcp.core.shared.get_credentials") as mock_get_creds,
+        patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
     ):
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "env-token"

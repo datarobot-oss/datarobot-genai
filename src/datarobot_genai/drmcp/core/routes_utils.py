@@ -12,10 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-class DynamicToolRegistrationError(Exception):
-    """Exception raised for errors in the dynamic tool registration process."""
+from .config import get_config
 
 
-class MCPError(Exception):
-    """Base class for MCP errors."""
+def prefix_mount_path(endpoint: str) -> str:
+    config = get_config()
+    mount_path = config.mount_path
+
+    if mount_path == "/":
+        return endpoint
+
+    if mount_path.endswith("/"):
+        mount_path = mount_path[:-1]
+
+    if not endpoint.startswith("/"):
+        endpoint = "/" + endpoint
+    return mount_path + endpoint
