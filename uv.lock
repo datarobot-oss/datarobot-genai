@@ -939,7 +939,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.1.20"
+version = "0.1.22"
 source = { editable = "." }
 dependencies = [
     { name = "datarobot" },
@@ -991,6 +991,7 @@ llamaindex = [
     { name = "pypdf" },
 ]
 nat = [
+    { name = "llama-index-llms-litellm" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11'" },
     { name = "nvidia-nat-crewai", marker = "python_full_version >= '3.11'" },
     { name = "nvidia-nat-langchain", marker = "python_full_version >= '3.11'" },
@@ -1033,6 +1034,7 @@ requires-dist = [
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.13.6,<0.14.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.6.1" },
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1" },
+    { name = "llama-index-llms-litellm", marker = "extra == 'nat'", specifier = ">=0.4.1" },
     { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.3.38" },
     { name = "logfire", marker = "extra == 'pydanticai'", specifier = ">=4.6.0" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0" },
