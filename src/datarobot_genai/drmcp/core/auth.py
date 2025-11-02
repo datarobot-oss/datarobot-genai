@@ -15,11 +15,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from datarobot.auth.session import AuthCtx
 from datarobot.models.genai.agent.auth import OAuthAccessTokenProvider
 from datarobot.models.genai.agent.auth import ToolAuth
+from datarobot_genai.drmcp import get_config
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import CallNext
@@ -27,7 +28,7 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.core.utils.b64 import decode_b64_to_json
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 logger = logging.getLogger(__name__)
 
@@ -35,30 +36,75 @@ logger = logging.getLogger(__name__)
 class OAuthMiddleWare(Middleware):
     """Middleware that parses `x-datarobot-authorization-context` for tool calls.
 
-    The header is expected to be a base64-encoded JSON object representing an
-    authentication context compatible with :class:`datarobot.auth.session.AuthCtx`.
+    The header is expected to be a JWT-encoded token representing an authentication
+    context compatible with :class:`datarobot.auth.session.AuthCtx`.
+
+    Attributes
+    ----------
+    auth_handler : AuthContextHeaderHandler
+        Handler for encoding/decoding JWT tokens containing auth context.
     """
 
-    auth_ctx_header: str = "x-datarobot-authorization-context"
+    def __init__(self, secret_key: Optional[str] = None) -> None:
+        """Initialize the middleware with authentication handler.
+
+        Parameters
+        ----------
+        secret_key : Optional[str]
+            Secret key for JWT validation. If None, uses the value from config.
+        """
+        secret_key = secret_key or get_config().session_secret_key
+        self.auth_handler = AuthContextHeaderHandler(secret_key)
 
     async def on_call_tool(
         self, context: MiddlewareContext, call_next: CallNext[Any, ToolResult]
     ) -> ToolResult:
-        """Parse header and attach an AuthCtx to the context before running the tool."""
-        headers = get_http_headers()
+        """Parse header and attach an AuthCtx to the context before running the tool.
 
-        auth_ctx: AuthCtx | None = None
-        raw = headers.get(self.auth_ctx_header)
+        Parameters
+        ----------
+        context : MiddlewareContext
+            The middleware context that will be passed to the tool.
+        call_next : CallNext[Any, ToolResult]
+            The next handler in the middleware chain.
 
-        if auth_ctx_dict := decode_b64_to_json(raw):
-            try:
-                auth_ctx = AuthCtx(**auth_ctx_dict)
-            except Exception as exc:
-                logger.exception("Error when parsing %s header: %s", self.auth_ctx_header, exc)
+        Returns
+        -------
+        ToolResult
+            The result from the tool execution.
+        """
+        auth_context = self._extract_auth_context()
 
-        setattr(context, "auth_context", auth_ctx)
+        if context.fastmcp_context is not None:
+            context.fastmcp_context.auth_context = auth_context
 
         return await call_next(context)
+
+    def _extract_auth_context(self) -> Optional[AuthCtx]:
+        """Extract and validate authentication context from request headers.
+
+        Returns
+        -------
+        Optional[AuthCtx]
+            The validated authentication context, or None if extraction fails.
+        """
+        try:
+            headers = get_http_headers()
+            return self.auth_handler.get_context(headers)
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Failed to extract auth context from headers: %s",
+                exc,
+                exc_info=True
+            )
+            return None
+        except Exception as exc:
+            logger.error(
+                "Unexpected error extracting auth context: %s",
+                exc,
+                exc_info=True
+            )
+            return None
 
 
 async def get_auth_context() -> AuthCtx:
@@ -74,7 +120,8 @@ async def get_auth_context() -> AuthCtx:
     AuthCtx
         The authorization context associated with the current request.
     """
-    auth_ctx = getattr(get_context(), "auth_context", None)
+    context = get_context()
+    auth_ctx = getattr(context, "auth_context", None)
     if not auth_ctx:
         raise RuntimeError("No authorization context found.")
 

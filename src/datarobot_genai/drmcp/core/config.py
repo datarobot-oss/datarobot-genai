@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import Any
+from typing import Any, Optional
 from typing import Literal
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
@@ -173,6 +173,14 @@ class MCPServerConfig(BaseSettings):
             "ENABLE_PREDICTIVE_TOOLS",
         ),
         description="Enable/disable predictive tools",
+    )
+    session_secret_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "SESSION_SECRET_KEY",
+            "SESSION_SECRET_KEY",
+        ),
+        description="Session secret key for the MCP server",
     )
 
     @field_validator(
