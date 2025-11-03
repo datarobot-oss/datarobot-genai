@@ -95,10 +95,6 @@ def initialize_authorization_context(
         Additional keyword arguments. Expected to include a ``headers`` key
         containing incoming HTTP headers as ``dict[str, str]``.
 
-    Notes
-    -----
-    - The authorization context is stored using ``contextvars``, making it safe
-      for threaded and asynchronous request handling.
     """
     incoming_headers = kwargs.get("headers", {})
 
