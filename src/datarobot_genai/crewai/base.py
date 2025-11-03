@@ -105,17 +105,17 @@ class CrewAIAgent(BaseAgent, abc.ABC):
             response_text = str(crew_output.raw)
 
             # Create a list of events from the event listener
-            events: list[HumanMessage | AIMessage | ToolMessage] | None = (
+            events: list[HumanMessage | AIMessage | ToolMessage] = list(
                 self.event_listener.messages
             )
-            if events and len(events) > 0:
+            if len(events) > 0:
                 last_message = events[-1].content
                 if last_message != response_text:
                     events.append(AIMessage(content=response_text))
-            else:
-                events = None
 
-            pipeline_interactions = create_pipeline_interactions_from_messages(events)
+            pipeline_interactions = create_pipeline_interactions_from_messages(
+                events if len(events) > 0 else []
+            )
 
             # Collect usage metrics if available
             usage_metrics: UsageMetrics
