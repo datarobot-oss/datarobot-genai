@@ -79,7 +79,26 @@ def initialize_authorization_context(
 
     Authorization context is required for propagating information needed by downstream
     agents and tools to retrieve access tokens to connect to external services. When set,
-    authorization context will be automatically propagated when using ToolClient class.
+    authorization context will be propagated when using MCP Server component or when
+    using ToolClient class.
+
+    Parameters
+    ----------
+    completion_create_params : CompletionCreateParams | CompletionCreateParamsNonStreaming |
+        CompletionCreateParamsStreaming
+        Parameters supplied to the completion API. May include a fallback
+        ``authorization_context`` mapping under the same key.
+    secret_key : str | None
+        Optional secret used to decode a JWT provided in headers. If ``None``,
+        the handler may obtain the secret from the environment.
+    **kwargs : Any
+        Additional keyword arguments. Expected to include a ``headers`` key
+        containing incoming HTTP headers as ``dict[str, str]``.
+
+    Notes
+    -----
+    - The authorization context is stored using ``contextvars``, making it safe
+      for threaded and asynchronous request handling.
     """
     incoming_headers = kwargs.get("headers", {})
 
