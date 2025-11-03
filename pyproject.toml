@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.18"
+version = "0.1.19"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -17,6 +17,7 @@ dependencies = [
   "openai>=1.76.2",
   "pandas>=2.2.3",
   "ragas>=0.3.8",
+  "pyjwt>=2.10.1",
 ]
 
 [project.urls]
