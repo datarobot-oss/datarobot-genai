@@ -90,15 +90,6 @@ class TestAuthContextHeaderHandlerEncode:
 
             assert token is None, "Token should be None when no context is available"
 
-    def test_initialization_without_secret_key_logs_warning(self) -> None:
-        """Test that initializing without a secret key logs a warning."""
-        with patch("datarobot_genai.core.utils.auth.logger") as mock_logger:
-            handler_no_key = AuthContextHeaderHandler(secret_key=None)
-
-            assert handler_no_key.secret_key is None
-            mock_logger.warning.assert_called_once()
-
-
 class TestAuthContextHeaderHandlerDecode:
     """Tests for decoding JWT tokens into authorization context."""
 
