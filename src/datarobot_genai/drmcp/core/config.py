@@ -174,6 +174,14 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable predictive tools",
     )
+    session_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "SESSION_SECRET_KEY",
+            "SESSION_SECRET_KEY",
+        ),
+        description="Session secret key for the MCP server",
+    )
 
     @field_validator(
         "otel_attributes",

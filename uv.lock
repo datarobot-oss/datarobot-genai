@@ -946,6 +946,7 @@ dependencies = [
     { name = "datarobot-predict" },
     { name = "openai" },
     { name = "pandas" },
+    { name = "pyjwt" },
     { name = "ragas" },
     { name = "requests" },
 ]
@@ -1056,6 +1057,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1" },
     { name = "pydantic-ai", marker = "extra == 'pydanticai'", specifier = ">=1.0.5" },
     { name = "pydantic-settings", marker = "extra == 'drmcp'", specifier = ">=2.1.0" },
+    { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "pylance", marker = "extra == 'crewai'", specifier = "<=0.38.1" },
     { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0" },
