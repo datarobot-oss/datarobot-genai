@@ -13,7 +13,9 @@
 # limitations under the License.
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import jwt
 import pytest
@@ -34,23 +36,19 @@ def secret_key() -> str:
 def auth_context_data() -> dict[str, Any]:
     """Return sample authorization context data."""
     return {
-        "user": {
-            "id": "user123",
-            "name": "Test User",
-            "email": "test@example.com"
-        },
+        "user": {"id": "user123", "name": "Test User", "email": "test@example.com"},
         "identities": [
             {
                 "id": "identity123",
                 "type": "user",
                 "provider_type": "datarobot",
-                "provider_user_id": "user123"
+                "provider_user_id": "user123",
             }
         ],
         "metadata": {
             "endpoint": "https://app.datarobot.com",
             "account_id": "account456",
-        }
+        },
     }
 
 
@@ -208,9 +206,7 @@ class TestOAuthMiddleware:
     ) -> None:
         """Test that middleware correctly propagates the tool result from call_next."""
         headers = {"X-DataRobot-Authorization-Context": auth_token}
-        expected_result = ToolResult(
-            structured_content={"key": "value", "result": "Custom result"}
-        )
+        expected_result = ToolResult(structured_content={"key": "value", "result": "Custom result"})
 
         mock_next = AsyncMock(return_value=expected_result)
 
@@ -228,4 +224,3 @@ class TestOAuthMiddleware:
         assert middleware.auth_handler is not None
         assert middleware.auth_handler.secret_key == secret_key
         assert middleware.auth_handler.algorithm == "HS256"
-

@@ -15,12 +15,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from datarobot.auth.session import AuthCtx
 from datarobot.models.genai.agent.auth import OAuthAccessTokenProvider
 from datarobot.models.genai.agent.auth import ToolAuth
-from datarobot_genai.drmcp import get_config
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import CallNext
@@ -29,6 +28,7 @@ from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+from datarobot_genai.drmcp import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class OAuthMiddleWare(Middleware):
         Handler for encoding/decoding JWT tokens containing auth context.
     """
 
-    def __init__(self, secret_key: Optional[str] = None) -> None:
+    def __init__(self, secret_key: str | None = None) -> None:
         """Initialize the middleware with authentication handler.
 
         Parameters
@@ -80,7 +80,7 @@ class OAuthMiddleWare(Middleware):
 
         return await call_next(context)
 
-    def _extract_auth_context(self) -> Optional[AuthCtx]:
+    def _extract_auth_context(self) -> AuthCtx | None:
         """Extract and validate authentication context from request headers.
 
         Returns
@@ -92,18 +92,10 @@ class OAuthMiddleWare(Middleware):
             headers = get_http_headers()
             return self.auth_handler.get_context(headers)
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning(
-                "Failed to extract auth context from headers: %s",
-                exc,
-                exc_info=True
-            )
+            logger.warning("Failed to extract auth context from headers: %s", exc, exc_info=True)
             return None
         except Exception as exc:
-            logger.error(
-                "Unexpected error extracting auth context: %s",
-                exc,
-                exc_info=True
-            )
+            logger.error("Unexpected error extracting auth context: %s", exc, exc_info=True)
             return None
 
 

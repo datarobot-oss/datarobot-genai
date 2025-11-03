@@ -13,15 +13,16 @@
 # limitations under the License.
 
 """Authorization context helpers for chat flows."""
+
 import os
-from typing import Any, Dict
+from typing import Any
 
 from datarobot.models.genai.agent.auth import set_authorization_context
-from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from openai.types import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
 
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
 def _get_authorization_context_from_headers(
@@ -42,9 +43,7 @@ def _get_authorization_context_from_headers(
     dict[str, Any] | None
         The extracted authorization context, or None if not found.
     """
-    handler = AuthContextHeaderHandler(
-        secret_key=secret_key or os.getenv("SESSION_SECRET_KEY")
-    )
+    handler = AuthContextHeaderHandler(secret_key=secret_key or os.getenv("SESSION_SECRET_KEY"))
     if context := handler.get_context(headers):
         return context.model_dump()
     return None
@@ -89,10 +88,10 @@ def initialize_authorization_context(
     # with JWT endoding/decoding for additional security. The completion params
     # is used as a fallback for backward compatibility only and may be removed in
     # the future.
-    authorization_context: Dict[str, Any] = (
-            _get_authorization_context_from_headers(incoming_headers, secret_key)
-            or _get_authorization_context_from_params(completion_create_params)
-            or {}
+    authorization_context: dict[str, Any] = (
+        _get_authorization_context_from_headers(incoming_headers, secret_key)
+        or _get_authorization_context_from_params(completion_create_params)
+        or {}
     )
 
     # Note: authorization context internally uses contextvars, which are

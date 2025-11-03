@@ -103,7 +103,9 @@ def params_with_context(param_context: dict[str, Any]) -> dict[str, Any]:
     return cast(dict[str, Any], {"authorization_context": param_context})
 
 
-def test_initialize_authorization_context_sets_context_from_params(mock_set_auth_context: Any) -> None:
+def test_initialize_authorization_context_sets_context_from_params(
+    mock_set_auth_context: Any,
+) -> None:
     params = cast(dict[str, Any], {"authorization_context": {"foo": "bar"}})
 
     initialize_authorization_context(params)
@@ -136,8 +138,14 @@ def test_initialize_authorization_context_sets_context_from_headers(
     assert _ContextRecorder.value["user"]["email"] == auth_context_data["user"]["email"]
     assert len(_ContextRecorder.value["identities"]) == 1
     assert _ContextRecorder.value["identities"][0]["id"] == auth_context_data["identities"][0]["id"]
-    assert _ContextRecorder.value["identities"][0]["type"] == auth_context_data["identities"][0]["type"]
-    assert _ContextRecorder.value["identities"][0]["provider_type"] == auth_context_data["identities"][0]["provider_type"]
+    assert (
+        _ContextRecorder.value["identities"][0]["type"]
+        == auth_context_data["identities"][0]["type"]
+    )
+    assert (
+        _ContextRecorder.value["identities"][0]["provider_type"]
+        == auth_context_data["identities"][0]["provider_type"]
+    )
 
 
 def test_initialize_authorization_context_prefers_headers_over_params(
@@ -193,7 +201,8 @@ def test_initialize_authorization_context_handles_wrong_secret(
     token = jwt.encode(invalid_auth_context, "correct-secret", algorithm="HS256")
     headers = {"X-DataRobot-Authorization-Context": token}
 
-    initialize_authorization_context(params_with_context, secret_key="wrong-secret", headers=headers)
+    initialize_authorization_context(
+        params_with_context, secret_key="wrong-secret", headers=headers
+    )
 
     assert _ContextRecorder.value == param_context
-

@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import jwt
-
 from datarobot.auth.session import AuthCtx
-from datarobot.models.genai.agent.auth import get_authorization_context, set_authorization_context
+from datarobot.models.genai.agent.auth import get_authorization_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +32,11 @@ class AuthContextHeaderHandler:
     DEFAULT_ALGORITHM = "HS256"
 
     def __init__(
-            self,
-            secret_key: Optional[str] = None,
-            algorithm: str = DEFAULT_ALGORITHM,
-            validate_signature: bool = True,
-            token_expiration_seconds: Optional[int] = None
+        self,
+        secret_key: str | None = None,
+        algorithm: str = DEFAULT_ALGORITHM,
+        validate_signature: bool = True,
+        token_expiration_seconds: int | None = None,
     ) -> None:
         """Initialize the handler.
 
@@ -56,9 +55,7 @@ class AuthContextHeaderHandler:
             If algorithm is 'none' (insecure).
         """
         if algorithm is None:
-            raise ValueError(
-                "Algorithm None is not allowed. Use a secure algorithm like HS256."
-            )
+            raise ValueError("Algorithm None is not allowed. Use a secure algorithm like HS256.")
 
         if secret_key is None:
             logger.warning(
@@ -83,7 +80,7 @@ class AuthContextHeaderHandler:
 
         return {self.header: token}
 
-    def encode(self) -> Optional[str]:
+    def encode(self) -> str | None:
         """Encode the current authorization context into a JWT token."""
         auth_context = get_authorization_context()
         if not auth_context:
@@ -97,7 +94,7 @@ class AuthContextHeaderHandler:
             )
         return jwt.encode(auth_context, self.secret_key, algorithm=self.algorithm)
 
-    def decode(self, token: str) -> Optional[Dict[str, Any]]:
+    def decode(self, token: str) -> dict[str, Any] | None:
         """Decode a JWT token into the authorization context."""
         if not token:
             return None
@@ -105,10 +102,7 @@ class AuthContextHeaderHandler:
         try:
             options = {"verify_signature": self.validate_signature}
             decoded = jwt.decode(
-                jwt=token,
-                key=self.secret_key,
-                algorithms=[self.algorithm],
-                options=options
+                jwt=token, key=self.secret_key, algorithms=[self.algorithm], options=options
             )
         except jwt.ExpiredSignatureError:
             logger.info("JWT token has expired.")
@@ -123,7 +117,7 @@ class AuthContextHeaderHandler:
 
         return decoded
 
-    def get_context(self, headers: Dict[str, str]) -> Optional[AuthCtx]:
+    def get_context(self, headers: dict[str, str]) -> AuthCtx | None:
         """Extract and validate authorization context from headers.
 
         Parameters
@@ -148,9 +142,5 @@ class AuthContextHeaderHandler:
         try:
             return AuthCtx(**auth_ctx_dict)
         except Exception as e:
-            logger.error(
-                f"Failed to create AuthCtx from decoded token: {e}", exc_info=True
-            )
+            logger.error(f"Failed to create AuthCtx from decoded token: {e}", exc_info=True)
             return None
-
-

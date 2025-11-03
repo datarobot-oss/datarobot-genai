@@ -13,7 +13,6 @@
 # limitations under the License.
 import binascii
 import random
-from datetime import datetime, timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -28,23 +27,19 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 def auth_context() -> dict[str, Any]:
     """Return a sample authorization context that can be serialized/deserialized."""
     return {
-        "user": {
-            "id": "user123",
-            "name": "Test User",
-            "email": "test@example.com"
-        },
+        "user": {"id": "user123", "name": "Test User", "email": "test@example.com"},
         "identities": [
             {
                 "id": "identity123",
                 "type": "user",
                 "provider_type": "datarobot",
-                "provider_user_id": "user123"
+                "provider_user_id": "user123",
             }
         ],
         "metadata": {
             "endpoint": "https://app.datarobot.com",
             "account_id": "account456",
-        }
+        },
     }
 
 
@@ -80,7 +75,9 @@ class TestAuthContextHeaderHandlerEncode:
         self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
     ) -> None:
         """Test encoding a valid authorization context."""
-        with patch("datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context):
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context
+        ):
             token = handler.encode()
 
             assert isinstance(token, str), "Token should be a string"
@@ -157,12 +154,16 @@ class TestAuthContextHeaderHandlerGetHeader:
         self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
     ) -> None:
         """Test getting header when authorization context is available."""
-        with patch("datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context):
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context
+        ):
             headers = handler.get_header()
 
             assert isinstance(headers, dict), "Headers should be a dict"
             assert AuthContextHeaderHandler.HEADER_NAME in headers, "Header key should be present"
-            assert isinstance(headers[AuthContextHeaderHandler.HEADER_NAME], str), "Header value should be a string"
+            assert isinstance(headers[AuthContextHeaderHandler.HEADER_NAME], str), (
+                "Header value should be a string"
+            )
 
     def test_get_header_without_context(self, handler: AuthContextHeaderHandler) -> None:
         """Test getting header when no authorization context is available."""
@@ -189,7 +190,9 @@ class TestAuthContextHeaderHandlerGetContext:
         assert ctx.user.name == auth_context["user"]["name"]
         assert ctx.identities[0].id == auth_context["identities"][0]["id"]
 
-    def test_get_context_from_headers_without_token(self, handler: AuthContextHeaderHandler) -> None:
+    def test_get_context_from_headers_without_token(
+        self, handler: AuthContextHeaderHandler
+    ) -> None:
         """Test extracting context from headers without the auth token."""
         headers = {"Other-Header": "value"}
 
@@ -215,7 +218,9 @@ class TestAuthContextHeaderHandlerRoundtrip:
         self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
     ) -> None:
         """Test that encoding and then decoding returns the original context."""
-        with patch("datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context):
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context
+        ):
             token = handler.encode()
             decoded = handler.decode(token)
 
@@ -225,11 +230,12 @@ class TestAuthContextHeaderHandlerRoundtrip:
         self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
     ) -> None:
         """Test the complete workflow: get_header -> get_context."""
-        with patch("datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context):
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context
+        ):
             headers = handler.get_header()
             ctx = handler.get_context(headers)
 
             assert isinstance(ctx, AuthCtx), "Result should be an AuthCtx instance"
             assert ctx.user.id == auth_context["user"]["id"]
             assert ctx.identities[0].id == auth_context["identities"][0]["id"]
-

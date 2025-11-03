@@ -13,7 +13,9 @@
 # limitations under the License.
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import jwt
 import pytest
@@ -36,19 +38,17 @@ def auth_context_data() -> dict[str, Any]:
         "user": {
             "id": "integration_user_123",
             "name": "Integration Test User",
-            "email": "integration@test.example.com"
+            "email": "integration@test.example.com",
         },
         "identities": [
             {
                 "id": "1234567890",
                 "type": "user",
                 "provider_type": "github",
-                "provider_user_id": "integration_user_123"
+                "provider_user_id": "integration_user_123",
             }
         ],
-        "metadata": {
-            "session_id": "integration_session_789"
-        }
+        "metadata": {"session_id": "integration_session_789"},
     }
 
 
@@ -77,9 +77,7 @@ class TestOAuthMiddlewareIntegration:
     """
 
     async def test_middleware_full_flow_with_valid_auth(
-        self,
-        middleware_with_secret: OAuthMiddleWare,
-        auth_token: str
+        self, middleware_with_secret: OAuthMiddleWare, auth_token: str
     ) -> None:
         """Test complete middleware flow: headers -> JWT decode -> AuthCtx -> fastmcp_context.
 
@@ -90,7 +88,6 @@ class TestOAuthMiddlewareIntegration:
         4. AuthCtx is attached to fastmcp_context
         5. Middleware propagates the result correctly
         """
-
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
         # Create real MiddlewareContext (integration test)
@@ -116,11 +113,9 @@ class TestOAuthMiddlewareIntegration:
             assert result is expected_result
 
     async def test_middleware_flow_with_missing_auth(
-        self,
-        middleware_with_secret: OAuthMiddleWare
+        self, middleware_with_secret: OAuthMiddleWare
     ) -> None:
-        """Test that middleware gracefully handles missing authentication throughout the full flow."""
-
+        """Test that middleware gracefully handles missing auth throughout the full flow."""
         headers = {}  # No auth header
 
         mock_message = MagicMock()
@@ -141,11 +136,9 @@ class TestOAuthMiddlewareIntegration:
             assert result is expected_result
 
     async def test_middleware_flow_with_malformed_token(
-        self,
-        middleware_with_secret: OAuthMiddleWare
+        self, middleware_with_secret: OAuthMiddleWare
     ) -> None:
         """Test that middleware handles malformed tokens gracefully in the full flow."""
-
         headers = {"X-DataRobot-Authorization-Context": "this.is.not.a.valid.jwt.token"}
 
         mock_message = MagicMock()
@@ -162,4 +155,3 @@ class TestOAuthMiddlewareIntegration:
             assert mock_fastmcp_context.auth_context is None
             call_next.assert_awaited_once_with(context)
             assert result is expected_result
-
