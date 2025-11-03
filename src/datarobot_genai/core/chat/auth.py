@@ -13,20 +13,69 @@
 # limitations under the License.
 
 """Authorization context helpers for chat flows."""
-
-from typing import Any
-from typing import cast
+import os
+from typing import Any, Dict
 
 from datarobot.models.genai.agent.auth import set_authorization_context
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from openai.types import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
+
+
+
+def _get_authorization_context_from_headers(
+    headers: dict[str, str],
+    secret_key: str | None = None,
+) -> dict[str, Any] | None:
+    """Extract authorization context from headers using AuthContextHeaderHandler.
+
+    Parameters
+    ----------
+    headers : dict[str, str]
+        HTTP headers from which to extract the authorization context.
+    secret_key : str | None
+        Secret key for JWT decoding. If None, retrieves from environment variable.
+
+    Returns
+    -------
+    dict[str, Any] | None
+        The extracted authorization context, or None if not found.
+    """
+    handler = AuthContextHeaderHandler(
+        secret_key=secret_key or os.getenv("SESSION_SECRET_KEY")
+    )
+    if context := handler.get_context(headers):
+        return context.model_dump()
+    return None
+
+
+def _get_authorization_context_from_params(
+    completion_create_params: CompletionCreateParams
+    | CompletionCreateParamsNonStreaming
+    | CompletionCreateParamsStreaming,
+) -> dict[str, Any] | None:
+    """Extract authorization context from completion create parameters.
+
+    Parameters
+    ----------
+    completion_create_params : CompletionCreateParams
+        The parameters used to create the completion.
+
+    Returns
+    -------
+    dict[str, Any] | None
+        The extracted authorization context, or None if not found.
+    """
+    return completion_create_params.get("authorization_context", None)
 
 
 def initialize_authorization_context(
     completion_create_params: CompletionCreateParams
     | CompletionCreateParamsNonStreaming
     | CompletionCreateParamsStreaming,
+    secret_key: str | None = None,
+    **kwargs: Any,
 ) -> None:
     """Set the authorization context for the agent.
 
@@ -34,7 +83,18 @@ def initialize_authorization_context(
     agents and tools to retrieve access tokens to connect to external services. When set,
     authorization context will be automatically propagated when using ToolClient class.
     """
+    incoming_headers = kwargs.get("headers", {})
+
+    # Recommended way of propagating authorization context is via headers
+    # with JWT endoding/decoding for additional security. The completion params
+    # is used as a fallback for backward compatibility only and may be removed in
+    # the future.
+    authorization_context: Dict[str, Any] = (
+            _get_authorization_context_from_headers(incoming_headers, secret_key)
+            or _get_authorization_context_from_params(completion_create_params)
+            or {}
+    )
+
     # Note: authorization context internally uses contextvars, which are
     # thread-safe and async-safe.
-    authorization_context = completion_create_params.get("authorization_context", {})
-    set_authorization_context(cast(dict[str, Any], authorization_context))
+    set_authorization_context(authorization_context)
