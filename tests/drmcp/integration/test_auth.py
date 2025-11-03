@@ -40,7 +40,7 @@ def auth_context_data() -> dict[str, Any]:
         },
         "identities": [
             {
-                "id": "integration_identity_456",
+                "id": "1234567890",
                 "type": "user",
                 "provider_type": "github",
                 "provider_user_id": "integration_user_123"
@@ -109,7 +109,7 @@ class TestOAuthMiddlewareIntegration:
             assert mock_fastmcp_context.auth_context is not None, "Auth context should be attached"
             assert mock_fastmcp_context.auth_context.user.id == "integration_user_123"
             assert mock_fastmcp_context.auth_context.user.name == "Integration Test User"
-            assert mock_fastmcp_context.auth_context.identities[0].id == "integration_identity_456"
+            assert mock_fastmcp_context.auth_context.identities[0].id == "1234567890"
 
             # Verify middleware didn't break the chain
             call_next.assert_awaited_once_with(context)
