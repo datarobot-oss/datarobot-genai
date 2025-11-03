@@ -59,8 +59,9 @@ def test_handle_tool_usage_started_adds_tool_call_from_json_string() -> None:
 
     last = listener.messages[-1]
     assert last.type == "ai"
-    assert last.tool_calls and last.tool_calls[0].name == "t"
-    assert last.tool_calls[0].args == {"x": 1}
+    tool_calls = getattr(last, "tool_calls", [])
+    assert tool_calls and tool_calls[0].name == "t"
+    assert tool_calls[0].args == {"x": 1}
 
 
 def test_handle_tool_usage_started_adds_tool_call_from_dict() -> None:
@@ -71,8 +72,9 @@ def test_handle_tool_usage_started_adds_tool_call_from_dict() -> None:
     listener.handle_tool_usage_started(None, evt)  # type: ignore[arg-type]
 
     last = listener.messages[-1]
-    assert last.tool_calls and last.tool_calls[-1].name == "tool"
-    assert last.tool_calls[-1].args == {"a": 2}
+    tool_calls = getattr(last, "tool_calls", [])
+    assert tool_calls and tool_calls[-1].name == "tool"
+    assert tool_calls[-1].args == {"a": 2}
 
 
 def test_handle_tool_usage_finished_appends_tool_message() -> None:

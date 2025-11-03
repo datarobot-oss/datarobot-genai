@@ -22,10 +22,12 @@ conversion so templates can focus on defining agents and tasks.
 from __future__ import annotations
 
 import abc
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from crewai import Crew
 from openai.types.chat import CompletionCreateParams
+from ragas import MultiTurnSample
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 from ragas.messages import ToolMessage
@@ -35,19 +37,11 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_messages
 from .events import CrewAIEventListener
 from .mcp import mcp_tools_context
-
-# Try to import CrewAI's event bus across versions. If unavailable, skip registration.
-try:  # CrewAI >= 0.51
-    from crewai.events.event_bus import CrewAIEventsBus as _CrewAIEventsBus  # type: ignore
-except Exception:  # pragma: no cover - fallback for older CrewAI
-    try:
-        from crewai.utilities.events import CrewAIEventsBus as _CrewAIEventsBus  # type: ignore
-    except Exception:  # pragma: no cover - CrewAI not installed or API changed
-        _CrewAIEventsBus = None  # type: ignore[assignment]
 
 
 class CrewAIAgent(BaseAgent, abc.ABC):
@@ -61,13 +55,6 @@ class CrewAIAgent(BaseAgent, abc.ABC):
         super().__init__(*args, **kwargs)
         self.event_listener = CrewAIEventListener()
         self._mcp_tools: list[Any] = []
-        # Auto-register event listeners with CrewAI's event bus when available
-        if "_CrewAIEventsBus" in globals() and _CrewAIEventsBus is not None:
-            try:
-                self.event_listener.setup_listeners(_CrewAIEventsBus())
-            except Exception:
-                # Do not fail hard if CrewAI's event API or behavior changes
-                pass
 
     def set_mcp_tools(self, tools: list[Any]) -> None:
         self._mcp_tools = tools
@@ -128,5 +115,14 @@ class CrewAIAgent(BaseAgent, abc.ABC):
                 }
             else:
                 usage_metrics = default_usage_metrics()
+
+            if is_streaming(completion_create_params):
+
+                async def _gen() -> AsyncGenerator[
+                    tuple[str, MultiTurnSample | None, UsageMetrics]
+                ]:
+                    yield response_text, pipeline_interactions, usage_metrics
+
+                return _gen()
 
             return response_text, pipeline_interactions, usage_metrics

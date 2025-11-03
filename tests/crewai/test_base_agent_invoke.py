@@ -64,26 +64,13 @@ class MyAgent(CrewAIAgent):
 
 @pytest.mark.asyncio
 async def test_invoke_appends_final_message_and_collects_usage(monkeypatch: Any) -> None:
-    # Arrange: patch event bus presence so setup_listeners path is executed
-
-    class FakeBus:  # noqa: D401 - simple placeholder
-        pass
-
-    called = {"setup": 0}
-
-    def fake_setup(self: Any, _bus: Any) -> None:
-        called["setup"] += 1
-
-    monkeypatch.setattr(base_mod, "_CrewAIEventsBus", FakeBus, raising=True)
-    monkeypatch.setattr(base_mod.CrewAIEventListener, "setup_listeners", fake_setup, raising=True)
-
     class _Holder:
-        events: list[object]
+        events: list[Any]
 
     holder = _Holder()
     holder.events = []
 
-    def fake_create_pipeline_interactions(messages: list[object]) -> str:
+    def fake_create_pipeline_interactions(messages: list[Any]) -> str:
         holder.events = messages
         return "pipeline"
 
@@ -117,11 +104,10 @@ async def test_invoke_appends_final_message_and_collects_usage(monkeypatch: Any)
     )
 
     # Assert
-    assert called["setup"] == 1  # setup_listeners was called
     assert resp_text == "agent result"
     assert pipeline_interactions == "pipeline"
     # events include the final AI message
-    assert holder.events and holder.events[-1].content == "agent result"
+    assert holder.events and getattr(holder.events[-1], "content", None) == "agent result"
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
 
 
@@ -129,16 +115,15 @@ async def test_invoke_appends_final_message_and_collects_usage(monkeypatch: Any)
 async def test_invoke_when_no_events(monkeypatch: Any) -> None:
     # Arrange
 
-    # Ensure no event bus to take the "skip registration" branch
-    monkeypatch.setattr(base_mod, "_CrewAIEventsBus", None, raising=True)
+    # No event bus path is default; ensure no registration is attempted.
 
     class _Holder:
-        events: list[object]
+        events: list[Any]
 
     holder = _Holder()
     holder.events = []
 
-    def fake_create_pipeline_interactions(messages: list[object]) -> None:
+    def fake_create_pipeline_interactions(messages: list[Any]) -> None:
         holder.events = messages
 
     monkeypatch.setattr(

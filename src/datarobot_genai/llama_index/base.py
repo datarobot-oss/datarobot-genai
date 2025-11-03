@@ -23,15 +23,18 @@ and response extraction logic.
 from __future__ import annotations
 
 import abc
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from openai.types.chat import CompletionCreateParams
+from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_events
 
@@ -72,4 +75,11 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
         pipeline_interactions = create_pipeline_interactions_from_events(events)
 
         usage_metrics: UsageMetrics = default_usage_metrics()
+        if is_streaming(completion_create_params):
+
+            async def _gen() -> AsyncGenerator[tuple[str, MultiTurnSample | None, UsageMetrics]]:
+                yield response_text, pipeline_interactions, usage_metrics
+
+            return _gen()
+
         return response_text, pipeline_interactions, usage_metrics
