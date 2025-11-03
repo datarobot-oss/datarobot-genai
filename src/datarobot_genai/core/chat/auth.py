@@ -43,7 +43,7 @@ def _get_authorization_context_from_headers(
     dict[str, Any] | None
         The extracted authorization context, or None if not found.
     """
-    handler = AuthContextHeaderHandler(secret_key=secret_key or os.getenv("SESSION_SECRET_KEY"))
+    handler = AuthContextHeaderHandler()
     if context := handler.get_context(headers):
         return context.model_dump()
     return None
