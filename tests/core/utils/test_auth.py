@@ -90,6 +90,7 @@ class TestAuthContextHeaderHandlerEncode:
 
             assert token is None, "Token should be None when no context is available"
 
+
 class TestAuthContextHeaderHandlerDecode:
     """Tests for decoding JWT tokens into authorization context."""
 

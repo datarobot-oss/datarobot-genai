@@ -14,7 +14,6 @@
 
 """Authorization context helpers for chat flows."""
 
-import os
 from typing import Any
 
 from datarobot.models.genai.agent.auth import set_authorization_context
