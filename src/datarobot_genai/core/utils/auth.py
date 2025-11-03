@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 from typing import Any
 
 import jwt
@@ -57,13 +58,7 @@ class AuthContextHeaderHandler:
         if algorithm is None:
             raise ValueError("Algorithm None is not allowed. Use a secure algorithm like HS256.")
 
-        if secret_key is None:
-            logger.warning(
-                "No secret key provided. JWT tokens will be unsigned. "
-                "This is insecure and should only be used for testing."
-            )
-
-        self.secret_key = secret_key
+        self.secret_key = secret_key or os.getenv("SESSION_SECRET_KEY")
         self.algorithm = algorithm
         self.validate_signature = validate_signature
 
@@ -88,10 +83,10 @@ class AuthContextHeaderHandler:
 
         if self.secret_key is None:
             logger.warning(
-                "No secret key provided for AuthContextHeaderHandler; JWT will be unsigned. "
-                "This is insecure and should only be used for testing or controlled "
-                "non-production scenarios."
+                "No secret key provided. JWT tokens will be unsigned. "
+                "This is insecure and should only be used for testing."
             )
+
         return jwt.encode(auth_context, self.secret_key, algorithm=self.algorithm)
 
     def decode(self, token: str) -> dict[str, Any] | None:
@@ -99,10 +94,19 @@ class AuthContextHeaderHandler:
         if not token:
             return None
 
+        if self.secret_key is None and self.validate_signature:
+            logger.error(
+                "No secret key provided. Cannot validate signature. "
+                "Provide a secret key or set validate_signature to False."
+            )
+            return None
+
         try:
-            options = {"verify_signature": self.validate_signature}
             decoded = jwt.decode(
-                jwt=token, key=self.secret_key, algorithms=[self.algorithm], options=options
+                jwt=token,
+                key=self.secret_key,
+                algorithms=[self.algorithm],
+                options={"verify_signature": self.validate_signature},
             )
         except jwt.ExpiredSignatureError:
             logger.info("JWT token has expired.")
