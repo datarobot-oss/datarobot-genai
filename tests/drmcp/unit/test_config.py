@@ -19,7 +19,6 @@ import pytest
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
-from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
 
 
@@ -30,7 +29,8 @@ def test_config_defaults() -> None:
         # Clear the cached config instance to ensure we get a fresh one
         config_module._config = None
 
-        config = get_config()
+        # Create a new config instance without loading from .env file
+        config = MCPServerConfig(_env_file=None)
 
         # Dynamic tools registration should be disabled by default
         # as it can cause startup delays and is not always desired.

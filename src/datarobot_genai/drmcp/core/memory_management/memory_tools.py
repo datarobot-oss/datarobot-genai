@@ -16,8 +16,9 @@ import json
 from typing import Any
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
-from datarobot_genai.drmcp.core.memory_management import ToolContext
-from datarobot_genai.drmcp.core.memory_management import get_memory_manager
+
+from .manager import ToolContext
+from .manager import get_memory_manager
 
 
 @dr_core_mcp_tool()

@@ -32,8 +32,8 @@ from mcp.types import ToolAnnotations
 from .config import MCPServerConfig
 from .config import get_config
 from .logging import log_execution
-from .memory_management import MemoryManager
-from .memory_management import get_memory_manager
+from .memory_management.manager import MemoryManager
+from .memory_management.manager import get_memory_manager
 from .telemetry import trace_execution
 from .tool_filter import filter_tools_by_tags
 from .tool_filter import list_all_tags

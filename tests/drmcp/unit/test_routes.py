@@ -20,7 +20,7 @@ from unittest.mock import patch
 import pytest
 from botocore.exceptions import ClientError
 
-from datarobot_genai.drmcp.core.memory_management import MemoryStorage
+from datarobot_genai.drmcp.core.memory_management.manager import MemoryStorage
 from datarobot_genai.drmcp.core.routes import register_routes
 
 
