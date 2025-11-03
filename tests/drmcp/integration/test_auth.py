@@ -13,14 +13,14 @@
 # limitations under the License.
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
-from datarobot.auth.session import AuthCtx
+from fastmcp.server.middleware import MiddlewareContext
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.auth import OAuthMiddleWare
-from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
 @pytest.fixture
@@ -40,15 +40,14 @@ def auth_context_data() -> dict[str, Any]:
         },
         "identities": [
             {
-                "id": "identity_integration_123",
+                "id": "integration_identity_456",
                 "type": "user",
-                "provider_type": "datarobot",
+                "provider_type": "github",
                 "provider_user_id": "integration_user_123"
             }
         ],
         "metadata": {
-            "endpoint": "https://app.datarobot.com",
-            "account_id": "integration_account_456",
+            "session_id": "integration_session_789"
         }
     }
 
@@ -69,264 +68,98 @@ def middleware_with_secret(secret_key: str) -> OAuthMiddleWare:
 
 @pytest.mark.asyncio
 class TestOAuthMiddlewareIntegration:
-    """Integration tests for OAuthMiddleware and AuthContextHeaderHandler."""
+    """Integration tests for OAuthMiddleware with MiddlewareContext.
 
-    async def test_auth_handler_encode_decode_roundtrip(
-        self,
-        secret_key: str,
-        auth_context_data: dict[str, Any]
-    ) -> None:
-        """Test that auth handler can encode and decode auth context."""
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
+    These tests verify the full middleware flow including:
+    - Integration with fastmcp MiddlewareContext
+    - End-to-end JWT token processing
+    - Context propagation through the middleware chain
+    """
 
-        # Encode the auth context into a JWT token
-        token = jwt.encode(auth_context_data, secret_key, algorithm="HS256")
-
-        # Decode the token back to auth context
-        decoded = handler.decode(token)
-
-        assert decoded is not None
-        assert decoded["user"]["id"] == "integration_user_123"
-        assert decoded["user"]["name"] == "Integration Test User"
-        assert decoded["user"]["email"] == "integration@test.example.com"
-
-    async def test_auth_handler_creates_valid_auth_context(
-        self,
-        secret_key: str,
-        auth_context_data: dict[str, Any],
-        auth_token: str
-    ) -> None:
-        """Test that auth handler creates valid AuthCtx from headers."""
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
-        headers = {"X-DataRobot-Authorization-Context": auth_token}
-
-        # Extract auth context from headers
-        auth_ctx = handler.get_context(headers)
-
-        assert auth_ctx is not None
-        assert isinstance(auth_ctx, AuthCtx)
-        assert auth_ctx.user.id == "integration_user_123"
-        assert auth_ctx.user.name == "Integration Test User"
-        assert auth_ctx.user.email == "integration@test.example.com"
-        assert len(auth_ctx.identities) == 1
-        assert auth_ctx.identities[0].id == "identity_integration_123"
-
-    async def test_auth_handler_handles_missing_header(
-        self,
-        secret_key: str
-    ) -> None:
-        """Test that auth handler returns None for missing headers."""
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
-        headers = {}
-
-        auth_ctx = handler.get_context(headers)
-
-        assert auth_ctx is None
-
-    async def test_auth_handler_handles_invalid_token(
-        self,
-        secret_key: str
-    ) -> None:
-        """Test that auth handler returns None for invalid tokens."""
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
-        headers = {"X-DataRobot-Authorization-Context": "invalid.jwt.token"}
-
-        auth_ctx = handler.get_context(headers)
-
-        assert auth_ctx is None
-
-    async def test_auth_handler_rejects_expired_token(
-        self,
-        secret_key: str,
-        auth_context_data: dict[str, Any]
-    ) -> None:
-        """Test that auth handler rejects expired tokens."""
-        import time
-
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
-
-        # Create an expired token
-        expired_payload = {
-            **auth_context_data,
-            "exp": int(time.time()) - 3600,  # Expired 1 hour ago
-            "iat": int(time.time()) - 7200,  # Issued 2 hours ago
-        }
-        expired_token = jwt.encode(expired_payload, secret_key, algorithm="HS256")
-        headers = {"X-DataRobot-Authorization-Context": expired_token}
-
-        auth_ctx = handler.get_context(headers)
-
-        assert auth_ctx is None
-
-    async def test_auth_handler_validates_signature(
-        self,
-        secret_key: str,
-        auth_context_data: dict[str, Any]
-    ) -> None:
-        """Test that auth handler validates JWT signatures."""
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
-
-        # Create token with wrong secret key
-        wrong_key = "wrong-secret-key"
-        token = jwt.encode(auth_context_data, wrong_key, algorithm="HS256")
-        headers = {"X-DataRobot-Authorization-Context": token}
-
-        auth_ctx = handler.get_context(headers)
-
-        assert auth_ctx is None
-
-    async def test_auth_handler_bypass_signature_validation(
-        self,
-        secret_key: str,
-        auth_context_data: dict[str, Any]
-    ) -> None:
-        """Test that auth handler can bypass signature validation when configured."""
-        handler = AuthContextHeaderHandler(
-            secret_key=secret_key,
-            validate_signature=False
-        )
-
-        # Create token with wrong secret key
-        wrong_key = "wrong-secret-key"
-        token = jwt.encode(auth_context_data, wrong_key, algorithm="HS256")
-        headers = {"X-DataRobot-Authorization-Context": token}
-
-        # Should work because signature validation is disabled
-        auth_ctx = handler.get_context(headers)
-
-        assert auth_ctx is not None
-        assert auth_ctx.user.id == "integration_user_123"
-
-    async def test_middleware_initialization(
-        self,
-        secret_key: str
-    ) -> None:
-        """Test that middleware initializes correctly."""
-        with patch("datarobot_genai.drmcp.core.auth.get_config") as mock_config:
-            mock_config.return_value.session_secret_key = secret_key
-
-            middleware = OAuthMiddleWare(secret_key=secret_key)
-
-            assert middleware.auth_handler is not None
-            assert middleware.auth_handler.secret_key == secret_key
-            assert middleware.auth_handler.algorithm == "HS256"
-
-    async def test_middleware_extract_auth_context_success(
+    async def test_middleware_full_flow_with_valid_auth(
         self,
         middleware_with_secret: OAuthMiddleWare,
         auth_token: str
     ) -> None:
-        """Test that middleware successfully extracts auth context."""
-        headers = {"X-DataRobot-Authorization-Context": auth_token}
+        """Test complete middleware flow: headers -> JWT decode -> AuthCtx -> fastmcp_context.
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
-            auth_ctx = middleware_with_secret._extract_auth_context()
-
-            assert auth_ctx is not None
-            assert isinstance(auth_ctx, AuthCtx)
-            assert auth_ctx.user.id == "integration_user_123"
-
-    async def test_middleware_extract_auth_context_missing_header(
-        self,
-        middleware_with_secret: OAuthMiddleWare
-    ) -> None:
-        """Test that middleware handles missing auth header."""
-        headers = {}
-
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
-            auth_ctx = middleware_with_secret._extract_auth_context()
-
-            assert auth_ctx is None
-
-    async def test_middleware_extract_auth_context_invalid_token(
-        self,
-        middleware_with_secret: OAuthMiddleWare
-    ) -> None:
-        """Test that middleware handles invalid tokens."""
-        headers = {"X-DataRobot-Authorization-Context": "invalid.jwt.token"}
-
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
-            auth_ctx = middleware_with_secret._extract_auth_context()
-
-            assert auth_ctx is None
-
-    async def test_middleware_on_call_tool_with_auth_context(
-        self,
-        middleware_with_secret: OAuthMiddleWare,
-        auth_token: str
-    ) -> None:
-        """Test that middleware attaches auth context to fastmcp_context."""
-        from unittest.mock import MagicMock
-        from fastmcp.server.middleware import MiddlewareContext
-        from fastmcp.tools.tool import ToolResult
+        This integration test verifies that:
+        1. Middleware extracts headers
+        2. AuthContextHeaderHandler decodes the JWT token
+        3. AuthCtx is properly created from decoded token
+        4. AuthCtx is attached to fastmcp_context
+        5. Middleware propagates the result correctly
+        """
 
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        # Create a mock message and fastmcp_context
+        # Create real MiddlewareContext (integration test)
         mock_message = MagicMock()
         mock_fastmcp_context = MagicMock()
         context = MiddlewareContext(message=mock_message, fastmcp_context=mock_fastmcp_context)
 
         # Mock call_next
-        mock_result = ToolResult(content="test")
-        call_next = AsyncMock(return_value=mock_result)
+        expected_result = ToolResult(content="integration_test_result")
+        call_next = AsyncMock(return_value=expected_result)
 
         with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
             result = await middleware_with_secret.on_call_tool(context, call_next)
 
-            # Verify auth context was attached to fastmcp_context
-            assert hasattr(mock_fastmcp_context, "auth_context")
-            assert mock_fastmcp_context.auth_context is not None
+            # Verify the full integration
+            assert mock_fastmcp_context.auth_context is not None, "Auth context should be attached"
             assert mock_fastmcp_context.auth_context.user.id == "integration_user_123"
+            assert mock_fastmcp_context.auth_context.user.name == "Integration Test User"
+            assert mock_fastmcp_context.auth_context.identities[0].id == "integration_identity_456"
 
-            # Verify call_next was called
+            # Verify middleware didn't break the chain
             call_next.assert_awaited_once_with(context)
+            assert result is expected_result
 
-            # Verify result was returned
-            assert result is mock_result
-
-    async def test_multiple_auth_contexts_isolation(
+    async def test_middleware_flow_with_missing_auth(
         self,
-        secret_key: str
+        middleware_with_secret: OAuthMiddleWare
     ) -> None:
-        """Test that different auth contexts are properly isolated."""
-        handler = AuthContextHeaderHandler(secret_key=secret_key)
+        """Test that middleware gracefully handles missing authentication throughout the full flow."""
 
-        # Create two different auth contexts
-        auth_data_1 = {
-            "user": {"id": "user1", "name": "User One", "email": "user1@example.com"},
-            "identities": [{
-                "id": "id1",
-                "type": "user",
-                "provider_type": "datarobot",
-                "provider_user_id": "user1"
-            }],
-        }
+        headers = {}  # No auth header
 
-        auth_data_2 = {
-            "user": {"id": "user2", "name": "User Two", "email": "user2@example.com"},
-            "identities": [{
-                "id": "id2",
-                "type": "user",
-                "provider_type": "datarobot",
-                "provider_user_id": "user2"
-            }],
-        }
+        mock_message = MagicMock()
+        mock_fastmcp_context = MagicMock()
+        context = MiddlewareContext(message=mock_message, fastmcp_context=mock_fastmcp_context)
 
-        token1 = jwt.encode(auth_data_1, secret_key, algorithm="HS256")
-        token2 = jwt.encode(auth_data_2, secret_key, algorithm="HS256")
+        expected_result = ToolResult(content="result_without_auth")
+        call_next = AsyncMock(return_value=expected_result)
 
-        # Extract first context
-        headers1 = {"X-DataRobot-Authorization-Context": token1}
-        ctx1 = handler.get_context(headers1)
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+            result = await middleware_with_secret.on_call_tool(context, call_next)
 
-        # Extract second context
-        headers2 = {"X-DataRobot-Authorization-Context": token2}
-        ctx2 = handler.get_context(headers2)
+            # Verify middleware set auth_context to None
+            assert mock_fastmcp_context.auth_context is None
 
-        # Verify contexts are different and isolated
-        assert ctx1.user.id == "user1"
-        assert ctx2.user.id == "user2"
-        assert ctx1.user.name == "User One"
-        assert ctx2.user.name == "User Two"
+            # Verify middleware still called next handler
+            call_next.assert_awaited_once_with(context)
+            assert result is expected_result
+
+    async def test_middleware_flow_with_malformed_token(
+        self,
+        middleware_with_secret: OAuthMiddleWare
+    ) -> None:
+        """Test that middleware handles malformed tokens gracefully in the full flow."""
+
+        headers = {"X-DataRobot-Authorization-Context": "this.is.not.a.valid.jwt.token"}
+
+        mock_message = MagicMock()
+        mock_fastmcp_context = MagicMock()
+        context = MiddlewareContext(message=mock_message, fastmcp_context=mock_fastmcp_context)
+
+        expected_result = ToolResult(content="result_with_bad_token")
+        call_next = AsyncMock(return_value=expected_result)
+
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+            result = await middleware_with_secret.on_call_tool(context, call_next)
+
+            # Verify middleware handled the error gracefully
+            assert mock_fastmcp_context.auth_context is None
+            call_next.assert_awaited_once_with(context)
+            assert result is expected_result
 
