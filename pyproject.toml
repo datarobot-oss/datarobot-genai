@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.22"
+version = "0.1.24"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -17,10 +17,15 @@ dependencies = [
   "openai>=1.76.2",
   "pandas>=2.2.3",
   "ragas>=0.3.8",
+  "pyjwt>=2.10.1",
 ]
 
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
+
+[project.entry-points.'nat.plugins']
+datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
+datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 
 [project.optional-dependencies]
 crewai = [
@@ -38,7 +43,7 @@ llamaindex = [
   "llama-index>=0.13.6,<0.14.0",
   "llama-index-core>=0.13.6,<0.14.0",
   "llama-index-llms-langchain>=0.6.1",
-  "llama-index-llms-litellm>=0.4.1",
+  "llama-index-llms-litellm>=0.4.1",  # Sync nat dependency if possible too
   "llama-index-llms-openai>=0.3.38",
   "opentelemetry-instrumentation-llamaindex>=0.40.5",
   "pypdf>=6.0.0",
@@ -48,6 +53,7 @@ nat = [
   "nvidia-nat-opentelemetry==1.3.0; python_version >= '3.11'",
   "nvidia-nat-crewai==1.3.0; python_version >= '3.11'",
   "nvidia-nat-langchain==1.3.0; python_version >= '3.11'",
+  "llama-index-llms-litellm>=0.4.1",  # Need this to support datarobot-llm plugin
 ]
 pydanticai = [
   "logfire>=4.6.0",
