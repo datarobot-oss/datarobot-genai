@@ -23,11 +23,19 @@ This package provides:
 """
 
 from .base import BaseAgent
+from .base import InvokeReturn
+from .base import UsageMetrics
+from .base import default_usage_metrics
 from .base import extract_user_prompt_content
+from .base import is_streaming
 from .base import make_system_prompt
 
 __all__ = [
     "BaseAgent",
     "make_system_prompt",
     "extract_user_prompt_content",
+    "default_usage_metrics",
+    "is_streaming",
+    "InvokeReturn",
+    "UsageMetrics",
 ]

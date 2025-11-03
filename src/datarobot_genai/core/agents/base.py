@@ -18,7 +18,7 @@ import os
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
 from typing import Any
-from typing import Union
+from typing import TypedDict
 from typing import cast
 
 from openai.types.chat import CompletionCreateParams
@@ -65,12 +65,7 @@ class BaseAgent(abc.ABC):
         return get_api_base(self.api_base, deployment_id)
 
     @abc.abstractmethod
-    async def invoke(
-        self, completion_create_params: CompletionCreateParams
-    ) -> Union[  # noqa: UP007
-        AsyncGenerator[tuple[str, Any | None, dict[str, int]], None],
-        tuple[str, Any | None, dict[str, int]],
-    ]:
+    async def invoke(self, completion_create_params: CompletionCreateParams) -> "InvokeReturn":
         raise NotImplementedError("Not implemented")
 
     @classmethod
@@ -129,3 +124,39 @@ def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:
     if suffix:
         return head + "\n" + suffix
     return head
+
+
+# Structured type for token usage metrics in responses
+class UsageMetrics(TypedDict):
+    completion_tokens: int
+    prompt_tokens: int
+    total_tokens: int
+
+
+# Canonical return type for DRUM-compatible invoke implementations
+InvokeReturn = (
+    AsyncGenerator[tuple[str, MultiTurnSample | None, UsageMetrics], None]
+    | tuple[str, MultiTurnSample | None, UsageMetrics]
+)
+
+
+def default_usage_metrics() -> UsageMetrics:
+    """Return a metrics dict with required keys for OpenAI-compatible responses."""
+    return {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+    }
+
+
+def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str, Any]) -> bool:
+    """Return True when the request asks for streaming, False otherwise.
+
+    Accepts both pydantic types and plain dictionaries.
+    """
+    params = cast(Mapping[str, Any], completion_create_params)
+    value = params.get("stream", False)
+    # Handle non-bool truthy values defensively (e.g., "true")
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return bool(value)

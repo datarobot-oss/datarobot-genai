@@ -1,0 +1,97 @@
+---
+name: Release
+on:
+  push:
+    branches: ["main"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    name: "Create Release"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: "actions/checkout@v5"
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get version from pyproject.toml
+        id: get-version
+        run: |
+          # Debug: Check if pyproject.toml exists
+          if [ ! -f "pyproject.toml" ]; then
+            echo "❌ ERROR: pyproject.toml not found in current directory"
+            ls -la
+            exit 1
+          fi
+          
+          # Extract version from pyproject.toml
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/' | tr -d '\r')
+          TAG_VERSION="v$VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag-version=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "Project version: $VERSION"
+          echo "Tag version: $TAG_VERSION"
+      - name: Check if release exists
+        id: check-release
+        run: |
+          TAG_VERSION="${{ steps.get-version.outputs.tag-version }}"
+          
+          # Check if tag exists
+          if git rev-parse "$TAG_VERSION" >/dev/null 2>&1; then
+            echo "Tag $TAG_VERSION already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "skip-reason=Tag already exists" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if release exists via GitHub API
+          RELEASE_CHECK=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_VERSION" \
+            | jq -r '.tag_name // empty')
+          
+          if [ -n "$RELEASE_CHECK" ]; then
+            echo "Release $TAG_VERSION already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "skip-reason=Release already exists" >> $GITHUB_OUTPUT
+          else
+            echo "Release $TAG_VERSION does not exist, proceeding with creation"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Skip release creation
+        if: steps.check-release.outputs.exists == 'true'
+        run: |
+          echo "⏭️ Skipping release creation: ${{ steps.check-release.outputs.skip-reason }}"
+          echo "Version ${{ steps.get-version.outputs.tag-version }} already exists"
+      - name: Create Release
+        if: steps.check-release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get-version.outputs.tag-version }}
+          name: "${{ steps.get-version.outputs.tag-version }}"
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+      - name: Trigger PyPI Publish
+        if: steps.check-release.outputs.exists == 'false'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              const result = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'publish-pypi.yml',
+                ref: '${{ steps.get-version.outputs.tag-version }}'
+              });
+              console.log('✅ Successfully triggered PyPI publish workflow');
+            } catch (error) {
+              console.log('ℹ️ PyPI workflow will auto-trigger from tag creation');
+              console.log('Error details:', error.message);
+            }
