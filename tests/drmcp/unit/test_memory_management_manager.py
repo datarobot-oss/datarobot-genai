@@ -20,23 +20,23 @@ import pytest
 from botocore.exceptions import BotoCoreError
 from botocore.exceptions import ClientError
 
-from datarobot_genai.drmcp.core.memory_management import ActiveStorageMapping
-from datarobot_genai.drmcp.core.memory_management import MemoryManager
-from datarobot_genai.drmcp.core.memory_management import MemoryResource
-from datarobot_genai.drmcp.core.memory_management import MemoryStorage
-from datarobot_genai.drmcp.core.memory_management import S3Config
-from datarobot_genai.drmcp.core.memory_management import S3ConfigError
-from datarobot_genai.drmcp.core.memory_management import S3StorageError
-from datarobot_genai.drmcp.core.memory_management import ToolContext
-from datarobot_genai.drmcp.core.memory_management import get_memory_manager
-from datarobot_genai.drmcp.core.memory_management import initialize_s3
+from datarobot_genai.drmcp.core.memory_management.manager import ActiveStorageMapping
+from datarobot_genai.drmcp.core.memory_management.manager import MemoryManager
+from datarobot_genai.drmcp.core.memory_management.manager import MemoryResource
+from datarobot_genai.drmcp.core.memory_management.manager import MemoryStorage
+from datarobot_genai.drmcp.core.memory_management.manager import S3Config
+from datarobot_genai.drmcp.core.memory_management.manager import S3ConfigError
+from datarobot_genai.drmcp.core.memory_management.manager import S3StorageError
+from datarobot_genai.drmcp.core.memory_management.manager import ToolContext
+from datarobot_genai.drmcp.core.memory_management.manager import get_memory_manager
+from datarobot_genai.drmcp.core.memory_management.manager import initialize_s3
 
 
 class TestS3Config:
     """Test cases for S3Config class."""
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_success(self, mock_boto3_client, mock_get_credentials):
         """Test successful S3Config initialization."""
         mock_credentials = Mock()
@@ -68,8 +68,8 @@ class TestS3Config:
         mock_s3_client.get_object.assert_called_once()
         mock_s3_client.delete_object.assert_called_once()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_with_credentials_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -79,8 +79,8 @@ class TestS3Config:
         with pytest.raises(Exception, match="Credentials error"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_with_boto_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -103,7 +103,7 @@ class TestS3Config:
 class TestInitializeS3:
     """Test cases for initialize_s3 function."""
 
-    @patch("datarobot_genai.drmcp.core.memory_management.S3Config")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.S3Config")
     def test_initialize_s3_success(self, mock_s3_config_class):
         """Test successful S3 initialization."""
         mock_config = Mock()
@@ -115,7 +115,7 @@ class TestInitializeS3:
         assert result == mock_config
         mock_s3_config_class.assert_called_once()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.S3Config")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.S3Config")
     def test_initialize_s3_with_error(self, mock_s3_config_class):
         """Test S3 initialization with error."""
         mock_s3_config_class.side_effect = S3ConfigError("Config error")
@@ -205,7 +205,7 @@ class TestActiveStorageMapping:
 class TestGetMemoryManager:
     """Test cases for get_memory_manager function."""
 
-    @patch("datarobot_genai.drmcp.core.memory_management.MemoryManager")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.MemoryManager")
     def test_get_memory_manager_initialized(self, mock_memory_manager_class):
         """Test get_memory_manager when MemoryManager is initialized."""
         mock_instance = Mock()
@@ -216,7 +216,7 @@ class TestGetMemoryManager:
 
         assert result == mock_instance
 
-    @patch("datarobot_genai.drmcp.core.memory_management.MemoryManager")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.MemoryManager")
     def test_get_memory_manager_not_initialized(self, mock_memory_manager_class):
         """Test get_memory_manager when MemoryManager is not initialized."""
         mock_memory_manager_class.is_initialized.return_value = False
@@ -234,7 +234,7 @@ class TestMemoryManager:
         MemoryManager._instance = None
         MemoryManager._initialized = False
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_singleton(self, mock_initialize_s3):
         """Test MemoryManager singleton pattern."""
         mock_config = Mock()
@@ -246,7 +246,7 @@ class TestMemoryManager:
         assert manager1 is manager2
         assert MemoryManager._instance is manager1
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_get_instance(self, mock_initialize_s3):
         """Test MemoryManager.get_instance method."""
         mock_config = Mock()
@@ -257,7 +257,7 @@ class TestMemoryManager:
         assert isinstance(manager, MemoryManager)
         assert MemoryManager._instance is manager
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_is_initialized(self, mock_initialize_s3):
         """Test MemoryManager.is_initialized method."""
         mock_config = Mock()
@@ -269,7 +269,7 @@ class TestMemoryManager:
 
         assert MemoryManager.is_initialized() is True
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_initialization(self, mock_initialize_s3):
         """Test MemoryManager initialization."""
         mock_config = Mock()
@@ -396,8 +396,8 @@ class TestMemoryManager:
 class TestMemoryManagementErrorScenarios:
     """Test cases for memory management error scenarios."""
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_bucket_not_found(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -420,8 +420,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Bucket nonexistent-bucket does not exist"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_access_denied(self, mock_boto3_client, mock_get_credentials):
         """Test S3Config initialization when access is denied."""
         mock_credentials = Mock()
@@ -442,8 +442,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Access denied to bucket restricted-bucket"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_general_error(self, mock_boto3_client, mock_get_credentials):
         """Test S3Config initialization with general error."""
         mock_credentials = Mock()
@@ -464,8 +464,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Error accessing bucket test-bucket"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_put_object_permission_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -489,8 +489,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Access denied: Missing PutObject permissions"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_list_objects_permission_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -515,8 +515,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Access denied: Missing ListObjectsV2 permissions"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_head_object_permission_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -542,8 +542,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Access denied: Missing HeadObject permissions"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_get_object_permission_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -570,8 +570,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Access denied: Missing GetObject permissions"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_delete_object_permission_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -599,8 +599,8 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Access denied: Missing DeleteObject permissions"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_general_operation_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -626,8 +626,8 @@ class TestMemoryManagementErrorScenarios:
         ):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.get_credentials")
-    @patch("datarobot_genai.drmcp.core.memory_management.boto3.client")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.get_credentials")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.boto3.client")
     def test_s3_config_initialization_boto_core_error(
         self, mock_boto3_client, mock_get_credentials
     ):
@@ -646,7 +646,7 @@ class TestMemoryManagementErrorScenarios:
         with pytest.raises(S3ConfigError, match="Error initializing S3 client"):
             S3Config()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.S3Config")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.S3Config")
     def test_initialize_s3_success(self, mock_s3_config_class):
         """Test successful S3 initialization."""
         mock_s3_config = Mock()
@@ -657,7 +657,7 @@ class TestMemoryManagementErrorScenarios:
         assert result == mock_s3_config
         mock_s3_config_class.assert_called_once()
 
-    @patch("datarobot_genai.drmcp.core.memory_management.S3Config")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.S3Config")
     def test_initialize_s3_error(self, mock_s3_config_class):
         """Test S3 initialization with error."""
         mock_s3_config_class.side_effect = S3ConfigError("S3 initialization failed")
@@ -721,7 +721,7 @@ class TestMemoryManagementErrorScenarios:
         assert context.name == "test_tool"
         assert context.parameters == {"param1": "value1"}
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_get_memory_manager_success(self, mock_initialize_s3):
         """Test successful memory manager initialization."""
         mock_s3_config = Mock()
@@ -748,7 +748,7 @@ class TestMemoryManagementErrorScenarios:
 
         assert manager is None
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_generate_memory_storage_id(self, mock_initialize_s3):
         """Test MemoryManager _generate_memory_storage_id method."""
         mock_s3_config = Mock()
@@ -760,7 +760,7 @@ class TestMemoryManagementErrorScenarios:
         assert isinstance(storage_id, str)
         assert len(storage_id) > 0
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_get_resource_data_s3_key(self, mock_initialize_s3):
         """Test MemoryManager get_resource_data_s3_key method."""
         mock_s3_config = Mock()
@@ -774,7 +774,7 @@ class TestMemoryManagementErrorScenarios:
         assert "storage123" in key
         assert "resource123" in key
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_get_resource_metadata_s3_key(self, mock_initialize_s3):
         """Test MemoryManager get_resource_metadata_s3_key method."""
         mock_s3_config = Mock()
@@ -788,7 +788,7 @@ class TestMemoryManagementErrorScenarios:
         assert "storage123" in key
         assert "resource123" in key
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_get_storage_metadata_s3_key(self, mock_initialize_s3):
         """Test MemoryManager _get_storage_metadata_s3_key method."""
         mock_s3_config = Mock()
@@ -801,7 +801,7 @@ class TestMemoryManagementErrorScenarios:
         assert "agent123" in key
         assert "storage123" in key
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_get_agent_identifier_s3_key(self, mock_initialize_s3):
         """Test MemoryManager _get_agent_identifier_s3_key method."""
         mock_s3_config = Mock()
@@ -813,7 +813,7 @@ class TestMemoryManagementErrorScenarios:
         assert isinstance(key, str)
         assert "agent123" in key
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_get_active_storage_mapping_key(self, mock_initialize_s3):
         """Test MemoryManager _get_active_storage_mapping_key method."""
         mock_s3_config = Mock()
@@ -825,7 +825,7 @@ class TestMemoryManagementErrorScenarios:
         assert isinstance(key, str)
         assert "agent123" in key
 
-    @patch("datarobot_genai.drmcp.core.memory_management.initialize_s3")
+    @patch("datarobot_genai.drmcp.core.memory_management.manager.initialize_s3")
     def test_memory_manager_handle_s3_error(self, mock_initialize_s3):
         """Test MemoryManager handle_s3_error method."""
         mock_s3_config = Mock()

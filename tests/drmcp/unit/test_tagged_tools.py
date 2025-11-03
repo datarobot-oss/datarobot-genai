@@ -24,6 +24,9 @@ import pytest
 from datarobot_genai.drmcp.core.dr_mcp_server import DataRobotMCPServer
 from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
+from datarobot_genai.drmcp.core.mcp_server_tools import get_all_available_tags
+from datarobot_genai.drmcp.core.mcp_server_tools import get_tool_info_by_name
+from datarobot_genai.drmcp.core.mcp_server_tools import list_tools_by_tags
 from datarobot_genai.drmcp.core.telemetry import _set_otel_attributes
 from datarobot_genai.drmcp.core.telemetry import get_trace_id
 from datarobot_genai.drmcp.core.telemetry import initialize_telemetry
@@ -31,9 +34,6 @@ from datarobot_genai.drmcp.core.tool_filter import filter_tools_by_tags
 from datarobot_genai.drmcp.core.tool_filter import get_tool_tags
 from datarobot_genai.drmcp.core.tool_filter import get_tools_by_tag
 from datarobot_genai.drmcp.core.tool_filter import list_all_tags
-from datarobot_genai.drmcp.tools.core.mcp_server_tools import get_all_available_tags
-from datarobot_genai.drmcp.tools.core.mcp_server_tools import get_tool_info_by_name
-from datarobot_genai.drmcp.tools.core.mcp_server_tools import list_tools_by_tags
 
 
 @pytest.mark.asyncio
@@ -281,9 +281,7 @@ async def test_list_all_tags_tool() -> None:
 def test_get_all_available_tags_tool() -> None:
     """Test the get_all_available_tags MCP tool."""
     # Mock the mcp.get_all_tags method
-    with patch(
-        "datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp.get_all_tags"
-    ) as mock_get_tags:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp.get_all_tags") as mock_get_tags:
         # Test with tags
         mock_get_tags.return_value = ["tag1", "tag2", "tag3"]
         result = asyncio.run(get_all_available_tags())
@@ -406,7 +404,7 @@ def test_telemetry_initialization() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_no_tags() -> None:
     """Test list_tools_by_tags with no tags specified."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tools
         mock_tool1 = Mock()
         mock_tool1.name = "test_tool_1"
@@ -434,7 +432,7 @@ async def test_list_tools_by_tags_no_tags() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_with_tags_or() -> None:
     """Test list_tools_by_tags with tags using OR logic."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tools
         mock_tool1 = Mock()
         mock_tool1.name = "data_tool"
@@ -460,7 +458,7 @@ async def test_list_tools_by_tags_with_tags_or() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_with_tags_and() -> None:
     """Test list_tools_by_tags with tags using AND logic."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tools
         mock_tool1 = Mock()
         mock_tool1.name = "data_model_tool"
@@ -486,7 +484,7 @@ async def test_list_tools_by_tags_with_tags_and() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_no_matches() -> None:
     """Test list_tools_by_tags when no tools match the criteria."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         mock_mcp.list_tools = AsyncMock(return_value=[])
 
         result = await list_tools_by_tags(tags=["nonexistent"])
@@ -497,7 +495,7 @@ async def test_list_tools_by_tags_no_matches() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_no_annotations() -> None:
     """Test list_tools_by_tags with tools that have no annotations."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tool without annotations
         mock_tool = Mock()
         mock_tool.name = "no_tags_tool"
@@ -515,7 +513,7 @@ async def test_list_tools_by_tags_no_annotations() -> None:
 @pytest.mark.asyncio
 async def test_get_tool_info_by_name_found() -> None:
     """Test get_tool_info_by_name when tool is found."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tool with full information
         mock_tool = Mock()
         mock_tool.name = "test_tool"
@@ -546,7 +544,7 @@ async def test_get_tool_info_by_name_found() -> None:
 @pytest.mark.asyncio
 async def test_get_tool_info_by_name_not_found() -> None:
     """Test get_tool_info_by_name when tool is not found."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         mock_mcp.list_tools = AsyncMock(return_value=[])
 
         result = await get_tool_info_by_name("nonexistent_tool")
@@ -557,7 +555,7 @@ async def test_get_tool_info_by_name_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_tool_info_by_name_no_tags() -> None:
     """Test get_tool_info_by_name with tool that has no tags."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tool without tags
         mock_tool = Mock()
         mock_tool.name = "no_tags_tool"
@@ -579,7 +577,7 @@ async def test_get_tool_info_by_name_no_tags() -> None:
 @pytest.mark.asyncio
 async def test_get_tool_info_by_name_no_annotations() -> None:
     """Test get_tool_info_by_name with tool that has no annotations."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tool without annotations
         mock_tool = Mock()
         mock_tool.name = "no_annotations_tool"
@@ -599,7 +597,7 @@ async def test_get_tool_info_by_name_no_annotations() -> None:
 @pytest.mark.asyncio
 async def test_get_tool_info_by_name_no_extra() -> None:
     """Test get_tool_info_by_name with tool that has annotations but no extra."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tool with annotations but no extra
         mock_tool = Mock()
         mock_tool.name = "no_extra_tool"
@@ -620,7 +618,7 @@ async def test_get_tool_info_by_name_no_extra() -> None:
 @pytest.mark.asyncio
 async def test_get_tool_info_by_name_no_schema_properties() -> None:
     """Test get_tool_info_by_name with tool that has schema but no properties."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Mock tool with schema but no properties
         mock_tool = Mock()
         mock_tool.name = "no_schema_props_tool"
@@ -644,7 +642,7 @@ async def test_get_tool_info_by_name_no_schema_properties() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_empty_result() -> None:
     """Test list_tools_by_tags when no tools are returned."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         mock_mcp.list_tools = AsyncMock(return_value=[])
 
         result = await list_tools_by_tags()
@@ -655,7 +653,7 @@ async def test_list_tools_by_tags_empty_result() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_by_tags_complex_scenario() -> None:
     """Test list_tools_by_tags with a complex scenario involving multiple tools."""
-    with patch("datarobot_genai.drmcp.tools.core.mcp_server_tools.mcp") as mock_mcp:
+    with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
         # Create multiple mock tools with different tag combinations
         tools = []
 

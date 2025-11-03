@@ -28,7 +28,7 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel
 from pydantic import Field
 
-from .credentials import get_credentials
+from datarobot_genai.drmcp.core.credentials import get_credentials
 
 logger = logging.getLogger(__name__)
 

@@ -14,8 +14,8 @@
 
 import logging
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
-from datarobot_genai.drmcp.core.mcp_instance import mcp
+from .mcp_instance import dr_core_mcp_tool
+from .mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
