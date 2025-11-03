@@ -2,6 +2,11 @@
 # https://taskfile.dev
 version: '3'
 
+dotenv: [".env"]
+
+env:
+  PARENT_ENV: true
+
 tasks:
   install:
     desc: "🔧 Install dependencies (all extras)"
@@ -280,7 +285,7 @@ tasks:
     cmds:
       - rm -rf .coverage .coverage.xml htmlcov
       - echo "Running DR MCP Library unit tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/unit/drmcp/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/unit/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml
         --cov-report=html --cov-report=term-missing -s -vv
     silent: true
   
@@ -288,7 +293,7 @@ tasks:
     desc: "Run DR MCP Library integration tests"
     cmds:
       - echo "Running DR MCP Library integration tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/integration/drmcp/{{end}} -s -vv
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
     silent: true
   
   drmcp-acceptance:
@@ -306,6 +311,6 @@ tasks:
           docker stop jaeger || true
       # Run tests
       - echo "Running DR MCP Library acceptance tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/acceptance/drmcp/{{end}} -s -vv
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
     silent: true
 

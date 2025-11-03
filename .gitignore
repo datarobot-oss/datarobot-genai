@@ -76,8 +76,5 @@ dist/
 .mypy_cache/
 .cache/
 
-# Responses
-tests/acceptance/drmcp/.ete_responses/
-
 # Test environment
 .venv-ci-test
