@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.25"
+version = "0.1.26"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -33,7 +33,6 @@ crewai = [
   "crewai-tools>=0.69.0",
   "opentelemetry-instrumentation-crewai>=0.40.5",
   "pybase64>=1.4.2",
-  "pylance<=0.38.1",
 ]
 langgraph = [
   "langgraph>=0.4.10",
