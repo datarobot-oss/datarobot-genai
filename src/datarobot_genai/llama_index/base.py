@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import abc
 from collections.abc import AsyncGenerator
+from collections.abc import Awaitable
 from typing import Any
+from typing import cast
 
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
@@ -68,8 +70,21 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
         async for event in handler.stream_events():
             events.append(event)
 
-        # Extract state from workflow context
-        state = await handler.ctx.get("state")  # type: ignore[attr-defined]
+        # Extract state from workflow context (supports sync/async get or attribute)
+        state = None
+        try:
+            ctx = getattr(handler, "ctx", None)
+            get = getattr(ctx, "get", None)
+            if callable(get):
+                maybe_state = get("state")
+                if isinstance(maybe_state, Awaitable):
+                    state = await cast(Awaitable[Any], maybe_state)
+                else:
+                    state = maybe_state
+            elif hasattr(ctx, "state"):
+                state = getattr(ctx, "state")
+        except Exception:
+            state = None
         response_text = self.extract_response_text(state, events)
 
         pipeline_interactions = create_pipeline_interactions_from_events(events)

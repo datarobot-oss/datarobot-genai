@@ -28,9 +28,6 @@ from typing import Any
 from crewai import Crew
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
-from ragas.messages import ToolMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -40,7 +37,6 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_messages
-from .events import CrewAIEventListener
 from .mcp import mcp_tools_context
 
 
@@ -53,7 +49,6 @@ class CrewAIAgent(BaseAgent, abc.ABC):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.event_listener = CrewAIEventListener()
         self._mcp_tools: list[Any] = []
 
     def set_mcp_tools(self, tools: list[Any]) -> None:
@@ -77,6 +72,13 @@ class CrewAIAgent(BaseAgent, abc.ABC):
         """
         return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose)
 
+    def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+        """Build the inputs dict for ``Crew.kickoff``.
+
+        Subclasses may override to customize the schema/keys.
+        """
+        return {"topic": str(user_prompt_content)}
+
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(completion_create_params)
@@ -87,22 +89,12 @@ class CrewAIAgent(BaseAgent, abc.ABC):
             self.set_mcp_tools(mcp_tools)
 
             crew = self.build_crewai_workflow()
-            crew_output = crew.kickoff(inputs={"topic": user_prompt_content})
+            crew_output = crew.kickoff(inputs=self.make_kickoff_inputs(user_prompt_content))
 
             response_text = str(crew_output.raw)
 
-            # Create a list of events from the event listener
-            events: list[HumanMessage | AIMessage | ToolMessage] = list(
-                self.event_listener.messages
-            )
-            if len(events) > 0:
-                last_message = events[-1].content
-                if last_message != response_text:
-                    events.append(AIMessage(content=response_text))
-
-            pipeline_interactions = create_pipeline_interactions_from_messages(
-                events if len(events) > 0 else []
-            )
+            # No event listener: no collected messages by default
+            pipeline_interactions = create_pipeline_interactions_from_messages([])
 
             # Collect usage metrics if available
             usage_metrics: UsageMetrics

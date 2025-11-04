@@ -17,7 +17,6 @@ from typing import cast
 
 import pytest
 from ragas import MultiTurnSample
-from ragas.messages import HumanMessage
 
 import datarobot_genai.crewai.base as base_mod
 from datarobot_genai.core.agents.base import UsageMetrics
@@ -63,16 +62,10 @@ class MyAgent(CrewAIAgent):
 
 
 @pytest.mark.asyncio
-async def test_invoke_appends_final_message_and_collects_usage(monkeypatch: Any) -> None:
-    class _Holder:
-        events: list[Any]
-
-    holder = _Holder()
-    holder.events = []
-
-    def fake_create_pipeline_interactions(messages: list[Any]) -> str:
-        holder.events = messages
-        return "pipeline"
+async def test_invoke_collects_usage_without_events(monkeypatch: Any) -> None:
+    def fake_create_pipeline_interactions(messages: list[Any]) -> None:  # noqa: ANN401
+        # No events should be passed when listener is not used
+        assert messages == []
 
     monkeypatch.setattr(
         base_mod,
@@ -93,9 +86,6 @@ async def test_invoke_appends_final_message_and_collects_usage(monkeypatch: Any)
     out = DummyOutput("agent result", token_usage=DummyTokens(1, 2, 3))
 
     agent = MyAgent(out, api_base="https://x/", api_key="k", verbose=True)
-    # Seed prior events to trigger append of final AIMessage
-    agent.event_listener.messages = []  # type: ignore[attr-defined]
-    agent.event_listener.messages.append(HumanMessage(content="hi"))  # type: ignore[attr-defined]
 
     # Act
     resp = await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
@@ -105,9 +95,7 @@ async def test_invoke_appends_final_message_and_collects_usage(monkeypatch: Any)
 
     # Assert
     assert resp_text == "agent result"
-    assert pipeline_interactions == "pipeline"
-    # events include the final AI message
-    assert holder.events and getattr(holder.events[-1], "content", None) == "agent result"
+    assert pipeline_interactions is None
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
 
 
@@ -144,8 +132,7 @@ async def test_invoke_when_no_events(monkeypatch: Any) -> None:
 
     out = DummyOutput("ok", token_usage=None)
     agent = MyAgent(out, api_base="https://x/", api_key=None, verbose=False)
-    # Force empty events list to hit the else: events = None path
-    agent.event_listener.messages = []  # type: ignore[attr-defined]
+    # No event listener used; pipeline interactions should be None
 
     # Act
     resp = await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
