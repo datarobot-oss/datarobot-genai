@@ -12,27 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ruff: noqa: E402
 import os
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-try:
-    from datarobot_genai.nat.agent import NatAgent
-
-    has_nat = True
-except ImportError:
-    has_nat = False
-
-
-# Skip the entire module if the Python version is 3.10
-pytestmark = pytest.mark.skipif(
-    sys.version_info.major == 3 and sys.version_info.minor == 10 and not has_nat,
-    reason="NAT is not available for Python 3.10",
-)
+from datarobot_genai.nat.agent import NatAgent
 
 
 @pytest.fixture
