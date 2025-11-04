@@ -28,7 +28,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from crewai import Crew
-from crewai.utilities.events import CrewAIEventsBus
+from crewai.events.event_bus import CrewAIEventsBus
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
