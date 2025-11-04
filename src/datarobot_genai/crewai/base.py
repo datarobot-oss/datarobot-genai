@@ -28,6 +28,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from crewai import Crew
+from crewai.utilities.events import CrewAIEventsBus
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -40,14 +41,6 @@ from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_messages
 from .mcp import mcp_tools_context
-
-try:  # CrewAI 0.196+
-    from crewai.events.event_bus import CrewAIEventsBus  # type: ignore
-except Exception:  # Fallback for older CrewAI
-    try:
-        from crewai.utilities.events import CrewAIEventsBus  # type: ignore
-    except Exception:  # pragma: no cover - if events bus is not available
-        CrewAIEventsBus = None  # type: ignore
 
 
 class CrewAIAgent(BaseAgent, abc.ABC):
