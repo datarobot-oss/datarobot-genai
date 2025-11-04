@@ -13,7 +13,6 @@
 # limitations under the License.
 import abc
 import logging
-from pathlib import Path
 from typing import Any
 
 from nat.runtime.loader import load_workflow
@@ -28,6 +27,27 @@ logger = logging.getLogger(__name__)
 
 
 class NatAgent(BaseAgent, abc.ABC):
+    def __init__(
+        self,
+        *,
+        workflow_path: StrPath,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        model: str | None = None,
+        verbose: bool | str | None = True,
+        timeout: int | None = 90,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            model=model,
+            verbose=verbose,
+            timeout=timeout,
+            **kwargs,
+        )
+        self.workflow_path = workflow_path
+
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the agent with the provided completion parameters.
 
@@ -58,11 +78,8 @@ class NatAgent(BaseAgent, abc.ABC):
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", user_prompt_content, flush=True)
 
-        # Get the config file path
-        config_file = Path(__file__).parent / "workflow.yaml"
-
         # Create and invoke the NAT (Nemo Agent Toolkit) Agentic Workflow with the inputs
-        result = await self.run_nat_workflow(config_file, user_prompt_content)
+        result = await self.run_nat_workflow(self.workflow_path, user_prompt_content)
 
         # Create a list of events from the event listener
         events: list[Any]
@@ -73,18 +90,18 @@ class NatAgent(BaseAgent, abc.ABC):
 
         return result, pipeline_interactions, usage_metrics
 
-    async def run_nat_workflow(self, config_file: StrPath, input_str: str) -> str:
+    async def run_nat_workflow(self, workflow_path: StrPath, input_str: str) -> str:
         """Run the NAT workflow with the provided config file and input string.
 
         Args:
-            config_file: Path to the NAT workflow configuration file
+            workflow_path: Path to the NAT workflow configuration file
             input_str: Input string to process through the workflow
 
         Returns
         -------
             str: The result from the NAT workflow
         """
-        async with load_workflow(config_file) as workflow:
+        async with load_workflow(workflow_path) as workflow:
             async with workflow.run(input_str) as runner:
                 runner_outputs = await runner.result(to_type=str)
 
