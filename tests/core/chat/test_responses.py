@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
-from collections.abc import Generator
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from datarobot_genai.core.chat.responses import CustomModelChatResponse
 from datarobot_genai.core.chat.responses import CustomModelStreamingResponse
@@ -46,9 +47,15 @@ def test_to_custom_model_streaming_response_sequence() -> None:
             type("X", (), {"model_dump_json": lambda self: "{}"})(),
             {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         )
-    event_loop = asyncio.get_event_loop()
-    response_generator = to_custom_model_streaming_response(event_loop, gen(), model="m")
-    chunks = list(response_generator)
+
+    with ThreadPoolExecutor(1) as thread_pool_executor:
+        event_loop = asyncio.new_event_loop()
+        thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
+
+        response_generator = to_custom_model_streaming_response(
+            thread_pool_executor, event_loop, gen(), model="m"
+        )
+        chunks = list(response_generator)
     assert isinstance(chunks[0], CustomModelStreamingResponse)
     assert chunks[0].choices[0].delta.content == "Hello "
     assert chunks[0].choices[0].finish_reason is None

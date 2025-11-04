@@ -20,6 +20,7 @@ import uuid
 from asyncio import AbstractEventLoop
 from collections.abc import AsyncGenerator
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
@@ -29,6 +30,8 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from ragas import MultiTurnSample
+
+from datarobot_genai.core.agents import default_usage_metrics
 
 
 class CustomModelChatResponse(ChatCompletion):
@@ -77,6 +80,7 @@ def to_custom_model_chat_response(
 
 
 def to_custom_model_streaming_response(
+    thread_pool_executor: ThreadPoolExecutor,
     event_loop: AbstractEventLoop,
     streaming_response_generator: AsyncGenerator[
         tuple[str, MultiTurnSample | None, dict[str, int]], None
@@ -95,11 +99,7 @@ def to_custom_model_streaming_response(
     else:
         model = str(model)
 
-    required_usage_metrics: dict[str, int] = {
-        "completion_tokens": 0,
-        "prompt_tokens": 0,
-        "total_tokens": 0,
-    }
+    required_usage_metrics = default_usage_metrics()
     try:
         agent_response = aiter(streaming_response_generator)
         while True:
@@ -108,7 +108,9 @@ def to_custom_model_streaming_response(
                     response_text,
                     pipeline_interactions,
                     usage_metrics,
-                ) = event_loop.run_until_complete(anext(agent_response))
+                ) = thread_pool_executor.submit(
+                    event_loop.run_until_complete, anext(agent_response)
+                ).result()
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
