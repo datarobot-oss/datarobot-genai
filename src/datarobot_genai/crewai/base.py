@@ -15,8 +15,10 @@
 """
 Base class for CrewAI-based agents.
 
-Centralizes MCP tool management, event capture, and pipeline interaction
-conversion so templates can focus on defining agents and tasks.
+Manages MCP tool lifecycle and standardizes kickoff flow.
+
+Note: This base does not capture pipeline interactions; it returns None by
+default. Subclasses may implement message capture if they need interactions.
 """
 
 from __future__ import annotations

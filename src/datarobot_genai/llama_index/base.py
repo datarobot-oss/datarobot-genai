@@ -23,10 +23,9 @@ and response extraction logic.
 from __future__ import annotations
 
 import abc
+import inspect
 from collections.abc import AsyncGenerator
-from collections.abc import Awaitable
 from typing import Any
-from typing import cast
 
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
@@ -72,18 +71,16 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
 
         # Extract state from workflow context (supports sync/async get or attribute)
         state = None
+        ctx = getattr(handler, "ctx", None)
         try:
-            ctx = getattr(handler, "ctx", None)
-            get = getattr(ctx, "get", None)
-            if callable(get):
-                maybe_state = get("state")
-                if isinstance(maybe_state, Awaitable):
-                    state = await cast(Awaitable[Any], maybe_state)
-                else:
-                    state = maybe_state
-            elif hasattr(ctx, "state"):
-                state = getattr(ctx, "state")
-        except Exception:
+            if ctx is not None:
+                get = getattr(ctx, "get", None)
+                if callable(get):
+                    result = get("state")
+                    state = await result if inspect.isawaitable(result) else result
+                elif hasattr(ctx, "state"):
+                    state = getattr(ctx, "state")
+        except (AttributeError, TypeError):
             state = None
         response_text = self.extract_response_text(state, events)
 
