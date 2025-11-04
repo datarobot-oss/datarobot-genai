@@ -6,11 +6,12 @@ Public API:
 - create_pipeline_interactions_from_messages: Convert messages to MultiTurnSample.
 """
 
+from datarobot_genai.core.agents.base_mcp import MCPConfig
+
 from .agent import build_llm
 from .agent import create_pipeline_interactions_from_messages
 from .base import CrewAIAgent
 from .mcp import mcp_tools_context
-from datarobot_genai.core.agents.base_mcp import MCPConfig
 
 __all__ = [
     "mcp_tools_context",

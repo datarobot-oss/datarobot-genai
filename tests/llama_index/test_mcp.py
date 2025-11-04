@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import os
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -286,4 +285,3 @@ class TestLoadMCPTools:
             expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert call_args[1]["url"] == expected_url
             assert call_args[1]["headers"]["Authorization"] == f"Bearer {custom_api_key}"
-

@@ -15,6 +15,7 @@
 from collections.abc import AsyncGenerator
 from typing import Any
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -101,8 +102,6 @@ async def test_llama_index_base_invoke(monkeypatch: Any) -> None:
 @pytest.mark.asyncio
 async def test_llama_index_base_invoke_with_mcp_tools(monkeypatch: Any) -> None:
     """Test that MCP tools are loaded and available via mcp_tools property."""
-    from unittest.mock import MagicMock
-
     mock_tools = [MagicMock(), MagicMock()]
 
     async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401

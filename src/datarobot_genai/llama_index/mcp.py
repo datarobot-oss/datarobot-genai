@@ -73,4 +73,3 @@ async def load_mcp_tools(
             flush=True,
         )
         return []
-
