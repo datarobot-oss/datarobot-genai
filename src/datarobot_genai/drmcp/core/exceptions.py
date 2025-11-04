@@ -17,5 +17,9 @@ class DynamicToolRegistrationError(Exception):
     """Exception raised for errors in the dynamic tool registration process."""
 
 
+class DynamicPromptRegistrationError(Exception):
+    """Exception raised for errors in the dynamic prompt registration process."""
+
+
 class MCPError(Exception):
     """Base class for MCP errors."""

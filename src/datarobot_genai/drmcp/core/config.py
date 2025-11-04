@@ -158,6 +158,16 @@ class MCPServerConfig(BaseSettings):
         " - 'error': will raise an error and prevent registration. "
         " - 'ignore': will skip registration of the new tool.",
     )
+    mcp_server_register_dynamic_prompts_on_startup: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP",
+            "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP",
+        ),
+        description="Register dynamic prompts on startup. When enabled, the MCP server will "
+        "automatically register all prompts from DataRobot Prompt Management "
+        "as MCP prompts during startup.",
+    )
     enable_memory_management: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -204,6 +214,7 @@ class MCPServerConfig(BaseSettings):
         "tool_registration_allow_empty_schema",
         "mcp_server_register_dynamic_tools_on_startup",
         "tool_registration_duplicate_behavior",
+        "mcp_server_register_dynamic_prompts_on_startup",
         "enable_predictive_tools",
         mode="before",
     )

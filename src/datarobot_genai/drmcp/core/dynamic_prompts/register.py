@@ -1,0 +1,108 @@
+# Copyright 2025 DataRobot, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import logging
+from collections.abc import Callable
+from inspect import Parameter
+from inspect import Signature
+
+import datarobot as dr
+from fastmcp.prompts.prompt import FunctionPrompt
+
+from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
+from datarobot_genai.drmcp.core.mcp_instance import register_prompt
+
+logger = logging.getLogger(__name__)
+
+
+async def register_prompts_from_datarobot_prompt_management() -> None:
+    """Register prompts from DataRobot Prompt Management."""
+    prompts = dr.genai.PromptTemplate.list()
+    logger.info(f"Found {len(prompts)} prompts in Prompts Management.")
+
+    # Try to register each prompt, continue on failure
+    for prompt in prompts:
+        try:
+            await register_prompt_from_datarobot_prompt_management(prompt)
+        except DynamicPromptRegistrationError:
+            pass
+
+
+async def register_prompt_from_datarobot_prompt_management(
+    prompt: dr.genai.PromptTemplate,
+) -> FunctionPrompt:
+    """Register a single prompt.
+
+    Args:
+        prompt: The prompt within DataRobot Prompt Management.
+
+    Raises
+    ------
+        DynamicPromptRegistrationError: If registration fails at any step.
+
+    Returns
+    -------
+        The registered Prompt instance.
+    """
+    latest_version = prompt.get_latest_version()
+    logger.info(
+        f"Found prompt: id: {prompt.id}, "
+        f"name: {prompt.name}, "
+        f"latest version id: {latest_version.id}, "
+        f"version: {latest_version.version}."
+    )
+
+    prompt_fn = make_prompt_function(
+        name=prompt.name,
+        description=prompt.description,
+        prompt_text=latest_version.prompt_text,
+        variables=[v.name for v in latest_version.variables],
+    )
+
+    try:
+        # Register using generic external tool registration with the config
+        return await register_prompt(
+            fn=prompt_fn,
+            name=prompt.name,
+            title=prompt.name,
+            description=prompt.description,
+            tags=None,
+        )
+
+    except Exception as exc:
+        logger.error(f"Skipping prompt {prompt.id}. Registration failed: {exc}")
+        raise DynamicPromptRegistrationError(
+            "Registration failed. Could not create prompt."
+        ) from exc
+
+
+def make_prompt_function(
+    name: str, description: str, prompt_text: str, variables: list[str]
+) -> Callable:
+    params = [Parameter(v, Parameter.POSITIONAL_OR_KEYWORD) for v in variables]
+
+    async def template_function(**kwargs) -> str:  # type: ignore
+        # Render the prompt text with provided variables
+        prompt_text_correct = prompt_text.replace("{{", "{").replace("}}", "}")
+        try:
+            return prompt_text_correct.format(**kwargs)
+        except KeyError as e:
+            # TODO: Should we raise here? Or just some log?
+            raise ValueError(f"Missing variable {e.args[0]} for prompt '{name}'")
+
+    # Apply metadata
+    template_function.__name__ = name
+    template_function.__doc__ = description
+    template_function.__signature__ = Signature(params)  # type: ignore
+
+    return template_function
