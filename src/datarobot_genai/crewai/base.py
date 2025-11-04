@@ -28,6 +28,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from crewai import Crew
+from crewai.events.event_bus import CrewAIEventsBus
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -38,6 +39,7 @@ from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import is_streaming
 
+from .agent import create_pipeline_interactions_from_messages
 from .mcp import mcp_tools_context
 
 
@@ -101,13 +103,31 @@ class CrewAIAgent(BaseAgent, abc.ABC):
             # Set MCP tools for all agents if MCP is not configured this is effectively a no-op
             self.set_mcp_tools(mcp_tools)
 
+            # If an event listener is provided by the subclass/template, register it
+            if hasattr(self, "event_listener") and CrewAIEventsBus is not None:
+                try:
+                    listener = getattr(self, "event_listener")
+                    setup_fn = getattr(listener, "setup_listeners", None)
+                    if callable(setup_fn):
+                        setup_fn(CrewAIEventsBus)
+                except Exception:
+                    # Listener is optional best-effort; proceed without failing invoke
+                    pass
+
             crew = self.build_crewai_workflow()
             crew_output = crew.kickoff(inputs=self.make_kickoff_inputs(user_prompt_content))
 
             response_text = str(crew_output.raw)
 
-            # No event listener: no collected messages by default
+            # Build pipeline interactions if an event listener collected messages
             pipeline_interactions = None
+            if hasattr(self, "event_listener"):
+                try:
+                    listener = getattr(self, "event_listener", None)
+                    messages = getattr(listener, "messages", None) if listener is not None else None
+                    pipeline_interactions = create_pipeline_interactions_from_messages(messages)
+                except Exception:
+                    pipeline_interactions = None
 
             # Collect usage metrics if available
             usage_metrics: UsageMetrics
