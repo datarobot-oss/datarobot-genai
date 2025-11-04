@@ -1,5 +1,22 @@
+# Copyright 2025 DataRobot, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import json
 import os
 from typing import Any
+
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
 class MCPConfig:
@@ -8,6 +25,8 @@ class MCPConfig:
     def __init__(self, api_base: str | None = None, api_key: str | None = None) -> None:
         """Initialize MCP configuration from environment variables and runtime parameters."""
         self.external_mcp_url = os.environ.get("EXTERNAL_MCP_URL")
+        self.external_mcp_headers = os.environ.get("EXTERNAL_MCP_HEADERS")
+        self.external_mcp_transport = os.environ.get("EXTERNAL_MCP_TRANSPORT", "streamable-http")
         self.mcp_deployment_id = os.environ.get("MCP_DEPLOYMENT_ID")
         self.api_base = api_base or os.environ.get(
             "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
@@ -38,7 +57,14 @@ class MCPConfig:
         """
         if self.external_mcp_url:
             # External MCP URL - no authentication needed
-            return {"url": self.external_mcp_url, "transport": "streamable-http"}
+            if self.external_mcp_headers:
+                headers = json.loads(self.external_mcp_headers)
+            else:
+                headers = {}
+            return {
+                "url": self.external_mcp_url,
+                "headers": headers,
+            }
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
             # DATAROBOT_ENDPOINT already includes /api/v2, so just add the deployment path
@@ -52,7 +78,6 @@ class MCPConfig:
 
             return {
                 "url": url,
-                "transport": "streamable-http",
                 "headers": headers,
             }
 
