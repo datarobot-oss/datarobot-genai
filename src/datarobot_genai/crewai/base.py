@@ -36,7 +36,6 @@ from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import is_streaming
 
-from .agent import create_pipeline_interactions_from_messages
 from .mcp import mcp_tools_context
 
 
@@ -53,6 +52,15 @@ class CrewAIAgent(BaseAgent, abc.ABC):
 
     def set_mcp_tools(self, tools: list[Any]) -> None:
         self._mcp_tools = tools
+
+    @property
+    def mcp_tools(self) -> list[Any]:
+        """Return the list of MCP tools available to this agent.
+
+        Subclasses can use this to wire tools into CrewAI agents/tasks during
+        workflow construction inside ``build_crewai_workflow``.
+        """
+        return self._mcp_tools
 
     @property
     @abc.abstractmethod
@@ -75,7 +83,9 @@ class CrewAIAgent(BaseAgent, abc.ABC):
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
         """Build the inputs dict for ``Crew.kickoff``.
 
-        Subclasses may override to customize the schema/keys.
+        The default uses a single "topic" key. Most real agents/tasks expect
+        a different input schema; subclasses should override this method to
+        provide the exact inputs required by their CrewAI tasks.
         """
         return {"topic": str(user_prompt_content)}
 
@@ -94,7 +104,7 @@ class CrewAIAgent(BaseAgent, abc.ABC):
             response_text = str(crew_output.raw)
 
             # No event listener: no collected messages by default
-            pipeline_interactions = create_pipeline_interactions_from_messages([])
+            pipeline_interactions = None
 
             # Collect usage metrics if available
             usage_metrics: UsageMetrics

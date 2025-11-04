@@ -63,17 +63,6 @@ class MyAgent(CrewAIAgent):
 
 @pytest.mark.asyncio
 async def test_invoke_collects_usage_without_events(monkeypatch: Any) -> None:
-    def fake_create_pipeline_interactions(messages: list[Any]) -> None:  # noqa: ANN401
-        # No events should be passed when listener is not used
-        assert messages == []
-
-    monkeypatch.setattr(
-        base_mod,
-        "create_pipeline_interactions_from_messages",
-        fake_create_pipeline_interactions,
-        raising=True,
-    )
-
     class DummyCtx:
         def __enter__(self: Any) -> list[Any]:
             return []
@@ -105,22 +94,6 @@ async def test_invoke_when_no_events(monkeypatch: Any) -> None:
 
     # No event bus path is default; ensure no registration is attempted.
 
-    class _Holder:
-        events: list[Any]
-
-    holder = _Holder()
-    holder.events = []
-
-    def fake_create_pipeline_interactions(messages: list[Any]) -> None:
-        holder.events = messages
-
-    monkeypatch.setattr(
-        base_mod,
-        "create_pipeline_interactions_from_messages",
-        fake_create_pipeline_interactions,
-        raising=True,
-    )
-
     class DummyCtx:
         def __enter__(self: Any) -> list[Any]:
             return []
@@ -143,6 +116,5 @@ async def test_invoke_when_no_events(monkeypatch: Any) -> None:
     # Assert
     assert resp_text == "ok"
     assert pipeline_interactions is None
-    assert holder.events == []
     # default usage metrics when token_usage is None
     assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
