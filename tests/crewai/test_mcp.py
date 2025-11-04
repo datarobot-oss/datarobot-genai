@@ -16,7 +16,7 @@ import os
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-from datarobot_genai.crewai.mcp import MCPConfig
+from datarobot_genai.core.agents.base_mcp import MCPConfig
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 

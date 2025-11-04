@@ -73,12 +73,17 @@ async def test_llama_index_base_invoke(monkeypatch: Any) -> None:
         captured["events"] = events
         return {"ok": True}
 
+    # Mock load_mcp_tools to return empty list
+    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
+        return []
+
     monkeypatch.setattr(
         base_mod,
         "create_pipeline_interactions_from_events",
         fake_create_pipeline_interactions,
         raising=True,
     )
+    monkeypatch.setattr(base_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
 
     workflow = Workflow(events=[{"e": 1}, {"e": 2}], state="S")
     agent = MyLlamaAgent(workflow)
@@ -90,3 +95,35 @@ async def test_llama_index_base_invoke(monkeypatch: Any) -> None:
     assert interactions == {"ok": True}
     assert captured["events"] == [{"e": 1}, {"e": 2}]
     assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+    assert agent.mcp_tools == []
+
+
+@pytest.mark.asyncio
+async def test_llama_index_base_invoke_with_mcp_tools(monkeypatch: Any) -> None:
+    """Test that MCP tools are loaded and available via mcp_tools property."""
+    from unittest.mock import MagicMock
+
+    mock_tools = [MagicMock(), MagicMock()]
+
+    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
+        return mock_tools
+
+    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        base_mod,
+        "create_pipeline_interactions_from_events",
+        fake_create_pipeline_interactions,
+        raising=True,
+    )
+    monkeypatch.setattr(base_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
+
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow)
+
+    await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
+
+    # Verify MCP tools were loaded and are accessible
+    assert agent.mcp_tools == mock_tools
+    assert len(agent.mcp_tools) == 2
