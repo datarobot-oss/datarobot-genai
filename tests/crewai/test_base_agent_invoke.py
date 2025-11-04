@@ -60,6 +60,9 @@ class MyAgent(CrewAIAgent):
     def build_crewai_workflow(self) -> Any:
         return DummyCrew(self._crew_output)
 
+    def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+        return {"topic": str(user_prompt_content)}
+
 
 @pytest.mark.asyncio
 async def test_invoke_collects_usage_without_events(monkeypatch: Any) -> None:

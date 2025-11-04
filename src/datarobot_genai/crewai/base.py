@@ -81,14 +81,14 @@ class CrewAIAgent(BaseAgent, abc.ABC):
         """
         return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose)
 
+    @abc.abstractmethod
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
         """Build the inputs dict for ``Crew.kickoff``.
 
-        The default uses a single "topic" key. Most real agents/tasks expect
-        a different input schema; subclasses should override this method to
-        provide the exact inputs required by their CrewAI tasks.
+        Subclasses must implement this to provide the exact inputs required
+        by their CrewAI tasks.
         """
-        return {"topic": str(user_prompt_content)}
+        raise NotImplementedError
 
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
