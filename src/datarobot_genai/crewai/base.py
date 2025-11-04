@@ -42,8 +42,9 @@ from .mcp import mcp_tools_context
 class CrewAIAgent(BaseAgent, abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
-    Subclasses should define the ``agents`` and ``tasks`` properties and may
-    override ``llm`` for model selection logic.
+    Subclasses should define the ``agents`` and ``tasks`` properties
+    and may override ``build_crewai_workflow`` to customize the workflow
+    construction.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
