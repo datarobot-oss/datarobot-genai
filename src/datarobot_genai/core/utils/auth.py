@@ -37,7 +37,6 @@ class AuthContextHeaderHandler:
         secret_key: str | None = None,
         algorithm: str = DEFAULT_ALGORITHM,
         validate_signature: bool = True,
-        token_expiration_seconds: int | None = None,
     ) -> None:
         """Initialize the handler.
 

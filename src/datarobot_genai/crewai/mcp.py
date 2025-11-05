@@ -25,6 +25,8 @@ from typing import Any
 
 from crewai_tools import MCPServerAdapter
 
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+
 
 class MCPConfig:
     """Configuration for MCP server connection."""
@@ -37,7 +39,19 @@ class MCPConfig:
             "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
         )
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
+        self.auth_context_handler = AuthContextHeaderHandler()
         self.server_config = self._get_server_config()
+
+    def _authorization_bearer_header(self) -> dict[str, str]:
+        """Return Authorization header with Bearer token or empty dict."""
+        if not self.api_key:
+            return {}
+        auth = self.api_key if self.api_key.startswith("Bearer ") else f"Bearer {self.api_key}"
+        return {"Authorization": auth}
+
+    def _authorization_context_header(self) -> dict[str, str]:
+        """Return X-DataRobot-Authorization-Context header or empty dict."""
+        return self.auth_context_handler.get_header()
 
     def _get_server_config(self) -> dict[str, Any] | None:
         """
@@ -57,14 +71,15 @@ class MCPConfig:
             base_url = self.api_base.rstrip("/")
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
-            auth_header = (
-                self.api_key if self.api_key.startswith("Bearer ") else f"Bearer {self.api_key}"
-            )
+            headers = {
+                **self._authorization_bearer_header(),
+                **self._authorization_context_header(),
+            }
 
             return {
                 "url": url,
                 "transport": "streamable-http",
-                "headers": {"Authorization": auth_header},
+                "headers": headers,
             }
 
         return None

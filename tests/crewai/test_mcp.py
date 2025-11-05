@@ -13,15 +13,38 @@
 # limitations under the License.
 
 import os
+from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+
+from datarobot_genai.core.chat.auth import set_authorization_context
 from datarobot_genai.crewai.mcp import MCPConfig
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 
+@pytest.fixture
+def agent_auth_context_data() -> dict[str, Any]:
+    """Return sample authorization context data with required AuthCtx fields."""
+    return {
+        "user": {"id": "123", "name": "foo", "email": "foo@example.com"},
+        "identities": [
+            {"id": "id123", "type": "user", "provider_type": "github", "provider_user_id": "123"}
+        ],
+    }
+
+
 class TestMCPConfig:
     """Test MCP configuration management."""
+
+    @pytest.fixture(autouse=True)
+    def empty_agent_auth_context(self):
+        set_authorization_context({})
+
+    @pytest.fixture
+    def agent_auth_context(self, auth_context_data):
+        set_authorization_context(auth_context_data)
 
     def test_mcp_config_without_configuration(self):
         """Test MCP config when no environment variables are set."""
@@ -42,11 +65,16 @@ class TestMCPConfig:
             assert config.server_config["transport"] == "streamable-http"
             assert "headers" not in config.server_config
 
-    def test_mcp_config_with_datarobot_deployment_id(self):
+    def test_mcp_config_with_datarobot_deployment_id(self, agent_auth_context_data):
         """Test MCP config with DataRobot deployment ID."""
         deployment_id = "abc123def456789012345678"
         api_base = "https://app.datarobot.com/api/v2"
         api_key = "test-api-key"
+        secret_key = "my-secret-key"
+
+        # When the agent is initialized, it sets the authorization context for the
+        # process, so subsequent tools and MCP calls receive it via a dedicated header.
+        set_authorization_context(agent_auth_context_data)
 
         with patch.dict(
             os.environ,
@@ -54,6 +82,7 @@ class TestMCPConfig:
                 "MCP_DEPLOYMENT_ID": deployment_id,
                 "DATAROBOT_ENDPOINT": api_base,
                 "DATAROBOT_API_TOKEN": api_key,
+                "SESSION_SECRET_KEY": secret_key,
             },
             clear=True,
         ):
@@ -66,6 +95,12 @@ class TestMCPConfig:
             )
             assert config.server_config["transport"] == "streamable-http"
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
+
+            # Verify the authorization context header is propagated correctly
+            # from the Agent to the MCP Server and the header can be decoded.
+            jwt_token = config.server_config["headers"]["X-DataRobot-Authorization-Context"]
+            decoded_auth_context = config.auth_context_handler.decode(jwt_token)
+            assert agent_auth_context_data == decoded_auth_context
 
     def test_mcp_config_with_datarobot_deployment_id_and_bearer_token(self):
         """Test MCP config with DataRobot deployment ID and Bearer token already formatted."""
@@ -84,6 +119,10 @@ class TestMCPConfig:
         ):
             config = MCPConfig()
             assert config.server_config["headers"]["Authorization"] == api_key
+
+            # When authorization context is empty for the Agent, the header should not
+            # be propagated to the MCP Server.
+            assert "X-DataRobot-Authorization-Context" not in config.server_config["headers"]
 
     def test_mcp_config_with_datarobot_deployment_id_no_api_key(self):
         """Test MCP config with DataRobot deployment ID but no API key."""
@@ -169,7 +208,7 @@ class TestMCPToolsContext:
                 assert call_args["transport"] == "streamable-http"
 
     @patch("datarobot_genai.crewai.mcp.MCPServerAdapter")
-    def test_mcp_tools_context_with_datarobot_deployment(self, mock_adapter):
+    def test_mcp_tools_context_with_datarobot_deployment(self, mock_adapter, auth_context_data):
         """Test context manager with DataRobot deployment ID."""
         mock_tools = [MagicMock()]
         mock_adapter_instance = MagicMock()
@@ -180,6 +219,11 @@ class TestMCPToolsContext:
         deployment_id = "abc123def456789012345678"
         api_base = "https://app.datarobot.com/api/v2"
         api_key = "test-api-key"
+        secret_key = "my-secret-key"
+
+        # When the agent is initialized, it sets the authorization context for the
+        # process, so subsequent tools and MCP calls receive it via a dedicated header.
+        set_authorization_context(auth_context_data)
 
         with patch.dict(
             os.environ,
@@ -187,6 +231,7 @@ class TestMCPToolsContext:
                 "MCP_DEPLOYMENT_ID": deployment_id,
                 "DATAROBOT_ENDPOINT": api_base,
                 "DATAROBOT_API_TOKEN": api_key,
+                "SESSION_SECRET_KEY": secret_key,
             },
             clear=True,
         ):
@@ -199,6 +244,7 @@ class TestMCPToolsContext:
                 assert call_args["url"] == expected_url
                 assert call_args["transport"] == "streamable-http"
                 assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
+                assert call_args["headers"]["X-DataRobot-Authorization-Context"] is not None
 
     @patch("datarobot_genai.crewai.mcp.MCPServerAdapter")
     def test_mcp_tools_context_connection_error(self, mock_adapter):

@@ -145,3 +145,18 @@ async def get_access_token(provider: str | None = None) -> str:
     token_provider = OAuthAccessTokenProvider(await get_auth_context())
     access_token = token_provider.get_token(ToolAuth.OBO, provider)
     return access_token
+
+
+def initialize_oauth_middleware(mcp: Any, secret_key: str | None = None) -> None:
+    """Initialize and register OAuth middleware with the MCP server.
+
+    Parameters
+    ----------
+    mcp : FastMCP
+        The FastMCP server instance to register the middleware with.
+    secret_key : Optional[str]
+        Secret key for JWT validation. If None, uses the value from config.
+    """
+    middleware = OAuthMiddleWare(secret_key=secret_key)
+    mcp.add_middleware(middleware)
+    logger.info("OAuth middleware registered successfully")

@@ -23,6 +23,7 @@ from typing import Any
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 
+from .auth import initialize_oauth_middleware
 from .config import get_config
 from .credentials import get_credentials
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
@@ -114,6 +115,9 @@ class DataRobotMCPServer:
 
         # Initialize telemetry
         initialize_telemetry(mcp)
+
+        # Initialize OAuth middleware
+        initialize_oauth_middleware(mcp)
 
         # Initialize memory manager if AWS credentials are available
         self._memory_manager: MemoryManager | None = None
