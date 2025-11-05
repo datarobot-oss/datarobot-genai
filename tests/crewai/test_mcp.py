@@ -42,10 +42,6 @@ class TestMCPConfig:
     def empty_agent_auth_context(self):
         set_authorization_context({})
 
-    @pytest.fixture
-    def agent_auth_context(self, auth_context_data):
-        set_authorization_context(auth_context_data)
-
     def test_mcp_config_without_configuration(self):
         """Test MCP config when no environment variables are set."""
         with patch.dict(os.environ, {}, clear=True):
@@ -181,6 +177,10 @@ class TestMCPConfig:
 
 class TestMCPToolsContext:
     """Test MCP tools context manager."""
+
+    @pytest.fixture(autouse=True)
+    def empty_agent_auth_context(self):
+        set_authorization_context({})
 
     def test_mcp_tools_context_no_configuration(self):
         """Test context manager when no MCP server is configured."""
