@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import os
+import warnings
 from typing import Any
 
 import jwt
@@ -37,7 +38,6 @@ class AuthContextHeaderHandler:
         secret_key: str | None = None,
         algorithm: str = DEFAULT_ALGORITHM,
         validate_signature: bool = True,
-        token_expiration_seconds: int | None = None,
     ) -> None:
         """Initialize the handler.
 
@@ -58,7 +58,7 @@ class AuthContextHeaderHandler:
         if algorithm is None:
             raise ValueError("Algorithm None is not allowed. Use a secure algorithm like HS256.")
 
-        self.secret_key = secret_key or os.getenv("SESSION_SECRET_KEY")
+        self.secret_key = secret_key or os.getenv("SESSION_SECRET_KEY", "")
         self.algorithm = algorithm
         self.validate_signature = validate_signature
 
@@ -81,10 +81,11 @@ class AuthContextHeaderHandler:
         if not auth_context:
             return None
 
-        if self.secret_key is None:
-            logger.warning(
-                "No secret key provided. JWT tokens will be unsigned. "
-                "This is insecure and should only be used for testing."
+        if not self.secret_key:
+            warnings.warn(
+                "No secret key provided. Please make sure SESSION_SECRET_KEY is set. "
+                "JWT tokens will be signed with an empty key. This is insecure and should "
+                "only be used for testing."
             )
 
         return jwt.encode(auth_context, self.secret_key, algorithm=self.algorithm)
@@ -94,7 +95,7 @@ class AuthContextHeaderHandler:
         if not token:
             return None
 
-        if self.secret_key is None and self.validate_signature:
+        if not self.secret_key and self.validate_signature:
             logger.error(
                 "No secret key provided. Cannot validate signature. "
                 "Provide a secret key or set validate_signature to False."
