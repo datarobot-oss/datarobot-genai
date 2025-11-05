@@ -17,7 +17,7 @@ from inspect import Parameter
 from inspect import Signature
 
 import datarobot as dr
-from fastmcp.prompts.prompt import FunctionPrompt
+from fastmcp.prompts.prompt import Prompt
 
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
@@ -40,7 +40,7 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
 
 async def register_prompt_from_datarobot_prompt_management(
     prompt: dr.genai.PromptTemplate,
-) -> FunctionPrompt:
+) -> Prompt:
     """Register a single prompt.
 
     Args:

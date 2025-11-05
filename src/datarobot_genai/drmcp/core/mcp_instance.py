@@ -22,8 +22,7 @@ from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import FunctionPrompt
-
-# from fastmcp.prompts import FunctionPrompt
+from fastmcp.prompts.prompt import Prompt
 from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
 from fastmcp.utilities.types import NotSet
@@ -420,7 +419,7 @@ async def register_prompt(
     title: str | None = None,
     description: str | None = None,
     tags: set[str] | None = None,
-) -> FunctionPrompt:
+) -> Prompt:
     """
     Register new prompt after server has started.
 
@@ -435,7 +434,6 @@ async def register_prompt(
     -------
         The registered Prompt object
     """
-    # TODO: Implement
     prompt_name = name or fn.__name__
     logger.info(f"Registering new prompt: {prompt_name}")
 
