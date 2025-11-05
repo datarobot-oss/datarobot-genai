@@ -437,16 +437,8 @@ async def register_prompt(
     prompt_name = name or fn.__name__
     logger.info(f"Registering new prompt: {prompt_name}")
 
-    # Create a memory-aware version of the function
-    @wraps(fn)
-    async def memory_aware_fn(*args: Any, **kwargs: Any) -> Any:
-        return await memory_aware_wrapper(fn, *args, **kwargs)
-
-    # Apply dr_mcp_extras to the memory-aware function
-    wrapped_fn = dr_mcp_extras(type="prompt")(memory_aware_fn)
-
     prompt = FunctionPrompt.from_function(
-        fn=wrapped_fn,
+        fn=fn,
         name=prompt_name,
         title=title,
         description=description,

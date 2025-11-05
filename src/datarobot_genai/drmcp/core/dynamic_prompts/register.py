@@ -18,6 +18,7 @@ from inspect import Signature
 
 import datarobot as dr
 from fastmcp.prompts.prompt import Prompt
+from pydantic import Field
 
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
@@ -55,6 +56,11 @@ async def register_prompt_from_datarobot_prompt_management(
         The registered Prompt instance.
     """
     latest_version = prompt.get_latest_version()
+
+    if latest_version is None:
+        logger.info(f"No latest version in Prompts Management for prompt id: {prompt.id}")
+        raise DynamicPromptRegistrationError
+
     logger.info(
         f"Found prompt: id: {prompt.id}, "
         f"name: {prompt.name}, "
@@ -66,7 +72,7 @@ async def register_prompt_from_datarobot_prompt_management(
         name=prompt.name,
         description=prompt.description,
         prompt_text=latest_version.prompt_text,
-        variables=[v.name for v in latest_version.variables],
+        variables=latest_version.variables,
     )
 
     try:
@@ -74,9 +80,7 @@ async def register_prompt_from_datarobot_prompt_management(
         return await register_prompt(
             fn=prompt_fn,
             name=prompt.name,
-            title=prompt.name,
             description=prompt.description,
-            tags=None,
         )
 
     except Exception as exc:
@@ -87,17 +91,22 @@ async def register_prompt_from_datarobot_prompt_management(
 
 
 def make_prompt_function(
-    name: str, description: str, prompt_text: str, variables: list[str]
+    name: str, description: str, prompt_text: str, variables: list[dr.genai.Variable]
 ) -> Callable:
-    params = [Parameter(v, Parameter.POSITIONAL_OR_KEYWORD) for v in variables]
+    params = [
+        Parameter(
+            name=v.name,
+            kind=Parameter.POSITIONAL_OR_KEYWORD,
+            default=Field(description=v.description),
+        )
+        for v in variables
+    ]
 
     async def template_function(**kwargs) -> str:  # type: ignore
-        # Render the prompt text with provided variables
         prompt_text_correct = prompt_text.replace("{{", "{").replace("}}", "}")
         try:
             return prompt_text_correct.format(**kwargs)
         except KeyError as e:
-            # TODO: Should we raise here? Or just some log?
             raise ValueError(f"Missing variable {e.args[0]} for prompt '{name}'")
 
     # Apply metadata
