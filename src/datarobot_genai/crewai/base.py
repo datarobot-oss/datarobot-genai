@@ -24,6 +24,7 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -97,6 +98,12 @@ class CrewAIAgent(BaseAgent, abc.ABC):
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(completion_create_params)
+        # Preserve prior template startup print for CLI parity
+        try:
+            print("Running agent with user prompt:", user_prompt_content, flush=True)
+        except Exception:
+            # Printing is best-effort; proceed regardless
+            pass
 
         # Use MCP context manager to handle connection lifecycle
         with mcp_tools_context(api_base=self.api_base, api_key=self.api_key) as mcp_tools:
@@ -115,11 +122,53 @@ class CrewAIAgent(BaseAgent, abc.ABC):
                     pass
 
             crew = self.build_crewai_workflow()
+
+            if is_streaming(completion_create_params):
+
+                async def _gen() -> AsyncGenerator[
+                    tuple[str, MultiTurnSample | None, UsageMetrics]
+                ]:
+                    # Run kickoff in a worker thread.
+                    crew_output = await asyncio.to_thread(
+                        crew.kickoff,
+                        inputs=self.make_kickoff_inputs(user_prompt_content),
+                    )
+
+                    pipeline_interactions = None
+                    if hasattr(self, "event_listener"):
+                        try:
+                            listener = getattr(self, "event_listener", None)
+                            messages = (
+                                getattr(listener, "messages", None)
+                                if listener is not None
+                                else None
+                            )
+                            pipeline_interactions = create_pipeline_interactions_from_messages(
+                                messages
+                            )
+                        except Exception:
+                            pipeline_interactions = None
+
+                    token_usage = getattr(crew_output, "token_usage", None)
+                    if token_usage is not None:
+                        usage_metrics: UsageMetrics = {
+                            "completion_tokens": int(getattr(token_usage, "completion_tokens", 0)),
+                            "prompt_tokens": int(getattr(token_usage, "prompt_tokens", 0)),
+                            "total_tokens": int(getattr(token_usage, "total_tokens", 0)),
+                        }
+                    else:
+                        usage_metrics = default_usage_metrics()
+
+                    # Finalize stream with empty chunk carrying interactions and usage
+                    yield "", pipeline_interactions, usage_metrics
+
+                return _gen()
+
+            # Non-streaming: run to completion and return final result
             crew_output = crew.kickoff(inputs=self.make_kickoff_inputs(user_prompt_content))
 
             response_text = str(crew_output.raw)
 
-            # Build pipeline interactions if an event listener collected messages
             pipeline_interactions = None
             if hasattr(self, "event_listener"):
                 try:
@@ -129,25 +178,14 @@ class CrewAIAgent(BaseAgent, abc.ABC):
                 except Exception:
                     pipeline_interactions = None
 
-            # Collect usage metrics if available
-            usage_metrics: UsageMetrics
             token_usage = getattr(crew_output, "token_usage", None)
             if token_usage is not None:
-                usage_metrics = {
-                    "completion_tokens": getattr(token_usage, "completion_tokens", 0),
-                    "prompt_tokens": getattr(token_usage, "prompt_tokens", 0),
-                    "total_tokens": getattr(token_usage, "total_tokens", 0),
+                usage_metrics: UsageMetrics = {
+                    "completion_tokens": int(getattr(token_usage, "completion_tokens", 0)),
+                    "prompt_tokens": int(getattr(token_usage, "prompt_tokens", 0)),
+                    "total_tokens": int(getattr(token_usage, "total_tokens", 0)),
                 }
             else:
                 usage_metrics = default_usage_metrics()
-
-            if is_streaming(completion_create_params):
-
-                async def _gen() -> AsyncGenerator[
-                    tuple[str, MultiTurnSample | None, UsageMetrics]
-                ]:
-                    yield response_text, pipeline_interactions, usage_metrics
-
-                return _gen()
 
             return response_text, pipeline_interactions, usage_metrics
