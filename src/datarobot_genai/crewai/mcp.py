@@ -18,11 +18,13 @@ MCP integration for CrewAI using MCPServerAdapter.
 This module provides MCP server connection management for CrewAI agents.
 """
 
+import traceback
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
 from crewai_tools import MCPServerAdapter
+
 from datarobot_genai.core.mcp.common import MCPConfig
 
 
@@ -43,7 +45,9 @@ def mcp_tools_context(
 
     try:
         # Use MCPServerAdapter as context manager with the server config
-        with MCPServerAdapter(config.server_config) as tools:
+        adapter_setting = config.server_config.copy()
+        adapter_setting["transport"] = "streamable-http"
+        with MCPServerAdapter(adapter_setting) as tools:
             print(
                 f"Successfully connected to MCP server, got {len(tools)} tools",
                 flush=True,
@@ -52,7 +56,8 @@ def mcp_tools_context(
 
     except Exception as e:
         print(
-            f"Warning: Failed to connect to MCP server {config.server_config['url']}: {e}",
+            f"Warning: Failed to connect to MCP server {config.server_config['url']}: {e}"
+            f"\n{traceback.format_exc()}",
             flush=True,
         )
         yield []
