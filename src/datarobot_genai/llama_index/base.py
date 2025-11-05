@@ -62,6 +62,17 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
         """Run the LlamaIndex workflow with the provided completion parameters."""
         input_message = self.make_input_message(completion_create_params)
 
+        # Preserve prior template startup print for CLI parity
+        try:
+            print(
+                "Running agent with user prompt:",
+                extract_user_prompt_content(completion_create_params),
+                flush=True,
+            )
+        except Exception:
+            # Printing is best-effort; proceed regardless
+            pass
+
         workflow = self.build_workflow()
         handler = workflow.run(user_msg=input_message)
 
@@ -87,10 +98,10 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
                                 and new_agent != current_agent_name
                             ):
                                 current_agent_name = new_agent
-                                banner = (
-                                    f"\n{'=' * 50}\n🤖 Agent: {current_agent_name}\n{'=' * 50}\n"
-                                )
-                                yield banner, None, usage_metrics
+                                # Print banner for agent switch (do not emit as streamed content)
+                                print("\n" + "=" * 50, flush=True)
+                                print(f"🤖 Agent: {current_agent_name}", flush=True)
+                                print("=" * 50 + "\n", flush=True)
                     except Exception:
                         pass
 
@@ -108,11 +119,11 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
                         # Yield token/content delta with current (accumulated) usage metrics
                         yield delta, None, usage_metrics
 
-                    # Best-effort debug/event messages similar to prior template prints
+                    # Best-effort debug/event messages printed to CLI (do not stream as content)
                     try:
                         event_type = type(event).__name__
                         if event_type == "AgentInput" and hasattr(event, "input"):
-                            yield f"📥 Input: {getattr(event, 'input')}", None, usage_metrics
+                            print("📥 Input:", getattr(event, "input"), flush=True)
                         elif event_type == "AgentOutput":
                             # Output content
                             resp = getattr(event, "response", None)
@@ -121,7 +132,7 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
                                 and hasattr(resp, "content")
                                 and getattr(resp, "content")
                             ):
-                                yield f"📤 Output: {getattr(resp, 'content')}", None, usage_metrics
+                                print("📤 Output:", getattr(resp, "content"), flush=True)
                             # Planned tool calls
                             tcalls = getattr(event, "tool_calls", None)
                             if isinstance(tcalls, list) and tcalls:
@@ -136,28 +147,19 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
                                     except Exception:
                                         pass
                                 if names:
-                                    yield f"🛠️  Planning to use tools: {names}", None, usage_metrics
+                                    print("🛠️  Planning to use tools:", names, flush=True)
                         elif event_type == "ToolCallResult":
                             tname = getattr(event, "tool_name", None)
                             tkwargs = getattr(event, "tool_kwargs", None)
                             tout = getattr(event, "tool_output", None)
-                            lines = []
-                            if tname:
-                                lines.append(f"🔧 Tool Result ({tname}):")
-                            if tkwargs is not None:
-                                lines.append(f"  Arguments: {tkwargs}")
-                            if tout is not None:
-                                lines.append(f"  Output: {tout}")
-                            if lines:
-                                yield "\n".join(lines), None, usage_metrics
+                            print(f"🔧 Tool Result ({tname}):", flush=True)
+                            print(f"  Arguments: {tkwargs}", flush=True)
+                            print(f"  Output: {tout}", flush=True)
                         elif event_type == "ToolCall":
                             tname = getattr(event, "tool_name", None)
                             tkwargs = getattr(event, "tool_kwargs", None)
-                            if tname:
-                                msg = f"🔨 Calling Tool: {tname}"
-                                if tkwargs is not None:
-                                    msg += f"\n  With arguments: {tkwargs}"
-                                yield msg, None, usage_metrics
+                            print(f"🔨 Calling Tool: {tname}", flush=True)
+                            print(f"  With arguments: {tkwargs}", flush=True)
                     except Exception:
                         # Ignore best-effort debug rendering errors
                         pass
@@ -186,10 +188,70 @@ class LlamaIndexAgent(BaseAgent, abc.ABC):
 
             return _gen()
 
-        # Non-streaming path: run to completion, then return final response
+        # Non-streaming path: run to completion, emit debug prints, then return final response
         events: list[Any] = []
+        current_agent_name: str | None = None
         async for event in handler.stream_events():
             events.append(event)
+
+            # Replicate prior template CLI prints for non-streaming mode
+            try:
+                if hasattr(event, "current_agent_name"):
+                    new_agent = getattr(event, "current_agent_name")
+                    if isinstance(new_agent, str) and new_agent and new_agent != current_agent_name:
+                        current_agent_name = new_agent
+                        print(f"\n{'=' * 50}", flush=True)
+                        print(f"🤖 Agent: {current_agent_name}", flush=True)
+                        print(f"{'=' * 50}\n", flush=True)
+            except Exception:
+                pass
+
+            try:
+                if hasattr(event, "delta") and isinstance(getattr(event, "delta"), str):
+                    print(getattr(event, "delta"), end="", flush=True)
+                elif hasattr(event, "text") and isinstance(getattr(event, "text"), str):
+                    print(getattr(event, "text"), end="", flush=True)
+                else:
+                    event_type = type(event).__name__
+                    if event_type == "AgentInput" and hasattr(event, "input"):
+                        print("📥 Input:", getattr(event, "input"), flush=True)
+                    elif event_type == "AgentOutput":
+                        resp = getattr(event, "response", None)
+                        if (
+                            resp is not None
+                            and hasattr(resp, "content")
+                            and getattr(resp, "content")
+                        ):
+                            print("📤 Output:", getattr(resp, "content"), flush=True)
+                        tcalls = getattr(event, "tool_calls", None)
+                        if isinstance(tcalls, list) and tcalls:
+                            names: list[str] = []
+                            for c in tcalls:
+                                try:
+                                    nm = getattr(c, "tool_name", None) or (
+                                        c.get("tool_name") if isinstance(c, dict) else None
+                                    )
+                                    if nm:
+                                        names.append(str(nm))
+                                except Exception:
+                                    pass
+                            if names:
+                                print("🛠️  Planning to use tools:", names, flush=True)
+                    elif event_type == "ToolCallResult":
+                        tname = getattr(event, "tool_name", None)
+                        tkwargs = getattr(event, "tool_kwargs", None)
+                        tout = getattr(event, "tool_output", None)
+                        print(f"🔧 Tool Result ({tname}):", flush=True)
+                        print(f"  Arguments: {tkwargs}", flush=True)
+                        print(f"  Output: {tout}", flush=True)
+                    elif event_type == "ToolCall":
+                        tname = getattr(event, "tool_name", None)
+                        tkwargs = getattr(event, "tool_kwargs", None)
+                        print(f"🔨 Calling Tool: {tname}", flush=True)
+                        print(f"  With arguments: {tkwargs}", flush=True)
+            except Exception:
+                # Best-effort debug printing; continue on errors
+                pass
 
         # Extract state from workflow context (supports sync/async get or attribute)
         state = None

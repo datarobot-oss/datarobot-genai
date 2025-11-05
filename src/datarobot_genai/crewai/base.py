@@ -98,6 +98,12 @@ class CrewAIAgent(BaseAgent, abc.ABC):
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(completion_create_params)
+        # Preserve prior template startup print for CLI parity
+        try:
+            print("Running agent with user prompt:", user_prompt_content, flush=True)
+        except Exception:
+            # Printing is best-effort; proceed regardless
+            pass
 
         # Use MCP context manager to handle connection lifecycle
         with mcp_tools_context(api_base=self.api_base, api_key=self.api_key) as mcp_tools:
