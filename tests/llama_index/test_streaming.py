@@ -94,7 +94,8 @@ async def test_llama_index_streaming_yields_deltas_and_terminal_chunk(monkeypatc
     ai.input = "q"  # type: ignore[attr-defined]
     ao = agent_output_cls()
     ao.response = SimpleNamespace(content="done")
-    ao.tool_calls = []  # type: ignore[attr-defined]
+    # Include a dict-style tool call to exercise name extraction path
+    ao.tool_calls = [{"tool_name": "d"}]  # type: ignore[attr-defined]
     tc = tool_call_cls()
     tc.tool_name = "t"
     tc.tool_kwargs = {"a": 1}  # type: ignore[attr-defined]

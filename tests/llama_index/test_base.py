@@ -90,3 +90,60 @@ async def test_llama_index_base_invoke(monkeypatch: Any) -> None:
     assert interactions == {"ok": True}
     assert captured["events"] == [{"e": 1}, {"e": 2}]
     assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
+
+
+@pytest.mark.asyncio
+async def test_llama_index_base_invoke_branches(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+    captured["events"] = None
+
+    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
+        captured["events"] = events
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        base_mod,
+        "create_pipeline_interactions_from_events",
+        fake_create_pipeline_interactions,
+        raising=True,
+    )
+
+    # Build events to exercise additional non-streaming branches
+    agent_input_cls = type("AgentInput", (), {})
+    agent_output_cls = type("AgentOutput", (), {})
+    tool_call_cls = type("ToolCall", (), {})
+    tool_call_result_cls = type("ToolCallResult", (), {})
+
+    ai = agent_input_cls()
+    ai.input = "q"  # type: ignore[attr-defined]
+    ao = agent_output_cls()
+    ao.response = type("Resp", (), {"content": "c"})()  # type: ignore[attr-defined]
+    # Include dict-style tool call to hit dict name extraction path
+    ao.tool_calls = [{"tool_name": "t1"}]  # type: ignore[attr-defined]
+    tc = tool_call_cls()
+    tc.tool_name = "t2"
+    tc.tool_kwargs = {"a": 1}  # type: ignore[attr-defined]
+    tcr = tool_call_result_cls()
+    tcr.tool_name = "t2"
+    tcr.tool_output = "out"  # type: ignore[attr-defined]
+
+    events: list[Any] = [
+        type("Banner", (), {"current_agent_name": "beta"})(),
+        type("Delta", (), {"delta": "x"})(),
+        type("Text", (), {"text": "y"})(),
+        ai,
+        ao,
+        tc,
+        tcr,
+    ]
+
+    workflow = Workflow(events=events, state="S2")
+    agent = MyLlamaAgent(workflow)
+
+    resp = await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
+    response_text, interactions, usage = cast(tuple[str, object, UsageMetrics], resp)
+
+    assert response_text == "S2:7"
+    assert interactions == {"ok": True}
+    assert captured["events"] == events
+    assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
