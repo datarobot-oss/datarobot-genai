@@ -208,7 +208,9 @@ class TestMCPToolsContext:
                 assert call_args["transport"] == "streamable-http"
 
     @patch("datarobot_genai.crewai.mcp.MCPServerAdapter")
-    def test_mcp_tools_context_with_datarobot_deployment(self, mock_adapter, auth_context_data):
+    def test_mcp_tools_context_with_datarobot_deployment(
+        self, mock_adapter, agent_auth_context_data
+    ):
         """Test context manager with DataRobot deployment ID."""
         mock_tools = [MagicMock()]
         mock_adapter_instance = MagicMock()
@@ -223,7 +225,7 @@ class TestMCPToolsContext:
 
         # When the agent is initialized, it sets the authorization context for the
         # process, so subsequent tools and MCP calls receive it via a dedicated header.
-        set_authorization_context(auth_context_data)
+        set_authorization_context(agent_auth_context_data)
 
         with patch.dict(
             os.environ,
