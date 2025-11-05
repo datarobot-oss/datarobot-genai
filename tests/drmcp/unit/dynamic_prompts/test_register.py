@@ -16,6 +16,7 @@
 
 import pytest
 
+import datarobot as dr
 from datarobot_genai.drmcp.core.dynamic_prompts.register import make_prompt_function
 
 
@@ -28,7 +29,10 @@ class TestMakePrompt:
         name = "dummy prompt name"
         description = "dummy prompt description"
         prompt_text = "dummy prompt text {{variable_a}} and {{variable_b}}"
-        variables = ["variable_a", "variable_b"]
+        variables = [
+            dr.genai.Variable(name="variable_a", description="variable_a_desc"),
+            dr.genai.Variable(name="variable_b", description="variable_b_desc"),
+        ]
 
         prompt_function = make_prompt_function(name, description, prompt_text, variables)
         prompt = await prompt_function(variable_a="variable_a_value", variable_b="variable_b_value")
