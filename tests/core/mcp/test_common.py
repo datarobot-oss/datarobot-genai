@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
 from unittest.mock import patch
 
 from datarobot.models.genai.agent.auth import set_authorization_context
+
+import pytest
 
 from datarobot_genai.core.mcp.common import MCPConfig
 
@@ -156,3 +159,102 @@ class TestMCPConfig:
             config = MCPConfig()
             assert config.server_config["url"] == external_url
             assert config.server_config["headers"] == {}
+
+    def test_mcp_config_with_external_headers(self):
+        test_url = "https://mcp-server.example.com/mcp"
+        headers = {"X-Test": "value", "Authorization": "Bearer fake_api_key"}
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_HEADERS": json.dumps(headers),
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.server_config["url"] == test_url
+            assert config.server_config["headers"] == headers
+
+    def test_mcp_config_with_external_headers_invalid_json(self):
+        test_url = "https://mcp-server.example.com/mcp"
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_HEADERS": "not-a-json",
+            },
+            clear=True,
+        ):
+            with pytest.raises(json.JSONDecodeError):
+                MCPConfig()
+
+    def test_mcp_config_with_external_transport(self):
+        test_url = "https://mcp-server.example.com/mcp"
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_TRANSPORT": "custom-transport",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.external_mcp_transport == "custom-transport"
+            assert config.server_config["url"] == test_url
+
+    def test_mcp_config_with_direct_params(self):
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://custom.api/v2"
+        api_key = "fake_api_key"
+        with patch.dict(
+            os.environ,
+            {"MCP_DEPLOYMENT_ID": deployment_id},
+            clear=True,
+        ):
+            config = MCPConfig(api_base=api_base, api_key=api_key)
+            assert config.server_config["url"] == (
+                f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            )
+            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
+
+    def test_mcp_config_with_bearer_only_api_key(self):
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://custom.api/v2"
+        api_key = "Bearer fake_api_key"
+        with patch.dict(
+            os.environ,
+            {"MCP_DEPLOYMENT_ID": deployment_id},
+            clear=True,
+        ):
+            config = MCPConfig(api_base=api_base, api_key=api_key)
+            assert config.server_config["headers"]["Authorization"] == "Bearer fake_api_key"
+
+    def test_mcp_config_with_whitespace_api_key(self):
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://custom.api/v2"
+        api_key = "fake_api_key"
+        with patch.dict(
+            os.environ,
+            {"MCP_DEPLOYMENT_ID": deployment_id},
+            clear=True,
+        ):
+            config = MCPConfig(api_base=api_base, api_key=api_key)
+            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
+
+    def test_mcp_config_none_when_no_env(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig()
+            assert config.server_config is None
+
+    def test_mcp_config_none_when_all_empty(self):
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": "",
+                "MCP_DEPLOYMENT_ID": "",
+                "DATAROBOT_API_TOKEN": "",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.server_config is None
