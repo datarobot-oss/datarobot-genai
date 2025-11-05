@@ -16,10 +16,12 @@ from collections.abc import Callable
 from inspect import Parameter
 from inspect import Signature
 
-import datarobot as dr
 from fastmcp.prompts.prompt import Prompt
 from pydantic import Field
 
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
 
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 async def register_prompts_from_datarobot_prompt_management() -> None:
     """Register prompts from DataRobot Prompt Management."""
-    prompts = dr.genai.PromptTemplate.list()
+    prompts = get_datarobot_prompt_templates()
     logger.info(f"Found {len(prompts)} prompts in Prompts Management.")
 
     # Try to register each prompt, continue on failure
@@ -40,7 +42,7 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
 
 
 async def register_prompt_from_datarobot_prompt_management(
-    prompt: dr.genai.PromptTemplate,
+    prompt: DrPrompt,
 ) -> Prompt:
     """Register a single prompt.
 
@@ -91,7 +93,7 @@ async def register_prompt_from_datarobot_prompt_management(
 
 
 def make_prompt_function(
-    name: str, description: str, prompt_text: str, variables: list[dr.genai.Variable]
+    name: str, description: str, prompt_text: str, variables: list[DrVariable]
 ) -> Callable:
     params = [
         Parameter(
