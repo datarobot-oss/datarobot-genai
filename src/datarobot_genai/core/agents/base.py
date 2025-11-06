@@ -21,6 +21,7 @@ from typing import Any
 from typing import TypedDict
 from typing import cast
 
+from langchain_core.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -60,6 +61,19 @@ class BaseAgent(abc.ABC):
             self.verbose = True
         else:
             self.verbose = bool(verbose)
+        self._mcp_tools: list[BaseTool] = []
+
+    def set_mcp_tools(self, tools: list[Any]) -> None:
+        self._mcp_tools = tools
+
+    @property
+    def mcp_tools(self) -> list[Any]:
+        """Return the list of MCP tools available to this agent.
+
+        Subclasses can use this to wire tools into CrewAI agents/tasks during
+        workflow construction inside ``build_crewai_workflow``.
+        """
+        return self._mcp_tools
 
     def litellm_api_base(self, deployment_id: str | None) -> str:
         return get_api_base(self.api_base, deployment_id)

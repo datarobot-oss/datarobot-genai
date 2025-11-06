@@ -52,22 +52,6 @@ class CrewAIAgent(BaseAgent, abc.ABC):
     construction.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._mcp_tools: list[Any] = []
-
-    def set_mcp_tools(self, tools: list[Any]) -> None:
-        self._mcp_tools = tools
-
-    @property
-    def mcp_tools(self) -> list[Any]:
-        """Return the list of MCP tools available to this agent.
-
-        Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``build_crewai_workflow``.
-        """
-        return self._mcp_tools
-
     @property
     @abc.abstractmethod
     def agents(self) -> list[Any]:  # CrewAI Agent list
