@@ -20,19 +20,19 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drmcp.core.memory_management import MemoryResource
-from datarobot_genai.drmcp.core.memory_management import ToolContext
-from datarobot_genai.drmcp.tools.core.memory_management.memory import delete_resource
-from datarobot_genai.drmcp.tools.core.memory_management.memory import get_resource
-from datarobot_genai.drmcp.tools.core.memory_management.memory import list_resources
-from datarobot_genai.drmcp.tools.core.memory_management.memory import store_resource
+from datarobot_genai.drmcp.core.memory_management.manager import MemoryResource
+from datarobot_genai.drmcp.core.memory_management.manager import ToolContext
+from datarobot_genai.drmcp.core.memory_management.memory_tools import delete_resource
+from datarobot_genai.drmcp.core.memory_management.memory_tools import get_resource
+from datarobot_genai.drmcp.core.memory_management.memory_tools import list_resources
+from datarobot_genai.drmcp.core.memory_management.memory_tools import store_resource
 
 
 class TestMemoryManagementTools:
     """Test cases for memory management tools."""
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_success(self, mock_get_memory_manager):
         """Test store_resource with successful storage."""
         mock_memory_manager = Mock()
@@ -60,7 +60,7 @@ class TestMemoryManagementTools:
         )
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_no_tool_context(self, mock_get_memory_manager):
         """Test store_resource without tool context."""
         mock_memory_manager = Mock()
@@ -82,7 +82,7 @@ class TestMemoryManagementTools:
         )
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_no_memory_manager(self, mock_get_memory_manager):
         """Test store_resource when memory manager is not initialized."""
         mock_get_memory_manager.return_value = None
@@ -92,7 +92,7 @@ class TestMemoryManagementTools:
         assert result == "Memory manager not initialized"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_success_with_data(self, mock_get_memory_manager):
         """Test get_resource with successful retrieval including data."""
         mock_tool_context = ToolContext(name="test_tool", parameters={"param1": "value1"})
@@ -128,7 +128,7 @@ class TestMemoryManagementTools:
         assert "created_at" in result_data
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_success_without_data(self, mock_get_memory_manager):
         """Test get_resource with successful retrieval without data."""
         mock_tool_context = ToolContext(name="test_tool", parameters={"param1": "value1"})
@@ -163,7 +163,7 @@ class TestMemoryManagementTools:
         assert "created_at" in result_data
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_with_binary_data(self, mock_get_memory_manager):
         """Test get_resource with binary data."""
         mock_tool_context = ToolContext(name="test_tool", parameters={"param1": "value1"})
@@ -192,7 +192,7 @@ class TestMemoryManagementTools:
         assert result_data["data"] == "binary data"  # JSON converts bytes to string
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_with_unicode_decode_error(self, mock_get_memory_manager):
         """Test get_resource with unicode decode error for binary data."""
         mock_tool_context = ToolContext(name="test_tool", parameters={"param1": "value1"})
@@ -223,7 +223,7 @@ class TestMemoryManagementTools:
         assert result_data["data"] == "\x00\x01\x02\x03"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_not_found(self, mock_get_memory_manager):
         """Test get_resource when resource is not found."""
         mock_memory_manager = Mock()
@@ -237,7 +237,7 @@ class TestMemoryManagementTools:
         assert result == "Resource not found"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_no_memory_manager(self, mock_get_memory_manager):
         """Test get_resource when memory manager is not initialized."""
         mock_get_memory_manager.return_value = None
@@ -247,7 +247,7 @@ class TestMemoryManagementTools:
         assert result == "Memory manager not initialized"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_list_resources_success(self, mock_get_memory_manager):
         """Test list_resources with successful retrieval."""
         mock_tool_context = ToolContext(name="test_tool", parameters={"param1": "value1"})
@@ -294,7 +294,7 @@ class TestMemoryManagementTools:
         assert "created_at" in result_data[1]
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_list_resources_no_resources(self, mock_get_memory_manager):
         """Test list_resources when no resources are found."""
         mock_memory_manager = Mock()
@@ -306,7 +306,7 @@ class TestMemoryManagementTools:
         assert result == "No resources found"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_list_resources_no_memory_manager(self, mock_get_memory_manager):
         """Test list_resources when memory manager is not initialized."""
         mock_get_memory_manager.return_value = None
@@ -316,7 +316,7 @@ class TestMemoryManagementTools:
         assert result == "Memory manager not initialized"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_delete_resource_success(self, mock_get_memory_manager):
         """Test delete_resource with successful deletion."""
         mock_memory_manager = Mock()
@@ -333,7 +333,7 @@ class TestMemoryManagementTools:
         )
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_delete_resource_failure(self, mock_get_memory_manager):
         """Test delete_resource with failed deletion."""
         mock_memory_manager = Mock()
@@ -347,7 +347,7 @@ class TestMemoryManagementTools:
         assert result == "Failed to delete resource resource123"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_delete_resource_no_memory_manager(self, mock_get_memory_manager):
         """Test delete_resource when memory manager is not initialized."""
         mock_get_memory_manager.return_value = None
@@ -357,7 +357,7 @@ class TestMemoryManagementTools:
         assert result == "Memory manager not initialized"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_with_tool_name_only(self, mock_get_memory_manager):
         """Test store_resource with tool_name but no tool_parameters."""
         mock_memory_manager = Mock()
@@ -377,7 +377,7 @@ class TestMemoryManagementTools:
         )
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.core.memory_management.memory.get_memory_manager")
+    @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_with_non_string_data(self, mock_get_memory_manager):
         """Test get_resource with non-string data."""
         mock_tool_context = ToolContext(name="test_tool", parameters={"param1": "value1"})

@@ -23,121 +23,43 @@ from typing import Any
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 
-from .common import prefix_mount_path
+from .auth import initialize_oauth_middleware
 from .config import get_config
 from .credentials import get_credentials
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
-from .memory_management import MemoryManager
+from .mcp_server_tools import get_all_available_tags  # noqa # pylint: disable=unused-import
+from .mcp_server_tools import get_tool_info_by_name  # noqa # pylint: disable=unused-import
+from .mcp_server_tools import list_tools_by_tags  # noqa # pylint: disable=unused-import
+from .memory_management.manager import MemoryManager
 from .routes import register_routes
+from .routes_utils import prefix_mount_path
+from .server_life_cycle import BaseServerLifecycle
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
 
 
-def _import_modules_from_dir(directory: str, package_prefix: str) -> None:
+def _import_modules_from_dir(
+    directory: str, package_prefix: str, module_name: str | None = None
+) -> None:
     """Dynamically import all modules from a directory."""
     if not os.path.exists(directory):
         return
-    for file in glob.glob(os.path.join(directory, "*.py")):
-        if os.path.basename(file) != "__init__.py":
-            module_name = f"{package_prefix}.{os.path.splitext(os.path.basename(file))[0]}"
-            try:
-                importlib.import_module(module_name)
-            except ImportError as e:
-                logging.warning(f"Failed to import module {module_name}: {e}")
-
-
-class BaseServerLifecycle:
-    """
-    Base server lifecycle interface with safe default implementations.
-
-    This class provides hooks that are called at different stages of the server lifecycle.
-    Subclasses can override any or all of these methods to add custom behavior.
-    All methods have safe no-op defaults, so you only need to implement what you need.
-
-    Lifecycle Order:
-        1. pre_server_start()  - Before server initialization
-        2. Server starts
-        3. post_server_start() - After server is ready
-        4. Server runs...
-        5. Shutdown signal received
-        6. pre_server_shutdown() - Before server cleanup
-        7. Server stops
-
-    Example:
-        ```python
-        class MyLifecycle(BaseServerLifecycle):
-            async def pre_server_start(self, mcp: FastMCP) -> None:
-                # Initialize resources
-                self.db = await connect_database()
-
-            async def pre_server_shutdown(self, mcp: FastMCP) -> None:
-                # Clean up resources
-                await self.db.close()
-
-            # post_server_start not implemented - will use safe default (no-op)
-        ```
-    """
-
-    async def pre_server_start(self, mcp: FastMCP) -> None:
-        """
-        Call before the server starts.
-
-        Use this to:
-        - Initialize resources
-        - Set up connections
-        - Validate configuration
-        - Prepare server state
-
-        Args:
-            mcp: The FastMCP instance that will be started
-
-        Note:
-            Override this method in your subclass to add custom initialization.
-            The default implementation is a safe no-op.
-        """
-        pass
-
-    async def post_server_start(self, mcp: FastMCP) -> None:
-        """
-        Call after the server has started and is ready to handle requests.
-
-        Use this to:
-        - Register additional handlers
-        - Start background tasks
-        - Initialize delayed resources
-        - Log startup completion
-
-        Args:
-            mcp: The running FastMCP instance
-
-        Note:
-            Override this method in your subclass to add post-startup logic.
-            The default implementation is a safe no-op.
-        """
-        pass
-
-    async def pre_server_shutdown(self, mcp: FastMCP) -> None:
-        """
-        Call before the server shuts down.
-
-        Use this to:
-        - Close database connections
-        - Save application state
-        - Clean up temporary files
-        - Stop background tasks
-        - Release resources
-
-        Args:
-            mcp: The running FastMCP instance
-
-        Note:
-            Override this method in your subclass to add cleanup logic.
-            The default implementation is a safe no-op.
-            This is ALWAYS called, even on Ctrl+C or errors.
-        """
-        pass
+    if module_name:
+        module_name = f"{package_prefix}.{module_name}"
+        try:
+            importlib.import_module(module_name)
+        except ImportError as e:
+            logging.warning(f"Failed to import module {module_name}: {e}")
+    else:
+        for file in glob.glob(os.path.join(directory, "*.py")):
+            if os.path.basename(file) != "__init__.py":
+                module_name = f"{package_prefix}.{os.path.splitext(os.path.basename(file))[0]}"
+                try:
+                    importlib.import_module(module_name)
+                except ImportError as e:
+                    logging.warning(f"Failed to import module {module_name}: {e}")
 
 
 class DataRobotMCPServer:
@@ -194,6 +116,9 @@ class DataRobotMCPServer:
         # Initialize telemetry
         initialize_telemetry(mcp)
 
+        # Initialize OAuth middleware
+        initialize_oauth_middleware(mcp)
+
         # Initialize memory manager if AWS credentials are available
         self._memory_manager: MemoryManager | None = None
         if self._config.enable_memory_management:
@@ -210,26 +135,23 @@ class DataRobotMCPServer:
                     "No AWS credentials found, skipping memory manager initialization"
                 )
 
-        # Load base library modules
+        # Load static tools modules
         base_dir = os.path.dirname(os.path.dirname(__file__))
-        _import_modules_from_dir(os.path.join(base_dir, "tools", "core"), "tools.core")
         if self._config.enable_predictive_tools:
             _import_modules_from_dir(
-                os.path.join(base_dir, "tools", "predictive"), "tools.predictive"
+                os.path.join(base_dir, "tools", "predictive"),
+                "datarobot_genai.drmcp.tools.predictive",
             )
-
-        _import_modules_from_dir(os.path.join(base_dir, "tools"), "tools")
-        _import_modules_from_dir(os.path.join(base_dir, "prompts"), "prompts")
-        _import_modules_from_dir(os.path.join(base_dir, "resources"), "resources")
 
         # Load memory management tools if available
         if self._memory_manager:
             _import_modules_from_dir(
-                os.path.join(base_dir, "tools", "core", "memory_management"),
-                "tools.core.memory_management",
+                directory=os.path.join(base_dir, "core", "memory_management"),
+                package_prefix="datarobot_genai.drmcp.core.memory_management",
+                module_name="memory_tools",
             )
 
-        # Load additional modules if provided
+        # Load additional recipe user modules if provided
         if additional_module_paths:
             for directory, package_prefix in additional_module_paths:
                 self._logger.info(f"Loading additional modules from {directory}")

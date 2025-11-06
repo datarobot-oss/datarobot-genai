@@ -19,7 +19,6 @@ import datarobot as dr
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 
-from .config import get_config
 from .credentials import get_credentials
 
 
@@ -76,22 +75,3 @@ def get_s3_bucket_info() -> dict[str, str]:
         "bucket": credentials.aws_predictions_s3_bucket,
         "prefix": credentials.aws_predictions_s3_prefix,
     }
-
-
-class MCPError(Exception):
-    """Base class for MCP errors."""
-
-
-def prefix_mount_path(endpoint: str) -> str:
-    config = get_config()
-    mount_path = config.mount_path
-
-    if mount_path == "/":
-        return endpoint
-
-    if mount_path.endswith("/"):
-        mount_path = mount_path[:-1]
-
-    if not endpoint.startswith("/"):
-        endpoint = "/" + endpoint
-    return mount_path + endpoint

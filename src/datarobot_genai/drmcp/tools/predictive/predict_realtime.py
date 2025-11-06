@@ -23,8 +23,8 @@ from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
 from pydantic import BaseModel
 
-from datarobot_genai.drmcp.core.common import get_s3_bucket_info
-from datarobot_genai.drmcp.core.common import get_sdk_client
+from datarobot_genai.drmcp.core.clients import get_s3_bucket_info
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.utils import PredictionResponse
 from datarobot_genai.drmcp.core.utils import predictions_result_response

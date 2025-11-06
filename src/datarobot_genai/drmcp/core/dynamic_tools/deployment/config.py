@@ -24,7 +24,7 @@ from urllib.parse import urljoin
 
 import datarobot as dr
 
-from datarobot_genai.drmcp.core.common import get_api_client
+from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.base import MetadataBase
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig

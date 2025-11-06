@@ -15,7 +15,7 @@
 """
 DataRobot MCP tools for interacting with DataRobot platform.
 
-This package contains pre-built tools for common DataRobot operations:
+This package contains pre-built tools for DataRobot operations:
 - data: Upload and manage datasets
 - project: Create and manage projects
 - model: List and interact with models

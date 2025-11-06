@@ -16,7 +16,7 @@ import logging
 
 from fastmcp.tools.tool import Tool
 
-from datarobot_genai.drmcp.core.common import get_sdk_client
+from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
     register_tool_of_datarobot_deployment,
 )

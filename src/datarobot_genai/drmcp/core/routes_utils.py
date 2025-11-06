@@ -11,3 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from .config import get_config
+
+
+def prefix_mount_path(endpoint: str) -> str:
+    config = get_config()
+    mount_path = config.mount_path
+
+    if mount_path == "/":
+        return endpoint
+
+    if mount_path.endswith("/"):
+        mount_path = mount_path[:-1]
+
+    if not endpoint.startswith("/"):
+        endpoint = "/" + endpoint
+    return mount_path + endpoint

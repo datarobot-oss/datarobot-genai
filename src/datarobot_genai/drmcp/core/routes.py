@@ -18,11 +18,11 @@ from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from .common import prefix_mount_path
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
-from .memory_management import get_memory_manager
+from .memory_management.manager import get_memory_manager
+from .routes_utils import prefix_mount_path
 
 logger = getLogger(__name__)
 
