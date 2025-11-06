@@ -174,9 +174,9 @@ class DataRobotMCPServer:
                 self._logger.info("Registering dynamic tools from deployments...")
                 asyncio.run(register_tools_of_datarobot_deployments())
 
-            if self._config.mcp_server_register_dynamic_prompts_on_startup:
-                self._logger.info("Registering dynamic prompts from prompt management...")
-                asyncio.run(register_prompts_from_datarobot_prompt_management())
+            # if self._config.mcp_server_register_dynamic_prompts_on_startup:
+            #     self._logger.info("Registering dynamic prompts from prompt management...")
+            #     asyncio.run(register_prompts_from_datarobot_prompt_management())
 
             # List registered tools, prompts, and resources before starting server
             tools = asyncio.run(self._mcp._mcp_list_tools())
