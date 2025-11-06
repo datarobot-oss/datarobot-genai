@@ -30,6 +30,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,11 @@ class LangGraphAgent(BaseAgent, abc.ABC):
             For non-streaming requests, returns a single tuple of (response_text,
             pipeline_interactions, usage_metrics).
         """
+        async with mcp_tools_context(api_base=self.api_base, api_key=self.api_key) as mcp_tools:
+            self.set_mcp_tools(mcp_tools)
+            return await self._invoke(completion_create_params)
+
+    async def _invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         input_command = self.convert_input_message(completion_create_params)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
