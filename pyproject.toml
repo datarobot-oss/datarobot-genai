@@ -19,9 +19,6 @@ dependencies = [
   "ragas>=0.3.8",
   "pypdf>=6.1.3",  # CVE BUZZOK-28182
 ]
-exclude-dependencies = [
-    "uv",
-]
 
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
