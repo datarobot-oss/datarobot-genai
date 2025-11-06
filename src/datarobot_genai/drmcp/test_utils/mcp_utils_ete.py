@@ -69,10 +69,22 @@ def get_headers() -> dict[str, str]:
 
 
 @asynccontextmanager
-async def ete_test_mcp_session() -> AsyncGenerator[ClientSession, None]:
-    """Create an MCP session for each test."""
+async def ete_test_mcp_session(
+    additional_headers: dict[str, str] | None = None,
+) -> AsyncGenerator[ClientSession, None]:
+    """Create an MCP session for each test.
+
+    Parameters
+    ----------
+    additional_headers : dict[str, str], optional
+        Additional headers to include in the MCP session (e.g., auth headers for testing).
+    """
     try:
-        async with streamablehttp_client(url=get_dr_mcp_server_url(), headers=get_headers()) as (
+        headers = get_headers()
+        if additional_headers:
+            headers.update(additional_headers)
+
+        async with streamablehttp_client(url=get_dr_mcp_server_url(), headers=headers) as (
             read_stream,
             write_stream,
             _,
