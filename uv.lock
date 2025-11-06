@@ -824,6 +824,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/a9/7bb9aba01e2f98a8328b2d4d97c1adc647235c34caaafd93617eb14a53a7/crewai_tools-0.76.0-py3-none-any.whl", hash = "sha256:9d6b42e6ff627262e8f53dfa92cdc955dbdb354082fd90b209f65fdfe1d2b639", size = 741046, upload-time = "2025-10-08T21:21:19.947Z" },
 ]
 
+[package.optional-dependencies]
+mcp = [
+    { name = "mcp" },
+    { name = "mcpadapt", version = "0.1.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "mcpadapt", version = "0.1.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
 [[package]]
 name = "cryptography"
 version = "46.0.3"
@@ -939,7 +946,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.1.32"
+version = "0.1.33"
 source = { editable = "." }
 dependencies = [
     { name = "datarobot" },
@@ -954,7 +961,7 @@ dependencies = [
 [package.optional-dependencies]
 crewai = [
     { name = "crewai" },
-    { name = "crewai-tools" },
+    { name = "crewai-tools", extra = ["mcp"] },
     { name = "opentelemetry-instrumentation-crewai" },
     { name = "pybase64" },
 ]
@@ -1023,7 +1030,7 @@ requires-dist = [
     { name = "aiosignal", marker = "extra == 'drmcp'", specifier = ">=1.3.1" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0" },
     { name = "crewai", marker = "extra == 'crewai'", specifier = ">=0.193.2" },
-    { name = "crewai-tools", marker = "extra == 'crewai'", specifier = ">=0.69.0" },
+    { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0" },
     { name = "datarobot", specifier = ">=3.9.1" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0" },
     { name = "datarobot-predict", specifier = ">=1.13.2" },
@@ -3068,6 +3075,48 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/69/2b/916852a5668f45d8787378461eaa1244876d77575ffef024483c94c0649c/mcp-1.19.0.tar.gz", hash = "sha256:213de0d3cd63f71bc08ffe9cc8d4409cc87acffd383f6195d2ce0457c021b5c1", size = 444163, upload-time = "2025-10-24T01:11:15.839Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/a3/3e71a875a08b6a830b88c40bc413bff01f1650f1efe8a054b5e90a9d4f56/mcp-1.19.0-py3-none-any.whl", hash = "sha256:f5907fe1c0167255f916718f376d05f09a830a215327a3ccdd5ec8a519f2e572", size = 170105, upload-time = "2025-10-24T01:11:14.151Z" },
+]
+
+[package.optional-dependencies]
+ws = [
+    { name = "websockets" },
+]
+
+[[package]]
+name = "mcpadapt"
+version = "0.1.19"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version == '3.11.*'",
+    "python_full_version < '3.11'",
+]
+dependencies = [
+    { name = "jsonref", marker = "python_full_version < '3.12'" },
+    { name = "mcp", extra = ["ws"], marker = "python_full_version < '3.12'" },
+    { name = "pydantic", marker = "python_full_version < '3.12'" },
+    { name = "python-dotenv", marker = "python_full_version < '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/28/64fc666fa5d86bb1b048c167975d4ea19210f9f8571b64b26563739774ac/mcpadapt-0.1.19.tar.gz", hash = "sha256:dfab84fc75cc84a49a40bd61079773b1faf840227b74b82c71a7755b9c1957c5", size = 4227721, upload-time = "2025-10-16T07:11:56.736Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/21/703a79103273b5dd268457ffb94dc8b7d6efcc7fe54413e9723cf2caa8c9/mcpadapt-0.1.19-py3-none-any.whl", hash = "sha256:052e91dea8b6f530770d6fd45a1640a8c34816d18d060918dc752c5221083525", size = 19454, upload-time = "2025-10-16T07:11:55.487Z" },
+]
+
+[[package]]
+name = "mcpadapt"
+version = "0.1.20"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12'",
+]
+dependencies = [
+    { name = "jsonref", marker = "python_full_version >= '3.12'" },
+    { name = "mcp", extra = ["ws"], marker = "python_full_version >= '3.12'" },
+    { name = "pydantic", marker = "python_full_version >= '3.12'" },
+    { name = "python-dotenv", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/71/1bbbe157e55d30ab4a74fa878f6942cc0586e9820f03e03451a3d2297e9b/mcpadapt-0.1.20.tar.gz", hash = "sha256:4047c0da61e481dd0673a48936a427da9e6547c6cf0d580ff4e4761dcf058ed1", size = 4203656, upload-time = "2025-10-24T15:35:02.135Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/d8/5b6c8cf2070d765904fcb9066f8d7956cb9d399807d86c7fb7f7503b80bf/mcpadapt-0.1.20-py3-none-any.whl", hash = "sha256:117a661eb536dfb0b2a73e5730c2f5ad4e611263e014fb1cebaaff9e78a18f78", size = 19481, upload-time = "2025-10-24T15:35:00.159Z" },
 ]
 
 [[package]]
