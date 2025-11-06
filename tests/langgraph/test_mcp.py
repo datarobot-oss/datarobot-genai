@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from datarobot.models.genai.agent.auth import set_authorization_context
 
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
@@ -133,11 +134,15 @@ class TestMCPToolsContext:
                 )
 
     async def test_mcp_tools_context_with_datarobot_deployment(
-        self, mock_connections, setup_session_and_tools
+        self, mock_connections, setup_session_and_tools, agent_auth_context_data
     ):
         deployment_id = "abc123def456789012345678"
         api_base = "https://app.datarobot.com/api/v2"
         api_key = "test-api-key"
+
+        # When the agent is initialized, it sets the authorization context for the
+        # process, so subsequent tools and MCP calls receive it via a dedicated header.
+        set_authorization_context(agent_auth_context_data)
 
         with patch.dict(
             os.environ,
@@ -169,11 +174,15 @@ class TestMCPToolsContext:
                 assert tools == []
 
     async def test_mcp_tools_context_with_parameters(
-        self, mock_connections, setup_session_and_tools
+        self, mock_connections, setup_session_and_tools, agent_auth_context_data
     ):
         deployment_id = "abc123def456789012345678"
         custom_api_base = "https://custom.datarobot.com/api/v2"
         custom_api_key = "custom-key"
+
+        # When the agent is initialized, it sets the authorization context for the
+        # process, so subsequent tools and MCP calls receive it via a dedicated header.
+        set_authorization_context(agent_auth_context_data)
 
         with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
             async with mcp_tools_context(api_base=custom_api_base, api_key=custom_api_key) as tools:
