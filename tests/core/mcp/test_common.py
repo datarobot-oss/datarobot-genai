@@ -16,9 +16,8 @@ import json
 import os
 from unittest.mock import patch
 
-from datarobot.models.genai.agent.auth import set_authorization_context
-
 import pytest
+from datarobot.models.genai.agent.auth import set_authorization_context
 
 from datarobot_genai.core.mcp.common import MCPConfig
 

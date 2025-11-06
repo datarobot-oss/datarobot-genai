@@ -13,16 +13,12 @@
 # limitations under the License.
 
 import os
-from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 
-import pytest
-
 from datarobot_genai.core.chat.auth import set_authorization_context
-from datarobot_genai.crewai.mcp import MCPConfig
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 
