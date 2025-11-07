@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import traceback
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -50,15 +49,8 @@ async def mcp_tools_context(
     else:
         raise RuntimeError("Unsupported MCP transport specified.")
 
-    try:
-        async with create_session(connection=connection) as session:
-            # Use the connection to load available MCP tools
-            tools = await load_mcp_tools(session=session)
-            print(f"Successfully loaded {len(tools)} MCP tools", flush=True)
-            yield tools
-    except Exception as e:
-        print(
-            f"Warning: Failed to load MCP tools from {url}: {e}\n{traceback.format_exc()}",
-            flush=True,
-        )
-        yield []
+    async with create_session(connection=connection) as session:
+        # Use the connection to load available MCP tools
+        tools = await load_mcp_tools(session=session)
+        print(f"Successfully loaded {len(tools)} MCP tools", flush=True)
+        yield tools

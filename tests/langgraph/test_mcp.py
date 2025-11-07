@@ -164,15 +164,6 @@ class TestMCPToolsContext:
                     session=setup_session_and_tools["session_instance"]
                 )
 
-    async def test_mcp_tools_context_connection_error(self, mock_session, mock_connections):
-        # Mock session to raise an exception
-        mock_session.side_effect = Exception("Connection failed")
-        external_url = "https://mcp-server.example.com/mcp"
-
-        with patch.dict(os.environ, {"EXTERNAL_MCP_URL": external_url}, clear=True):
-            async with mcp_tools_context() as tools:
-                assert tools == []
-
     async def test_mcp_tools_context_with_parameters(
         self, mock_connections, setup_session_and_tools, agent_auth_context_data
     ):

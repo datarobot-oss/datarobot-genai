@@ -27,6 +27,7 @@ import inspect
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from llama_index.core.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -41,7 +42,7 @@ from .agent import create_pipeline_interactions_from_events
 from .mcp import load_mcp_tools
 
 
-class LlamaIndexAgent(BaseAgent, abc.ABC):
+class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
