@@ -20,5 +20,12 @@ PYTEST_OPTS_W_COVERAGE ?= $(JUNIT_FLAGS) --cov=datarobot_genai --cov-branch --co
 test: ## Run repo unit tests via pytest
 	uv run $(UV_RUN_OPTS) pytest $(PYTEST_OPTS_W_COVERAGE) tests --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=$(NAT_IGNORED_TESTS)
 
+# Map module names to test directory names (for modules with different naming)
+ifeq ($(MODULE),llamaindex)
+    TEST_MODULE := llama_index
+else
+    TEST_MODULE := $(MODULE)
+endif
+
 test-module: ## Run repo unit tests via pytest for a specific module
-	uv run $(UV_RUN_OPTS) pytest tests/$(MODULE) --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=$(NAT_IGNORED_TESTS)
+	uv run $(UV_RUN_OPTS) pytest tests/$(TEST_MODULE) --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=$(NAT_IGNORED_TESTS)

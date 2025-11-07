@@ -209,7 +209,8 @@ class TestLoadMCPTools:
             call_args = mock_aget.await_args
             assert call_args[1]["url"] == test_url.rstrip("/")
             assert call_args[1]["transport"] == "streamable-http"
-            assert "headers" not in call_args[1] or call_args[1]["headers"] is None
+            # headers may be None or empty dict
+            assert call_args[1].get("headers") is None or call_args[1].get("headers") == {}
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)

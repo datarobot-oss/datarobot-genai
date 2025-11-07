@@ -22,6 +22,7 @@ This package provides:
   - llamaindex: DataRobotLiteLLM, create_pipeline_interactions_from_events
 """
 
+from ..mcp.common import MCPConfig
 from .base import BaseAgent
 from .base import InvokeReturn
 from .base import UsageMetrics
@@ -29,7 +30,6 @@ from .base import default_usage_metrics
 from .base import extract_user_prompt_content
 from .base import is_streaming
 from .base import make_system_prompt
-from ..mcp.common import MCPConfig
 
 __all__ = [
     "BaseAgent",

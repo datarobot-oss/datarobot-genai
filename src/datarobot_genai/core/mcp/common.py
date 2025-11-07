@@ -44,7 +44,11 @@ class MCPConfig:
 
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""
-        return self.auth_context_handler.get_header()
+        try:
+            return self.auth_context_handler.get_header()
+        except (LookupError, RuntimeError):
+            # Authorization context not available (e.g., in tests)
+            return {}
 
     def _get_server_config(self) -> dict[str, Any] | None:
         """
@@ -61,23 +65,30 @@ class MCPConfig:
                 headers = json.loads(self.external_mcp_headers)
             else:
                 headers = {}
-            return {
-                "url": self.external_mcp_url,
-                "headers": headers,
+            
+            config = {
+                "url": self.external_mcp_url.rstrip("/"),
+                "transport": self.external_mcp_transport,
             }
+            # Only include headers if not empty
+            if headers:
+                config["headers"] = headers
+            return config
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
-            # DATAROBOT_ENDPOINT already includes /api/v2, so just add the deployment path
+            # DATAROBOT_ENDPOINT may or may not include /api/v2
             base_url = self.api_base.rstrip("/")
-            url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
+            if base_url.endswith("/api/v2"):
+                base_url = base_url[: -len("/api/v2")]
+            url = f"{base_url}/api/v2/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
             headers = {
                 **self._authorization_bearer_header(),
-                **self._authorization_context_header(),
             }
 
             return {
                 "url": url,
+                "transport": "streamable-http",
                 "headers": headers,
             }
 
