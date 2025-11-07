@@ -30,6 +30,7 @@ from typing import Any
 
 from crewai import Crew
 from crewai.events.event_bus import CrewAIEventsBus
+from crewai.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -44,7 +45,7 @@ from .agent import create_pipeline_interactions_from_messages
 from .mcp import mcp_tools_context
 
 
-class CrewAIAgent(BaseAgent, abc.ABC):
+class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
     Subclasses should define the ``agents`` and ``tasks`` properties

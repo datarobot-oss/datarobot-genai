@@ -16,6 +16,7 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -35,7 +36,7 @@ from datarobot_genai.langgraph.mcp import mcp_tools_context
 logger = logging.getLogger(__name__)
 
 
-class LangGraphAgent(BaseAgent, abc.ABC):
+class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     @property
     @abc.abstractmethod
     def workflow(self) -> StateGraph[MessagesState]:

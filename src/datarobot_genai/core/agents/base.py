@@ -18,17 +18,20 @@ import os
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
 from typing import Any
+from typing import Generic
 from typing import TypedDict
+from typing import TypeVar
 from typing import cast
 
-from langchain_core.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
 from datarobot_genai.core.utils.urls import get_api_base
 
+TTool = TypeVar("TTool")
 
-class BaseAgent(abc.ABC):
+
+class BaseAgent(Generic[TTool], abc.ABC):
     """BaseAgent centralizes common initialization for agent templates.
 
     Fields:
@@ -61,13 +64,13 @@ class BaseAgent(abc.ABC):
             self.verbose = True
         else:
             self.verbose = bool(verbose)
-        self._mcp_tools: list[BaseTool] = []
+        self._mcp_tools: list[TTool] = []
 
-    def set_mcp_tools(self, tools: list[Any]) -> None:
+    def set_mcp_tools(self, tools: list[TTool]) -> None:
         self._mcp_tools = tools
 
     @property
-    def mcp_tools(self) -> list[Any]:
+    def mcp_tools(self) -> list[TTool]:
         """Return the list of MCP tools available to this agent.
 
         Subclasses can use this to wire tools into CrewAI agents/tasks during
