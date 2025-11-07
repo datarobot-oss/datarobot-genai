@@ -25,7 +25,7 @@ from datarobot_genai.core.agents.base import default_usage_metrics
 logger = logging.getLogger(__name__)
 
 
-class NatAgent(BaseAgent):
+class NatAgent(BaseAgent[None]):
     def __init__(
         self,
         *,
