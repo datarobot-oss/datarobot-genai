@@ -1,6 +1,6 @@
 """LlamaIndex utilities and helpers."""
 
-from datarobot_genai.core.agents.base_mcp import MCPConfig
+from datarobot_genai.core.mcp.common import MCPConfig
 
 from .agent import DataRobotLiteLLM
 from .agent import create_pipeline_interactions_from_events

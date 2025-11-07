@@ -29,7 +29,7 @@ from .base import default_usage_metrics
 from .base import extract_user_prompt_content
 from .base import is_streaming
 from .base import make_system_prompt
-from .base_mcp import MCPConfig
+from ..mcp.common import MCPConfig
 
 __all__ = [
     "BaseAgent",

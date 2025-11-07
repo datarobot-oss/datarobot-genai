@@ -12,34 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Shared MCP (Model Context Protocol) configuration.
-
-This module provides the common MCPConfig class used by both CrewAI and
-LlamaIndex agent integrations.
-"""
-
+import json
 import os
 from typing import Any
+
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
 class MCPConfig:
     """Configuration for MCP server connection."""
 
     def __init__(self, api_base: str | None = None, api_key: str | None = None) -> None:
-        """Initialize MCP configuration from environment variables and runtime parameters.
-
-        Args:
-            api_base: Optional DataRobot API base URL
-            api_key: Optional DataRobot API token
-        """
+        """Initialize MCP configuration from environment variables and runtime parameters."""
         self.external_mcp_url = os.environ.get("EXTERNAL_MCP_URL")
+        self.external_mcp_headers = os.environ.get("EXTERNAL_MCP_HEADERS")
+        self.external_mcp_transport = os.environ.get("EXTERNAL_MCP_TRANSPORT", "streamable-http")
         self.mcp_deployment_id = os.environ.get("MCP_DEPLOYMENT_ID")
         self.api_base = api_base or os.environ.get(
             "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
         )
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
+        self.auth_context_handler = AuthContextHeaderHandler()
         self.server_config = self._get_server_config()
+
+    def _authorization_bearer_header(self) -> dict[str, str]:
+        """Return Authorization header with Bearer token or empty dict."""
+        if not self.api_key:
+            return {}
+        auth = self.api_key if self.api_key.startswith("Bearer ") else f"Bearer {self.api_key}"
+        return {"Authorization": auth}
+
+    def _authorization_context_header(self) -> dict[str, str]:
+        """Return X-DataRobot-Authorization-Context header or empty dict."""
+        return self.auth_context_handler.get_header()
 
     def _get_server_config(self) -> dict[str, Any] | None:
         """
@@ -52,25 +57,28 @@ class MCPConfig:
         """
         if self.external_mcp_url:
             # External MCP URL - no authentication needed
-            return {"url": self.external_mcp_url.rstrip("/"), "transport": "streamable-http"}
+            if self.external_mcp_headers:
+                headers = json.loads(self.external_mcp_headers)
+            else:
+                headers = {}
+            return {
+                "url": self.external_mcp_url,
+                "headers": headers,
+            }
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
-            # DATAROBOT_ENDPOINT may or may not include /api/v2
+            # DATAROBOT_ENDPOINT already includes /api/v2, so just add the deployment path
             base_url = self.api_base.rstrip("/")
-            if base_url.endswith("/api/v2"):
-                base_url = base_url[: -len("/api/v2")]
-            url = f"{base_url}/api/v2/deployments/{self.mcp_deployment_id}/directAccess/mcp"
+            url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
-            auth_header_value = (
-                self.api_key
-                if str(self.api_key).startswith("Bearer ")
-                else f"Bearer {self.api_key}"
-            )
+            headers = {
+                **self._authorization_bearer_header(),
+                **self._authorization_context_header(),
+            }
 
             return {
                 "url": url,
-                "transport": "streamable-http",
-                "headers": {"Authorization": auth_header_value},
+                "headers": headers,
             }
 
         return None

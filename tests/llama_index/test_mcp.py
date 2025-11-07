@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.core.agents.base_mcp import MCPConfig
+from datarobot_genai.core.mcp.common import MCPConfig
 from datarobot_genai.llama_index.mcp import load_mcp_tools
 
 

@@ -12,32 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ruff: noqa: E402
-import sys
+from crewai import LLM
+from langchain_openai import ChatOpenAI
+from nat.builder.framework_enum import LLMFrameworkEnum
+from nat.builder.workflow_builder import WorkflowBuilder
 
-import pytest
-
-try:
-    from crewai import LLM
-    from langchain_openai import ChatOpenAI
-    from nat.builder.framework_enum import LLMFrameworkEnum
-    from nat.builder.workflow_builder import WorkflowBuilder
-
-    from datarobot_genai.nat.datarobot_llm_clients import DataRobotLiteLLM
-    from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
-    from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
-    from datarobot_genai.nat.datarobot_llm_providers import DataRobotNIMModelConfig
-
-    has_nat = True
-except ImportError:
-    has_nat = False
-
-
-# Skip the entire module if the Python version is 3.10
-pytestmark = pytest.mark.skipif(
-    sys.version_info.major == 3 and sys.version_info.minor == 10 and not has_nat,
-    reason="NAT is not available for Python 3.10",
-)
+from datarobot_genai.nat.datarobot_llm_clients import DataRobotLiteLLM
+from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
+from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
+from datarobot_genai.nat.datarobot_llm_providers import DataRobotNIMModelConfig
 
 
 async def test_datarobot_llm_gateway_langchain():
