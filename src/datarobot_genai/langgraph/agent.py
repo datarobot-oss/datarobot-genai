@@ -178,7 +178,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         messages = []
         for e in events:
             for _, v in e.items():
-                messages.extend(v.get("messages", []))
+                if v is not None:
+                    messages.extend(v.get("messages", []))
         messages = [m for m in messages if not isinstance(m, ToolMessage)]
         ragas_trace = convert_to_ragas_messages(messages)
         return MultiTurnSample(user_input=ragas_trace)
