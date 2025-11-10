@@ -1,0 +1,16 @@
+version: '3'
+
+tasks:
+  tag-and-push:
+    desc: "Create annotated tag from pyproject version and push"
+    cmds:
+      - |
+          set -euo pipefail
+          VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' -m1 pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Tagging version: ${VERSION}"
+          git add -A
+          git commit -m "Release v${VERSION}" || true
+          git push
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+    silent: true
