@@ -61,6 +61,7 @@ async def test_run_method(agent):
     result, pipeline_interactions, usage = await agent.invoke(completion_create_params)
 
     assert result
+    assert isinstance(result, str)
     assert pipeline_interactions is None
     assert usage == {
         "completion_tokens": ANY,
