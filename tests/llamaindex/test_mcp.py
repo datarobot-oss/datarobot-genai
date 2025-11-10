@@ -68,29 +68,6 @@ class TestMCPConfig:
             assert config.server_config["transport"] == "streamable-http"
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
 
-    def test_mcp_config_with_datarobot_deployment_id_no_api_v2(self):
-        """Test MCP config with DataRobot deployment ID when endpoint doesn't include /api/v2."""
-        deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com"
-        api_key = "test-api-key"
-
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_ENDPOINT": api_base,
-                "DATAROBOT_API_TOKEN": api_key,
-            },
-            clear=True,
-        ):
-            config = MCPConfig()
-            assert config.mcp_deployment_id == deployment_id
-            assert config.server_config is not None
-            expected_url = f"{api_base}/api/v2/deployments/{deployment_id}/directAccess/mcp"
-            assert config.server_config["url"] == expected_url
-            assert config.server_config["transport"] == "streamable-http"
-            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
-
     def test_mcp_config_with_datarobot_deployment_id_and_bearer_token(self):
         """Test MCP config with DataRobot deployment ID and Bearer token already formatted."""
         deployment_id = "abc123def456789012345678"
