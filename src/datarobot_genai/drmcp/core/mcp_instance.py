@@ -419,6 +419,7 @@ async def register_prompt(
     title: str | None = None,
     description: str | None = None,
     tags: set[str] | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> Prompt:
     """
     Register new prompt after server has started.
@@ -429,6 +430,7 @@ async def register_prompt(
         title: Optional human-readable title for the prompt
         description: Optional description of what the prompt does
         tags: Optional set of tags to apply to the prompt
+        meta: Optional dict of metadata to apply to the prompt
 
     Returns
     -------
@@ -444,6 +446,7 @@ async def register_prompt(
         title=title,
         description=description,
         tags=tags,
+        meta=meta,
     )
 
     # Register the prompt
