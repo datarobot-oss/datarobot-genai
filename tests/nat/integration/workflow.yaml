@@ -23,5 +23,6 @@ llms:
     model_name: azure/gpt-4o-2024-11-20
     temperature: 0.0
 workflow:
-  _type: sequential_executor
-  tool_list: [completion_tool]
+  _type: react_agent
+  llm_name: datarobot_llm
+  tool_names: [completion_tool]

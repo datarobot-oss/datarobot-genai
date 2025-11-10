@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from pathlib import Path
+from unittest.mock import ANY
 
 import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
@@ -62,7 +63,7 @@ async def test_run_method(agent):
     assert result
     assert pipeline_interactions is None
     assert usage == {
-        "completion_tokens": 0,
-        "prompt_tokens": 0,
-        "total_tokens": 0,
+        "completion_tokens": ANY,
+        "prompt_tokens": ANY,
+        "total_tokens": ANY,
     }

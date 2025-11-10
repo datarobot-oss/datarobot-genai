@@ -14,6 +14,7 @@
 import logging
 from typing import Any
 
+from nat.data_models.api_server import ChatRequest
 from nat.runtime.loader import load_workflow
 from nat.utils.type_utils import StrPath
 from openai.types.chat import CompletionCreateParams
@@ -84,7 +85,10 @@ class NatAgent(BaseAgent[None]):
         events: list[Any]
         events = []  # This should be populated with the agent's events/messages
 
-        usage_metrics = default_usage_metrics()
+        if hasattr(result, "usage"):
+            usage_metrics = result.usage.dict()
+        else:
+            usage_metrics = default_usage_metrics()
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
         return result, pipeline_interactions, usage_metrics
@@ -100,9 +104,10 @@ class NatAgent(BaseAgent[None]):
         -------
             str: The result from the NAT workflow
         """
+        chat_request = ChatRequest.from_string(input_str)
         async with load_workflow(workflow_path) as workflow:
-            async with workflow.run(input_str) as runner:
-                runner_outputs = await runner.result(to_type=str)
+            async with workflow.run(chat_request) as runner:
+                runner_outputs = await runner.result()
 
         line = f"{'-' * 50}"
         prefix = f"{line}\nWorkflow Result:\n"
