@@ -74,18 +74,7 @@ class MCPConfig:
             return config
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
-            # DATAROBOT_ENDPOINT may or may not include /api/v2
-            # Always ensure base_url ends with /api/v2
             base_url = self.api_base.rstrip("/")
-            if base_url.endswith("/api/v2"):
-                # Already has /api/v2, use as-is
-                pass
-            elif base_url.endswith("/v2"):
-                # Replace /v2 with /api/v2
-                base_url = base_url[: -len("/v2")] + "/api/v2"
-            else:
-                # Add /api/v2
-                base_url = f"{base_url}/api/v2"
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
             headers = {

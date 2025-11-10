@@ -93,6 +93,7 @@ class TestMCPToolsContext:
                 assert connection_config["url"] == external_url.rstrip("/")
                 expected_headers = {"X-API-Key": "test-key", "Content-Type": "application/json"}
                 assert connection_config["headers"] == expected_headers
+                # SSEConnection uses transport="sse"
                 assert connection_config["transport"] == "sse"
 
                 # Verify tools were loaded
@@ -116,9 +117,7 @@ class TestMCPToolsContext:
                 connection_config = call_args[1]["connection"]
                 assert connection_config["url"] == external_url.rstrip("/")
                 assert connection_config["headers"] == {}  # No custom headers
-                # langchain_mcp_adapters expects "streamable_http" (underscore),
-                # but server_config has "streamable-http" (hyphen)
-                # The conversion happens in mcp_tools_context, so we check the converted value
+                # StreamableHttpConnection uses transport="streamable_http" (underscore)
                 assert connection_config["transport"] == "streamable_http"
 
                 setup_session_and_tools["load_tools"].assert_called_once_with(
@@ -194,6 +193,7 @@ class TestMCPToolsContext:
                 setup_session_and_tools["session"].assert_called_once()
                 call_args = setup_session_and_tools["session"].call_args
                 connection_config = call_args[1]["connection"]
+                # SSEConnection uses transport="sse"
                 assert connection_config["transport"] == "sse"
                 setup_session_and_tools["load_tools"].assert_called_once_with(
                     session=setup_session_and_tools["session_instance"]
@@ -207,7 +207,7 @@ class TestMCPToolsContext:
             {"EXTERNAL_MCP_URL": external_url, "EXTERNAL_MCP_TRANSPORT": "invalid-transport"},
             clear=True,
         ):
-            # create_session will raise ValueError for unsupported transport
-            with pytest.raises(ValueError, match="Unsupported transport"):
+            # mcp_tools_context will raise RuntimeError for unsupported transport
+            with pytest.raises(RuntimeError, match="Unsupported MCP transport specified"):
                 async with mcp_tools_context():
                     pass

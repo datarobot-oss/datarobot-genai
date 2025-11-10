@@ -16,6 +16,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from langchain.tools import BaseTool
+from langchain_mcp_adapters.sessions import SSEConnection
+from langchain_mcp_adapters.sessions import StreamableHttpConnection
 from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
 
@@ -41,13 +43,18 @@ async def mcp_tools_context(
     url = server_config["url"]
     print(f"Connecting to MCP server: {url}", flush=True)
 
-    # langchain_mcp_adapters is the odd one out - it expects "streamable_http" (underscore)
-    # while other frameworks (crewai, llama_index) expect "streamable-http" (hyphen)
-    connection_config = server_config.copy()
-    if connection_config.get("transport") == "streamable-http":
-        connection_config["transport"] = "streamable_http"
+    # Pop transport from server_config to avoid passing it twice
+    # Use .pop() with default to never error
+    transport = server_config.pop("transport", "streamable-http")
 
-    async with create_session(connection=connection_config) as session:
+    if transport in ["streamable-http", "streamable_http"]:
+        connection = StreamableHttpConnection(transport="streamable_http", **server_config)
+    elif transport == "sse":
+        connection = SSEConnection(transport="sse", **server_config)
+    else:
+        raise RuntimeError("Unsupported MCP transport specified.")
+
+    async with create_session(connection=connection) as session:
         # Use the connection to load available MCP tools
         tools = await load_mcp_tools(session=session)
         print(f"Successfully loaded {len(tools)} MCP tools", flush=True)
