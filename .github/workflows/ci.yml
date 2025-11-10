@@ -7,6 +7,9 @@ on:
   schedule:
     - cron: '0 3 * * *'
 
+env:
+  TASK_VERSION: 3.40.1
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -30,12 +33,11 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-      - name: Install Task
-        run: |
-          set -e
-          curl -sSL https://taskfile.dev/install.sh -o /tmp/install_task.sh
-          sudo sh /tmp/install_task.sh -d -b /usr/local/bin v3.40.1
-          task --version
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -86,12 +88,11 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-      - name: Install Task
-        run: |
-          set -e
-          curl -sSL https://taskfile.dev/install.sh -o /tmp/install_task.sh
-          sudo sh /tmp/install_task.sh -d -b /usr/local/bin v3.40.1
-          task --version
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -119,7 +120,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: junit-${{ matrix.python-version }}-${{ matrix.module }}
+          name: junit-py${{ matrix.python-version }}-module-${{ matrix.module }}
           path: test_results/test-results.xml
           if-no-files-found: ignore
 
@@ -145,12 +146,11 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-      - name: Install Task
-        run: |
-          set -e
-          curl -sSL https://taskfile.dev/install.sh -o /tmp/install_task.sh
-          sudo sh /tmp/install_task.sh -d -b /usr/local/bin v3.40.1
-          task --version
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -174,7 +174,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: junit-all-${{ matrix.python-version }}
+          name: junit-py${{ matrix.python-version }}-all
           path: test_results/test-results.xml
           if-no-files-found: ignore
 
