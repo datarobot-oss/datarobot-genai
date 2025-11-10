@@ -65,7 +65,7 @@ class MCPConfig:
                 headers = json.loads(self.external_mcp_headers)
             else:
                 headers = {}
-            
+
             config = {
                 "url": self.external_mcp_url.rstrip("/"),
                 "transport": self.external_mcp_transport,
@@ -84,6 +84,7 @@ class MCPConfig:
 
             headers = {
                 **self._authorization_bearer_header(),
+                **self._authorization_context_header(),
             }
 
             return {
