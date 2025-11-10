@@ -19,11 +19,12 @@ from inspect import Signature
 from fastmcp.prompts.prompt import Prompt
 from pydantic import Field
 
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
+
+from .dr_lib import DrPrompt
+from .dr_lib import DrVariable
+from .dr_lib import get_datarobot_prompt_templates
 
 logger = logging.getLogger(__name__)
 

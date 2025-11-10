@@ -436,9 +436,10 @@ async def register_prompt(
     """
     prompt_name = name or fn.__name__
     logger.info(f"Registering new prompt: {prompt_name}")
+    wrapped_fn = dr_mcp_extras(type="prompt")(fn)
 
     prompt = FunctionPrompt.from_function(
-        fn=fn,
+        fn=wrapped_fn,
         name=prompt_name,
         title=title,
         description=description,
