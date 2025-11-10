@@ -15,10 +15,3 @@ the review may happen while you are asleep / otherwise not able to respond quick
 ## TESTING
 ## RELATED
 ## REVIEWERS -->
-
----
-
-## REVIEWERS
-
-- Code Owners team: @datarobot-oss/buzok
-- Code Owners users: @cavitcakir, @jpclemens0
