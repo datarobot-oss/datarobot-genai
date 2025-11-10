@@ -30,6 +30,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
+      - name: Install Task
+        uses: arduino/setup-task@v2
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -47,12 +49,12 @@ jobs:
 
       - name: Lint (ruff format/check)
         run: |
-          make check-ruff-format
-          make check-ruff
+          task check-ruff-format
+          task check-ruff
 
       - name: Type check (mypy)
         run: |
-          make mypy
+          task mypy
 
   test-module:
     runs-on: ubuntu-latest
@@ -80,6 +82,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
+      - name: Install Task
+        uses: arduino/setup-task@v2
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -101,7 +105,7 @@ jobs:
 
       - name: Run tests
         run: |
-          make test-module MODULE=${{ matrix.module }}
+          task test-module MODULE=${{ matrix.module }}
 
       - name: Upload test results
         if: always()
@@ -133,6 +137,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
+      - name: Install Task
+        uses: arduino/setup-task@v2
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -150,7 +156,7 @@ jobs:
 
       - name: Run all tests
         run: |
-          make test
+          task test
 
       - name: Upload test results
         if: always()
@@ -162,7 +168,7 @@ jobs:
 
       - name: License check
         run: |
-          make check-licenses
+          task check-licenses
 
       - name: Build package
         run: |

@@ -1,0 +1,26 @@
+version: '3'
+
+tasks:
+  dev-publish-to-testpypi:
+    desc: "Publish to TestPyPI"
+    cmds:
+      - echo "Publishing to TestPyPI for development..."
+      - |
+        if [ -z "${TEST_PYPI_API_TOKEN}" ]; then
+          echo "ERROR: TEST_PYPI_API_TOKEN environment variable is not set"
+          echo "Set it with: export TEST_PYPI_API_TOKEN='your_token_here'"
+          exit 1
+        fi
+      - task: build
+      - echo "Uploading packages to TestPyPI for development..."
+      - |
+        uv run twine upload \
+          --repository-url https://test.pypi.org/legacy/ \
+          --username __token__ \
+          --password "${TEST_PYPI_API_TOKEN}" \
+          --skip-existing \
+          dist/*
+      - |
+        echo "Published to TestPyPI for development: https://test.pypi.org/project/datarobot-genai/"
+        PKG_VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' -m1 pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+        echo "Install with: pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ datarobot-genai==${PKG_VERSION}"
