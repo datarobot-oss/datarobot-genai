@@ -44,7 +44,6 @@ def mcp_tools_context(
 
     # Use MCPServerAdapter as context manager with the server config
     adapter_setting = config.server_config.copy()
-    adapter_setting["transport"] = "streamable-http"
     with MCPServerAdapter(adapter_setting) as tools:
         print(
             f"Successfully connected to MCP server, got {len(tools)} tools",

@@ -42,9 +42,14 @@ async def mcp_tools_context(
 
     url = server_config["url"]
     print(f"Connecting to MCP server: {url}", flush=True)
-    if mcp_config.external_mcp_transport == "streamable-http":
+
+    # Pop transport from server_config to avoid passing it twice
+    # Use .pop() with default to never error
+    transport = server_config.pop("transport", "streamable-http")
+
+    if transport in ["streamable-http", "streamable_http"]:
         connection = StreamableHttpConnection(transport="streamable_http", **server_config)
-    elif mcp_config.external_mcp_transport == "sse":
+    elif transport == "sse":
         connection = SSEConnection(transport="sse", **server_config)
     else:
         raise RuntimeError("Unsupported MCP transport specified.")
