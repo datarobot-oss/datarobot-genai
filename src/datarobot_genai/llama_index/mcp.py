@@ -55,7 +55,6 @@ async def load_mcp_tools(
 
     try:
         print(f"Connecting to MCP server: {url}", flush=True)
-        import pdb; pdb.set_trace()
         # Create BasicMCPClient with headers to pass authentication
         client = BasicMCPClient(command_or_url=url, headers=headers)
         tools = await aget_tools_from_mcp_url(

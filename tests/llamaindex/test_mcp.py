@@ -184,10 +184,8 @@ class TestLoadMCPTools:
             mock_aget.assert_awaited_once()
             # Check that the function was called with correct parameters
             call_args = mock_aget.await_args
-            assert call_args[1]["url"] == test_url.rstrip("/")
-            assert call_args[1]["transport"] == "streamable-http"
-            # headers should always be present, empty dict when no custom headers
-            assert call_args[1]["headers"] == {}
+            assert call_args[1]["command_or_url"] == test_url.rstrip("/")
+            assert call_args[1]["client"].headers == {}
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -215,9 +213,8 @@ class TestLoadMCPTools:
             # Check that the function was called with correct parameters
             call_args = mock_aget.await_args
             expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert call_args[1]["url"] == expected_url
-            assert call_args[1]["transport"] == "streamable-http"
-            assert call_args[1]["headers"]["Authorization"] == f"Bearer {api_key}"
+            assert call_args[1]["command_or_url"] == expected_url
+            assert call_args[1]["client"].headers["Authorization"] == f"Bearer {api_key}"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -261,5 +258,5 @@ class TestLoadMCPTools:
             # Check that the function was called with custom parameters
             call_args = mock_aget.await_args
             expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert call_args[1]["url"] == expected_url
-            assert call_args[1]["headers"]["Authorization"] == f"Bearer {custom_api_key}"
+            assert call_args[1]["command_or_url"] == expected_url
+            assert call_args[1]["client"].headers["Authorization"] == f"Bearer {custom_api_key}"
