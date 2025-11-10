@@ -69,15 +69,20 @@ class MCPConfig:
             config = {
                 "url": self.external_mcp_url.rstrip("/"),
                 "transport": self.external_mcp_transport,
-                "headers": headers,
             }
+            # Only include headers if not empty
+            if headers:
+                config["headers"] = headers
             return config
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
             # DATAROBOT_ENDPOINT may or may not include /api/v2
             base_url = self.api_base.rstrip("/")
+            # Remove /api/v2 if present, or just /v2 if present
             if base_url.endswith("/api/v2"):
                 base_url = base_url[: -len("/api/v2")]
+            elif base_url.endswith("/v2"):
+                base_url = base_url[: -len("/v2")]
             url = f"{base_url}/api/v2/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
             headers = {

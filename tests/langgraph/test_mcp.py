@@ -38,8 +38,6 @@ def mock_load_mcp_tools():
         yield mock
 
 
-
-
 @pytest.fixture
 def mock_tools():
     return [MagicMock(), MagicMock()]
@@ -71,9 +69,7 @@ class TestMCPToolsContext:
             async with mcp_tools_context() as tools:
                 assert tools == []
 
-    async def test_mcp_tools_context_with_external_url(
-        self, setup_session_and_tools
-    ):
+    async def test_mcp_tools_context_with_external_url(self, setup_session_and_tools):
         test_headers = '{"X-API-Key": "test-key", "Content-Type": "application/json"}'
         test_transport = "sse"
         external_url = "https://mcp-server.example.com/mcp"
@@ -112,7 +108,7 @@ class TestMCPToolsContext:
         with patch.dict(os.environ, {"EXTERNAL_MCP_URL": external_url}, clear=True):
             async with mcp_tools_context() as tools:
                 assert tools == setup_session_and_tools["tools"]
-                
+
                 # Verify create_session was called with correct connection config (default transport)
                 setup_session_and_tools["session"].assert_called_once()
                 call_args = setup_session_and_tools["session"].call_args
@@ -182,9 +178,7 @@ class TestMCPToolsContext:
                 assert connection_config["url"] == expected_url
                 assert connection_config["headers"]["Authorization"] == f"Bearer {custom_api_key}"
 
-    async def test_mcp_tools_context_with_sse_transport(
-        self, setup_session_and_tools
-    ):
+    async def test_mcp_tools_context_with_sse_transport(self, setup_session_and_tools):
         external_url = "https://mcp-server.example.com/mcp"
 
         with patch.dict(
