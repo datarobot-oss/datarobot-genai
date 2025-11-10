@@ -1,0 +1,128 @@
+version: '3'
+
+tasks:
+  test:
+    desc: "Run repo unit tests via pytest"
+    cmds:
+      - mkdir -p test_results
+      - |
+          set -e
+          PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
+          if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
+            NAT_IGNORED_TESTS=tests/nat
+            COV_FAIL_UNDER=78
+          else
+            NAT_IGNORED_TESTS=tests/nat/integration
+            COV_FAIL_UNDER=80
+          fi
+          uv run pytest --junitxml=test_results/test-results.xml \
+            --cov=datarobot_genai --cov-branch --cov-fail-under=${COV_FAIL_UNDER} --no-cov-on-fail \
+            -vv -s tests \
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
+    silent: true
+
+  test-module:
+    desc: "Run repo unit tests via pytest for a specific module"
+    cmds:
+      - mkdir -p test_results
+      - |
+          set -e
+          if [ -z "${MODULE}" ]; then
+            echo "MODULE is required (e.g., MODULE=langgraph)"
+            exit 2
+          fi
+          echo "pytest path: tests/${MODULE}"
+          PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
+          if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
+            NAT_IGNORED_TESTS=tests/nat
+          else
+            NAT_IGNORED_TESTS=tests/nat/integration
+          fi
+          uv run pytest tests/${MODULE} \
+            --junitxml=test_results/test-results.xml -vv -s \
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
+    silent: true
+
+  smoke-extras-none:
+    desc: "🧪 Test with no extras"
+    cmds:
+      - echo "🧪 Testing with no extras (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install .
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "none"
+      - rm -rf .venv-ci-test
+    silent: true
+
+  smoke-extras-crewai:
+    desc: "🧪 Test with crewai extra"
+    cmds:
+      - echo "🧪 Testing with crewai extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[crewai]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "crewai"
+      - rm -rf .venv-ci-test
+    silent: true
+
+  smoke-extras-langgraph:
+    desc: "🧪 Test with langgraph extra"
+    cmds:
+      - echo "🧪 Testing with langgraph extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[langgraph]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "langgraph"
+      - rm -rf .venv-ci-test
+    silent: true
+
+  smoke-extras-llamaindex:
+    desc: "🧪 Test with llamaindex extra"
+    cmds:
+      - echo "🧪 Testing with llamaindex extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[llamaindex]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "llamaindex"
+      - rm -rf .venv-ci-test
+    silent: true
+
+  smoke-extras-drmcp:
+    desc: "🧪 Test with drmcp extra"
+    cmds:
+      - echo "🧪 Testing with drmcp extra (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[drmcp]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "drmcp"
+      - rm -rf .venv-ci-test
+    silent: true
+
+  smoke-extras-all:
+    desc: "🧪 Test with all extras"
+    cmds:
+      - echo "🧪 Testing with all extras (fresh venv like CI)..."
+      - rm -rf .venv-ci-test
+      - python -m venv .venv-ci-test
+      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
+      - source .venv-ci-test/bin/activate && pip install ".[crewai,langgraph,llamaindex,drmcp]"
+      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "all"
+      - rm -rf .venv-ci-test
+    silent: true
+
+  smoke-extras-matrix:
+    desc: "🧪 Test all optional extras combinations (like CI matrix)"
+    cmds:
+      - echo "🧪 Testing all extras combinations..."
+      - task: smoke-extras-none
+      - task: smoke-extras-crewai
+      - task: smoke-extras-langgraph
+      - task: smoke-extras-llamaindex
+      - task: smoke-extras-drmcp
+      - task: smoke-extras-all
+    silent: true

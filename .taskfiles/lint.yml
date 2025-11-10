@@ -1,0 +1,54 @@
+version: '3'
+
+tasks:
+  lint:
+    desc: "🧹 Run all linters (check only, no fixes)"
+    cmds:
+      - echo "🧹 Running linters (check mode)..."
+      - task: check-ruff-format
+      - task: check-ruff
+      - task: mypy
+    silent: true
+
+  mypy:
+    desc: "Run mypy checks."
+    cmds:
+      - echo "Running mypy checks..."
+      - uv run mypy --check-untyped-defs --no-site-packages ./src
+    silent: true
+
+  delint:
+    desc: "🧹 Fix all linting issues automatically"
+    cmds:
+      - echo "🧹 Fixing linting issues..."
+      - task: fix-ruff-format
+      - task: fix-ruff
+    silent: true
+
+  check-ruff:
+    desc: "Check ruff linter rules, but don't apply fixers. Used by CI."
+    cmds:
+      - uv run ruff check ./src
+      - uv run ruff check ./tests
+    silent: true
+
+  check-ruff-format:
+    desc: "Check formatting with ruff."
+    cmds:
+      - uv run ruff format --check ./src
+      - uv run ruff format --check ./tests
+    silent: true
+
+  fix-ruff:
+    desc: "Run ruff linter, applying fixers. Used by pre-commit."
+    cmds:
+      - uv run ruff check --fix ./src
+      - uv run ruff check --fix ./tests
+    silent: true
+
+  fix-ruff-format:
+    desc: "Run ruff linter, applying formatting fixes."
+    cmds:
+      - uv run ruff format ./src
+      - uv run ruff format ./tests
+    silent: true
