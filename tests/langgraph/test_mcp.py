@@ -109,13 +109,15 @@ class TestMCPToolsContext:
             async with mcp_tools_context() as tools:
                 assert tools == setup_session_and_tools["tools"]
 
-                # Verify create_session was called with correct connection config (default transport)
+                # Verify create_session was called with correct connection config
+                # (default transport)
                 setup_session_and_tools["session"].assert_called_once()
                 call_args = setup_session_and_tools["session"].call_args
                 connection_config = call_args[1]["connection"]
                 assert connection_config["url"] == external_url.rstrip("/")
-                assert "headers" not in connection_config  # No custom headers
-                # langchain_mcp_adapters expects "streamable_http" (underscore), but server_config has "streamable-http" (hyphen)
+                assert connection_config["headers"] == {}  # No custom headers
+                # langchain_mcp_adapters expects "streamable_http" (underscore),
+                # but server_config has "streamable-http" (hyphen)
                 # The conversion happens in mcp_tools_context, so we check the converted value
                 assert connection_config["transport"] == "streamable_http"
 

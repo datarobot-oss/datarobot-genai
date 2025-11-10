@@ -211,9 +211,11 @@ class TestMCPConfig:
             clear=True,
         ):
             config = MCPConfig(api_base=api_base, api_key=api_key)
-            assert config.server_config["url"] == (
-                f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            # /v2 should be converted to /api/v2
+            expected_url = "https://custom.api/api/v2/deployments/{deployment_id}/directAccess/mcp".format(
+                deployment_id=deployment_id
             )
+            assert config.server_config["url"] == expected_url
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
 
     def test_mcp_config_with_bearer_only_api_key(self):

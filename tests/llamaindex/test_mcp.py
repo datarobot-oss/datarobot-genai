@@ -43,7 +43,7 @@ class TestMCPConfig:
             assert config.server_config is not None
             assert config.server_config["url"] == test_url.rstrip("/")
             assert config.server_config["transport"] == "streamable-http"
-            assert "headers" not in config.server_config
+            assert config.server_config["headers"] == {}
 
     def test_mcp_config_with_datarobot_deployment_id(self):
         """Test MCP config with DataRobot deployment ID."""
@@ -161,7 +161,7 @@ class TestMCPConfig:
         ):
             config = MCPConfig()
             assert config.server_config["url"] == external_url.rstrip("/")
-            assert "headers" not in config.server_config
+            assert config.server_config["headers"] == {}
 
     def test_mcp_config_with_explicit_parameters(self):
         """Test MCP config with explicit api_base and api_key parameters."""
@@ -209,8 +209,8 @@ class TestLoadMCPTools:
             call_args = mock_aget.await_args
             assert call_args[1]["url"] == test_url.rstrip("/")
             assert call_args[1]["transport"] == "streamable-http"
-            # headers may be None or empty dict
-            assert call_args[1].get("headers") is None or call_args[1].get("headers") == {}
+            # headers should always be present, empty dict when no custom headers
+            assert call_args[1]["headers"] == {}
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
