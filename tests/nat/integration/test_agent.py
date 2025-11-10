@@ -55,7 +55,7 @@ async def test_run_method(agent):
     # Call the run method with test inputs
     completion_create_params = {
         "model": "test-model",
-        "messages": [{"role": "user", "content": "Hi!"}],
+        "messages": [{"role": "user", "content": "AI"}],
         "environment_var": True,
     }
     result, pipeline_interactions, usage = await agent.invoke(completion_create_params)

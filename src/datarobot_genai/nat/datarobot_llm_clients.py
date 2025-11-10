@@ -59,6 +59,7 @@ async def datarobot_llm_gateway_langchain(
 ) -> AsyncGenerator[ChatOpenAI]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     config["base_url"] = config["base_url"] + "/genai/llmgw"
+    config["stream_options"] = {"include_usage": True}
     yield ChatOpenAI(**config)
 
 

@@ -16,13 +16,15 @@ from typing import Any
 
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
+from nat.data_models.intermediate_step import IntermediateStepType
+from nat.eval.runtime_event_subscriber import pull_intermediate
 from nat.runtime.loader import load_workflow
 from nat.utils.type_utils import StrPath
 from openai.types.chat import CompletionCreateParams
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
-from datarobot_genai.core.agents.base import default_usage_metrics
+from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 
 logger = logging.getLogger(__name__)
@@ -78,17 +80,30 @@ class NatAgent(BaseAgent[None]):
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)
 
         # Create and invoke the NAT (Nemo Agent Toolkit) Agentic Workflow with the inputs
-        result = await self.run_nat_workflow(self.workflow_path, chat_request)
+        result, steps = await self.run_nat_workflow(self.workflow_path, chat_request)
+
+        llm_end_steps = [
+            step for step in steps if step["payload"]["event_type"] == IntermediateStepType.LLM_END
+        ]
+        usage_metrics: UsageMetrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+        }
+        for step in llm_end_steps:
+            if step["payload"]["usage_info"]:
+                token_usage = step["payload"]["usage_info"]["token_usage"]
+                usage_metrics["total_tokens"] += token_usage["total_tokens"]
+                usage_metrics["prompt_tokens"] += token_usage["prompt_tokens"]
+                usage_metrics["completion_tokens"] += token_usage["completion_tokens"]
 
         # Create a list of events from the event listener
         events: list[Any]
         events = []  # This should be populated with the agent's events/messages
 
         if isinstance(result, ChatResponse):
-            usage_metrics = result.usage.model_dump()
             result_text = result.choices[0].message.content
         else:
-            usage_metrics = default_usage_metrics()
             result_text = str(result)
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
@@ -96,7 +111,7 @@ class NatAgent(BaseAgent[None]):
 
     async def run_nat_workflow(
         self, workflow_path: StrPath, chat_request: ChatRequest
-    ) -> ChatResponse | str:
+    ) -> tuple[ChatResponse | str, list[dict]]:
         """Run the NAT workflow with the provided config file and input string.
 
         Args:
@@ -109,7 +124,9 @@ class NatAgent(BaseAgent[None]):
         """
         async with load_workflow(workflow_path) as workflow:
             async with workflow.run(chat_request) as runner:
+                intermediate_future = pull_intermediate()
                 runner_outputs = await runner.result()
+                steps = await intermediate_future
 
         line = f"{'-' * 50}"
         prefix = f"{line}\nWorkflow Result:\n"
@@ -117,4 +134,4 @@ class NatAgent(BaseAgent[None]):
 
         print(f"{prefix}{runner_outputs}{suffix}")
 
-        return runner_outputs
+        return runner_outputs, steps
