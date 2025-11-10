@@ -36,10 +36,10 @@ source .venv/bin/activate
 pre-commit install
 
 # run unit tests
-make test
+task test
 
 # run acceptance tests
-make test-acceptance
+task drmcp-acceptance
 ```
 
 Python requirement: >= 3.11,< 3.13

@@ -1,0 +1,99 @@
+version: '3'
+
+tasks:
+  drmcp-install:
+    desc: "🔧 Install drmcp and dev dependencies for development"
+    cmds:
+      - echo "🔧 Installing DR MCP Library and dev dependencies for development"
+      - uv sync --extra drmcp --dev
+    silent: true
+
+  drmcp-dev:
+    desc: "🔨 Running DR MCP Library locally"
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server"
+      - task: drmcp-install
+      - uv run src/datarobot_genai/drmcp/server.py
+    silent: true
+
+  drmcp-dev-background:
+    desc: "🔨 Running DR MCP Library locally in background"
+    vars:
+      PORT: 8082
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server"
+      - echo "MCP Server running on port {{.PORT}}"
+      - |
+        if lsof -i :{{.PORT}} > /dev/null 2>&1; then
+          echo "Killing existing process on port {{.PORT}}"
+          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+        fi
+      - |
+        OTEL_ATTRIBUTES='{"environment":"test","service.instance.id":"ete-tests"}' \
+        OTEL_COLLECTOR_BASE_URL=http://localhost:4318 \
+        OTEL_ENTITY_ID=deployment-68924b8b51102f055bef861c \
+        MCP_SERVER_PORT={{.PORT}} task drmcp-dev &
+      - |
+        for i in {1..30}; do
+          if curl -s http://localhost:{{.PORT}}/ > /dev/null 2>&1; then
+            echo "Server is ready"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "Server failed to start"
+            exit 1
+          fi
+          sleep 1
+        done
+    silent: true
+
+  drmcp-dev-otel-background:
+    desc: "🔨 Running DR MCP Library locally in background with OTEL"
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server with OTEL"
+      - >-
+        docker run -d --name jaeger -p 16686:16686 -p 4318:4318 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:1.54
+        || docker start jaeger || true
+    silent: true
+
+  drmcp-test:
+    silent: true
+    desc: "🧪 Run DR MCP Library tests"
+    cmds:
+      - rm -rf .coverage .coverage.xml htmlcov
+      - echo "🧪 Running all DR MCP Library tests.."
+      - task: install
+      - task: drmcp-unit
+      - task: drmcp-integration
+      - task: drmcp-acceptance
+      - task: smoke-extras-drmcp
+
+  drmcp-unit:
+    desc: "Run DR MCP Library unit tests"
+    cmds:
+      - rm -rf .coverage .coverage.xml htmlcov
+      - echo "Running DR MCP Library unit tests"
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/unit/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml
+        --cov-report=html --cov-report=term-missing -s -vv
+    silent: true
+
+  drmcp-integration:
+    desc: "Run DR MCP Library integration tests"
+    cmds:
+      - echo "Running DR MCP Library integration tests"
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
+    silent: true
+
+  drmcp-acceptance:
+    desc: "Run DR MCP Library acceptance tests"
+    cmds:
+      - task: drmcp-dev-otel-background
+      - task: drmcp-dev-background
+      - defer: |
+          echo "Stopping DR MCP Library MCP Server"
+          lsof -i :8082 | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+          echo "Stopping Jaeger"
+          docker stop jaeger || true
+      - echo "Running DR MCP Library acceptance tests"
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
+    silent: true
