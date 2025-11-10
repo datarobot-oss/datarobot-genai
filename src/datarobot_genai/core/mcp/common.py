@@ -69,10 +69,8 @@ class MCPConfig:
             config = {
                 "url": self.external_mcp_url.rstrip("/"),
                 "transport": self.external_mcp_transport,
+                "headers": headers,
             }
-            # Only include headers if not empty
-            if headers:
-                config["headers"] = headers
             return config
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
