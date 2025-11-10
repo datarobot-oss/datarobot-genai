@@ -22,6 +22,7 @@ fetch tools from MCP servers.
 
 from typing import Any
 
+from llama_index.tools.mcp import BasicMCPClient
 from llama_index.tools.mcp import aget_tools_from_mcp_url
 
 from datarobot_genai.core.mcp.common import MCPConfig
@@ -50,15 +51,16 @@ async def load_mcp_tools(
         return []
 
     url = server_params["url"]
-    transport = server_params.get("transport", "streamable-http")
-    headers = server_params.get("headers")
+    headers = server_params.get("headers", {})
 
     try:
         print(f"Connecting to MCP server: {url}", flush=True)
+        import pdb; pdb.set_trace()
+        # Create BasicMCPClient with headers to pass authentication
+        client = BasicMCPClient(command_or_url=url, headers=headers)
         tools = await aget_tools_from_mcp_url(
-            url=url,
-            transport=transport,
-            headers=headers,
+            command_or_url=url,
+            client=client,
         )
         # Ensure list
         tools_list = list(tools) if tools is not None else []
