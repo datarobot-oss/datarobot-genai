@@ -27,6 +27,7 @@ import inspect
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from llama_index.core.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -40,7 +41,7 @@ from datarobot_genai.core.agents.base import is_streaming
 from .agent import create_pipeline_interactions_from_events
 
 
-class LlamaIndexAgent(BaseAgent, abc.ABC):
+class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
 
     @abc.abstractmethod
