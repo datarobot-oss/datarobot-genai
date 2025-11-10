@@ -23,19 +23,22 @@ tasks:
 
   test-module:
     desc: "Run repo unit tests via pytest for a specific module"
-    vars:
-      MODULE: ""
     cmds:
       - mkdir -p test_results
       - |
           set -e
+          if [ -z "${MODULE}" ]; then
+            echo "MODULE is required (e.g., MODULE=langgraph)"
+            exit 2
+          fi
+          echo "pytest path: tests/${MODULE}"
           PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
           if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
             NAT_IGNORED_TESTS=tests/nat
           else
             NAT_IGNORED_TESTS=tests/nat/integration
           fi
-          uv run pytest tests/{{.MODULE}} \
+          uv run pytest tests/${MODULE} \
             --junitxml=test_results/test-results.xml -vv -s \
             --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
     silent: true

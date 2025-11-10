@@ -113,7 +113,7 @@ jobs:
 
       - name: Run tests
         run: |
-          task test-module -- MODULE=${{ matrix.module }}
+          MODULE=${{ matrix.module }} task test-module
 
       - name: Upload test results
         if: always()
