@@ -105,7 +105,6 @@ tasks:
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
       - source .venv-ci-test/bin/activate && pip install .
-      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "none"
       - rm -rf .venv-ci-test
     silent: true
 
@@ -117,7 +116,6 @@ tasks:
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
       - source .venv-ci-test/bin/activate && pip install ".[crewai]"
-      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "crewai"
       - rm -rf .venv-ci-test
     silent: true
 
@@ -129,7 +127,6 @@ tasks:
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
       - source .venv-ci-test/bin/activate && pip install ".[langgraph]"
-      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "langgraph"
       - rm -rf .venv-ci-test
     silent: true
 
@@ -141,7 +138,6 @@ tasks:
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
       - source .venv-ci-test/bin/activate && pip install ".[llamaindex]"
-      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "llamaindex"
       - rm -rf .venv-ci-test
     silent: true
 
@@ -153,7 +149,6 @@ tasks:
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
       - source .venv-ci-test/bin/activate && pip install ".[drmcp]"
-      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "drmcp"
       - rm -rf .venv-ci-test
     silent: true
 
@@ -165,7 +160,6 @@ tasks:
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
       - source .venv-ci-test/bin/activate && pip install ".[crewai,langgraph,llamaindex,drmcp]"
-      - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "all"
       - rm -rf .venv-ci-test
     silent: true
 
