@@ -31,7 +31,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Install Task
-        uses: arduino/setup-task@v2
+        run: |
+          set -e
+          curl -sSL https://taskfile.dev/install.sh -o /tmp/install_task.sh
+          sudo sh /tmp/install_task.sh -d -b /usr/local/bin v3.40.1
+          task --version
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -83,7 +87,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Install Task
-        uses: arduino/setup-task@v2
+        run: |
+          set -e
+          curl -sSL https://taskfile.dev/install.sh -o /tmp/install_task.sh
+          sudo sh /tmp/install_task.sh -d -b /usr/local/bin v3.40.1
+          task --version
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
@@ -138,7 +146,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Install Task
-        uses: arduino/setup-task@v2
+        run: |
+          set -e
+          curl -sSL https://taskfile.dev/install.sh -o /tmp/install_task.sh
+          sudo sh /tmp/install_task.sh -d -b /usr/local/bin v3.40.1
+          task --version
 
       - name: Cache uv and virtualenv
         uses: actions/cache@v4
