@@ -111,7 +111,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: junit-${{ matrix.python-version }}
+          name: junit-${{ matrix.python-version }}-${{ matrix.module }}
           path: test_results/test-results.xml
           if-no-files-found: ignore
 
@@ -162,7 +162,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: junit-${{ matrix.python-version }}
+          name: junit-all-${{ matrix.python-version }}
           path: test_results/test-results.xml
           if-no-files-found: ignore
 
