@@ -108,13 +108,13 @@ async def datarobot_llm_gateway_llamaindex(
 async def datarobot_llm_deployment_langchain(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    yield ChatOpenAI(
-        **llm_config.model_dump(
-            exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
-            by_alias=True,
-            exclude_none=True,
-        )
+    config = llm_config.model_dump(
+        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+        by_alias=True,
+        exclude_none=True,
     )
+    config["stream_options"] = {"include_usage": True}
+    yield DataRobotChatOpenAI(**config)
 
 
 @register_llm_client(
@@ -153,13 +153,13 @@ async def datarobot_llm_deployment_llamaindex(
 async def datarobot_nim_langchain(
     llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    yield ChatOpenAI(
-        **llm_config.model_dump(
-            exclude={"type", "thinking"},
-            by_alias=True,
-            exclude_none=True,
-        )
+    config = llm_config.model_dump(
+        exclude={"type", "thinking"},
+        by_alias=True,
+        exclude_none=True,
     )
+    config["stream_options"] = {"include_usage": True}
+    yield DataRobotChatOpenAI(**config)
 
 
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.CREWAI)
