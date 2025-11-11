@@ -44,9 +44,15 @@ def mcp_tools_context(
 
     # Use MCPServerAdapter as context manager with the server config
     adapter_setting = config.server_config.copy()
-    with MCPServerAdapter(adapter_setting) as tools:
-        print(
-            f"Successfully connected to MCP server, got {len(tools)} tools",
-            flush=True,
-        )
-        yield tools
+    adapter_setting["transport"] = "streamable-http"
+    try:
+        with MCPServerAdapter(adapter_setting) as tools:
+            print(
+                f"Successfully connected to MCP server, got {len(tools)} tools",
+                flush=True,
+            )
+            yield tools
+    except Exception as exc:
+        # Gracefully degrade when connection fails or adapter initialization raises
+        print(f"Failed to connect to MCP server: {exc}", flush=True)
+        yield []
