@@ -135,8 +135,8 @@ class GoogleDriveClient:
                 response.raise_for_status()
                 data = await response.json()
 
-        files_data = data.get("files", [])
-        return [GoogleDriveFile.from_api_response(file) for file in files_data]
+                files_data = data.get("files", [])
+                return [GoogleDriveFile.from_api_response(file) for file in files_data]
 
 
 @dr_mcp_tool(tags={"data", "google", "list"})
