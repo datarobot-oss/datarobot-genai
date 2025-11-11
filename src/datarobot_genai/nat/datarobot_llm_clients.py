@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from crewai import LLM
 from langchain_openai import ChatOpenAI
@@ -25,6 +26,20 @@ from nat.cli.register_workflow import register_llm_client
 from ..nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 from ..nat.datarobot_llm_providers import DataRobotNIMModelConfig
+
+
+class DataRobotChatOpenAI(ChatOpenAI):
+    def _get_request_payload(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict:
+        # We need to default to include_usage=True for streaming but we get 400 response
+        # if stream_options is present for a non-streaming call.
+        payload = super()._get_request_payload(*args, **kwargs)
+        if not payload.get("stream"):
+            payload.pop("stream_options", None)
+        return payload
 
 
 class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
@@ -60,7 +75,7 @@ async def datarobot_llm_gateway_langchain(
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     config["base_url"] = config["base_url"] + "/genai/llmgw"
     config["stream_options"] = {"include_usage": True}
-    yield ChatOpenAI(**config)
+    yield DataRobotChatOpenAI(**config)
 
 
 @register_llm_client(
