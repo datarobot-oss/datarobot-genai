@@ -21,7 +21,6 @@ from typing import overload
 from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
-from fastmcp.prompts.prompt import FunctionPrompt
 from fastmcp.prompts.prompt import Prompt
 from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
@@ -440,7 +439,7 @@ async def register_prompt(
     logger.info(f"Registering new prompt: {prompt_name}")
     wrapped_fn = dr_mcp_extras(type="prompt")(fn)
 
-    prompt = FunctionPrompt.from_function(
+    prompt = Prompt.from_function(
         fn=wrapped_fn,
         name=prompt_name,
         title=title,

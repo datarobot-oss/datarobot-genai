@@ -11,61 +11,104 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from unittest.mock import patch
 
 import pytest
+from mcp import McpError
 
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPromptVersion
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
-from datarobot_genai.drmcp.core.dynamic_prompts.register import (
-    register_prompts_from_datarobot_prompt_management,
-)
-from datarobot_genai.drmcp.core.mcp_instance import mcp
-
-
-@pytest.fixture
-def prompt_template_id_ok() -> str:
-    return "69086ea4834952718366b2ce"
-
-
-@pytest.fixture
-def prompt_template_version_id_ok() -> str:
-    return "69086ea4b65d70489c5b198d"
-
-
-@pytest.fixture
-def get_prompt_template_mock(prompt_template_id_ok: str, prompt_template_version_id_ok: str):
-    """Set up all API endpoint mocks."""
-    dr_prompt_version = DrPromptVersion(
-        id=prompt_template_version_id_ok,
-        version=3,
-        prompt_text="Write greeting for {{name}} in max {{sentences}} sentences.",
-        variables=[
-            DrVariable(name="name", description="Person name"),
-            DrVariable(name="sentences", description="Number of sentences"),
-        ],
-    )
-    dr_prompt = DrPrompt(
-        id=prompt_template_id_ok,
-        name="Dummy prompt name",
-        description="Dummy description",
-    )
-    dr_prompt.get_latest_version = lambda: dr_prompt_version
-
-    with patch(
-        "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_templates",
-        return_value=[dr_prompt],
-    ):
-        yield
+from datarobot_genai.drmcp import integration_test_mcp_session
 
 
 @pytest.mark.asyncio
-async def test_register_prompt_from_datarobot_prompt_management(
-    get_prompt_template_mock,
-) -> None:
-    await register_prompts_from_datarobot_prompt_management()
+class TestMCPDRPromptManagementIntegration:
+    """Integration tests for MCP DR Prompt Management integration."""
 
-    prompts = {prompt for prompt in await mcp.get_prompts()}
+    # Staging is slow sometimes, so higher timeout not to fail randomly
+    TIMEOUT: int = 60
 
-    assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
+    async def test_prompt_without_version(self, prompt_template_without_versions: dict) -> None:
+        """Integration test for prompt template without any versions that cannot be used in MCP."""
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+            prompt_template_name = prompt_template_without_versions["name"]
+
+            # Prompt template without prompt template versions assigned cannot be used in MCP
+            with pytest.raises(McpError) as e:
+                _ = await session.get_prompt(name=prompt_template_name, arguments={})
+
+            # Check if it tells that prompt does not exist
+            assert (
+                e.value.error.message
+                == "Unknown prompt: drmcp-integration-test-prompt-without-version"
+            )
+
+    async def test_prompt_with_version_without_variables(
+        self, prompt_template_with_version_without_variables: dict
+    ) -> None:
+        """Integration test for prompt template with version without any variables."""
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+            prompt_template_name = prompt_template_with_version_without_variables["name"]
+            prompt_template_prompt_text = prompt_template_with_version_without_variables[
+                "prompt_text"
+            ]
+
+            # Simple prompt template without any variables
+            result = await session.get_prompt(name=prompt_template_name, arguments={})
+
+            # Check if it's correctly formatted prompt
+            assert len(result.messages) == 1
+            assert result.messages[0].role == "user"
+            assert result.messages[0].content.text == prompt_template_prompt_text
+
+    async def test_prompt_with_version_with_variables_happy_path(
+        self, prompt_template_with_version_with_variables: dict
+    ) -> None:
+        """Integration test for prompt template with version with variables -- happy path."""
+        var_1_name = "name"
+        var_1_value = "Tester"
+        var_2_name = "sentences"
+        var_2_value = "5"
+
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+            prompt_template_name = prompt_template_with_version_with_variables["name"]
+            prompt_template_prompt_text = prompt_template_with_version_with_variables["prompt_text"]
+
+            # Simple prompt template with 2 variables, and substituting 2 values
+            result = await session.get_prompt(
+                name=prompt_template_name,
+                arguments={var_1_name: var_1_value, var_2_name: var_2_value},
+            )
+
+            # Check if it's correctly formatted prompt
+            prompt_text_with_values = prompt_template_prompt_text.replace("{{name}}", var_1_value)
+            prompt_text_with_values = prompt_text_with_values.replace("{{sentences}}", var_2_value)
+
+            assert len(result.messages) == 1
+            assert result.messages[0].role == "user"
+            assert result.messages[0].content.text == prompt_text_with_values
+
+    async def test_prompt_with_version_with_variables_when_not_enough_variables_provided(
+        self, prompt_template_with_version_with_variables: dict
+    ) -> None:
+        """Integration test for prompt template with version with variables
+        when not enough variables provided.
+        """
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+            prompt_template_name = prompt_template_with_version_with_variables["name"]
+
+            # Simple prompt template with 2 variables, and substituting nothing
+            with pytest.raises(McpError) as e:
+                _ = await session.get_prompt(name=prompt_template_name, arguments={})
+
+            # Check if error suggests missing values
+            error_msg_base = (
+                "Error rendering prompt 'drmcp-integration-test-prompt-with-variables': "
+            )
+            try:
+                assert (
+                    error_msg_base + "Missing required arguments: {'sentences', 'name'}"
+                    == e.value.error.message
+                )
+            except AssertionError:  # Sometimes order of arguments is different
+                assert (
+                    error_msg_base + "Missing required arguments: {'name', 'sentences'}"
+                    == e.value.error.message
+                )

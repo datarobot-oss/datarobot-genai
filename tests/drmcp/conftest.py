@@ -19,6 +19,8 @@ import datarobot as dr
 import pytest
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template_versions
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
 
 
 @pytest.fixture(scope="session")
@@ -438,3 +440,142 @@ def classification_predict_dataset(
     except Exception as e:
         print(f"Error uploading prediction dataset: {e}")
         raise
+
+
+def _get_or_create_prompt_template(name: str) -> dict:
+    try:
+        for prompt_template in get_datarobot_prompt_templates():
+            if prompt_template.name == name:
+                return {
+                    "id": prompt_template.id,
+                    "name": name,
+                }
+    except Exception as e:
+        print(f"Error checking for existing prompt template: {e}")
+
+    try:
+        client = dr.client.get_client()
+        r = client.post(
+            url="genai/promptTemplates/",
+            data={
+                "name": name,
+                "description": f"Description for {name}",
+            },
+            join_endpoint=True,
+        )
+        return {
+            "id": r.json()["id"],
+            "name": prompt_template_name_without_version,
+        }
+    except Exception as e:
+        print(f"Error creating prompt template: {e}")
+        raise
+
+
+def _get_or_create_prompt_template_version(
+    prompt_template_id: str, prompt_text: str, variables: list[str]
+) -> dict:
+    try:
+        for prompt_template_version in get_datarobot_prompt_template_versions(prompt_template_id):
+            if prompt_template_version.prompt_text == prompt_text:
+                return {
+                    "id": prompt_template_version.id,
+                    "prompt_text": prompt_template_version.prompt_text,
+                }
+    except Exception as e:
+        print(f"Error checking for existing prompt template versions: {e}")
+
+    try:
+        client = dr.client.get_client()
+        r = client.post(
+            url=f"genai/promptTemplates/{prompt_template_id}/versions/",
+            data={
+                "promptText": prompt_text,
+                "commitComment": "Dummy commit comment",
+                "variables": [
+                    {
+                        "name": v,
+                        "description": f"Description for {v}",
+                        "type": "str",
+                    }
+                    for v in variables
+                ],
+            },
+            join_endpoint=True,
+        )
+        return {"id": r.json()["id"], "prompt_text": prompt_text}
+    except Exception as e:
+        print(f"Error creating prompt template version: {e}")
+        raise
+
+
+@pytest.fixture(scope="session")
+def prompt_template_name_without_version() -> str:
+    return "drmcp-integration-test-prompt-without-version"
+
+
+@pytest.fixture(scope="session")
+def prompt_template_name_with_version_without_variables() -> str:
+    return "drmcp-integration-test-prompt-with-version-without-variables"
+
+
+@pytest.fixture(scope="session")
+def prompt_template_text_without_variables() -> str:
+    return "Prompt text without any variables."
+
+
+@pytest.fixture(scope="session")
+def prompt_template_name_with_version_with_variables() -> str:
+    return "drmcp-integration-test-prompt-with-variables"
+
+
+@pytest.fixture(scope="session")
+def prompt_template_text_with_2_variables() -> str:
+    return "Prompt text to greet {{name}} in max {{sentences}} sentences."
+
+
+@pytest.fixture(scope="session")
+def prompt_template_without_versions(prompt_template_name_without_version: str) -> dict[str, Any]:
+    return _get_or_create_prompt_template(prompt_template_name_without_version)
+
+
+@pytest.fixture(scope="session")
+def prompt_template_with_version_without_variables(
+    prompt_template_name_with_version_without_variables: str,
+    prompt_template_text_without_variables: str,
+) -> dict[str, Any]:
+    prompt_template = _get_or_create_prompt_template(
+        prompt_template_name_with_version_without_variables
+    )
+    prompt_template_version = _get_or_create_prompt_template_version(
+        prompt_template_id=prompt_template["id"],
+        prompt_text=prompt_template_text_without_variables,
+        variables=[],
+    )
+    return {
+        "id": prompt_template["id"],
+        "name": prompt_template_name_with_version_without_variables,
+        "version_id": prompt_template_version["id"],
+        "prompt_text": prompt_template_version["prompt_text"],
+    }
+
+
+@pytest.fixture(scope="session")
+def prompt_template_with_version_with_variables(
+    prompt_template_name_with_version_with_variables: str,
+    prompt_template_text_with_2_variables: str,
+) -> dict[str, Any]:
+    prompt_template = _get_or_create_prompt_template(
+        prompt_template_name_with_version_with_variables
+    )
+    prompt_template_version = _get_or_create_prompt_template_version(
+        prompt_template_id=prompt_template["id"],
+        prompt_text=prompt_template_text_with_2_variables,
+        variables=["name", "sentences"],
+    )
+    return {
+        "id": prompt_template["id"],
+        "name": prompt_template_name_with_version_with_variables,
+        "version_id": prompt_template_version["id"],
+        "prompt_text": prompt_template_version["prompt_text"],
+    }

@@ -39,6 +39,10 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
             "MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP"
         )
         or "false",
+        "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP": os.environ.get(
+            "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP", "true"
+        )
+        or "false",
     }
 
     script_dir = Path(__file__).resolve().parent
@@ -60,13 +64,14 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
 
 @contextlib.asynccontextmanager
 async def integration_test_mcp_session(
-    server_params: StdioServerParameters | None = None,
+    server_params: StdioServerParameters | None = None, timeout: int = 30
 ) -> AsyncGenerator[ClientSession, None]:
     """
     Create and connect a client for the MCP server as a context manager.
 
     Args:
         server_params: Parameters for configuring the server connection
+        timeout: Timeout
 
     Yields
     ------
@@ -82,8 +87,8 @@ async def integration_test_mcp_session(
     try:
         async with stdio_client(server_params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
-                await asyncio.wait_for(session.initialize(), timeout=5)
+                await asyncio.wait_for(session.initialize(), timeout=timeout)
                 yield session
 
     except asyncio.TimeoutError:
-        raise TimeoutError("Session initialization timed out after 5 seconds")
+        raise TimeoutError(f"Session initialization timed out after {timeout} seconds")

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.42"
+version = "0.1.43"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -100,9 +100,6 @@ include = [
 package = true
 override-dependencies = [
   "ragas>=0.3.8",
-]
-exclude-dependencies = [
-  "uv",
 ]
 
 [dependency-groups]
