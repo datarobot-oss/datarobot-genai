@@ -51,14 +51,11 @@ except Exception:
         _base_mod = importlib.import_module("crewai.utilities.events.base_event_listener")
         _RuntimeBaseEventListener = getattr(_base_mod, "BaseEventListener")
     except Exception:
-        # Fallbacks to allow import without crewai installed
-        AgentExecutionCompletedEvent = object()
-        AgentExecutionStartedEvent = object()
-        CrewKickoffStartedEvent = object()
-        ToolUsageFinishedEvent = object()
-        ToolUsageStartedEvent = object()
-        CrewAIEventsBus = object()
-        _RuntimeBaseEventListener = object
+        raise ImportError(
+            "CrewAI is required for datarobot_genai.crewai.* modules. "
+            "Install with the CrewAI extra:\n"
+            "  install 'datarobot-genai[crewai]'"
+        )
 
 
 class CrewAIEventListener:

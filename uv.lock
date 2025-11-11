@@ -946,7 +946,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.1.41"
+version = "0.1.42"
 source = { editable = "." }
 dependencies = [
     { name = "datarobot" },
