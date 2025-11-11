@@ -19,6 +19,7 @@ dependencies = [
   "ragas>=0.3.8",
   "pyjwt>=2.10.1",
   "pypdf>=6.1.3",  # CVE BUZZOK-28182
+  "datarobot-drum>=1.17.5",
 ]
 
 [project.urls]
