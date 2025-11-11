@@ -11,6 +11,7 @@ from datarobot_genai.core.mcp.common import MCPConfig
 from .agent import build_llm
 from .agent import create_pipeline_interactions_from_messages
 from .base import CrewAIAgent
+from .events import CrewAIEventListener
 from .mcp import mcp_tools_context
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "CrewAIAgent",
     "build_llm",
     "create_pipeline_interactions_from_messages",
+    "CrewAIEventListener",
     "MCPConfig",
 ]
