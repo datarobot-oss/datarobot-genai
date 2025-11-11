@@ -39,10 +39,28 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_events
+from .mcp import load_mcp_tools
 
 
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._mcp_tools: list[Any] = []
+
+    def set_mcp_tools(self, tools: list[Any]) -> None:
+        """Set MCP tools for this agent."""
+        self._mcp_tools = tools
+
+    @property
+    def mcp_tools(self) -> list[Any]:
+        """Return the list of MCP tools available to this agent.
+
+        Subclasses can use this to wire tools into LlamaIndex agents during
+        workflow construction inside ``build_workflow``.
+        """
+        return self._mcp_tools
 
     @abc.abstractmethod
     def build_workflow(self) -> Any:
@@ -62,6 +80,10 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
         input_message = self.make_input_message(completion_create_params)
+
+        # Load MCP tools (if configured) asynchronously before building workflow
+        mcp_tools = await load_mcp_tools(api_base=self.api_base, api_key=self.api_key)
+        self.set_mcp_tools(mcp_tools)
 
         # Preserve prior template startup print for CLI parity
         try:

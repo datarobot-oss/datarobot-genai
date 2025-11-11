@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.38"
+version = "0.1.41"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -46,6 +46,7 @@ llamaindex = [
   "llama-index-llms-langchain>=0.6.1",
   "llama-index-llms-litellm>=0.4.1",  # Sync nat dependency if possible too
   "llama-index-llms-openai>=0.3.38",
+  "llama-index-tools-mcp>=0.1.0",
   "opentelemetry-instrumentation-llamaindex>=0.40.5",
   "pypdf>=6.0.0",
 ]
@@ -98,6 +99,9 @@ include = [
 package = true
 override-dependencies = [
   "ragas>=0.3.8",
+]
+exclude-dependencies = [
+  "uv",
 ]
 
 [dependency-groups]
