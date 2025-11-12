@@ -90,13 +90,13 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         return {"Authorization": auth}
 
     @property
-    def auth_context_handler(self):
+    def auth_context_handler(self) -> AuthContextHeaderHandler:
         if self._auth_context_handler is None:
             self._auth_context_handler = AuthContextHeaderHandler()
         return self._auth_context_handler
 
     @property
-    def server_config(self):
+    def server_config(self) -> dict[str, Any] | None:
         if self._server_config is None:
             self._server_config = self._build_server_config()
         return self._server_config
