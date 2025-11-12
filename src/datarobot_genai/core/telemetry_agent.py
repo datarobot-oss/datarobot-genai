@@ -87,13 +87,17 @@ def _instrument_framework(framework: str) -> None:
             llamaindex_instrumentor = getattr(llamaindex_module, "LlamaIndexInstrumentor")
             # LlamaIndex instrumentor lacks precise typing; cast to Any to avoid mypy complaints
             cast(Any, llamaindex_instrumentor()).instrument()
+        elif framework == "nat":
+            _instrument_framework("crewai")
+            _instrument_framework("langgraph")
+            _instrument_framework("llamaindex")
         _INSTRUMENTED_FRAMEWORKS.add(framework)
     except Exception as e:
         logger.debug(f"{framework} instrumentation skipped: {e}")
 
 
 def instrument(
-    framework: Literal["crewai", "langgraph", "llamaindex"] | None = None,
+    framework: Literal["crewai", "langgraph", "llamaindex", "nat"] | None = None,
 ) -> None:
     """Idempotently instrument supported HTTP clients, OpenAI SDK, and optionally a framework.
 
