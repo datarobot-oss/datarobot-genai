@@ -29,3 +29,8 @@ def test_instrument_with_frameworks() -> None:
     instrument("crewai")
     instrument("langgraph")
     instrument("llamaindex")
+
+
+def test_instrument_nat() -> None:
+    instrument("nat")
+    instrument("nat")
