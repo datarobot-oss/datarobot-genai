@@ -13,50 +13,93 @@
 # limitations under the License.
 
 import json
-import os
+import re
 from typing import Any
+from typing import Literal
+
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from pydantic import field_validator
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
-class MCPConfig:
-    """Configuration for MCP server connection."""
+class MCPConfig(DataRobotAppFrameworkBaseSettings):
+    """Configuration for MCP server connection.
 
-    def __init__(
-        self,
-        api_base: str | None = None,
-        api_key: str | None = None,
-        authorization_context: dict[str, Any] | None = None,
-    ) -> None:
-        """Initialize MCP configuration from environment variables and runtime parameters.
+    Derived values are exposed as properties rather than stored, avoiding
+    Pydantic field validation/serialization concerns for internal helpers.
+    """
 
-        Parameters
-        ----------
-        api_base : str | None
-            Base URL for the DataRobot API
-        api_key : str | None
-            API key for authentication
-        authorization_context : dict[str, Any] | None
-            Authorization context to use instead of fetching from ContextVar
-        """
-        self.external_mcp_url = os.environ.get("EXTERNAL_MCP_URL")
-        self.external_mcp_headers = os.environ.get("EXTERNAL_MCP_HEADERS")
-        self.external_mcp_transport = os.environ.get("EXTERNAL_MCP_TRANSPORT", "streamable-http")
-        self.mcp_deployment_id = os.environ.get("MCP_DEPLOYMENT_ID")
-        self.api_base = api_base or os.environ.get(
-            "DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2/"
-        )
-        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
-        self.authorization_context = authorization_context
-        self.auth_context_handler = AuthContextHeaderHandler()
-        self.server_config = self._get_server_config()
+    external_mcp_url: str | None = None
+    external_mcp_headers: str | None = None
+    external_mcp_transport: Literal["sse", "streamable-http"] = "streamable-http"
+    mcp_deployment_id: str | None = None
+    datarobot_endpoint: str | None = None
+    datarobot_api_token: str | None = None
+
+    _auth_context_handler: AuthContextHeaderHandler | None = None
+    _server_config: dict[str, Any] | None = None
+
+    @field_validator("external_mcp_headers", mode="before")
+    @classmethod
+    def validate_external_mcp_headers(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        if not isinstance(value, str):
+            msg = "external_mcp_headers must be a JSON string"
+            raise TypeError(msg)
+
+        candidate = value.strip()
+
+        try:
+            json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            msg = "external_mcp_headers must be valid JSON"
+            raise ValueError(msg) from exc
+
+        return candidate
+
+    @field_validator("mcp_deployment_id", mode="before")
+    @classmethod
+    def validate_mcp_deployment_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        if not isinstance(value, str):
+            msg = "mcp_deployment_id must be a string"
+            raise TypeError(msg)
+
+        candidate = value.strip()
+
+        if not re.fullmatch(r"[0-9a-fA-F]{24}", candidate):
+            msg = "mcp_deployment_id must be a valid 24-character hex ObjectId"
+            raise ValueError(msg)
+
+        return candidate
 
     def _authorization_bearer_header(self) -> dict[str, str]:
         """Return Authorization header with Bearer token or empty dict."""
-        if not self.api_key:
+        if not self.datarobot_api_token:
             return {}
-        auth = self.api_key if self.api_key.startswith("Bearer ") else f"Bearer {self.api_key}"
+        auth = (
+            self.datarobot_api_token
+            if self.datarobot_api_token.startswith("Bearer ")
+            else f"Bearer {self.datarobot_api_token}"
+        )
         return {"Authorization": auth}
+
+    @property
+    def auth_context_handler(self):
+        if self._auth_context_handler is None:
+            self._auth_context_handler = AuthContextHeaderHandler()
+        return self._auth_context_handler
+
+    @property
+    def server_config(self):
+        if self._server_config is None:
+            self._server_config = self._build_server_config()
+        return self._server_config
 
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""
@@ -66,7 +109,7 @@ class MCPConfig:
             # Authorization context not available (e.g., in tests)
             return {}
 
-    def _get_server_config(self) -> dict[str, Any] | None:
+    def _build_server_config(self) -> dict[str, Any] | None:
         """
         Get MCP server configuration.
 
@@ -88,9 +131,17 @@ class MCPConfig:
                 "headers": headers,
             }
             return config
-        elif self.mcp_deployment_id and self.api_key:
+        elif self.mcp_deployment_id and self.datarobot_api_token:
             # DataRobot deployment ID - requires authentication
-            base_url = self.api_base.rstrip("/")
+            if self.datarobot_endpoint is None:
+                raise ValueError(
+                    "When using a DataRobot hosted MCP deployment, api_base must be set."
+                )
+            if self.datarobot_api_token is None:
+                raise ValueError(
+                    "When using a DataRobot hosted MCP deployment, api_key must be set."
+                )
+            base_url = self.datarobot_endpoint.rstrip("/")
             if not base_url.endswith("/api/v2"):
                 base_url = base_url + "/api/v2"
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
