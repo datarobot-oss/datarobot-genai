@@ -147,12 +147,16 @@ class TestMCPConfig:
         custom_api_key = "custom-key"
 
         with patch.dict(os.environ, {}, clear=True):
-            config = MCPConfig(api_base=custom_api_base, api_key=custom_api_key)
+            config = MCPConfig(
+                datarobot_endpoint=custom_api_base, datarobot_api_token=custom_api_key
+            )
             # Without MCP_DEPLOYMENT_ID, should return None
             assert config.server_config is None
 
         with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            config = MCPConfig(api_base=custom_api_base, api_key=custom_api_key)
+            config = MCPConfig(
+                datarobot_endpoint=custom_api_base, datarobot_api_token=custom_api_key
+            )
             assert config.server_config is not None
             expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert config.server_config["url"] == expected_url
@@ -252,7 +256,7 @@ class TestLoadMCPTools:
         custom_api_key = "custom-key"
 
         with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            tools = await load_mcp_tools(api_base=custom_api_base, api_key=custom_api_key)
+            tools = await load_mcp_tools()
             assert tools == mock_tools
             mock_aget.assert_awaited_once()
             # Check that the function was called with custom parameters
