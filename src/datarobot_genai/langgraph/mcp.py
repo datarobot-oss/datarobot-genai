@@ -25,14 +25,12 @@ from datarobot_genai.core.mcp.common import MCPConfig
 
 
 @asynccontextmanager
-async def mcp_tools_context(
-    api_base: str | None = None, api_key: str | None = None
-) -> AsyncGenerator[list[BaseTool], None]:
+async def mcp_tools_context() -> AsyncGenerator[list[BaseTool], None]:
     """Yield a list of LangChain BaseTool instances loaded via MCP.
 
     If no configuration or loading fails, yields an empty list without raising.
     """
-    mcp_config = MCPConfig(api_base=api_base, api_key=api_key)
+    mcp_config = MCPConfig()
     server_config = mcp_config.server_config
 
     if not server_config:
