@@ -26,6 +26,7 @@ from starlette.middleware import Middleware
 from .auth import initialize_oauth_middleware
 from .config import get_config
 from .credentials import get_credentials
+from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
@@ -172,6 +173,10 @@ class DataRobotMCPServer:
             if self._config.mcp_server_register_dynamic_tools_on_startup:
                 self._logger.info("Registering dynamic tools from deployments...")
                 asyncio.run(register_tools_of_datarobot_deployments())
+
+            if self._config.mcp_server_register_dynamic_prompts_on_startup:
+                self._logger.info("Registering dynamic prompts from prompt management...")
+                asyncio.run(register_prompts_from_datarobot_prompt_management())
 
             # List registered tools, prompts, and resources before starting server
             tools = asyncio.run(self._mcp._mcp_list_tools())

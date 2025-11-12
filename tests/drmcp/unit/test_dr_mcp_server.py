@@ -106,6 +106,7 @@ class TestDataRobotMCPServer:
     ):
         # setup config mock
         mock_config.mcp_server_register_dynamic_tools_on_startup = True
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = False
         mock_get_config.return_value = mock_config
         mock_get_api_client.return_value = MagicMock(
             endpoint="https://test.datarobot.com/api/v2/",

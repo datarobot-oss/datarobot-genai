@@ -21,6 +21,7 @@ from typing import overload
 from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
+from fastmcp.prompts.prompt import Prompt
 from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
 from fastmcp.utilities.types import NotSet
@@ -409,3 +410,51 @@ async def register_tools(
     logger.info(f"Registered tools: {len(tools)}")
 
     return registered_tool
+
+
+async def register_prompt(
+    fn: AnyFunction,
+    name: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    tags: set[str] | None = None,
+    meta: dict[str, Any] | None = None,
+) -> Prompt:
+    """
+    Register new prompt after server has started.
+
+    Args:
+        fn: The function to register as a prompt
+        name: Optional name for the prompt (defaults to function name)
+        title: Optional human-readable title for the prompt
+        description: Optional description of what the prompt does
+        tags: Optional set of tags to apply to the prompt
+        meta: Optional dict of metadata to apply to the prompt
+
+    Returns
+    -------
+        The registered Prompt object
+    """
+    prompt_name = name or fn.__name__
+    logger.info(f"Registering new prompt: {prompt_name}")
+    wrapped_fn = dr_mcp_extras(type="prompt")(fn)
+
+    prompt = Prompt.from_function(
+        fn=wrapped_fn,
+        name=prompt_name,
+        title=title,
+        description=description,
+        tags=tags,
+        meta=meta,
+    )
+
+    # Register the prompt
+    registered_prompt = mcp.add_prompt(prompt)
+
+    # Verify prompt is registered
+    prompts = await mcp.get_prompts()
+    if not any(prompt.name == prompt_name for prompt in prompts.values()):
+        raise RuntimeError(f"Prompt {prompt_name} was not registered successfully")
+    logger.info(f"Registered prompts: {len(prompts)}")
+
+    return registered_prompt
