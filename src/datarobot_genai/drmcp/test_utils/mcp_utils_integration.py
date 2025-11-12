@@ -40,9 +40,9 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
         )
         or "false",
         "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP": os.environ.get(
-            "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP", "true"
+            "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP"
         )
-        or "false",
+        or "true",
     }
 
     script_dir = Path(__file__).resolve().parent

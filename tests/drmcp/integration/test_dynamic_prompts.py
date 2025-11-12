@@ -30,6 +30,11 @@ class TestMCPDRPromptManagementIntegration:
         async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
             prompt_template_name = prompt_template_without_versions["name"]
 
+            # Check if testing prompt
+            # IS NOT loaded as it's "broken" one
+            prompts_list = await session.list_prompts()
+            assert prompt_template_name not in {p.name for p in prompts_list.prompts}
+
             # Prompt template without prompt template versions assigned cannot be used in MCP
             with pytest.raises(McpError) as e:
                 _ = await session.get_prompt(name=prompt_template_name, arguments={})
@@ -49,6 +54,10 @@ class TestMCPDRPromptManagementIntegration:
             prompt_template_prompt_text = prompt_template_with_version_without_variables[
                 "prompt_text"
             ]
+
+            # Check if testing prompt is in list of all prompts
+            prompts_list = await session.list_prompts()
+            assert prompt_template_name in {p.name for p in prompts_list.prompts}
 
             # Simple prompt template without any variables
             result = await session.get_prompt(name=prompt_template_name, arguments={})
@@ -70,6 +79,10 @@ class TestMCPDRPromptManagementIntegration:
         async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
             prompt_template_name = prompt_template_with_version_with_variables["name"]
             prompt_template_prompt_text = prompt_template_with_version_with_variables["prompt_text"]
+
+            # Check if testing prompt is in list of all prompts
+            prompts_list = await session.list_prompts()
+            assert prompt_template_name in {p.name for p in prompts_list.prompts}
 
             # Simple prompt template with 2 variables, and substituting 2 values
             result = await session.get_prompt(
@@ -93,6 +106,10 @@ class TestMCPDRPromptManagementIntegration:
         """
         async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
             prompt_template_name = prompt_template_with_version_with_variables["name"]
+
+            # Check if testing prompt is in list of all prompts
+            prompts_list = await session.list_prompts()
+            assert prompt_template_name in {p.name for p in prompts_list.prompts}
 
             # Simple prompt template with 2 variables, and substituting nothing
             with pytest.raises(McpError) as e:
