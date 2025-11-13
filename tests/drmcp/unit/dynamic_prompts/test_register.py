@@ -21,6 +21,7 @@ from datarobot_genai.drmcp.core.dynamic_prompts.register import make_prompt_func
 from datarobot_genai.drmcp.core.dynamic_prompts.register import (
     register_prompts_from_datarobot_prompt_management,
 )
+from datarobot_genai.drmcp.core.dynamic_prompts.register import to_valid_function_name
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
@@ -44,6 +45,31 @@ class TestMakePrompt:
         assert prompt == "dummy prompt text variable_a_value and variable_b_value"
 
 
+class TestToValidFunctionName:
+    """Tests for to_valid_function_name."""
+
+    @pytest.mark.parametrize(
+        "s,expected",
+        [
+            ("HeLlo W0Rld 1", "HeLlo_W0Rld_1"),
+            ("1 Test Prompt", "Test_Prompt"),
+            ("my-name(second)", "my_name_second"),
+            ("class", "class_func"),  # Python keyword
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_to_valid_function_name(self, s: str, expected: str) -> None:
+        """Test converting to valid function name."""
+        assert to_valid_function_name(s) == expected
+
+    @pytest.mark.parametrize("s", ["$$$", "123-456-789", "---", "_123"])
+    @pytest.mark.asyncio
+    async def test_to_valid_function_name_when_cannot_convert(self, s: str) -> None:
+        """Test converting to valid function name."""
+        with pytest.raises(ValueError):
+            to_valid_function_name(s)
+
+
 class TestRegisterPrompt:
     """Tests for register_prompt - happy path."""
 
@@ -58,3 +84,16 @@ class TestRegisterPrompt:
         prompts = {prompt for prompt in await mcp.get_prompts()}
 
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
+
+    @pytest.mark.asyncio
+    async def test_register_prompt_from_datarobot_prompt_management_duplicated_prompt_names(
+        self,
+        get_prompt_template_duplicated_name_mock: None,
+    ) -> None:
+        """Test register prompt from dr prompt mgmt."""
+        await register_prompts_from_datarobot_prompt_management()
+
+        prompts = {prompt for prompt in await mcp.get_prompts()}
+
+        assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
+        assert "Dummy prompt name (1)" in prompts, "`Dummy prompt name (1)` is missing."

@@ -16,6 +16,7 @@ import pytest
 from mcp import McpError
 
 from datarobot_genai.drmcp import integration_test_mcp_session
+from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
 
 
 @pytest.mark.asyncio
@@ -129,3 +130,50 @@ class TestMCPDRPromptManagementIntegration:
                     error_msg_base + "Missing required arguments: {'name', 'sentences'}"
                     == e.value.error.message
                 )
+
+
+@pytest.mark.asyncio
+async def test_mcp_prompts_mapping_methods():
+    mcp = TaggedFastMCP()
+
+    await mcp.set_prompt_mapping("id_1", "v_id_1", "prompt_1")
+    await mcp.set_prompt_mapping("id_2", "v_id_2", "prompt_2")
+
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {"id_1": ("v_id_1", "prompt_1"), "id_2": ("v_id_2", "prompt_2")}
+
+    # override existing mapping, the same version id
+    await mcp.set_prompt_mapping("id_1", "v_id_1", "prompt_3")
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {
+        "id_1": ("v_id_1", "prompt_3"),  # Difference
+        "id_2": ("v_id_2", "prompt_2"),
+    }
+
+    # override existing mapping, different version id
+    await mcp.set_prompt_mapping("id_2", "v_id_4", "prompt_4")
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {
+        "id_1": ("v_id_1", "prompt_3"),
+        "id_2": ("v_id_4", "prompt_4"),  # Difference
+    }
+
+    # delete not existing mapping
+    await mcp.remove_prompt_mapping("id_99", "v_id_99")
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {"id_1": ("v_id_1", "prompt_3"), "id_2": ("v_id_4", "prompt_4")}
+
+    # delete mapping with given prompt id but not matching version id
+    await mcp.remove_prompt_mapping("id_1", "v_id_99")
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {"id_1": ("v_id_1", "prompt_3"), "id_2": ("v_id_4", "prompt_4")}
+
+    # delete first mapping -- happy path
+    await mcp.remove_prompt_mapping("id_1", "v_id_1")
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {"id_2": ("v_id_4", "prompt_4")}
+
+    # delete second mapping -- happy path
+    await mcp.remove_prompt_mapping("id_2", "v_id_4")
+    prompts = await mcp.get_prompt_mapping()
+    assert prompts == {}
