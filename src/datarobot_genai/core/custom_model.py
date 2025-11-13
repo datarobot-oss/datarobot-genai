@@ -108,7 +108,7 @@ def chat_entrypoint(
     runtime_parameter_keys : Optional[List[str]]
         Runtime parameter keys (DataRobot custom model) to propagate into env. When
         ``None``, defaults to
-        ``['EXTERNAL_MCP_URL', 'MCP_DEPLOYMENT_ID', 'SESSION_SECRET_KEY']``.
+        ``['EXTERNAL_MCP_URL', 'MCP_DEPLOYMENT_ID']``.
     framework : Optional[Literal["crewai", "langgraph", "llamaindex"]]
         When provided, idempotently instruments HTTP clients, OpenAI SDK, and the
         given framework. If omitted, general instrumentation is still applied.
@@ -133,7 +133,7 @@ def chat_entrypoint(
 
     # Load MCP runtime parameters and session secret if configured
     if runtime_parameter_keys is None:
-        runtime_parameter_keys = ["EXTERNAL_MCP_URL", "MCP_DEPLOYMENT_ID", "SESSION_SECRET_KEY"]
+        runtime_parameter_keys = ["EXTERNAL_MCP_URL", "MCP_DEPLOYMENT_ID"]
     for key in runtime_parameter_keys:
         maybe_set_env_from_runtime_parameters(key)
 
