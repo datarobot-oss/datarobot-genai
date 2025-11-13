@@ -12,15 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import os
 import warnings
 from typing import Any
 
 import jwt
 from datarobot.auth.session import AuthCtx
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.models.genai.agent.auth import get_authorization_context
 
 logger = logging.getLogger(__name__)
+
+
+class AuthContextConfig(DataRobotAppFrameworkBaseSettings):
+    session_secret_key: str = ""
 
 
 class AuthContextHeaderHandler:
@@ -58,7 +62,7 @@ class AuthContextHeaderHandler:
         if algorithm is None:
             raise ValueError("Algorithm None is not allowed. Use a secure algorithm like HS256.")
 
-        self.secret_key = secret_key or os.getenv("SESSION_SECRET_KEY", "")
+        self.secret_key = secret_key or AuthContextConfig().session_secret_key
         self.algorithm = algorithm
         self.validate_signature = validate_signature
 
