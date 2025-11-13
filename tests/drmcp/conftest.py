@@ -481,3 +481,44 @@ def get_prompt_template_mock(
         return_value=[dr_prompt],
     ):
         yield
+
+
+@pytest.fixture
+def get_prompt_template_duplicated_name_mock(
+    prompt_template_id_ok: str, prompt_template_version_id_ok: str
+) -> Iterator[None]:
+    """Set up all API endpoint mocks."""
+    dr_prompt_version_1 = DrPromptVersion(
+        id=prompt_template_version_id_ok,
+        version=3,
+        prompt_text="Write greeting for {{name}} in max {{sentences}} sentences.",
+        variables=[
+            DrVariable(name="name", description="Person name"),
+            DrVariable(name="sentences", description="Number of sentences"),
+        ],
+    )
+    dr_prompt_1 = DrPrompt(
+        id=prompt_template_id_ok,
+        name="Dummy prompt name",
+        description="Dummy description",
+    )
+    dr_prompt_1.get_latest_version = lambda: dr_prompt_version_1
+
+    dr_prompt_version_2 = DrPromptVersion(
+        id=prompt_template_version_id_ok,
+        version=1,
+        prompt_text="Another prompt without variables.",
+        variables=[],
+    )
+    dr_prompt_2 = DrPrompt(
+        id=prompt_template_id_ok,
+        name="Dummy prompt name",
+        description="Dummy description",
+    )
+    dr_prompt_2.get_latest_version = lambda: dr_prompt_version_2
+
+    with patch(
+        "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_templates",
+        return_value=[dr_prompt_1, dr_prompt_2],
+    ):
+        yield
