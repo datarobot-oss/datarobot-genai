@@ -90,9 +90,13 @@ class NatAgent(BaseAgent[None]):
                 async with load_workflow(self.workflow_path) as workflow:
                     async with workflow.run(chat_request) as runner:
                         # intermediate_future = pull_intermediate()
-                        async for m in runner.result_stream():  # type: ignore
+                        async for result in runner.result_stream():
+                            if isinstance(result, ChatResponse):
+                                result_text = result.choices[0].message.content
+                            else:
+                                result_text = str(result)
                             yield (
-                                m,
+                                result_text,
                                 None,
                                 {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0},
                             )
