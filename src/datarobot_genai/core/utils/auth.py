@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class AuthContextConfig(DataRobotAppFrameworkBaseSettings):
-    session_secret_key: str
+    session_secret_key: str = ""
 
 
 class AuthContextHeaderHandler:
