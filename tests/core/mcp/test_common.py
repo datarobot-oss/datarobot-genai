@@ -297,3 +297,103 @@ class TestMCPConfig:
         ):
             config = MCPConfig()
             assert config.server_config is None
+
+    def test_external_mcp_headers_whitespace_trim(self):
+        """Leading/trailing whitespace in headers JSON should be trimmed."""
+        raw = '  {"X-Test": "value"}  '
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": "https://mcp-server.example.com/mcp",
+                "EXTERNAL_MCP_HEADERS": raw,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.external_mcp_headers == raw.strip()
+            assert config.server_config["headers"] == {"X-Test": "value"}
+
+    def test_mcp_deployment_id_validation_errors(self):
+        """Invalid deployment IDs should raise ValueError or TypeError."""
+        # Invalid length / characters
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": "short-id",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            with pytest.raises(
+                ValueError, match="mcp_deployment_id must be a valid 24-character hex ID"
+            ):
+                MCPConfig()
+        # Non-string type
+        with patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            with pytest.raises(TypeError, match="mcp_deployment_id must be a string"):
+                MCPConfig(mcp_deployment_id=1234)  # type: ignore[arg-type]
+
+    def test_mcp_deployment_id_whitespace_trim(self):
+        """Whitespace around valid deployment id should be trimmed and accepted."""
+        deployment_id = "abc123def456789012345678"
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": f"  {deployment_id}  ",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.mcp_deployment_id == deployment_id
+
+    def test_authorization_header_absent_when_api_key_empty(self):
+        """Empty api key should result in no Authorization header in deployment config."""
+        deployment_id = "abc123def456789012345678"
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "",  # Empty
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            # With empty api key, the deployment branch should not activate (needs api_key)
+            assert config.server_config is None
+
+    def test_authorization_context_header_exception(self, agent_auth_context_data):
+        """Simulate an exception when retrieving auth context; header should be omitted."""
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://app.datarobot.com/api/v2"
+        api_key = "test-api-key"
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            # Monkeypatch auth_context_handler.get_header to raise LookupError
+            with patch.object(config.auth_context_handler, "get_header", side_effect=LookupError):
+                # Re-evaluate headers by calling the private helper directly
+                headers = {
+                    **config._authorization_bearer_header(),
+                    **config._authorization_context_header(),
+                }
+                assert headers == {"Authorization": f"Bearer {api_key}"}

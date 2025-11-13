@@ -147,16 +147,12 @@ class TestMCPConfig:
         custom_api_key = "custom-key"
 
         with patch.dict(os.environ, {}, clear=True):
-            config = MCPConfig(
-                datarobot_endpoint=custom_api_base, datarobot_api_token=custom_api_key
-            )
+            config = MCPConfig()
             # Without MCP_DEPLOYMENT_ID, should return None
             assert config.server_config is None
 
         with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            config = MCPConfig(
-                datarobot_endpoint=custom_api_base, datarobot_api_token=custom_api_key
-            )
+            config = MCPConfig()
             assert config.server_config is not None
             expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert config.server_config["url"] == expected_url

@@ -73,7 +73,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         candidate = value.strip()
 
         if not re.fullmatch(r"[0-9a-fA-F]{24}", candidate):
-            msg = "mcp_deployment_id must be a valid 24-character hex ObjectId"
+            msg = "mcp_deployment_id must be a valid 24-character hex ID"
             raise ValueError(msg)
 
         return candidate
