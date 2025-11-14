@@ -76,7 +76,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             For non-streaming requests, returns a single tuple of (response_text,
             pipeline_interactions, usage_metrics).
         """
-        async with mcp_tools_context(api_base=self.api_base, api_key=self.api_key) as mcp_tools:
+        async with mcp_tools_context(
+            api_base=self.api_base,
+            api_key=self.api_key,
+            authorization_context=self._authorization_context,
+        ) as mcp_tools:
             self.set_mcp_tools(mcp_tools)
             return await self._invoke(completion_create_params)
 

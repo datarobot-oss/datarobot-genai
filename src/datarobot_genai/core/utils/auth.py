@@ -71,17 +71,17 @@ class AuthContextHeaderHandler:
         """Get the header name for authorization context."""
         return self.HEADER_NAME
 
-    def get_header(self) -> dict[str, str]:
+    def get_header(self, authorization_context: dict[str, Any] | None = None) -> dict[str, str]:
         """Get the authorization context header with encoded JWT token."""
-        token = self.encode()
+        token = self.encode(authorization_context)
         if not token:
             return {}
 
         return {self.header: token}
 
-    def encode(self) -> str | None:
+    def encode(self, authorization_context: dict[str, Any] | None = None) -> str | None:
         """Encode the current authorization context into a JWT token."""
-        auth_context = get_authorization_context()
+        auth_context = authorization_context or get_authorization_context()
         if not auth_context:
             return None
 

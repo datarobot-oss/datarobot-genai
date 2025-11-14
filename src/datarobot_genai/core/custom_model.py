@@ -26,8 +26,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from typing import Literal
 
-from datarobot.models.genai.agent.auth import get_authorization_context
-from datarobot.models.genai.agent.auth import set_authorization_context
 from datarobot_drum import RuntimeParameters
 from openai.types.chat import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
@@ -35,9 +33,9 @@ from openai.types.chat.completion_create_params import CompletionCreateParamsStr
 
 from datarobot_genai.core.chat import CustomModelChatResponse
 from datarobot_genai.core.chat import CustomModelStreamingResponse
-from datarobot_genai.core.chat import initialize_authorization_context
 from datarobot_genai.core.chat import to_custom_model_chat_response
 from datarobot_genai.core.chat import to_custom_model_streaming_response
+from datarobot_genai.core.chat.auth import resolve_authorization_context
 from datarobot_genai.core.telemetry_agent import instrument
 
 logger = logging.getLogger(__name__)
@@ -137,29 +135,19 @@ def chat_entrypoint(
     for key in runtime_parameter_keys:
         maybe_set_env_from_runtime_parameters(key)
 
-    # Initialize the authorization context for downstream agents/tools
-    initialize_authorization_context(completion_create_params, **kwargs)
+    # Retrieve authorization context using all supported methods for downstream agents/tools
+    completion_create_params["authorization_context"] = resolve_authorization_context(
+        completion_create_params, **kwargs
+    )
 
-    # Capture auth context out of the main thread to propagate into worker
-    try:
-        auth_context = get_authorization_context()
-    except LookupError:
-        auth_context = {}
-
-    # Instantiate user agent with all supplied completion params
+    # Instantiate user agent with all supplied completion params including auth context
     agent = agent_cls(**completion_create_params)
 
-    # Run agent within the worker loop, attaching auth context in that thread
-    def invoke_with_auth_context() -> Any:
-        try:
-            set_authorization_context(auth_context)
-        except AttributeError:
-            pass
-        return event_loop.run_until_complete(
-            agent.invoke(completion_create_params=completion_create_params)
-        )
-
-    result = thread_pool_executor.submit(invoke_with_auth_context).result()
+    # Invoke the agent and check if it returns a generator or a tuple
+    result = thread_pool_executor.submit(
+        event_loop.run_until_complete,
+        agent.invoke(completion_create_params=completion_create_params),
+    ).result()
 
     # Streaming response (async generator)
     if isinstance(result, AsyncGenerator):
