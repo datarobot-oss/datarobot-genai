@@ -1,5 +1,28 @@
-# datarobot-genai
-Generic helpers for GenAI.
+<p align="center">
+  <a href="https://github.com/datarobot-oss/datarobot-genai">
+    <img src="docs/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
+  </a>
+</p>
+<h3 align="center">DataRobot GenAI Library</h3>
+<h1 align="center">datarobot-genai</h1>
+
+<p align="center">
+  <a href="https://www.datarobot.com/">Homepage</a>
+  ·
+  <a href="https://pypi.org/project/datarobot-genai/">PyPI</a>
+  ·
+  <a href="https://docs.datarobot.com/en/docs/get-started/troubleshooting/general-help.html">Support</a>
+</p>
+
+<p align="center">
+  <a href="/LICENSE">
+    <img src="https://img.shields.io/github/license/datarobot-oss/datarobot-genai" alt="License">
+  </a>
+  <a href="https://pypi.org/project/datarobot-genai/">
+    <img src="https://img.shields.io/pypi/v/datarobot-genai" alt="PyPI version">
+  </a>
+</p>
+
 
 ## Features
 - Utilities for common GenAI workflows
