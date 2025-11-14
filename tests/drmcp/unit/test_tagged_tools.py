@@ -46,10 +46,10 @@ async def test_tagged_tool_decorator() -> None:
         return "test"
 
     # Get the tool from the manager
-    tools = await mcp._tool_manager.list_tools()
+    tools = await mcp._tool_manager.get_tools()
     assert len(tools) == 1
 
-    tool = tools[0]
+    tool = list(tools.values())[0]
     assert tool.annotations is not None
     assert hasattr(tool.annotations, "tags")
     assert tool.annotations.tags == ["example", "test"]
@@ -64,10 +64,10 @@ async def test_tagged_tool_with_additional_annotations() -> None:
     def test_function() -> str:
         return "test"
 
-    tools = await mcp._tool_manager.list_tools()
+    tools = await mcp._tool_manager.get_tools()
     assert len(tools) == 1
 
-    tool = tools[0]
+    tool = list(tools.values())[0]
     assert tool.annotations is not None
     assert hasattr(tool.annotations, "title")
     assert tool.annotations.title == "Test Tool"
@@ -85,10 +85,10 @@ async def test_tool_without_tags() -> None:
     def test_function() -> str:
         return "test"
 
-    tools = await mcp._tool_manager.list_tools()
+    tools = await mcp._tool_manager.get_tools()
     assert len(tools) == 1
 
-    tool = tools[0]
+    tool = list(tools.values())[0]
     # Should work fine without annotations
     assert tool.name == "test_function"
 
@@ -418,7 +418,7 @@ async def test_list_tools_by_tags_no_tags() -> None:
         mock_tool2.annotations = Mock()
         mock_tool2.annotations.extra = {"tags": ["model", "train"]}
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
         result = await list_tools_by_tags()
 
@@ -446,7 +446,7 @@ async def test_list_tools_by_tags_with_tags_or() -> None:
         mock_tool2.annotations = Mock()
         mock_tool2.annotations.extra = {"tags": ["model", "train"]}
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
         result = await list_tools_by_tags(tags=["data", "model"], match_all=False)
 
@@ -472,7 +472,7 @@ async def test_list_tools_by_tags_with_tags_and() -> None:
         mock_tool2.annotations = Mock()
         mock_tool2.annotations.extra = {"tags": ["data"]}
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1])
 
         result = await list_tools_by_tags(tags=["data", "model"], match_all=True)
 
@@ -485,7 +485,7 @@ async def test_list_tools_by_tags_with_tags_and() -> None:
 async def test_list_tools_by_tags_no_matches() -> None:
     """Test list_tools_by_tags when no tools match the criteria."""
     with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
-        mock_mcp.list_tools = AsyncMock(return_value=[])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
 
         result = await list_tools_by_tags(tags=["nonexistent"])
 
@@ -502,7 +502,7 @@ async def test_list_tools_by_tags_no_annotations() -> None:
         mock_tool.description = "Tool without tags"
         mock_tool.annotations = None
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
 
         result = await list_tools_by_tags()
 
@@ -529,7 +529,7 @@ async def test_get_tool_info_by_name_found() -> None:
         }
         mock_tool.inputSchema = mock_schema
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("test_tool")
 
@@ -545,7 +545,7 @@ async def test_get_tool_info_by_name_found() -> None:
 async def test_get_tool_info_by_name_not_found() -> None:
     """Test get_tool_info_by_name when tool is not found."""
     with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
-        mock_mcp.list_tools = AsyncMock(return_value=[])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
 
         result = await get_tool_info_by_name("nonexistent_tool")
 
@@ -564,7 +564,7 @@ async def test_get_tool_info_by_name_no_tags() -> None:
         mock_tool.annotations.extra = {}
         mock_tool.inputSchema = None
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_tags_tool")
 
@@ -585,7 +585,7 @@ async def test_get_tool_info_by_name_no_annotations() -> None:
         mock_tool.annotations = None
         mock_tool.inputSchema = None
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_annotations_tool")
 
@@ -606,7 +606,7 @@ async def test_get_tool_info_by_name_no_extra() -> None:
         mock_tool.annotations.extra = None
         mock_tool.inputSchema = None
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_extra_tool")
 
@@ -623,13 +623,14 @@ async def test_get_tool_info_by_name_no_schema_properties() -> None:
         mock_tool = Mock()
         mock_tool.name = "no_schema_props_tool"
         mock_tool.description = "Tool without schema properties"
+        mock_tool.annotations = Mock()
         mock_tool.annotations.extra = {"tags": ["test"]}
 
         mock_schema = Mock()
         mock_schema.properties = None
         mock_tool.inputSchema = mock_schema
 
-        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_schema_props_tool")
 
@@ -643,7 +644,7 @@ async def test_get_tool_info_by_name_no_schema_properties() -> None:
 async def test_list_tools_by_tags_empty_result() -> None:
     """Test list_tools_by_tags when no tools are returned."""
     with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
-        mock_mcp.list_tools = AsyncMock(return_value=[])
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
 
         result = await list_tools_by_tags()
 
@@ -689,7 +690,7 @@ async def test_list_tools_by_tags_complex_scenario() -> None:
         tool4.annotations.extra = {"tags": ["data", "model", "predict"]}
         tools.append(tool4)
 
-        mock_mcp.list_tools = AsyncMock(return_value=tools)
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=tools)
 
         # Test filtering by data tag (OR logic) - should return all tools with data tag
         result = await list_tools_by_tags(tags=["data"], match_all=False)

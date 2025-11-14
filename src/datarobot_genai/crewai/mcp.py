@@ -18,56 +18,13 @@ MCP integration for CrewAI using MCPServerAdapter.
 This module provides MCP server connection management for CrewAI agents.
 """
 
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
 from crewai_tools import MCPServerAdapter
 
-
-class MCPConfig:
-    """Configuration for MCP server connection."""
-
-    def __init__(self, api_base: str | None = None, api_key: str | None = None) -> None:
-        """Initialize MCP configuration from environment variables and runtime parameters."""
-        self.external_mcp_url = os.environ.get("EXTERNAL_MCP_URL")
-        self.mcp_deployment_id = os.environ.get("MCP_DEPLOYMENT_ID")
-        self.api_base = api_base or os.environ.get(
-            "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
-        )
-        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
-        self.server_config = self._get_server_config()
-
-    def _get_server_config(self) -> dict[str, Any] | None:
-        """
-        Get MCP server configuration.
-
-        Returns
-        -------
-            Server configuration dict with url, transport, and optional headers,
-            or None if not configured.
-        """
-        if self.external_mcp_url:
-            # External MCP URL - no authentication needed
-            return {"url": self.external_mcp_url, "transport": "streamable-http"}
-        elif self.mcp_deployment_id and self.api_key:
-            # DataRobot deployment ID - requires authentication
-            # DATAROBOT_ENDPOINT already includes /api/v2, so just add the deployment path
-            base_url = self.api_base.rstrip("/")
-            url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
-
-            auth_header = (
-                self.api_key if self.api_key.startswith("Bearer ") else f"Bearer {self.api_key}"
-            )
-
-            return {
-                "url": url,
-                "transport": "streamable-http",
-                "headers": {"Authorization": auth_header},
-            }
-
-        return None
+from datarobot_genai.core.mcp.common import MCPConfig
 
 
 @contextmanager
@@ -85,18 +42,17 @@ def mcp_tools_context(
 
     print(f"Connecting to MCP server: {config.server_config['url']}", flush=True)
 
+    # Use MCPServerAdapter as context manager with the server config
+    adapter_setting = config.server_config.copy()
+    adapter_setting["transport"] = "streamable-http"
     try:
-        # Use MCPServerAdapter as context manager with the server config
-        with MCPServerAdapter(config.server_config) as tools:
+        with MCPServerAdapter(adapter_setting) as tools:
             print(
                 f"Successfully connected to MCP server, got {len(tools)} tools",
                 flush=True,
             )
             yield tools
-
-    except Exception as e:
-        print(
-            f"Warning: Failed to connect to MCP server {config.server_config['url']}: {e}",
-            flush=True,
-        )
+    except Exception as exc:
+        # Gracefully degrade when connection fails or adapter initialization raises
+        print(f"Failed to connect to MCP server: {exc}", flush=True)
         yield []

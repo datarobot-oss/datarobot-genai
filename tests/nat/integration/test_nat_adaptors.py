@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import Mock
+
 from langchain_core.messages.ai import AIMessage
 from langchain_core.prompts.chat import ChatPromptTemplate
 from llama_index.core.llms import ChatMessage
@@ -43,6 +45,10 @@ async def test_datarobot_llm_gateway_langchain():
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "3" in response.content.lower()
+        usage = response.response_metadata["token_usage"]
+        assert usage["completion_tokens"] > 0
+        assert usage["total_tokens"] > 0
+        assert usage["prompt_tokens"] > 0
 
 
 async def test_datarobot_llm_gateway_crewai():
@@ -56,13 +62,19 @@ async def test_datarobot_llm_gateway_crewai():
         model_name="azure/gpt-4o-2024-11-20", temperature=0.0
     )
 
+    callback = Mock()
+
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
-        response = llm.call(messages)
+        response = llm.call(messages, callbacks=[callback])
         assert isinstance(response, str)
         assert response is not None
         assert "3" in response
+        usage = callback.log_success_event.call_args.kwargs["response_obj"]["usage"]
+        assert usage.completion_tokens > 0
+        assert usage.total_tokens > 0
+        assert usage.prompt_tokens > 0
 
 
 async def test_datarobot_llm_gateway_llamaindex():
@@ -83,6 +95,10 @@ async def test_datarobot_llm_gateway_llamaindex():
         assert isinstance(response, ChatResponse)
         assert response is not None
         assert "3" in response.message.content
+        usage = response.raw.model_extra["usage"]
+        assert usage.completion_tokens > 0
+        assert usage.total_tokens > 0
+        assert usage.prompt_tokens > 0
 
 
 async def test_datarobot_llm_deployment_langchain():

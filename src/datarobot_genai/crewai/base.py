@@ -30,6 +30,7 @@ from typing import Any
 
 from crewai import Crew
 from crewai.events.event_bus import CrewAIEventsBus
+from crewai.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -44,29 +45,13 @@ from .agent import create_pipeline_interactions_from_messages
 from .mcp import mcp_tools_context
 
 
-class CrewAIAgent(BaseAgent, abc.ABC):
+class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
     Subclasses should define the ``agents`` and ``tasks`` properties
     and may override ``build_crewai_workflow`` to customize the workflow
     construction.
     """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._mcp_tools: list[Any] = []
-
-    def set_mcp_tools(self, tools: list[Any]) -> None:
-        self._mcp_tools = tools
-
-    @property
-    def mcp_tools(self) -> list[Any]:
-        """Return the list of MCP tools available to this agent.
-
-        Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``build_crewai_workflow``.
-        """
-        return self._mcp_tools
 
     @property
     @abc.abstractmethod

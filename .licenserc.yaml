@@ -63,7 +63,7 @@ header:
     - 'write-license-config.sh'
     - '.gitignore'
     - '.pre-commit-config.yaml'
-    - '.mkfiles/**'
+    - '.taskfiles/**'
     - 'py.typed'
     - '**/*.csv'
     - '**/*.json'

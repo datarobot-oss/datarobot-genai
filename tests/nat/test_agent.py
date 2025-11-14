@@ -17,6 +17,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from nat.data_models.api_server import ChatRequest
+from nat.data_models.intermediate_step import IntermediateStepType
 
 from datarobot_genai.nat.agent import NatAgent
 
@@ -47,7 +49,33 @@ def test_init_with_additional_kwargs(workflow_path):
 
 async def test_run_method(agent, workflow_path):
     # Patch the run_nat_workflow method
-    with patch.object(NatAgent, "run_nat_workflow", return_value="success"):
+    new_token_step = {
+        "payload": {
+            "event_type": IntermediateStepType.LLM_NEW_TOKEN,
+            "usage_info": {
+                "token_usage": {
+                    "total_tokens": 2,
+                    "completion_tokens": 1,
+                    "prompt_tokens": 1,
+                },
+            },
+        },
+    }
+    end_step = {
+        "payload": {
+            "event_type": IntermediateStepType.LLM_END,
+            "usage_info": {
+                "token_usage": {
+                    "total_tokens": 2,
+                    "completion_tokens": 1,
+                    "prompt_tokens": 1,
+                },
+            },
+        },
+    }
+    with patch.object(
+        NatAgent, "run_nat_workflow", return_value=("success", [new_token_step, end_step, end_step])
+    ):
         # Call the run method with test inputs
         completion_create_params = {
             "model": "test-model",
@@ -59,13 +87,13 @@ async def test_run_method(agent, workflow_path):
         # Verify run_nat_workflow was called with the right inputs
         agent.run_nat_workflow.assert_called_once_with(
             workflow_path,
-            "Artificial Intelligence",
+            ChatRequest.from_string("Artificial Intelligence"),
         )
 
         assert result == "success"
         assert pipeline_interactions is None
         assert usage == {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0,
+            "completion_tokens": 2,
+            "prompt_tokens": 2,
+            "total_tokens": 4,
         }

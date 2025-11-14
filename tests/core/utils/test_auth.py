@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import binascii
+import os
 import random
 from typing import Any
 from unittest.mock import patch
@@ -89,6 +90,26 @@ class TestAuthContextHeaderHandlerEncode:
             token = handler.encode()
 
             assert token is None, "Token should be None when no context is available"
+
+    def test_encode_with_no_secret_key_raises_warning(self, auth_context: dict[str, Any]) -> None:
+        """Test encoding without a secret key (insecure)."""
+        with (
+            patch.dict(os.environ, clear=True),
+            patch(
+                "datarobot_genai.core.utils.auth.get_authorization_context",
+                return_value=auth_context,
+            ),
+        ):
+            with pytest.warns(
+                UserWarning,
+                match="No secret key provided. Please make sure SESSION_SECRET_KEY is set.",
+            ):
+                token = AuthContextHeaderHandler(secret_key=None).encode()
+
+        assert isinstance(token, str), (
+            "Token should be a string even without secret key, to reduce dev friction."
+        )
+        assert token, "Token should not be empty even without secret key"
 
 
 class TestAuthContextHeaderHandlerDecode:

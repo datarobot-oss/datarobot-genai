@@ -15,7 +15,10 @@ import time
 import uuid
 from functools import cached_property
 from typing import Any
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import Mock
+from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
@@ -258,6 +261,38 @@ async def test_langgraph_streaming():
             assert response.choices[0].finish_reason == "stop"
             assert response.pipeline_interactions is not None
         idx += 1
+
+
+async def test_invoke_calls_mcp_tools_context_and_sets_tools():
+    """Test that invoke method calls mcp_tools_context and sets tools correctly."""
+    # GIVEN a simple langgraph agent implementation
+    agent = SimpleLangGraphAgent()
+
+    # Mock the mcp_tools_context to return mock tools
+    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
+
+    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
+        # Configure the mock context manager
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_tools
+        mock_context_manager.__aexit__.return_value = None
+        mock_mcp_context.return_value = mock_context_manager
+
+        with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
+            # WHEN invoking the agent
+            completion_create_params = {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
+                "environment_var": True,
+            }
+
+            await agent.invoke(completion_create_params)
+
+            # THEN mcp_tools_context is called with correct parameters
+            mock_mcp_context.assert_called_once_with(api_base=agent.api_base, api_key=agent.api_key)
+
+            # THEN set_mcp_tools is called with the tools from context
+            mock_set_mcp_tools.assert_called_once_with(mock_tools)
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:

@@ -1,0 +1,81 @@
+version: '3'
+
+tasks:
+  write-license-config:
+    desc: "Write license config (preserve original)"
+    cmds:
+      - cp .licenserc.yaml .licenserc.yaml.temp
+      - ./write-license-config.sh
+
+  restore-license-config:
+    desc: "Restore original license config"
+    cmds:
+      - mv .licenserc.yaml.temp .licenserc.yaml || true
+
+  do-fix-licenses:
+    desc: "Fix licenses in repo"
+    cmds:
+      - >-
+        docker run --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header fix
+
+  do-fix-licenses-files:
+    desc: "Fix licenses only for provided files"
+    cmds:
+      - >-
+        docker run --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header fix {{.CLI_ARGS}}
+
+  do-check-licenses:
+    desc: "Check licenses in repo"
+    cmds:
+      - >-
+        docker run --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header check
+
+  fix-licenses:
+    desc: "Fix licenses (ensuring config is preserved)"
+    cmds:
+      - task: write-license-config
+      - defer: task restore-license-config
+      - task: do-fix-licenses
+
+  fix-licenses-files:
+    desc: "Fix licenses for changed files (pre-commit)"
+    cmds:
+      - task: write-license-config
+      - defer: task restore-license-config
+      - task: do-fix-licenses-files
+
+  check-licenses:
+    desc: "Check licenses (ensuring config is preserved)"
+    cmds:
+      - task: write-license-config
+      - defer: task restore-license-config
+      - task: do-check-licenses
+
+  check-licenses-ci:
+    desc: "Check licenses (CI, using local license-eye)"
+    cmds:
+      - task: write-license-config
+      - defer: task restore-license-config
+      - license-eye -v info -c .licenserc.yaml header check
+
+  # Legacy shortcuts
+  copyright:
+    aliases: [license]
+    desc: 📜 Apply license headers
+    cmds:
+      - echo "📜 Applying license headers"
+      - >-
+        docker run  --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header fix
+
+  copyright-check:
+    aliases: [license-check]
+    desc: 📜 Checking for license headers
+    cmds:
+      - echo "📜 Checking license headers"
+      - >-
+        docker run  --rm -v $PWD:/github/workspace ghcr.io/apache/skywalking-eyes/license-eye:eb0e0b091ea41213f712f622797e37526ca1e5d6
+        -v info -c .licenserc.yaml header check
