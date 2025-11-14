@@ -4,7 +4,6 @@
   </a>
 </p>
 <h3 align="center">DataRobot GenAI Library</h3>
-<h1 align="center">datarobot-genai</h1>
 
 <p align="center">
   <a href="https://www.datarobot.com/">Homepage</a>
