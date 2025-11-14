@@ -24,6 +24,7 @@ from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.auth import OAuthMiddleWare
+from datarobot_genai.drmcp.core.auth import get_auth_context
 
 
 @pytest.fixture
@@ -224,3 +225,168 @@ class TestOAuthMiddleware:
         assert middleware.auth_handler is not None
         assert middleware.auth_handler.secret_key == secret_key
         assert middleware.auth_handler.algorithm == "HS256"
+
+    async def test_middleware_initialization_without_secret_key(self) -> None:
+        """Test that middleware initializes correctly without explicit secret key."""
+        with patch("datarobot_genai.drmcp.core.auth.get_config") as mock_config:
+            mock_config_instance = MagicMock()
+            mock_config_instance.session_secret_key = "config-secret-key"
+            mock_config.return_value = mock_config_instance
+
+            middleware = OAuthMiddleWare()
+
+            assert middleware.auth_handler is not None
+            assert middleware.auth_handler.secret_key == "config-secret-key"
+
+    async def test_middleware_with_lowercase_header_name(
+        self,
+        middleware: OAuthMiddleWare,
+        middleware_context: MiddlewareContext,
+        call_next: AsyncMock,
+        auth_token: str,
+    ) -> None:
+        """Test that middleware handles lowercase header names (as returned by get_http_headers)."""
+        headers = {"x-datarobot-authorization-context": auth_token}
+
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+            result = await middleware.on_call_tool(middleware_context, call_next)
+
+            call_next.assert_awaited_once_with(middleware_context)
+            assert isinstance(result, ToolResult)
+
+            # Verify auth_context was attached despite lowercase header name
+            auth_context = middleware_context.fastmcp_context.auth_context
+            assert auth_context is not None
+            assert isinstance(auth_context, AuthCtx)
+            assert auth_context.user.id == "user123"
+
+    async def test_middleware_with_mixed_case_header_name(
+        self,
+        middleware: OAuthMiddleWare,
+        middleware_context: MiddlewareContext,
+        call_next: AsyncMock,
+        auth_token: str,
+    ) -> None:
+        """Test that middleware handles mixed case header names."""
+        headers = {"X-DataRobot-Authorization-Context": auth_token}
+
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+            result = await middleware.on_call_tool(middleware_context, call_next)
+
+            call_next.assert_awaited_once_with(middleware_context)
+            assert isinstance(result, ToolResult)
+
+            # Verify auth_context was attached
+            auth_context = middleware_context.fastmcp_context.auth_context
+            assert auth_context is not None
+            assert isinstance(auth_context, AuthCtx)
+
+    async def test_middleware_with_no_fastmcp_context(
+        self,
+        middleware: OAuthMiddleWare,
+        call_next: AsyncMock,
+        auth_token: str,
+    ) -> None:
+        """Test that middleware handles missing fastmcp_context gracefully."""
+        context = MagicMock(spec=MiddlewareContext)
+        context.fastmcp_context = None  # No fastmcp_context
+
+        headers = {"X-DataRobot-Authorization-Context": auth_token}
+
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+            result = await middleware.on_call_tool(context, call_next)
+
+            # Should still call next and return result
+            call_next.assert_awaited_once_with(context)
+            assert isinstance(result, ToolResult)
+
+    async def test_middleware_handles_value_error_exception(
+        self,
+        middleware: OAuthMiddleWare,
+        middleware_context: MiddlewareContext,
+        call_next: AsyncMock,
+    ) -> None:
+        """Test that middleware handles ValueError exceptions gracefully."""
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_get_headers:
+            mock_get_headers.side_effect = ValueError("Invalid header format")
+
+            result = await middleware.on_call_tool(middleware_context, call_next)
+
+            call_next.assert_awaited_once_with(middleware_context)
+            assert isinstance(result, ToolResult)
+
+            # Verify auth_context is None due to exception
+            assert middleware_context.fastmcp_context.auth_context is None
+
+    async def test_middleware_handles_key_error_exception(
+        self,
+        middleware: OAuthMiddleWare,
+        middleware_context: MiddlewareContext,
+        call_next: AsyncMock,
+    ) -> None:
+        """Test that middleware handles KeyError exceptions gracefully."""
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_get_headers:
+            mock_get_headers.side_effect = KeyError("Missing key")
+
+            result = await middleware.on_call_tool(middleware_context, call_next)
+
+            call_next.assert_awaited_once_with(middleware_context)
+            assert isinstance(result, ToolResult)
+
+            # Verify auth_context is None due to exception
+            assert middleware_context.fastmcp_context.auth_context is None
+
+    async def test_middleware_handles_type_error_exception(
+        self,
+        middleware: OAuthMiddleWare,
+        middleware_context: MiddlewareContext,
+        call_next: AsyncMock,
+    ) -> None:
+        """Test that middleware handles TypeError exceptions gracefully."""
+        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_get_headers:
+            mock_get_headers.side_effect = TypeError("Invalid type")
+
+            result = await middleware.on_call_tool(middleware_context, call_next)
+
+            call_next.assert_awaited_once_with(middleware_context)
+            assert isinstance(result, ToolResult)
+
+            # Verify auth_context is None due to exception
+            assert middleware_context.fastmcp_context.auth_context is None
+
+
+class TestGetAuthContext:
+    """Test cases for get_auth_context function."""
+
+    @pytest.mark.asyncio
+    async def test_get_auth_context_success(self) -> None:
+        """Test that get_auth_context returns auth context when available."""
+        mock_context = MagicMock()
+        mock_auth_ctx = MagicMock(spec=AuthCtx)
+        mock_context.auth_context = mock_auth_ctx
+
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=mock_context):
+            result = await get_auth_context()
+
+            assert result is mock_auth_ctx
+
+    @pytest.mark.asyncio
+    async def test_get_auth_context_raises_when_missing(self) -> None:
+        """Test that get_auth_context raises RuntimeError when auth context is missing."""
+        mock_context = MagicMock()
+        mock_context.auth_context = None
+
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=mock_context):
+            with pytest.raises(RuntimeError, match="No authorization context found"):
+                await get_auth_context()
+
+    @pytest.mark.asyncio
+    async def test_get_auth_context_raises_when_attribute_missing(self) -> None:
+        """Test that RuntimeError is raised when auth_context attribute doesn't exist."""
+        mock_context = MagicMock()
+        # Remove auth_context attribute
+        del mock_context.auth_context
+
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=mock_context):
+            with pytest.raises(RuntimeError, match="No authorization context found"):
+                await get_auth_context()

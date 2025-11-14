@@ -16,10 +16,18 @@ tasks:
       - uv run src/datarobot_genai/drmcp/server.py
     silent: true
 
-  drmcp-dev-background:
+  drmcp-ete-test-server:
+    desc: "🔨 Running DR MCP Library test server"
+    cmds:
+      - echo "🔨 Starting DR MCP Library development server"
+      - task: drmcp-install
+      - uv run tests/drmcp/acceptance/ete_test_server.py
+    silent: true
+
+  drmcp-test-dev-server-background:
     desc: "🔨 Running DR MCP Library locally in background"
     vars:
-      PORT: 8082
+      PORT: 8652
     cmds:
       - echo "🔨 Starting DR MCP Library development server"
       - echo "MCP Server running on port {{.PORT}}"
@@ -32,7 +40,7 @@ tasks:
         OTEL_ATTRIBUTES='{"environment":"test","service.instance.id":"ete-tests"}' \
         OTEL_COLLECTOR_BASE_URL=http://localhost:4318 \
         OTEL_ENTITY_ID=deployment-68924b8b51102f055bef861c \
-        MCP_SERVER_PORT={{.PORT}} task drmcp-dev &
+        MCP_SERVER_PORT={{.PORT}} task drmcp-ete-test-server &
       - |
         for i in {1..30}; do
           if curl -s http://localhost:{{.PORT}}/ > /dev/null 2>&1; then
@@ -47,7 +55,7 @@ tasks:
         done
     silent: true
 
-  drmcp-dev-otel-background:
+  drmcp-test-otel-server-background:
     desc: "🔨 Running DR MCP Library locally in background with OTEL"
     cmds:
       - echo "🔨 Starting DR MCP Library development server with OTEL"
@@ -66,7 +74,6 @@ tasks:
       - task: drmcp-unit
       - task: drmcp-integration
       - task: drmcp-acceptance
-      - task: smoke-extras-drmcp
 
   drmcp-unit:
     desc: "Run DR MCP Library unit tests"
@@ -86,14 +93,16 @@ tasks:
 
   drmcp-acceptance:
     desc: "Run DR MCP Library acceptance tests"
+    vars:
+      PORT: 8652
     cmds:
-      - task: drmcp-dev-otel-background
-      - task: drmcp-dev-background
+      - task: drmcp-test-otel-server-background
+      - task: drmcp-test-dev-server-background
       - defer: |
           echo "Stopping DR MCP Library MCP Server"
-          lsof -i :8082 | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
           echo "Stopping Jaeger"
           docker stop jaeger || true
       - echo "Running DR MCP Library acceptance tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
+      - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
     silent: true

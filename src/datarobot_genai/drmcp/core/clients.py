@@ -12,50 +12,89 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from typing import Any
 from typing import cast
 
 import datarobot as dr
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
+from fastmcp.server.dependencies import get_http_headers
 
 from .credentials import get_credentials
 
+logger = logging.getLogger(__name__)
 
-def get_sdk_client(ctx: Any | None = None) -> Any:
+# Header names to check for authorization tokens (in order of preference)
+HEADER_TOKEN_CANDIDATE_NAMES = [
+    "authorization",
+    "x-datarobot-api-token",
+    "x-datarobot-api-key",
+]
+
+
+def _extract_token_from_headers(headers: dict[str, str]) -> str | None:
     """
-    Get a DataRobot SDK client, using the user's Bearer token from the request if available.
+    Extract a Bearer token from headers by checking multiple header name candidates.
+
     Args:
-        ctx: Optional FastMCP Context object. If provided, will attempt to extract the
-            Bearer token from the request headers.
+        headers: Dictionary of headers (keys should be lowercase)
 
     Returns
     -------
-        datarobot module with authenticated client.
+        The extracted token string, or None if not found
+    """
+    for candidate_name in HEADER_TOKEN_CANDIDATE_NAMES:
+        auth_header = headers.get(candidate_name)
+        if not auth_header:
+            continue
+
+        if not isinstance(auth_header, str):
+            continue
+
+        # Handle Bearer token format
+        bearer_prefix = "bearer "
+        if auth_header.lower().startswith(bearer_prefix):
+            token = auth_header[len(bearer_prefix) :].strip()
+        else:
+            # Assume it's a plain token
+            token = auth_header.strip()
+
+        if token:
+            return token
+
+    return None
+
+
+def get_sdk_client() -> Any:
+    """
+    Get a DataRobot SDK client, using the user's Bearer token from the request.
+
+    This function attempts to extract the Bearer token from the HTTP request headers.
+    If no token is found, it uses the application credentials.
     """
     token = None
-    endpoint = None
-    if ctx is not None:
-        # Try to get the Bearer token from the request headers
-        auth_header = None
-        # FastMCP context may have .request or .request_headers
-        if hasattr(ctx, "request") and hasattr(ctx.request, "headers"):
-            headers = ctx.request.headers
-            # headers may be a dict or a case-insensitive dict
-            for k, v in headers.items():
-                if k.lower() == "authorization":
-                    auth_header = v
-                    break
-        if auth_header and auth_header.lower().startswith("bearer "):
-            token = auth_header[7:].strip()
+
+    try:
+        headers = get_http_headers()
+        if headers:
+            token = _extract_token_from_headers(headers)
+            if token:
+                logger.debug("Using API token found in HTTP headers")
+    except Exception:
+        # No HTTP context e.g. stdio transport
+        logger.warning(
+            "Could not get HTTP headers, falling back to application credentials", exc_info=True
+        )
+
+    credentials = get_credentials()
+
+    # Fallback: Use application token
     if not token:
-        credentials = get_credentials()
         token = credentials.datarobot.application_api_token
-        endpoint = credentials.datarobot.endpoint
-    else:
-        credentials = get_credentials()
-        endpoint = credentials.datarobot.endpoint
-    dr.Client(token=token, endpoint=endpoint)
+        logger.debug("Using application API token from credentials")
+
+    dr.Client(token=token, endpoint=credentials.datarobot.endpoint)
     # The trafaret setting up a use case in the context, seem to mess up the tool calls
     DRContext.use_case = None
     return dr

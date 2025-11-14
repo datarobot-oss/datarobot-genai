@@ -156,12 +156,33 @@ async def test_deploy_model_error() -> None:
 
 @pytest.mark.asyncio
 async def test_get_sdk_client_uses_bearer_token() -> None:
-    # Simulate a FastMCP Context with a Bearer token in headers
-    ctx = MagicMock()
-    ctx.request = MagicMock()
-    ctx.request.headers = {"Authorization": "Bearer test-user-token"}
-    with patch("datarobot.Client") as mock_client:
-        get_sdk_client(ctx)
+    with (
+        patch("datarobot.Client") as mock_client,
+        patch("datarobot_genai.drmcp.core.clients.get_http_headers") as mock_get_headers,
+        patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
+    ):
+        mock_get_headers.return_value = {"authorization": "Bearer test-user-token"}
+        mock_creds = MagicMock()
+        mock_creds.datarobot.endpoint = "test-endpoint"
+        mock_get_creds.return_value = mock_creds
+        get_sdk_client()
+        mock_client.assert_called_once()
+        args, kwargs = mock_client.call_args
+        assert kwargs["token"] == "test-user-token"
+
+
+@pytest.mark.asyncio
+async def test_get_sdk_client_uses_x_datarobot_api_token() -> None:
+    with (
+        patch("datarobot.Client") as mock_client,
+        patch("datarobot_genai.drmcp.core.clients.get_http_headers") as mock_get_headers,
+        patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
+    ):
+        mock_get_headers.return_value = {"x-datarobot-api-token": "Bearer test-user-token"}
+        mock_creds = MagicMock()
+        mock_creds.datarobot.endpoint = "test-endpoint"
+        mock_get_creds.return_value = mock_creds
+        get_sdk_client()
         mock_client.assert_called_once()
         args, kwargs = mock_client.call_args
         assert kwargs["token"] == "test-user-token"
@@ -169,31 +190,30 @@ async def test_get_sdk_client_uses_bearer_token() -> None:
 
 @pytest.mark.asyncio
 async def test_get_sdk_client_falls_back_to_env() -> None:
-    # Simulate a FastMCP Context with no Authorization header
-    ctx = MagicMock()
-    ctx.request = MagicMock()
-    ctx.request.headers = {}
     with (
         patch("datarobot.Client") as mock_client,
+        patch("datarobot_genai.drmcp.core.clients.get_http_headers") as mock_get_headers,
         patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
     ):
+        mock_get_headers.return_value = {}
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "env-token"
         mock_creds.datarobot.endpoint = "env-endpoint"
         mock_get_creds.return_value = mock_creds
-        get_sdk_client(ctx)
+        get_sdk_client()
         mock_client.assert_called_once()
         _, kwargs = mock_client.call_args
         assert kwargs["token"] == "env-token"
 
 
 @pytest.mark.asyncio
-async def test_get_sdk_client_no_ctx() -> None:
-    # No context provided, should use environment token
+async def test_get_sdk_client_no_credentials() -> None:
     with (
         patch("datarobot.Client") as mock_client,
+        patch("datarobot_genai.drmcp.core.clients.get_http_headers") as mock_get_headers,
         patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
     ):
+        mock_get_headers.return_value = {}
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "env-token"
         mock_creds.datarobot.endpoint = "env-endpoint"
