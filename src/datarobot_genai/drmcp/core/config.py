@@ -43,7 +43,7 @@ class MCPServerConfig(BaseSettings):
         description="Name of the MCP server",
     )
     mcp_server_port: int = Field(
-        default=8080,
+        default=8650,
         validation_alias=AliasChoices(
             RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_PORT",
             "MCP_SERVER_PORT",

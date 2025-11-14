@@ -51,7 +51,7 @@ async def list_tools_by_tags(tags: list[str] | None = None, match_all: bool = Fa
     -------
         A formatted string listing tools that match the tag criteria.
     """
-    tools = await mcp.list_tools(tags=tags, match_all=match_all)
+    tools = await mcp._list_tools_mcp(tags=tags, match_all=match_all)
 
     if not tools:
         if tags:
@@ -95,7 +95,7 @@ async def get_tool_info_by_name(tool_name: str) -> str:
     -------
         A formatted string with detailed information about the tool.
     """
-    all_tools = await mcp.list_tools()
+    all_tools = await mcp._list_tools_mcp()
 
     for tool in all_tools:
         if tool.name == tool_name:

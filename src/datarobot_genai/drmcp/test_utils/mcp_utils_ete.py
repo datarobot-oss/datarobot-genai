@@ -24,9 +24,9 @@ from .utils import load_env
 load_env()
 
 
-def get_dr_mcp_server_url() -> str:
+def get_dr_mcp_server_url() -> str | None:
     """Get DataRobot MCP server URL."""
-    return os.environ.get("DR_MCP_SERVER_URL", "http://localhost:8082/mcp")
+    return os.environ.get("DR_MCP_SERVER_URL")
 
 
 def get_openai_llm_client_config() -> dict[str, str]:

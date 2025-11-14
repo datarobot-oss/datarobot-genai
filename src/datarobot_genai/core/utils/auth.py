@@ -139,7 +139,7 @@ class AuthContextHeaderHandler:
         Optional[AuthCtx]
             Validated authorization context or None if validation fails.
         """
-        token = headers.get(self.header)
+        token = headers.get(self.header) or headers.get(self.header.lower())
         if not token:
             logger.debug("No authorization context header found")
             return None

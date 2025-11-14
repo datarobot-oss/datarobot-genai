@@ -27,7 +27,7 @@ from datarobot_genai.drmcp.core.mcp_instance import mcp
 def mock_mcp() -> MagicMock:
     """Create a mock FastMCP instance."""
     mock = MagicMock(spec=FastMCP)
-    mock._mcp_list_tools = AsyncMock(
+    mock._list_tools_mcp = AsyncMock(
         return_value=[MagicMock(name="tool1"), MagicMock(name="tool2")]
     )
     return mock
@@ -192,7 +192,7 @@ class TestDataRobotMCPServer:
         assert mock_loop.run_until_complete.call_count == 2
 
         # Verify tools were listed
-        mock_mcp._mcp_list_tools.assert_called_once()
+        mock_mcp._list_tools_mcp.assert_called_once()
 
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
@@ -245,12 +245,12 @@ class TestDataRobotMCPServer:
         mock_mcp.run_streamable_http_async = AsyncMock()
 
         mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-        mock_mcp._mcp_list_tools = AsyncMock(return_value=mock_tools)
+        mock_mcp._list_tools_mcp = AsyncMock(return_value=mock_tools)
 
         server = DataRobotMCPServer(mock_mcp)
         server.run()
 
         # Verify tools were listed before server start
-        mock_mcp._mcp_list_tools.assert_called_once()
+        mock_mcp._list_tools_mcp.assert_called_once()
         # Should be called twice: once for run_server, once for pre_server_shutdown
         assert mock_loop.run_until_complete.call_count == 2
