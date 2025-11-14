@@ -33,9 +33,9 @@ from openai.types.chat.completion_create_params import CompletionCreateParamsStr
 
 from datarobot_genai.core.chat import CustomModelChatResponse
 from datarobot_genai.core.chat import CustomModelStreamingResponse
-from datarobot_genai.core.chat import initialize_authorization_context
 from datarobot_genai.core.chat import to_custom_model_chat_response
 from datarobot_genai.core.chat import to_custom_model_streaming_response
+from datarobot_genai.core.chat.auth import resolve_authorization_context
 from datarobot_genai.core.telemetry_agent import instrument
 
 logger = logging.getLogger(__name__)
@@ -135,11 +135,13 @@ def chat_entrypoint(
     for key in runtime_parameter_keys:
         maybe_set_env_from_runtime_parameters(key)
 
-    # Initialize the authorization context for downstream agents/tools
-    auth_context = initialize_authorization_context(completion_create_params, **kwargs)
+    # Retrieve authorization context using all supported methods for downstream agents/tools
+    completion_create_params["authorization_context"] = resolve_authorization_context(
+        completion_create_params, **kwargs
+    )
 
     # Instantiate user agent with all supplied completion params including auth context
-    agent = agent_cls(**completion_create_params, authorization_context=auth_context)
+    agent = agent_cls(**completion_create_params)
 
     # Invoke the agent and check if it returns a generator or a tuple
     result = thread_pool_executor.submit(
