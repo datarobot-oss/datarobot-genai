@@ -28,22 +28,15 @@ from llama_index.tools.mcp import aget_tools_from_mcp_url
 from datarobot_genai.core.mcp.common import MCPConfig
 
 
-async def load_mcp_tools(
-    api_base: str | None = None,
-    api_key: str | None = None,
-) -> list[Any]:
+async def load_mcp_tools() -> list[Any]:
     """
     Asynchronously load MCP tools for LlamaIndex.
-
-    Args:
-        api_base: Optional DataRobot API base URL
-        api_key: Optional DataRobot API token
 
     Returns
     -------
         List of MCP tools, or empty list if no MCP configuration is present.
     """
-    config = MCPConfig(api_base=api_base, api_key=api_key)
+    config = MCPConfig()
     server_params = config.server_config
 
     if not server_params:

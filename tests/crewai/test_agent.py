@@ -46,10 +46,10 @@ def test_build_llm_uses_get_api_base_and_params(monkeypatch: Any) -> None:
     assert captured and captured[0] is llm
     assert captured[0].model == "mistral"
     assert (
-        captured[0].api_base
+        captured[0].datarobot_endpoint
         == "https://tenant.datarobot.com/api/v2/deployments/dep-1/chat/completions"
     )
-    assert captured[0].api_key == "tok"
+    assert captured[0].datarobot_api_token == "tok"
     assert captured[0].timeout == 12
 
 
