@@ -74,7 +74,7 @@ def initialize_authorization_context(
     | CompletionCreateParamsStreaming,
     secret_key: str | None = None,
     **kwargs: Any,
-) -> None:
+) -> dict[str, Any]:
     """Set the authorization context for the agent.
 
     Authorization context is required for propagating information needed by downstream
@@ -95,6 +95,10 @@ def initialize_authorization_context(
         Additional keyword arguments. Expected to include a ``headers`` key
         containing incoming HTTP headers as ``dict[str, str]``.
 
+    Returns
+    -------
+    dict[str, Any]
+        The initialized authorization context.
     """
     incoming_headers = kwargs.get("headers", {})
 
@@ -111,3 +115,5 @@ def initialize_authorization_context(
     # Note: authorization context internally uses contextvars, which are
     # thread-safe and async-safe.
     set_authorization_context(authorization_context)
+
+    return authorization_context

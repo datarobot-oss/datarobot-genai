@@ -22,8 +22,23 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 class MCPConfig:
     """Configuration for MCP server connection."""
 
-    def __init__(self, api_base: str | None = None, api_key: str | None = None) -> None:
-        """Initialize MCP configuration from environment variables and runtime parameters."""
+    def __init__(
+        self,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        authorization_context: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize MCP configuration from environment variables and runtime parameters.
+
+        Parameters
+        ----------
+        api_base : str | None
+            Base URL for the DataRobot API
+        api_key : str | None
+            API key for authentication
+        authorization_context : dict[str, Any] | None
+            Authorization context to use instead of fetching from ContextVar
+        """
         self.external_mcp_url = os.environ.get("EXTERNAL_MCP_URL")
         self.external_mcp_headers = os.environ.get("EXTERNAL_MCP_HEADERS")
         self.external_mcp_transport = os.environ.get("EXTERNAL_MCP_TRANSPORT", "streamable-http")
@@ -32,6 +47,7 @@ class MCPConfig:
             "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
         )
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
+        self._authorization_context = authorization_context
         self.auth_context_handler = AuthContextHeaderHandler()
         self.server_config = self._get_server_config()
 
@@ -45,7 +61,7 @@ class MCPConfig:
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""
         try:
-            return self.auth_context_handler.get_header()
+            return self.auth_context_handler.get_header(self._authorization_context)
         except (LookupError, RuntimeError):
             # Authorization context not available (e.g., in tests)
             return {}
