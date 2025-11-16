@@ -47,7 +47,7 @@ class MCPConfig:
             "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
         )
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
-        self._authorization_context = authorization_context
+        self.authorization_context = authorization_context
         self.auth_context_handler = AuthContextHeaderHandler()
         self.server_config = self._get_server_config()
 
@@ -61,7 +61,7 @@ class MCPConfig:
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""
         try:
-            return self.auth_context_handler.get_header(self._authorization_context)
+            return self.auth_context_handler.get_header(self.authorization_context)
         except (LookupError, RuntimeError):
             # Authorization context not available (e.g., in tests)
             return {}
