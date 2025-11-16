@@ -40,6 +40,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - model: Preferred model name
       - timeout: Request timeout
       - verbose: Verbosity flag
+      - authorization_context: Authorization context for downstream agents/tools
     """
 
     def __init__(
@@ -50,6 +51,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         model: str | None = None,
         verbose: bool | str | None = True,
         timeout: int | None = 90,
+        authorization_context: dict[str, Any] | None = None,
         **_: Any,
     ) -> None:
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
@@ -65,6 +67,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         else:
             self.verbose = bool(verbose)
         self._mcp_tools: list[TTool] = []
+        self._authorization_context = authorization_context or {}
 
     def set_mcp_tools(self, tools: list[TTool]) -> None:
         self._mcp_tools = tools
@@ -77,6 +80,11 @@ class BaseAgent(Generic[TTool], abc.ABC):
         workflow construction inside ``build_crewai_workflow``.
         """
         return self._mcp_tools
+
+    @property
+    def authorization_context(self) -> dict[str, Any]:
+        """Return the authorization context for this agent."""
+        return self._authorization_context
 
     def litellm_api_base(self, deployment_id: str | None) -> str:
         return get_api_base(self.api_base, deployment_id)

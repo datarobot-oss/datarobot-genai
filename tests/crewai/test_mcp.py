@@ -18,7 +18,6 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.core.chat.auth import set_authorization_context
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 
@@ -31,10 +30,6 @@ def mock_adapter():
 
 class TestMCPToolsContext:
     """Test MCP tools context manager."""
-
-    @pytest.fixture(autouse=True)
-    def empty_agent_auth_context(self):
-        set_authorization_context({})
 
     def test_mcp_tools_context_no_configuration(self):
         """Test context manager when no MCP server is configured."""
@@ -75,10 +70,6 @@ class TestMCPToolsContext:
         api_key = "test-api-key"
         secret_key = "my-secret-key"
 
-        # When the agent is initialized, it sets the authorization context for the
-        # process, so subsequent tools and MCP calls receive it via a dedicated header.
-        set_authorization_context(agent_auth_context_data)
-
         with patch.dict(
             os.environ,
             {
@@ -89,7 +80,7 @@ class TestMCPToolsContext:
             },
             clear=True,
         ):
-            with mcp_tools_context() as tools:
+            with mcp_tools_context(authorization_context=agent_auth_context_data) as tools:
                 assert tools == mock_tools
                 mock_adapter.assert_called_once()
                 # Check that the server config was passed correctly

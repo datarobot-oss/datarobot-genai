@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import HumanMessage
@@ -37,6 +38,11 @@ from datarobot_genai.core.chat.responses import CustomModelChatResponse
 from datarobot_genai.core.chat.responses import CustomModelStreamingResponse
 from datarobot_genai.core.chat.responses import to_custom_model_chat_response
 from datarobot_genai.langgraph.agent import LangGraphAgent
+
+
+@pytest.fixture
+def authorization_context() -> dict[str, Any]:
+    return {"user": {"id": "123", "name": "bar"}}
 
 
 class SimpleLangGraphAgent(LangGraphAgent):
@@ -263,10 +269,10 @@ async def test_langgraph_streaming():
         idx += 1
 
 
-async def test_invoke_calls_mcp_tools_context_and_sets_tools():
+async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_context):
     """Test that invoke method calls mcp_tools_context and sets tools correctly."""
     # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent()
+    agent = SimpleLangGraphAgent(authorization_context=authorization_context)
 
     # Mock the mcp_tools_context to return mock tools
     mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
@@ -289,7 +295,11 @@ async def test_invoke_calls_mcp_tools_context_and_sets_tools():
             await agent.invoke(completion_create_params)
 
             # THEN mcp_tools_context is called with correct parameters
-            mock_mcp_context.assert_called_once_with(api_base=agent.api_base, api_key=agent.api_key)
+            mock_mcp_context.assert_called_once_with(
+                api_base=agent.api_base,
+                api_key=agent.api_key,
+                authorization_context=authorization_context,
+            )
 
             # THEN set_mcp_tools is called with the tools from context
             mock_set_mcp_tools.assert_called_once_with(mock_tools)

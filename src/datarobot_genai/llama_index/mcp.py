@@ -31,6 +31,7 @@ from datarobot_genai.core.mcp.common import MCPConfig
 async def load_mcp_tools(
     api_base: str | None = None,
     api_key: str | None = None,
+    authorization_context: dict[str, Any] | None = None,
 ) -> list[Any]:
     """
     Asynchronously load MCP tools for LlamaIndex.
@@ -38,12 +39,15 @@ async def load_mcp_tools(
     Args:
         api_base: Optional DataRobot API base URL
         api_key: Optional DataRobot API token
+        authorization_context: Optional authorization context for MCP connections
 
     Returns
     -------
         List of MCP tools, or empty list if no MCP configuration is present.
     """
-    config = MCPConfig(api_base=api_base, api_key=api_key)
+    config = MCPConfig(
+        api_base=api_base, api_key=api_key, authorization_context=authorization_context
+    )
     server_params = config.server_config
 
     if not server_params:

@@ -82,7 +82,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         input_message = self.make_input_message(completion_create_params)
 
         # Load MCP tools (if configured) asynchronously before building workflow
-        mcp_tools = await load_mcp_tools(api_base=self.api_base, api_key=self.api_key)
+        mcp_tools = await load_mcp_tools(
+            api_base=self.api_base,
+            api_key=self.api_key,
+            authorization_context=self._authorization_context,
+        )
         self.set_mcp_tools(mcp_tools)
 
         # Preserve prior template startup print for CLI parity
