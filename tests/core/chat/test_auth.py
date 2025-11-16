@@ -288,9 +288,9 @@ def test_resolve_authorization_context_preserves_all_identity_fields(
                 "provider_type": "github",
                 "provider_user_id": "github123",
                 "provider_identity_id": "provider456",
-                "metadata": {"extra": "data"},
-            }
+            },
         ],
+        "metadata": {"extra": "data"},
     }
 
     token = jwt.encode(context_with_full_identity, secret_key, algorithm="HS256")
@@ -299,4 +299,4 @@ def test_resolve_authorization_context_preserves_all_identity_fields(
     auth_ctx = resolve_authorization_context(empty_params, headers=headers)
 
     assert auth_ctx["identities"][0]["provider_identity_id"] == "provider456"
-    assert auth_ctx["identities"][0]["metadata"]["extra"] == "data"
+    assert auth_ctx["metadata"]["extra"] == "data"
