@@ -267,11 +267,20 @@ def test_resolve_authorization_context_integration_full_workflow(
     # Step 3: Resolve the context
     auth_ctx = resolve_authorization_context(params, headers=headers)
 
-    # Step 4: Verify the context was fully preserved
-    assert auth_ctx == auth_context_data
-    assert auth_ctx["user"]["id"] == "123"
-    assert auth_ctx["user"]["name"] == "Test User"
+    # Step 4: Verify the essential context fields were preserved
+    # Note: AuthCtx.model_dump() adds default values for optional fields,
+    # so we check the essential fields rather than exact equality
+    assert auth_ctx is not None
+    assert auth_ctx["user"]["id"] == auth_context_data["user"]["id"]
+    assert auth_ctx["user"]["name"] == auth_context_data["user"]["name"]
+    assert auth_ctx["user"]["email"] == auth_context_data["user"]["email"]
+
     assert len(auth_ctx["identities"]) == 1
+    identity = auth_ctx["identities"][0]
+    assert identity["id"] == auth_context_data["identities"][0]["id"]
+    assert identity["type"] == auth_context_data["identities"][0]["type"]
+    assert identity["provider_type"] == auth_context_data["identities"][0]["provider_type"]
+    assert identity["provider_user_id"] == auth_context_data["identities"][0]["provider_user_id"]
 
 
 def test_resolve_authorization_context_preserves_all_identity_fields(
@@ -298,5 +307,9 @@ def test_resolve_authorization_context_preserves_all_identity_fields(
 
     auth_ctx = resolve_authorization_context(empty_params, headers=headers)
 
+    # Verify all the fields we set are preserved
     assert auth_ctx["identities"][0]["provider_identity_id"] == "provider456"
+    assert auth_ctx["identities"][0]["provider_user_id"] == "github123"
+    assert auth_ctx["identities"][0]["provider_type"] == "github"
+    assert auth_ctx["identities"][0]["type"] == "user"
     assert auth_ctx["metadata"]["extra"] == "data"
