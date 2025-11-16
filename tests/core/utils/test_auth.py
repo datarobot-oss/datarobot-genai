@@ -111,6 +111,61 @@ class TestAuthContextHeaderHandlerEncode:
         )
         assert token, "Token should not be empty even without secret key"
 
+    def test_encode_with_explicit_context(
+        self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
+    ) -> None:
+        """Test encoding with explicitly provided authorization_context."""
+        # Don't set up ContextVar - pass context explicitly
+        token = handler.encode(authorization_context=auth_context)
+
+        assert isinstance(token, str), "Token should be a string"
+        assert token, "Token should not be empty"
+
+        # Verify the token contains the explicit context
+        decoded = handler.decode(token)
+        assert decoded == auth_context
+
+    def test_encode_explicit_context_priority_over_contextvar(
+        self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
+    ) -> None:
+        """Test that explicit authorization_context takes priority over ContextVar."""
+        contextvar_context = {"user": {"id": "999", "name": "contextvar"}, "identities": []}
+        explicit_context = auth_context
+
+        # Set different context in ContextVar
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context",
+            return_value=contextvar_context,
+        ):
+            # Pass explicit context - should override ContextVar
+            token = handler.encode(authorization_context=explicit_context)
+
+            decoded = handler.decode(token)
+
+            # Should use explicit context, not ContextVar
+            assert decoded == explicit_context
+            assert decoded != contextvar_context
+
+    def test_encode_with_empty_explicit_context(self, handler: AuthContextHeaderHandler) -> None:
+        """Test encoding with empty explicit authorization_context."""
+        token = handler.encode(authorization_context={})
+
+        assert token is None, "Empty explicit context should return None"
+
+    def test_encode_with_none_explicit_context_falls_back_to_contextvar(
+        self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
+    ) -> None:
+        """Test that None explicit context falls back to ContextVar."""
+        # Set context in ContextVar
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context", return_value=auth_context
+        ):
+            # Pass None explicitly - should fall back to ContextVar
+            token = handler.encode(authorization_context=None)
+
+            decoded = handler.decode(token)
+            assert decoded == auth_context
+
 
 class TestAuthContextHeaderHandlerDecode:
     """Tests for decoding JWT tokens into authorization context."""
@@ -184,6 +239,51 @@ class TestAuthContextHeaderHandlerGetHeader:
             headers = handler.get_header()
 
             assert headers == {}, "Headers should be empty when no context is available"
+
+    def test_get_header_with_explicit_context(
+        self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
+    ) -> None:
+        """Test getting header with explicitly provided authorization_context."""
+        # Don't set up ContextVar - pass context explicitly
+        headers = handler.get_header(authorization_context=auth_context)
+
+        assert isinstance(headers, dict), "Headers should be a dict"
+        assert AuthContextHeaderHandler.HEADER_NAME in headers, "Header key should be present"
+
+        # Verify the token can be decoded and contains the explicit context
+        token = headers[AuthContextHeaderHandler.HEADER_NAME]
+        decoded = handler.decode(token)
+        assert decoded == auth_context
+
+    def test_get_header_explicit_context_priority_over_contextvar(
+        self, handler: AuthContextHeaderHandler, auth_context: dict[str, Any]
+    ) -> None:
+        """Test that explicit authorization_context takes priority over ContextVar."""
+        contextvar_context = {"user": {"id": "999", "name": "contextvar"}, "identities": []}
+        explicit_context = auth_context
+
+        # Set different context in ContextVar
+        with patch(
+            "datarobot_genai.core.utils.auth.get_authorization_context",
+            return_value=contextvar_context,
+        ):
+            # Pass explicit context - should override ContextVar
+            headers = handler.get_header(authorization_context=explicit_context)
+
+            token = headers[AuthContextHeaderHandler.HEADER_NAME]
+            decoded = handler.decode(token)
+
+            # Should use explicit context, not ContextVar
+            assert decoded == explicit_context
+            assert decoded != contextvar_context
+
+    def test_get_header_with_empty_explicit_context(
+        self, handler: AuthContextHeaderHandler
+    ) -> None:
+        """Test getting header with empty explicit authorization_context."""
+        headers = handler.get_header(authorization_context={})
+
+        assert headers == {}, "Empty explicit context should return empty headers"
 
 
 class TestAuthContextHeaderHandlerGetContext:
