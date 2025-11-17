@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import re
 
 import pytest
 from mcp import McpError
@@ -130,6 +131,32 @@ class TestMCPDRPromptManagementIntegration:
                     error_msg_base + "Missing required arguments: {'name', 'sentences'}"
                     == e.value.error.message
                 )
+
+    async def test_prompt_when_duplicated_names_exists(
+        self, prompt_templates_with_duplicates: tuple[dict, dict]
+    ) -> None:
+        """Integration test for prompt template when duplicated names exist."""
+        first_prompt_template, second_prompt_template = prompt_templates_with_duplicates
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+            prompt_template_name_1 = first_prompt_template["name"]
+            prompt_template_name_2 = second_prompt_template["name"]
+
+            # Its name from API -> it's duplicated
+            assert prompt_template_name_1 == prompt_template_name_2
+
+            # Check if both prompts are in list of all prompts
+            prompts_list = await session.list_prompts()
+            prompts_names = {p.name for p in prompts_list.prompts}
+
+            # One prompt is without any "suffix"
+            assert prompt_template_name_1 in prompts_names
+
+            # Second prompt has suffix
+            # We cannot mock uuid here as it's separate process running MCP server
+            pattern = re.compile(rf"{prompt_template_name_1} \([A-Za-z0-9]{{4}}\)")
+            matches = [s for s in prompts_names if pattern.search(s)]
+
+            assert len(matches) == 1
 
 
 @pytest.mark.asyncio

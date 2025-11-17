@@ -90,7 +90,7 @@ class TestRegisterPrompt:
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.mcp_instance.uuid4")
+    @patch("datarobot_genai.drmcp.core.dynamic_prompts.utils.uuid4")
     async def test_register_prompt_from_datarobot_prompt_management_duplicated_prompt_names(
         self,
         uuid_mock: Mock,
@@ -104,6 +104,4 @@ class TestRegisterPrompt:
         prompts = {prompt for prompt in await mcp.get_prompts()}
 
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
-        assert "Dummy prompt name (f2bda341-4b81-48f1-8da7-e7680a7410b4)" in prompts, (
-            "`Dummy prompt name (f2bda341-4b81-48f1-8da7-e7680a7410b4)` is missing."
-        )
+        assert "Dummy prompt name (f2bd)" in prompts, "`Dummy prompt name (f2bd)` is missing."

@@ -17,17 +17,7 @@ from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prom
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
 
 
-def get_or_create_prompt_template(name: str) -> dict:
-    try:
-        for prompt_template in get_datarobot_prompt_templates():
-            if prompt_template.name == name:
-                return {
-                    "id": prompt_template.id,
-                    "name": name,
-                }
-    except Exception as e:
-        print(f"Error checking for existing prompt template: {e}")
-
+def create_prompt_template(name: str) -> dict:
     try:
         client = dr.client.get_client()
         r = client.post(
@@ -45,6 +35,20 @@ def get_or_create_prompt_template(name: str) -> dict:
     except Exception as e:
         print(f"Error creating prompt template: {e}")
         raise
+
+
+def get_or_create_prompt_template(name: str) -> dict:
+    try:
+        for prompt_template in get_datarobot_prompt_templates():
+            if prompt_template.name == name:
+                return {
+                    "id": prompt_template.id,
+                    "name": name,
+                }
+    except Exception as e:
+        print(f"Error checking for existing prompt template: {e}")
+
+    return create_prompt_template(name)
 
 
 def get_or_create_prompt_template_version(
@@ -81,4 +85,14 @@ def get_or_create_prompt_template_version(
         return {"id": r.json()["id"], "prompt_text": prompt_text}
     except Exception as e:
         print(f"Error creating prompt template version: {e}")
+        raise
+
+
+def delete_prompt_template(prompt_template_id: str) -> None:
+    try:
+        client = dr.client.get_client()
+        client.delete(url=f"genai/promptTemplates/{prompt_template_id}/", join_endpoint=True)
+        return None
+    except Exception as e:
+        print(f"Error deleting prompt template: {e}")
         raise

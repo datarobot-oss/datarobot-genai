@@ -17,7 +17,6 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 from typing import overload
-from uuid import uuid4
 
 from fastmcp import Context
 from fastmcp import FastMCP
@@ -33,6 +32,7 @@ from mcp.types import ToolAnnotations
 
 from .config import MCPServerConfig
 from .config import get_config
+from .dynamic_prompts.utils import get_prompt_name_no_duplicate
 from .logging import log_execution
 from .memory_management.manager import MemoryManager
 from .memory_management.manager import get_memory_manager
@@ -504,7 +504,7 @@ async def register_prompt(
     logger.info(f"Registering new prompt: {prompt_name}")
     wrapped_fn = dr_mcp_extras(type="prompt")(fn)
 
-    prompt_name_no_duplicate = await get_prompt_name_no_duplicate(prompt_name)
+    prompt_name_no_duplicate = await get_prompt_name_no_duplicate(mcp, prompt_name)
 
     prompt = Prompt.from_function(
         fn=wrapped_fn,
@@ -530,16 +530,3 @@ async def register_prompt(
     logger.info(f"Registered prompts: {len(prompts)}")
 
     return registered_prompt
-
-
-async def get_prompt_name_no_duplicate(prompt_name: str) -> str:
-    """Handle prompt name duplicate.
-
-    We're working optimistic here -- we're keeping default names unless there's collision
-    """
-    try:
-        prompt = await mcp.get_prompt(prompt_name)
-    except NotFoundError:
-        return prompt_name
-
-    return f"{prompt.name} ({uuid4()})"
