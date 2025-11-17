@@ -176,39 +176,41 @@ async def test_langgraph_streaming():
     # WHEN invoking the agent with a completion create params
     completion_create_params = {
         "model": "test-model",
-        "messages": [{"role": "user", "content": '{"topic": "Artificial Intelligence"}'}],
+        "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
         "environment_var": True,
         "stream": True,
     }
     streaming_response_iterator = await agent.invoke(completion_create_params)
 
-    # THEN agent.workflow is called with expected arguments
-    expected_command = Command(
-        update={
-            "messages": [
-                SystemMessage(
-                    content="You are a helpful assistant. Tell user about Artificial Intelligence."
-                ),
-                HumanMessage(content="Hi, tell me about Artificial Intelligence."),
-            ]
-        }
-    )
-    agent.workflow.compile().astream.assert_called_once_with(
-        input=expected_command,
-        config={},
-        debug=True,
-        stream_mode=["updates", "messages"],
-        subgraphs=True,
-    )
-
     # THEN the streaming response iterator returns the expected responses
     # Iterate directly over the async generator to avoid event loop conflicts
+    # Note: With the new async with implementation, _invoke is called when we start consuming
     idx = 0
+    first_item_consumed = False
     async for (
         response_text,
         pipeline_interactions,
         usage_metrics,
     ) in streaming_response_iterator:
+        # Check that agent.workflow is called with expected arguments after first consumption
+        if not first_item_consumed:
+            expected_command = Command(
+                update={
+                    "messages": [
+                        SystemMessage(content="You are a helpful assistant. Tell user about AI."),
+                        HumanMessage(content="Hi, tell me about AI."),
+                    ]
+                }
+            )
+            agent.workflow.compile().astream.assert_called_once_with(
+                input=expected_command,
+                config={},
+                debug=True,
+                stream_mode=["updates", "messages"],
+                subgraphs=True,
+            )
+            first_item_consumed = True
+
         # Create the streaming response manually for testing
         completion_id = str(uuid.uuid4())
         created = int(time.time())
@@ -303,6 +305,59 @@ async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_conte
 
             # THEN set_mcp_tools is called with the tools from context
             mock_set_mcp_tools.assert_called_once_with(mock_tools)
+
+
+async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorization_context):
+    """Test that streaming invoke method uses async with correctly and cleans up context."""
+    # GIVEN a simple langgraph agent implementation
+    agent = SimpleLangGraphAgent(authorization_context=authorization_context)
+
+    # Mock the mcp_tools_context to return mock tools
+    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
+
+    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
+        # Configure the mock context manager
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_tools
+        mock_context_manager.__aexit__.return_value = None
+        mock_mcp_context.return_value = mock_context_manager
+
+        with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
+            # WHEN invoking the agent with streaming
+            completion_create_params = {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
+                "environment_var": True,
+                "stream": True,
+            }
+
+            streaming_response_iterator = await agent.invoke(completion_create_params)
+
+            # THEN context is not entered yet (it's entered inside the generator)
+            mock_context_manager.__aenter__.assert_not_called()
+            mock_mcp_context.assert_not_called()
+
+            # WHEN consuming the streaming generator
+            items_consumed = 0
+            async for _ in streaming_response_iterator:
+                items_consumed += 1
+                # THEN mcp_tools_context is called and context is entered when generator starts
+                if items_consumed == 1:
+                    # Verify mcp_tools_context is called with correct parameters
+                    mock_mcp_context.assert_called_once_with(
+                        api_base=agent.api_base,
+                        api_key=agent.api_key,
+                        authorization_context=authorization_context,
+                    )
+                    # Verify context is entered and tools are set
+                    mock_context_manager.__aenter__.assert_called_once()
+                    mock_set_mcp_tools.assert_called_once_with(mock_tools)
+                    # Context should still be open during streaming
+                    mock_context_manager.__aexit__.assert_not_called()
+
+            # THEN context is properly exited after generator is exhausted
+            # Verify __aexit__ was called with None, None, None (no exception)
+            mock_context_manager.__aexit__.assert_called_once_with(None, None, None)
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:
