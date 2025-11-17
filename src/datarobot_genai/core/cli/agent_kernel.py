@@ -142,7 +142,9 @@ class AgentKernel:
         status_location = response.headers["Location"]
         while response.ok:
             time.sleep(1)
-            response = requests.get(status_location, headers=headers, allow_redirects=False, timeout=timeout)
+            response = requests.get(
+                status_location, headers=headers, allow_redirects=False, timeout=timeout
+            )
             if response.status_code == 303:
                 agent_response = requests.get(response.headers["Location"], headers=headers).json()
                 # Show the agent response
