@@ -32,6 +32,7 @@ from mcp.types import ToolAnnotations
 
 from .config import MCPServerConfig
 from .config import get_config
+from .dynamic_prompts.utils import get_prompt_name_no_duplicate
 from .logging import log_execution
 from .memory_management.manager import MemoryManager
 from .memory_management.manager import get_memory_manager
@@ -88,6 +89,7 @@ class TaggedFastMCP(FastMCP):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._deployments_map: dict[str, str] = {}
+        self._prompts_map: dict[str, tuple[str, str]] = {}
 
     @overload
     def tool(
@@ -253,6 +255,66 @@ class TaggedFastMCP(FastMCP):
             except NotFoundError:
                 logger.debug(f"Tool {removed} not found in registry, skipping removal")
 
+    async def get_prompt_mapping(self) -> dict[str, tuple[str, str]]:
+        """
+        Get the list of prompt ID for all registered dynamic prompts.
+
+        Returns
+        -------
+            Dictionary mapping prompt template id to prompt template version id and name
+        """
+        return self._prompts_map.copy()
+
+    async def set_prompt_mapping(
+        self, prompt_template_id: str, prompt_template_version_id: str, prompt_name: str
+    ) -> None:
+        """
+        Add or update the mapping of a deployment ID to a tool name.
+
+        Args:
+            prompt_template_id: The ID of the prompt template.
+            prompt_template_version_id: The ID of the prompt template version.
+            prompt_name: The prompt name associated with the prompt template id and version.
+        """
+        existing_prompt_template = self._prompts_map.get(prompt_template_id)
+
+        if existing_prompt_template:
+            existing_prompt_template_version_id, _ = existing_prompt_template
+
+            logger.debug(
+                f"Prompt template ID {prompt_template_id} "
+                f"already mapped to {existing_prompt_template_version_id}. "
+                f"Updating to version id = {prompt_template_version_id} and name = {prompt_name}"
+            )
+
+        self._prompts_map[prompt_template_id] = (prompt_template_version_id, prompt_name)
+
+    async def remove_prompt_mapping(
+        self, prompt_template_id: str, prompt_template_version_id: str
+    ) -> None:
+        """
+        Remove the mapping of a prompt_template ID to a version and prompt name.
+
+        Args:
+            prompt_template_id: The ID of the prompt template to remove.
+            prompt_template_version_id: The ID of the prompt template version to remove.
+        """
+        if existing_prompt_template := self._prompts_map.get(prompt_template_id):
+            existing_prompt_template_version_id, _ = existing_prompt_template
+            if existing_prompt_template_version_id != prompt_template_version_id:
+                logger.debug(
+                    f"Found prompt template with id = {prompt_template_id} in registry, "
+                    f"but with different version = {existing_prompt_template_version_id}, "
+                    f"skipping removal."
+                )
+            else:
+                self._prompts_map.pop(prompt_template_id, None)
+        else:
+            logger.debug(
+                f"Do not found prompt template with id = {prompt_template_id} in registry, "
+                f"skipping removal."
+            )
+
 
 # Create the tagged MCP instance
 mcp_server_configs: MCPServerConfig = get_config()
@@ -260,6 +322,7 @@ mcp_server_configs: MCPServerConfig = get_config()
 mcp = TaggedFastMCP(
     name=mcp_server_configs.mcp_server_name,
     on_duplicate_tools=mcp_server_configs.tool_registration_duplicate_behavior,
+    on_duplicate_prompts=mcp_server_configs.prompt_registration_duplicate_behavior,
 )
 
 
@@ -419,6 +482,7 @@ async def register_prompt(
     description: str | None = None,
     tags: set[str] | None = None,
     meta: dict[str, Any] | None = None,
+    prompt_template: tuple[str, str] | None = None,
 ) -> Prompt:
     """
     Register new prompt after server has started.
@@ -430,6 +494,7 @@ async def register_prompt(
         description: Optional description of what the prompt does
         tags: Optional set of tags to apply to the prompt
         meta: Optional dict of metadata to apply to the prompt
+        prompt_template: Optional (id, version id) of the prompt template
 
     Returns
     -------
@@ -439,9 +504,11 @@ async def register_prompt(
     logger.info(f"Registering new prompt: {prompt_name}")
     wrapped_fn = dr_mcp_extras(type="prompt")(fn)
 
+    prompt_name_no_duplicate = await get_prompt_name_no_duplicate(mcp, prompt_name)
+
     prompt = Prompt.from_function(
         fn=wrapped_fn,
-        name=prompt_name,
+        name=prompt_name_no_duplicate,
         title=title,
         description=description,
         tags=tags,
@@ -450,11 +517,16 @@ async def register_prompt(
 
     # Register the prompt
     registered_prompt = mcp.add_prompt(prompt)
+    if prompt_template:
+        prompt_template_id, prompt_template_version_id = prompt_template
+        await mcp.set_prompt_mapping(
+            prompt_template_id, prompt_template_version_id, prompt_name_no_duplicate
+        )
 
     # Verify prompt is registered
     prompts = await mcp.get_prompts()
-    if not any(prompt.name == prompt_name for prompt in prompts.values()):
-        raise RuntimeError(f"Prompt {prompt_name} was not registered successfully")
+    if not any(prompt.name == prompt_name_no_duplicate for prompt in prompts.values()):
+        raise RuntimeError(f"Prompt {prompt_name_no_duplicate} was not registered successfully")
     logger.info(f"Registered prompts: {len(prompts)}")
 
     return registered_prompt

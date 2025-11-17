@@ -168,6 +168,18 @@ class MCPServerConfig(BaseSettings):
         "automatically register all prompts from DataRobot Prompt Management "
         "as MCP prompts during startup.",
     )
+    prompt_registration_duplicate_behavior: DuplicateBehavior = Field(
+        default="warn",
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_PROMPT_REGISTRATION_DUPLICATE_BEHAVIOR",
+            "MCP_SERVER_PROMPT_REGISTRATION_DUPLICATE_BEHAVIOR",
+        ),
+        description="Behavior when a prompt with the same name already exists in the MCP server. "
+        " - 'warn': will log a warning and replace the existing tool. "
+        " - 'replace': will replace the existing tool without a warning. "
+        " - 'error': will raise an error and prevent registration. "
+        " - 'ignore': will skip registration of the new tool.",
+    )
     enable_memory_management: bool = Field(
         default=False,
         validation_alias=AliasChoices(

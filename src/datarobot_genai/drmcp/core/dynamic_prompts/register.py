@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import keyword
 import logging
+import re
 from collections.abc import Callable
 from inspect import Parameter
 from inspect import Signature
@@ -71,8 +73,13 @@ async def register_prompt_from_datarobot_prompt_management(
         f"version: {latest_version.version}."
     )
 
+    try:
+        valid_fn_name = to_valid_mcp_prompt_name(prompt.name)
+    except ValueError as e:
+        raise DynamicPromptRegistrationError from e
+
     prompt_fn = make_prompt_function(
-        name=prompt.name,
+        name=valid_fn_name,
         description=prompt.description,
         prompt_text=latest_version.prompt_text,
         variables=latest_version.variables,
@@ -92,6 +99,28 @@ async def register_prompt_from_datarobot_prompt_management(
         raise DynamicPromptRegistrationError(
             "Registration failed. Could not create prompt."
         ) from exc
+
+
+def to_valid_mcp_prompt_name(s: str) -> str:
+    """Convert an arbitrary string into a valid MCP prompt name."""
+    # Replace any sequence of invalid characters with '_'
+    s = re.sub(r"[^0-9a-zA-Z_]+", "_", s)
+
+    # Remove leading characters that are not letters or underscores (can't start with a digit or _)
+    s = re.sub(r"^[^a-zA-Z]+", "", s)
+
+    # Remove following _
+    s = re.sub(r"_+$", "", s)
+
+    # If string is empty after cleaning, raise error
+    if not s:
+        raise ValueError(f"Cannot convert {s} to valid MCP prompt name.")
+
+    # Make sure it’s a valid identifier and not a reserved keyword
+    if keyword.iskeyword(s) or not s.isidentifier():
+        s = f"{s}_prompt"
+
+    return s
 
 
 def make_prompt_function(
