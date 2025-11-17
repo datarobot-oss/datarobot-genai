@@ -15,6 +15,7 @@ import abc
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
+from typing import cast
 
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
@@ -76,13 +77,41 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             For non-streaming requests, returns a single tuple of (response_text,
             pipeline_interactions, usage_metrics).
         """
-        async with mcp_tools_context(
-            api_base=self.api_base,
-            api_key=self.api_key,
-            authorization_context=self._authorization_context,
-        ) as mcp_tools:
-            self.set_mcp_tools(mcp_tools)
-            return await self._invoke(completion_create_params)
+        # For streaming, we need to keep the context alive until the generator is exhausted
+        if completion_create_params.get("stream"):
+
+            async def wrapped_generator() -> AsyncGenerator[
+                tuple[str, Any | None, UsageMetrics], None
+            ]:
+                async with mcp_tools_context(
+                    api_base=self.api_base,
+                    api_key=self.api_key,
+                    authorization_context=self._authorization_context,
+                ) as mcp_tools:
+                    self.set_mcp_tools(mcp_tools)
+                    result = await self._invoke(completion_create_params)
+
+                    # Yield all items from the result generator
+                    # The context will be closed when this generator is exhausted
+                    # Cast to async generator since we know stream=True means it's a generator
+                    result_generator = cast(
+                        AsyncGenerator[tuple[str, Any | None, UsageMetrics], None], result
+                    )
+                    async for item in result_generator:
+                        yield item
+
+            return wrapped_generator()
+        else:
+            # For non-streaming, use async with directly
+            async with mcp_tools_context(
+                api_base=self.api_base,
+                api_key=self.api_key,
+                authorization_context=self._authorization_context,
+            ) as mcp_tools:
+                self.set_mcp_tools(mcp_tools)
+                result = await self._invoke(completion_create_params)
+
+            return result
 
     async def _invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         input_command = self.convert_input_message(completion_create_params)
@@ -132,7 +161,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         update_event: dict[str, Any] = event  # type: ignore[assignment]
                         events.append(update_event)
                         current_node = next(iter(update_event))
-                        current_usage = update_event[current_node].get("usage", {})
+                        node_data = update_event[current_node]
+                        current_usage = node_data.get("usage", {}) if node_data is not None else {}
                         if current_usage:
                             usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
                             usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
@@ -162,8 +192,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             # Extract the final event from the graph stream as the synchronous response
             last_event = events[-1]
             node_name = next(iter(last_event))
-            response_text = str(last_event[node_name]["messages"][-1].content)
-            current_usage = last_event[node_name].get("usage", {})
+            node_data = last_event[node_name]
+            response_text = (
+                str(node_data["messages"][-1].content)
+                if node_data is not None and "messages" in node_data
+                else ""
+            )
+            current_usage = node_data.get("usage", {}) if node_data is not None else {}
             if current_usage:
                 usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
                 usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
