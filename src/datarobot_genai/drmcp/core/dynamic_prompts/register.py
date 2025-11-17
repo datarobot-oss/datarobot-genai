@@ -74,7 +74,7 @@ async def register_prompt_from_datarobot_prompt_management(
     )
 
     try:
-        valid_fn_name = to_valid_function_name(prompt.name)
+        valid_fn_name = to_valid_mcp_prompt_name(prompt.name)
     except ValueError as e:
         raise DynamicPromptRegistrationError from e
 
@@ -101,8 +101,8 @@ async def register_prompt_from_datarobot_prompt_management(
         ) from exc
 
 
-def to_valid_function_name(s: str) -> str:
-    """Convert an arbitrary string into a valid Python function name."""
+def to_valid_mcp_prompt_name(s: str) -> str:
+    """Convert an arbitrary string into a valid MCP prompt name."""
     # Replace any sequence of invalid characters with '_'
     s = re.sub(r"[^0-9a-zA-Z_]+", "_", s)
 
@@ -114,11 +114,11 @@ def to_valid_function_name(s: str) -> str:
 
     # If string is empty after cleaning, raise error
     if not s:
-        raise ValueError(f"Cannot convert {s} to valid function name.")
+        raise ValueError(f"Cannot convert {s} to valid MCP prompt name.")
 
     # Make sure it’s a valid identifier and not a reserved keyword
     if keyword.iskeyword(s) or not s.isidentifier():
-        s = f"{s}_func"
+        s = f"{s}_prompt"
 
     return s
 

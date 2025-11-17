@@ -14,6 +14,10 @@
 
 """Tests for external prompt registration."""
 
+from unittest.mock import Mock
+from unittest.mock import patch
+from uuid import UUID
+
 import pytest
 
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
@@ -21,7 +25,7 @@ from datarobot_genai.drmcp.core.dynamic_prompts.register import make_prompt_func
 from datarobot_genai.drmcp.core.dynamic_prompts.register import (
     register_prompts_from_datarobot_prompt_management,
 )
-from datarobot_genai.drmcp.core.dynamic_prompts.register import to_valid_function_name
+from datarobot_genai.drmcp.core.dynamic_prompts.register import to_valid_mcp_prompt_name
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
@@ -54,20 +58,20 @@ class TestToValidFunctionName:
             ("HeLlo W0Rld 1", "HeLlo_W0Rld_1"),
             ("1 Test Prompt", "Test_Prompt"),
             ("my-name(second)", "my_name_second"),
-            ("class", "class_func"),  # Python keyword
+            ("class", "class_prompt"),  # Python keyword
         ],
     )
     @pytest.mark.asyncio
     async def test_to_valid_function_name(self, s: str, expected: str) -> None:
         """Test converting to valid function name."""
-        assert to_valid_function_name(s) == expected
+        assert to_valid_mcp_prompt_name(s) == expected
 
     @pytest.mark.parametrize("s", ["$$$", "123-456-789", "---", "_123"])
     @pytest.mark.asyncio
     async def test_to_valid_function_name_when_cannot_convert(self, s: str) -> None:
         """Test converting to valid function name."""
         with pytest.raises(ValueError):
-            to_valid_function_name(s)
+            to_valid_mcp_prompt_name(s)
 
 
 class TestRegisterPrompt:
@@ -86,14 +90,20 @@ class TestRegisterPrompt:
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
 
     @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.mcp_instance.uuid4")
     async def test_register_prompt_from_datarobot_prompt_management_duplicated_prompt_names(
         self,
+        uuid_mock: Mock,
         get_prompt_template_duplicated_name_mock: None,
     ) -> None:
         """Test register prompt from dr prompt mgmt."""
+        uuid_mock.return_value = UUID("f2bda341-4b81-48f1-8da7-e7680a7410b4")
+
         await register_prompts_from_datarobot_prompt_management()
 
         prompts = {prompt for prompt in await mcp.get_prompts()}
 
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
-        assert "Dummy prompt name (1)" in prompts, "`Dummy prompt name (1)` is missing."
+        assert "Dummy prompt name (f2bda341-4b81-48f1-8da7-e7680a7410b4)" in prompts, (
+            "`Dummy prompt name (f2bda341-4b81-48f1-8da7-e7680a7410b4)` is missing."
+        )

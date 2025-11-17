@@ -17,6 +17,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 from typing import overload
+from uuid import uuid4
 
 from fastmcp import Context
 from fastmcp import FastMCP
@@ -536,14 +537,9 @@ async def get_prompt_name_no_duplicate(prompt_name: str) -> str:
 
     We're working optimistic here -- we're keeping default names unless there's collision
     """
-    already_existing_prompt_names = await mcp.get_prompts()
-    if prompt_name not in already_existing_prompt_names:
+    try:
+        prompt = await mcp.get_prompt(prompt_name)
+    except NotFoundError:
         return prompt_name
 
-    counter = 1
-
-    while True:
-        new_name = f"{prompt_name} ({counter})"
-        if new_name not in already_existing_prompt_names:
-            return new_name
-        counter += 1
+    return f"{prompt.name} ({uuid4()})"
