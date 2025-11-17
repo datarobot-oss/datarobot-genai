@@ -36,6 +36,9 @@ async def register_tools_of_datarobot_deployments() -> None:
             await register_tool_of_datarobot_deployment(deployment)
         except DynamicToolRegistrationError:
             pass
+        except Exception as exc:
+            logger.error(f"Unexpected error for deployment {deployment_id}: {exc}")
+            pass
 
 
 async def register_tool_of_datarobot_deployment(
