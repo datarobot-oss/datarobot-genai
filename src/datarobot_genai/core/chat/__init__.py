@@ -1,5 +1,6 @@
 """Chat helpers and client utilities."""
 
+from .auth import initialize_authorization_context
 from .auth import resolve_authorization_context
 from .client import ToolClient
 from .responses import CustomModelChatResponse
@@ -14,4 +15,5 @@ __all__ = [
     "to_custom_model_streaming_response",
     "ToolClient",
     "resolve_authorization_context",
+    "initialize_authorization_context",
 ]
