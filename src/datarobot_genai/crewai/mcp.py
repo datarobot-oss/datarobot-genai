@@ -29,10 +29,14 @@ from datarobot_genai.core.mcp.common import MCPConfig
 
 @contextmanager
 def mcp_tools_context(
-    api_base: str | None = None, api_key: str | None = None
+    api_base: str | None = None,
+    api_key: str | None = None,
+    authorization_context: dict[str, Any] | None = None,
 ) -> Generator[list[Any], None, None]:
     """Context manager for MCP tools that handles connection lifecycle."""
-    config = MCPConfig(api_base=api_base, api_key=api_key)
+    config = MCPConfig(
+        api_base=api_base, api_key=api_key, authorization_context=authorization_context
+    )
 
     # If no MCP server configured, return empty tools list
     if not config.server_config:

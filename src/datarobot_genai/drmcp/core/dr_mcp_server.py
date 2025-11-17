@@ -26,6 +26,7 @@ from starlette.middleware import Middleware
 from .auth import initialize_oauth_middleware
 from .config import get_config
 from .credentials import get_credentials
+from .dr_mcp_server_logo import log_server_custom_banner
 from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
@@ -179,9 +180,9 @@ class DataRobotMCPServer:
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
 
             # List registered tools, prompts, and resources before starting server
-            tools = asyncio.run(self._mcp._mcp_list_tools())
-            prompts = asyncio.run(self._mcp._mcp_list_prompts())
-            resources = asyncio.run(self._mcp._mcp_list_resources())
+            tools = asyncio.run(self._mcp._list_tools_mcp())
+            prompts = asyncio.run(self._mcp._list_prompts_mcp())
+            resources = asyncio.run(self._mcp._list_resources_mcp())
 
             self._logger.info(f"Registered tools: {len(tools)}")
             for tool in tools:
@@ -202,16 +203,22 @@ class DataRobotMCPServer:
 
             async def run_server(show_banner: bool = show_banner) -> None:
                 # Start server in background based on transport type
-                if self._mcp_transport == "stdio":
-                    server_task = asyncio.create_task(
-                        self._mcp.run_stdio_async(show_banner=show_banner)
+
+                if show_banner:
+                    log_server_custom_banner(
+                        self._mcp,
+                        self._mcp_transport,
+                        port=self._config.mcp_server_port,
                     )
+
+                if self._mcp_transport == "stdio":
+                    server_task = asyncio.create_task(self._mcp.run_stdio_async(show_banner=False))
                 elif self._mcp_transport == "streamable-http":
                     server_task = asyncio.create_task(
                         self._mcp.run_http_async(
                             transport="http",
                             middleware=[Middleware(OtelASGIMiddleware)],
-                            show_banner=show_banner,
+                            show_banner=False,
                             port=self._config.mcp_server_port,
                             log_level=self._config.mcp_server_log_level,
                             host=self._config.mcp_server_host,

@@ -16,7 +16,6 @@
 
 from typing import Any
 
-from datarobot.models.genai.agent.auth import set_authorization_context
 from openai.types import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
@@ -68,19 +67,18 @@ def _get_authorization_context_from_params(
     return completion_create_params.get("authorization_context", None)
 
 
-def initialize_authorization_context(
+def resolve_authorization_context(
     completion_create_params: CompletionCreateParams
     | CompletionCreateParamsNonStreaming
     | CompletionCreateParamsStreaming,
-    secret_key: str | None = None,
     **kwargs: Any,
-) -> None:
-    """Set the authorization context for the agent.
+) -> dict[str, Any]:
+    """Resolve the authorization context for the agent.
 
     Authorization context is required for propagating information needed by downstream
-    agents and tools to retrieve access tokens to connect to external services. When set,
-    authorization context will be propagated when using MCP Server component or when
-    using ToolClient class.
+    agents and tools to retrieve access tokens to connect to external services. This method
+    extracts the authorization context from either the incoming HTTP headers or the completion
+    create parameters.
 
     Parameters
     ----------
@@ -88,13 +86,14 @@ def initialize_authorization_context(
         CompletionCreateParamsStreaming
         Parameters supplied to the completion API. May include a fallback
         ``authorization_context`` mapping under the same key.
-    secret_key : str | None
-        Optional secret used to decode a JWT provided in headers. If ``None``,
-        the handler may obtain the secret from the environment.
     **kwargs : Any
         Additional keyword arguments. Expected to include a ``headers`` key
         containing incoming HTTP headers as ``dict[str, str]``.
 
+    Returns
+    -------
+    dict[str, Any]
+        The initialized authorization context.
     """
     incoming_headers = kwargs.get("headers", {})
 
@@ -103,11 +102,9 @@ def initialize_authorization_context(
     # is used as a fallback for backward compatibility only and may be removed in
     # the future.
     authorization_context: dict[str, Any] = (
-        _get_authorization_context_from_headers(incoming_headers, secret_key)
+        _get_authorization_context_from_headers(incoming_headers)
         or _get_authorization_context_from_params(completion_create_params)
         or {}
     )
 
-    # Note: authorization context internally uses contextvars, which are
-    # thread-safe and async-safe.
-    set_authorization_context(authorization_context)
+    return authorization_context

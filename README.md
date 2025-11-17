@@ -1,74 +1,67 @@
-# datarobot-genai
-Repository for the DataRobot GenAI Library
+<p align="center">
+  <a href="https://github.com/datarobot-oss/datarobot-genai">
+    <img src="docs/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
+  </a>
+</p>
+<h3 align="center">DataRobot GenAI Library</h3>
 
-## Releases (tag-driven)
+<p align="center">
+  <a href="https://www.datarobot.com/">Homepage</a>
+  ·
+  <a href="https://pypi.org/project/datarobot-genai/">PyPI</a>
+  ·
+  <a href="https://docs.datarobot.com/en/docs/get-started/troubleshooting/general-help.html">Support</a>
+</p>
 
-- Set the release version in `pyproject.toml`.
-- Push a tag `vX.Y.Z` (e.g., `v0.3.0`).
-- CI validates the tag matches `project.version`, builds, and publishes.
+<p align="center">
+  <a href="/LICENSE">
+    <img src="https://img.shields.io/github/license/datarobot-oss/datarobot-genai" alt="License">
+  </a>
+  <a href="https://pypi.org/project/datarobot-genai/">
+    <img src="https://img.shields.io/pypi/v/datarobot-genai" alt="PyPI version">
+  </a>
+</p>
 
-### Where releases go
-- PRs: CI publishes dev builds to TestPyPI (`X.Y.Z.dev<run>`), for validation.
-- Tags: CI publishes to PyPI when a `vX.Y.Z` tag is pushed.
 
-### Install from TestPyPI (quick check)
+## Features
+- Utilities for common GenAI workflows
+- Integrations: CrewAI, LangGraph, LlamaIndex, NAT, MCP
+
+## Installation
+- Requires Python 3.10–3.12.
+- Install:
 ```bash
-VERSION=X.Y.Z.dev123   # replace with the run number shown in the PR workflow
 pip install --upgrade pip
-pip install -i https://test.pypi.org/simple/ datarobot-genai=="$VERSION"
-python -c "import datarobot_genai as drg; print(drg.__version__)"
+pip install "datarobot-genai"
 ```
-
-### Secrets
-- `TEST_PYPI_API_TOKEN` (username `__token__`)
-- `PYPI_API_TOKEN` (username `__token__`)
-
-## Local development (quick start)
-
+- Optional extras:
 ```bash
-# install dev dependencies (uses uv)
-uv sync --all-extras --dev
-
-# activate virtualenv if not auto-activated
-source .venv/bin/activate
-
-# enable git hooks
-pre-commit install
-
-# run unit tests
-task test
-
-# run acceptance tests
-task drmcp-acceptance
-```
-
-Python requirement: >= 3.11,< 3.13
-
-## Optional dependencies (extras)
-
-Install specific integrations only when needed:
-
-```bash
-# CrewAI
 pip install "datarobot-genai[crewai]"
-
-# LangGraph
 pip install "datarobot-genai[langgraph]"
-
-# LlamaIndex
 pip install "datarobot-genai[llamaindex]"
-
-# NVIDIA NAT
-pip install "datarobot-genai[nat]"
-
-# PydanticAI
-pip install "datarobot-genai[pydanticai]"
-
-# DataRobot MCP
-pip install "datarobot-genai[drmcp]"
-
-
-# Combine extras
-pip install "datarobot-genai[crewai,nat]"
-pip install "datarobot-genai[crewai,langgraph,llamaindex,nat,drmcp]"
+# Multiple extras
+pip install "datarobot-genai[crewai,langgraph,llamaindex]"
 ```
+  Available extras include: `crewai`, `langgraph`, `llamaindex`, `nat`, `drmcp`, `pydanticai`.
+
+## Development
+Prerequisites: Python 3.10–3.12, uv, Task CLI, pre-commit.
+```bash
+uv sync --all-extras --dev
+pre-commit install
+task test
+```
+
+## Publishing
+- PRs (same-repo): dev builds are auto-published to TestPyPI (`.devN`).
+- Merge to `main`: tags `v{version}` and publishes to PyPI automatically.
+- Pushing a `v*` tag also triggers PyPI publish.
+- Optional: `task release:tag-and-push` creates and pushes `v{version}` locally.
+
+## Links
+- Home: https://github.com/datarobot-oss/datarobot-genai
+- PyPI: https://pypi.org/project/datarobot-genai/
+- TestPyPI: https://test.pypi.org/project/datarobot-genai/
+
+## License
+Apache-2.0

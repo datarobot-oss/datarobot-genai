@@ -91,7 +91,11 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             pass
 
         # Use MCP context manager to handle connection lifecycle
-        with mcp_tools_context(api_base=self.api_base, api_key=self.api_key) as mcp_tools:
+        with mcp_tools_context(
+            api_base=self.api_base,
+            api_key=self.api_key,
+            authorization_context=self._authorization_context,
+        ) as mcp_tools:
             # Set MCP tools for all agents if MCP is not configured this is effectively a no-op
             self.set_mcp_tools(mcp_tools)
 

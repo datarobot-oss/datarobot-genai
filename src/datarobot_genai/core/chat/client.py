@@ -43,7 +43,12 @@ class ToolClient:
     is required for retrieving access tokens to connect to external services.
     """
 
-    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        authorization_context: dict[str, Any] | None = None,
+    ):
         """Initialize the ToolClient.
 
         Args:
@@ -51,11 +56,15 @@ class ToolClient:
                 environment variable `DATAROBOT_API_TOKEN`.
             base_url (str | None): Base URL for the DataRobot API. Defaults to the
                 environment variable `DATAROBOT_ENDPOINT` or 'app.datarobot.com'.
+            authorization_context (dict[str, Any] | None): Authorization context to use
+                for tool calls. If None, will attempt to get from ContextVar (for backward
+                compatibility).
         """
         self.api_key = api_key or os.getenv("DATAROBOT_API_TOKEN")
         base_url = base_url or os.getenv("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
         base_url = get_api_base(base_url, deployment_id=None)
         self.base_url = base_url
+        self._authorization_context = authorization_context
 
     @property
     def datarobot_api_endpoint(self) -> str:
@@ -75,22 +84,36 @@ class ToolClient:
         return dr.Deployment.get(deployment_id=deployment_id)
 
     def call(
-        self, deployment_id: str, payload: dict[str, Any], **kwargs: Any
+        self,
+        deployment_id: str,
+        payload: dict[str, Any],
+        authorization_context: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> UnstructuredPredictionResult:
         """Run the custom model tool using score_unstructured hook.
 
         Args:
             deployment_id (str): The ID of the deployment.
             payload (dict[str, Any]): The input payload.
+            authorization_context (dict[str, Any] | None): Authorization context to use.
+                If None, uses the context from initialization or falls back to ContextVar.
             **kwargs: Additional keyword arguments.
 
         Returns
         -------
             UnstructuredPredictionResult: The response content and headers.
         """
+        # Use explicit context, fall back to instance context, then ContextVar
+        auth_ctx = authorization_context or self._authorization_context
+        if auth_ctx is None:
+            try:
+                auth_ctx = get_authorization_context()
+            except LookupError:
+                auth_ctx = {}
+
         data = {
             "payload": payload,
-            "authorization_context": get_authorization_context(),
+            "authorization_context": auth_ctx,
         }
         return predict_unstructured(
             deployment=self.get_deployment(deployment_id),
@@ -123,19 +146,30 @@ class ToolClient:
         self,
         completion_create_params: CompletionCreateParams,
         model: str,
+        authorization_context: dict[str, Any] | None = None,
     ) -> ChatCompletion | Iterator[ChatCompletionChunk]:
         """Run the custom model tool with the chat hook.
 
         Args:
             completion_create_params (CompletionCreateParams): Parameters for the chat completion.
             model (str): The model to use.
+            authorization_context (dict[str, Any] | None): Authorization context to use.
+                If None, uses the context from initialization or falls back to ContextVar.
 
         Returns
         -------
             Union[ChatCompletion, Iterator[ChatCompletionChunk]]: The chat completion response.
         """
+        # Use explicit context, fall back to instance context, then ContextVar
+        auth_ctx = authorization_context or self._authorization_context
+        if auth_ctx is None:
+            try:
+                auth_ctx = get_authorization_context()
+            except LookupError:
+                auth_ctx = {}
+
         extra_body = {
-            "authorization_context": get_authorization_context(),
+            "authorization_context": auth_ctx,
         }
         return openai.chat.completions.create(
             **completion_create_params,

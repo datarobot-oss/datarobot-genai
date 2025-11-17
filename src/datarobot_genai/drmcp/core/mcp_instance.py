@@ -188,7 +188,7 @@ class TaggedFastMCP(FastMCP):
             List of MCPTool objects that match the tag criteria.
         """
         # Get all tools from the parent class
-        all_tools = await super()._mcp_list_tools()
+        all_tools = await super()._list_tools_mcp()
 
         # If no tags specified, return all tools
         if not tags:
@@ -207,7 +207,7 @@ class TaggedFastMCP(FastMCP):
         -------
             List of all unique tags sorted alphabetically.
         """
-        all_tools = await self._mcp_list_tools()
+        all_tools = await self._list_tools_mcp()
         return list_all_tags(list(all_tools))
 
     async def get_deployment_mapping(self) -> dict[str, str]:

@@ -14,6 +14,7 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from langchain.tools import BaseTool
 from langchain_mcp_adapters.sessions import SSEConnection
@@ -26,13 +27,26 @@ from datarobot_genai.core.mcp.common import MCPConfig
 
 @asynccontextmanager
 async def mcp_tools_context(
-    api_base: str | None = None, api_key: str | None = None
+    api_base: str | None = None,
+    api_key: str | None = None,
+    authorization_context: dict[str, Any] | None = None,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """Yield a list of LangChain BaseTool instances loaded via MCP.
 
     If no configuration or loading fails, yields an empty list without raising.
+
+    Parameters
+    ----------
+    api_base : str | None
+        Base URL for the DataRobot API
+    api_key : str | None
+        API key for authentication
+    authorization_context : dict[str, Any] | None
+        Authorization context to use for MCP connections
     """
-    mcp_config = MCPConfig(api_base=api_base, api_key=api_key)
+    mcp_config = MCPConfig(
+        api_base=api_base, api_key=api_key, authorization_context=authorization_context
+    )
     server_config = mcp_config.server_config
 
     if not server_config:
