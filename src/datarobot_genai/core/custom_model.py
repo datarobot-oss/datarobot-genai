@@ -84,7 +84,7 @@ def chat_entrypoint(
     *,
     work_dir: str | None = None,
     runtime_parameter_keys: list[str] | None = None,
-    framework: Literal["crewai", "langgraph", "llamaindex"] | None = None,
+    framework: Literal["crewai", "langgraph", "llamaindex", "nat"] | None = None,
     **kwargs: Any,
 ) -> CustomModelChatResponse | Iterator[CustomModelStreamingResponse]:
     """Run a generic Custom Model chat entrypoint for agent-based implementations.
@@ -107,7 +107,7 @@ def chat_entrypoint(
         Runtime parameter keys (DataRobot custom model) to propagate into env. When
         ``None``, defaults to
         ``['EXTERNAL_MCP_URL', 'MCP_DEPLOYMENT_ID']``.
-    framework : Optional[Literal["crewai", "langgraph", "llamaindex"]]
+    framework : Optional[Literal["crewai", "langgraph", "llamaindex", "nat"]]
         When provided, idempotently instruments HTTP clients, OpenAI SDK, and the
         given framework. If omitted, general instrumentation is still applied.
     **kwargs : Any

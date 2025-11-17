@@ -16,6 +16,7 @@
 
 from typing import Any
 
+from datarobot.models.genai.agent.auth import set_authorization_context
 from openai.types import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
@@ -108,3 +109,38 @@ def resolve_authorization_context(
     )
 
     return authorization_context
+
+
+def initialize_authorization_context(
+    completion_create_params: CompletionCreateParams
+    | CompletionCreateParamsNonStreaming
+    | CompletionCreateParamsStreaming,
+    **kwargs: Any,
+) -> None:
+    """Set the authorization context for the agent.
+
+    Authorization context is required for propagating information needed by downstream
+    agents and tools to retrieve access tokens to connect to external services. When set,
+    authorization context will be automatically propagated when using ToolClient class.
+    authorization context will be propagated when using MCP Server component or when
+    using ToolClient class.
+
+    Parameters
+    ----------
+    completion_create_params : CompletionCreateParams | CompletionCreateParamsNonStreaming |
+        CompletionCreateParamsStreaming
+        Parameters supplied to the completion API. May include a fallback
+        ``authorization_context`` mapping under the same key.
+    **kwargs : Any
+        Additional keyword arguments. Expected to include a ``headers`` key
+        containing incoming HTTP headers as ``dict[str, str]``.
+
+    """
+    authorization_context = resolve_authorization_context(
+        completion_create_params,
+        **kwargs,
+    )
+
+    # Note: authorization context internally uses contextvars, which are
+    # thread-safe and async-safe.
+    set_authorization_context(authorization_context)

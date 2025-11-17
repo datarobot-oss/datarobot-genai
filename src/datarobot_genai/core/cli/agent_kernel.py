@@ -112,7 +112,7 @@ class AgentKernel:
 
         return self._do_chat_completion(chat_api_url, user_prompt, completion_json, stream=stream)
 
-    def custom_model(self, custom_model_id: str, user_prompt: str) -> str:
+    def custom_model(self, custom_model_id: str, user_prompt: str, timeout: float = 300) -> str:
         chat_api_url = (
             f"{self.base_url}/api/v2/genai/agents/fromCustomModel/{custom_model_id}/chat/"
         )
@@ -142,7 +142,9 @@ class AgentKernel:
         status_location = response.headers["Location"]
         while response.ok:
             time.sleep(1)
-            response = requests.get(status_location, headers=headers, allow_redirects=False)
+            response = requests.get(
+                status_location, headers=headers, allow_redirects=False, timeout=timeout
+            )
             if response.status_code == 303:
                 agent_response = requests.get(response.headers["Location"], headers=headers).json()
                 # Show the agent response
