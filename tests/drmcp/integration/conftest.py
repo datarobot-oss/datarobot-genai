@@ -17,10 +17,10 @@ from typing import Any
 
 import pytest
 
-from datarobot_genai.drmcp.test_utils.prompt_management import create_prompt_template
-from datarobot_genai.drmcp.test_utils.prompt_management import delete_prompt_template
-from datarobot_genai.drmcp.test_utils.prompt_management import get_or_create_prompt_template
-from datarobot_genai.drmcp.test_utils.prompt_management import get_or_create_prompt_template_version
+from tests.drmcp.integration.helper import create_prompt_template
+from tests.drmcp.integration.helper import delete_prompt_template
+from tests.drmcp.integration.helper import get_or_create_prompt_template
+from tests.drmcp.integration.helper import get_or_create_prompt_template_version
 
 
 @pytest.fixture(scope="session")
