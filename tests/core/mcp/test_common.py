@@ -121,12 +121,15 @@ class TestMCPConfig:
             config = MCPConfig()
             assert config.server_config is None
 
-    @pytest.mark.parametrize('api_base', [
-        pytest.param('https://app.datarobot.com/api/v2', id='no-trailing-slash'),
-        pytest.param('https://app.datarobot.com/api/v2/', id='with-trailing-slash'),
-        pytest.param('https://app.datarobot.com/', id='with-trailing-slash-no-api-v2'),
-        pytest.param('https://app.datarobot.com', id='no-trailing-slash-no-api-v2'),
-    ])
+    @pytest.mark.parametrize(
+        "api_base",
+        [
+            pytest.param("https://app.datarobot.com/api/v2", id="no-trailing-slash"),
+            pytest.param("https://app.datarobot.com/api/v2/", id="with-trailing-slash"),
+            pytest.param("https://app.datarobot.com/", id="with-trailing-slash-no-api-v2"),
+            pytest.param("https://app.datarobot.com", id="no-trailing-slash-no-api-v2"),
+        ],
+    )
     def test_mcp_config_url_construction(self, api_base):
         """Test URL construction when api_base has trailing slash."""
         deployment_id = "abc123def456789012345678"
