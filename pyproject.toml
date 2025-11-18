@@ -36,7 +36,7 @@ datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 [project.optional-dependencies]
 crewai = [
   "crewai>=0.193.2,<0.194.0",
-  "crewai-tools[mcp]>=0.69.0,<0.70.0",
+  "crewai-tools[mcp]>=0.69.0,<0.77.0",
   "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
   "pybase64>=1.4.2,<2.0.0",
 ]
