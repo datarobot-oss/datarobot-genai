@@ -44,7 +44,7 @@ class MCPConfig:
         self.external_mcp_transport = os.environ.get("EXTERNAL_MCP_TRANSPORT", "streamable-http")
         self.mcp_deployment_id = os.environ.get("MCP_DEPLOYMENT_ID")
         self.api_base = api_base or os.environ.get(
-            "DATAROBOT_ENDPOINT", "https://app.datarobot.com"
+            "DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2/"
         )
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
         self.authorization_context = authorization_context
@@ -91,6 +91,8 @@ class MCPConfig:
         elif self.mcp_deployment_id and self.api_key:
             # DataRobot deployment ID - requires authentication
             base_url = self.api_base.rstrip("/")
+            if not base_url.endswith("/api/v2"):
+                base_url = base_url + "/api/v2"
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
             headers = {
