@@ -28,8 +28,20 @@ logging.getLogger("opentelemetry.instrumentation.instrumentor").setLevel(logging
 logger = logging.getLogger(__name__)
 
 # Internal instrumentation state to avoid 'global' mutation warnings
-_INSTRUMENTATION_STATE = {"http": False, "openai": False}
+_INSTRUMENTATION_STATE = {"http": False, "openai": False, "threading": False}
 _INSTRUMENTED_FRAMEWORKS: set[str] = set()
+
+
+def _instrument_threading() -> None:
+    if _INSTRUMENTATION_STATE["threading"]:
+        return
+    try:
+        threading_module = importlib.import_module("opentelemetry.instrumentation.threading")
+        threading_instrumentor = getattr(threading_module, "ThreadingInstrumentor")
+        threading_instrumentor().instrument()
+        _INSTRUMENTATION_STATE["threading"] = True
+    except Exception as e:
+        logger.debug(f"threading instrumentation skipped: {e}")
 
 
 def _instrument_http_clients() -> None:
@@ -107,6 +119,7 @@ def instrument(
     os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
     os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 
+    _instrument_threading()
     _instrument_http_clients()
     _instrument_openai()
     if framework:
