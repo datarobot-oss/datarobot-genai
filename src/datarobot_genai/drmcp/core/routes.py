@@ -18,6 +18,8 @@ from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from .dynamic_prompts.controllers import delete_registered_prompt_template
+from .dynamic_prompts.controllers import get_registered_prompt_templates
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
@@ -336,4 +338,56 @@ def register_routes(mcp: FastMCP) -> None:
             return JSONResponse(
                 status_code=500,
                 content={"error": f"Failed to delete deployment: {str(e)}"},
+            )
+
+    @mcp.custom_route(prefix_mount_path("/registeredPrompts"), methods=["GET"])
+    async def list_prompt_templates(_: Request) -> JSONResponse:
+        """List all prompt templates."""
+        try:
+            prompts = await get_registered_prompt_templates()
+            formatted_prompts = [
+                {
+                    "promptTemplateId": pt_id,
+                    "promptTemplateVersionId": ptv_id,
+                    "promptName": p_name,
+                }
+                for pt_id, (ptv_id, p_name) in prompts.items()
+            ]
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "promptTemplates": formatted_prompts,
+                    "count": len(formatted_prompts),
+                },
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Failed to retrieve promptTemplates: {str(e)}"},
+            )
+
+    @mcp.custom_route(
+        prefix_mount_path("/registeredPrompts/{prompt_template_id}"), methods=["DELETE"]
+    )
+    async def delete_prompt_template(request: Request) -> JSONResponse:
+        """Delete (de-register) a prompt by prompt_template_id."""
+        prompt_template_id = request.path_params["prompt_template_id"]
+        try:
+            deleted = await delete_registered_prompt_template(prompt_template_id)
+            if deleted:
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "message": f"Prompt with prompt template id {prompt_template_id} "
+                        f"deleted successfully"
+                    },
+                )
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Prompt with prompt template id {prompt_template_id} not found"},
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Failed to delete prompt: {str(e)}"},
             )

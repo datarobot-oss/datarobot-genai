@@ -92,6 +92,7 @@ async def register_prompt_from_datarobot_prompt_management(
             name=prompt.name,
             description=prompt.description,
             meta={"prompt_template_id": prompt.id, "prompt_template_version_id": latest_version.id},
+            prompt_template=(prompt.id, latest_version.id),
         )
 
     except Exception as exc:
