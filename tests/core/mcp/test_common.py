@@ -121,10 +121,19 @@ class TestMCPConfig:
             config = MCPConfig()
             assert config.server_config is None
 
-    def test_mcp_config_url_construction_with_trailing_slash(self):
+    @pytest.mark.parametrize(
+        "api_base",
+        [
+            pytest.param("https://app.datarobot.com/api/v2", id="no-trailing-slash"),
+            pytest.param("https://app.datarobot.com/api/v2/", id="with-trailing-slash"),
+            pytest.param("https://app.datarobot.com/", id="with-trailing-slash-no-api-v2"),
+            pytest.param("https://app.datarobot.com", id="no-trailing-slash-no-api-v2"),
+        ],
+    )
+    def test_mcp_config_url_construction(self, api_base):
         """Test URL construction when api_base has trailing slash."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2/"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "test-api-key"
 
         with patch.dict(
@@ -203,7 +212,7 @@ class TestMCPConfig:
 
     def test_mcp_config_with_direct_params(self):
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         with patch.dict(
             os.environ,
@@ -217,7 +226,7 @@ class TestMCPConfig:
 
     def test_mcp_config_with_bearer_only_api_key(self):
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "Bearer fake_api_key"
         with patch.dict(
             os.environ,
@@ -229,7 +238,7 @@ class TestMCPConfig:
 
     def test_mcp_config_with_whitespace_api_key(self):
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         with patch.dict(
             os.environ,
@@ -260,7 +269,7 @@ class TestMCPConfig:
     def test_mcp_config_with_direct_authorization_context(self, agent_auth_context_data):
         """Test MCPConfig with direct authorization_context parameter."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
@@ -293,7 +302,7 @@ class TestMCPConfig:
     ):
         """Test that direct authorization_context param takes priority over ContextVar."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
@@ -326,7 +335,7 @@ class TestMCPConfig:
     def test_mcp_config_with_empty_authorization_context(self):
         """Test MCPConfig with empty authorization_context dict."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
 
         with patch.dict(
@@ -347,7 +356,7 @@ class TestMCPConfig:
     def test_mcp_config_with_none_authorization_context(self, agent_auth_context_data):
         """Test MCPConfig with None authorization_context falls back to ContextVar."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
@@ -380,7 +389,7 @@ class TestMCPConfig:
     def test_mcp_config_authorization_context_with_complex_data(self):
         """Test authorization_context with complex nested data structures."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
@@ -445,7 +454,7 @@ class TestMCPConfig:
     def test_mcp_config_authorization_context_roundtrip(self, agent_auth_context_data):
         """Test full encode-decode roundtrip of authorization_context."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
@@ -480,7 +489,7 @@ class TestMCPConfig:
     ):
         """Test authorization_context encoding with missing secret key shows warning."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://custom.api/v2"
+        api_base = "https://app.datarobot.com/api/v2"
         api_key = "fake_api_key"
 
         with patch.dict(
