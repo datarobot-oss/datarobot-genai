@@ -89,3 +89,26 @@ def get_datarobot_prompt_template_versions(prompt_template_id: str) -> list[DrPr
             )
         )
     return prompt_template_versions
+
+
+def get_datarobot_prompt_template_and_version(
+    prompt_template_id: str, prompt_template_version_id: str
+) -> tuple[DrPrompt, DrPromptVersion] | None:
+    prompts = get_datarobot_prompt_templates()
+    matching_prompt = None
+    matching_prompt_version = None
+    for prompt in prompts:
+        if prompt.id == prompt_template_id:
+            matching_prompt = prompt
+            prompt_template_versions = get_datarobot_prompt_template_versions(prompt_template_id)
+
+            for prompt_version in prompt_template_versions:
+                if prompt_version.id == prompt_template_version_id:
+                    matching_prompt_version = prompt_version
+                    break
+            break
+
+    if not matching_prompt or not matching_prompt_version:
+        return None
+
+    return matching_prompt, matching_prompt_version

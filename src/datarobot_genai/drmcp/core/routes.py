@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse
 
 from .dynamic_prompts.controllers import delete_registered_prompt_template
 from .dynamic_prompts.controllers import get_registered_prompt_templates
+from .dynamic_prompts.controllers import register_prompt_for_prompt_template_id_and_version
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
@@ -390,4 +391,33 @@ def register_routes(mcp: FastMCP) -> None:
             return JSONResponse(
                 status_code=500,
                 content={"error": f"Failed to delete prompt: {str(e)}"},
+            )
+
+    @mcp.custom_route(
+        prefix_mount_path(
+            "/registeredPrompts/{prompt_template_id}/versions/{prompt_template_version_id}"
+        ),
+        methods=["PUT"],
+    )
+    async def add_prompt_template(request: Request) -> JSONResponse:
+        """Add or update prompt template."""
+        prompt_template_id = request.path_params["prompt_template_id"]
+        prompt_template_version_id = request.path_params["prompt_template_version_id"]
+        try:
+            prompt = await register_prompt_for_prompt_template_id_and_version(
+                prompt_template_id, prompt_template_version_id
+            )
+            return JSONResponse(
+                status_code=201,
+                content={
+                    "name": prompt.name,
+                    "description": prompt.description,
+                    "promptTemplateId": prompt_template_id,
+                    "promptTemplateVersionId": prompt_template_version_id,
+                },
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Failed to add prompt template: {str(e)}"},
             )

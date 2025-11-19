@@ -19,6 +19,9 @@ import pytest
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPromptVersion
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import (
+    get_datarobot_prompt_template_and_version,
+)
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template_versions
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
 
@@ -142,3 +145,45 @@ class TestDrLib:
             latest_prompt_template_version = prompt_template.get_latest_version()
 
         assert latest_prompt_template_version is None
+
+    @pytest.mark.asyncio
+    async def test_get_prompt_with_version(self) -> None:
+        """Test get latest prompt template version when no versions."""
+        with (
+            patch(
+                "datarobot_genai.drmcp.core.dynamic_prompts.dr_lib.dr",
+            ) as mock_dr,
+            patch("datarobot_genai.drmcp.core.dynamic_prompts.dr_lib.get_api_client"),
+        ):
+            mock_dr.utils.pagination.unpaginate.side_effect = [
+                [
+                    {
+                        "id": "69086ea4b65d70489c5b198d",
+                        "name": "Prompt template 1",
+                        "description": "Desc 1",
+                    },
+                ],
+                [
+                    {
+                        "id": "89086ea4b65d70489c5b198d",
+                        "version": 2,
+                        "promptText": "Text with {{variable}}.",
+                        "variables": [{"name": "variable", "description": "Dummy variable"}],
+                    },
+                ],
+            ]
+
+            prompt_template, prompt_template_version = get_datarobot_prompt_template_and_version(
+                prompt_template_id="69086ea4b65d70489c5b198d",
+                prompt_template_version_id="89086ea4b65d70489c5b198d",
+            )
+
+        assert prompt_template == DrPrompt(
+            id="69086ea4b65d70489c5b198d", name="Prompt template 1", description="Desc 1"
+        )
+        assert prompt_template_version == DrPromptVersion(
+            id="89086ea4b65d70489c5b198d",
+            version=2,
+            prompt_text="Text with {{variable}}.",
+            variables=[DrVariable(name="variable", description="Dummy variable")],
+        )
