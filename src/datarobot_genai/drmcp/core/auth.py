@@ -118,7 +118,7 @@ async def must_get_auth_context() -> AuthCtx:
     return auth_ctx
 
 
-async def get_oauth_access_token(provider_type: str | None = None) -> str:
+async def get_access_token(provider_type: str | None = None) -> str:
     """Retrieve access token from the DataRobot OAuth Provider Service.
 
     OAuth access tokens can be retrieved only for providers where the user completed
