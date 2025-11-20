@@ -21,6 +21,9 @@ from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 from fastmcp.server.dependencies import get_http_headers
 
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+from datarobot_genai.core.utils.auth import DRAppCtx
+
 from .credentials import get_credentials
 
 logger = logging.getLogger(__name__)
@@ -66,19 +69,80 @@ def _extract_token_from_headers(headers: dict[str, str]) -> str | None:
     return None
 
 
+def _extract_token_from_auth_context(headers: dict[str, str]) -> str | None:
+    """
+    Extract API token from authorization context metadata as a fallback.
+
+    Args:
+        headers: Dictionary of headers (keys should be lowercase)
+
+    Returns
+    -------
+        The extracted API key from auth context metadata, or None if not found
+    """
+    try:
+        auth_handler = AuthContextHeaderHandler()
+
+        auth_ctx = auth_handler.get_context(headers)
+        if not auth_ctx or not auth_ctx.metadata:
+            return None
+
+        metadata = auth_ctx.metadata
+        if not isinstance(metadata, dict):
+            return None
+
+        dr_ctx: DRAppCtx = DRAppCtx(**metadata.get("dr_ctx", {}))
+        if dr_ctx.api_key:
+            logger.debug("Extracted token from auth context")
+            return dr_ctx.api_key
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"Failed to get token from auth context: {e}")
+        return None
+
+
+def extract_token_from_headers(headers: dict[str, str]) -> str | None:
+    """
+    Extract a token from headers with multiple fallback strategies.
+
+    This function attempts to extract a token in the following order:
+    1. From standard authorization headers (Bearer token, x-datarobot-api-token, etc.)
+    2. From authorization context metadata (dr_ctx.api_key)
+
+    Args:
+        headers: Dictionary of headers (keys should be lowercase)
+
+    Returns
+    -------
+        The extracted token string, or None if not found
+    """
+    if token := _extract_token_from_headers(headers):
+        return token
+
+    if token := _extract_token_from_auth_context(headers):
+        return token
+
+    return None
+
+
 def get_sdk_client() -> Any:
     """
     Get a DataRobot SDK client, using the user's Bearer token from the request.
 
-    This function attempts to extract the Bearer token from the HTTP request headers.
-    If no token is found, it uses the application credentials.
+    This function attempts to extract the Bearer token from the HTTP request headers
+    with fallback strategies:
+    1. Standard authorization headers (Bearer token, x-datarobot-api-token, etc.)
+    2. Authorization context metadata (dr_ctx.api_key)
+    3. Application credentials as final fallback
     """
     token = None
 
     try:
         headers = get_http_headers()
         if headers:
-            token = _extract_token_from_headers(headers)
+            token = extract_token_from_headers(headers)
             if token:
                 logger.debug("Using API token found in HTTP headers")
     except Exception:

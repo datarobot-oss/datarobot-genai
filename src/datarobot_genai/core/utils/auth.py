@@ -16,15 +16,27 @@ import warnings
 from typing import Any
 
 import jwt
+from datarobot.auth.datarobot.oauth import AsyncOAuth as DatarobotAsyncOAuthClient
+from datarobot.auth.identity import Identity
+from datarobot.auth.oauth import AsyncOAuthComponent
 from datarobot.auth.session import AuthCtx
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import get_authorization_context
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
 class AuthContextConfig(DataRobotAppFrameworkBaseSettings):
     session_secret_key: str = ""
+
+
+class DRAppCtx(BaseModel):
+    """DataRobot application context from authorization metadata."""
+
+    email: str | None = None
+    api_key: str | None = None
 
 
 class AuthContextHeaderHandler:
@@ -146,6 +158,7 @@ class AuthContextHeaderHandler:
 
         auth_ctx_dict = self.decode(token)
         if not auth_ctx_dict:
+            logger.debug("Failed to decode auth context from token")
             return None
 
         try:
@@ -153,3 +166,54 @@ class AuthContextHeaderHandler:
         except Exception as e:
             logger.error(f"Failed to create AuthCtx from decoded token: {e}", exc_info=True)
             return None
+
+
+class AsyncOAuthTokenProvider:
+    """Manages OAuth access tokens using generic OAuth client."""
+
+    def __init__(self, auth_ctx: AuthCtx) -> None:
+        self.auth_ctx = auth_ctx
+        self.oauth_client = self._create_oauth_client()
+
+    def _get_identity(self, provider_type: str | None) -> Identity:
+        """Retrieve the appropriate identity from the authentication context."""
+        identities = [x for x in self.auth_ctx.identities if x.provider_identity_id is not None]
+
+        if not identities:
+            raise ValueError("No identities found in authorization context.")
+
+        if provider_type is None:
+            if len(identities) > 1:
+                raise ValueError(
+                    "Multiple identities found. Please specify 'provider_type' parameter."
+                )
+            return identities[0]
+
+        identity = next((id for id in identities if id.provider_type == provider_type), None)
+
+        if identity is None:
+            raise ValueError(f"No identity found for provider '{provider_type}'.")
+
+        return identity
+
+    async def get_token(self, auth_type: ToolAuth, provider_type: str | None = None) -> str:
+        """Get OAuth access token using the specified method."""
+        if auth_type != ToolAuth.OBO:
+            raise ValueError(
+                f"Unsupported auth type: {auth_type}. Only {ToolAuth.OBO} is supported."
+            )
+
+        identity = self._get_identity(provider_type)
+        token_data = await self.oauth_client.refresh_access_token(
+            identity_id=identity.provider_identity_id
+        )
+        return token_data.access_token
+
+    def _create_oauth_client(self) -> AsyncOAuthComponent:
+        """Create either DataRobot or Authlib OAuth client based on
+        authorization context.
+
+        Note: at the moment, only DataRobot OAuth client is supported.
+        """
+        logger.debug("Using DataRobot OAuth client")
+        return DatarobotAsyncOAuthClient()

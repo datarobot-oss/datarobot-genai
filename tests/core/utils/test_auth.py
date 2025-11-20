@@ -15,12 +15,18 @@ import binascii
 import os
 import random
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import jwt
 import pytest
+from datarobot.auth.identity import Identity
 from datarobot.auth.session import AuthCtx
+from datarobot.auth.users import User
+from datarobot.models.genai.agent.auth import ToolAuth
+from datarobot.models.genai.agent.auth import set_authorization_context
 
+from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
@@ -148,6 +154,9 @@ class TestAuthContextHeaderHandlerEncode:
 
     def test_encode_with_empty_explicit_context(self, handler: AuthContextHeaderHandler) -> None:
         """Test encoding with empty explicit authorization_context."""
+        # set empty context in ContextVar, to ensure empty fallback
+        set_authorization_context({})
+        # encode with empty authorization_context
         token = handler.encode(authorization_context={})
 
         assert token is None, "Empty explicit context should return None"
@@ -352,3 +361,294 @@ class TestAuthContextHeaderHandlerRoundtrip:
             assert isinstance(ctx, AuthCtx), "Result should be an AuthCtx instance"
             assert ctx.user.id == auth_context["user"]["id"]
             assert ctx.identities[0].id == auth_context["identities"][0]["id"]
+
+
+class TestAsyncOAuthTokenProvider:
+    """Tests for AsyncOAuthTokenProvider OAuth token management."""
+
+    @pytest.fixture
+    def auth_ctx_single_identity(self) -> AuthCtx:
+        """AuthCtx with a single identity."""
+        return AuthCtx(
+            user=User(id="user123", email="user@example.com"),
+            identities=[
+                Identity(
+                    id="id1",
+                    provider_type="provider1",
+                    type="oauth2",
+                    provider_user_id="user1",
+                    provider_identity_id="ea599021-acc3-490b-b2d7-a811ae1c9759",
+                ),
+            ],
+        )
+
+    @pytest.fixture
+    def auth_ctx_multiple_identities(self) -> AuthCtx:
+        """AuthCtx with multiple identities."""
+        return AuthCtx(
+            user=User(id="user123", email="user@example.com"),
+            identities=[
+                Identity(
+                    id="id1",
+                    provider_type="provider1",
+                    type="oauth2",
+                    provider_user_id="user1",
+                    provider_identity_id="ea599021-acc3-490b-b2d7-a811ae1c9759",
+                ),
+                Identity(
+                    id="id2",
+                    provider_type="provider2",
+                    type="oauth2",
+                    provider_user_id="user2",
+                    provider_identity_id="cc3f4426-9db1-4e77-bccb-72bcf7bc1ace",
+                ),
+            ],
+        )
+
+    @pytest.fixture
+    def auth_ctx_datarobot_only(self) -> AuthCtx:
+        """AuthCtx with only DataRobot identity."""
+        return AuthCtx(
+            user=User(id="user123", email="user@example.com"),
+            identities=[
+                Identity(
+                    id="id1",
+                    provider_type="datarobot_ext_email",
+                    type="datarobot",
+                    provider_user_id="user@example.com",
+                    provider_identity_id=None,
+                ),
+            ],
+        )
+
+    @pytest.fixture
+    def auth_ctx_obj(self) -> AuthCtx:
+        """AuthCtx mimicking google OAuth scenario."""
+        return AuthCtx(
+            user=User(
+                id="1",
+                email="user@example.com",
+                phone_number=None,
+                name=None,
+                given_name=None,
+                family_name=None,
+                profile_picture_url=None,
+                metadata={},
+            ),
+            identities=[
+                Identity(
+                    id="1",
+                    provider_type="datarobot_ext_email",
+                    type="datarobot",
+                    provider_user_id="user@example.com",
+                    provider_identity_id=None,
+                ),
+                Identity(
+                    id="2",
+                    provider_type="google",
+                    type="oauth2",
+                    provider_user_id="user@example.com",
+                    provider_identity_id="3d0edc76-95c6-4b75-9541-3fe17ccf068b",
+                ),
+            ],
+        )
+
+    @pytest.fixture
+    def mock_token_data(self):
+        """Mock token data returned by OAuth client."""
+        token_data = AsyncMock()
+        token_data.access_token = "test_access_token"
+        return token_data
+
+    def test_create_oauth_client_always_uses_datarobot(
+        self, auth_ctx_single_identity: AuthCtx
+    ) -> None:
+        """Test that DataRobot OAuth client is always used regardless of provider type.
+
+        DataRobot acts as the storage backend and token refresh utility for all OAuth providers.
+        """
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient") as mock_dr:
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_single_identity)
+            mock_dr.assert_called_once()
+            assert provider.oauth_client == mock_dr.return_value
+
+    def test_get_identity_single(self, auth_ctx_single_identity: AuthCtx) -> None:
+        """Test getting identity when only one OAuth identity is available."""
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_single_identity)
+            identity = provider._get_identity(provider_type=None)
+            assert identity.id == "id1"
+            assert identity.provider_type == "provider1"
+
+    def test_get_identity_by_provider_type(self, auth_ctx_multiple_identities: AuthCtx) -> None:
+        """Test getting specific identity by provider_type."""
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_multiple_identities)
+            identity = provider._get_identity(provider_type="provider2")
+            assert identity.id == "id2"
+            assert identity.provider_type == "provider2"
+
+    def test_get_identity_multiple_without_provider_type(
+        self, auth_ctx_multiple_identities: AuthCtx
+    ) -> None:
+        """Test that multiple identities without provider_type raises error."""
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_multiple_identities)
+            with pytest.raises(
+                ValueError,
+                match="Multiple identities found. Please specify 'provider_type' parameter.",
+            ):
+                provider._get_identity(provider_type=None)
+
+    def test_get_identity_no_match(self, auth_ctx_single_identity: AuthCtx) -> None:
+        """Test error when provider_type doesn't match any identity."""
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_single_identity)
+            with pytest.raises(ValueError, match="No identity found for provider 'unknown'"):
+                provider._get_identity(provider_type="unknown")
+
+    def test_get_identity_real_world_scenario(self, auth_ctx_obj: AuthCtx) -> None:
+        """Test getting Google identity from real-world auth context.
+
+        In real-world scenarios, users have a DataRobot identity (without provider_identity_id)
+        and connected OAuth providers like Google (with provider_identity_id).
+        """
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_obj)
+
+            # Should get the Google identity when provider_type is specified
+            identity = provider._get_identity(provider_type="google")
+            assert identity.id == "2"
+            assert identity.provider_type == "google"
+            assert identity.provider_identity_id == "3d0edc76-95c6-4b75-9541-3fe17ccf068b"
+
+            # Without provider_type, should get the only OAuth identity (Google)
+            identity_default = provider._get_identity(provider_type=None)
+            assert identity_default.id == "2"
+            assert identity_default.provider_type == "google"
+
+    def test_get_identity_filters_none_provider_identity_id(self) -> None:
+        """Test that identities without provider_identity_id are filtered out."""
+        auth_ctx = AuthCtx(
+            user=User(id="user123", email="user@example.com"),
+            identities=[
+                Identity(
+                    id="id1",
+                    provider_type="provider1",
+                    type="datarobot",
+                    provider_user_id="user1",
+                    provider_identity_id=None,  # Should be filtered out
+                ),
+                Identity(
+                    id="id2",
+                    provider_type="provider2",
+                    type="oauth2",
+                    provider_user_id="user2",
+                    provider_identity_id="cc3f4426-9db1-4e77-bccb-72bcf7bc1ace",
+                ),
+            ],
+        )
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx)
+            identity = provider._get_identity(provider_type=None)
+            assert identity.id == "id2"  # Only id2 has provider_identity_id
+
+    def test_get_identity_no_valid_identities(self, auth_ctx_datarobot_only: AuthCtx) -> None:
+        """Test error when no identities have provider_identity_id.
+
+        This happens when a user is authenticated via DataRobot but hasn't connected
+        any OAuth providers (Google, Microsoft, etc.).
+        """
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_datarobot_only)
+            with pytest.raises(ValueError, match="No identities found in authorization context."):
+                provider._get_identity(provider_type=None)
+
+    @pytest.mark.asyncio
+    async def test_get_token_success(
+        self, auth_ctx_single_identity: AuthCtx, mock_token_data
+    ) -> None:
+        """Test successful token retrieval using DataRobot OAuth client."""
+        with patch(
+            "datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.refresh_access_token.return_value = mock_token_data
+            mock_client_class.return_value = mock_client
+
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_single_identity)
+            token = await provider.get_token(auth_type=ToolAuth.OBO, provider_type="provider1")
+
+            assert token == "test_access_token"
+            mock_client.refresh_access_token.assert_called_once_with(
+                identity_id="ea599021-acc3-490b-b2d7-a811ae1c9759"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_token_with_multiple_identities(
+        self, auth_ctx_multiple_identities: AuthCtx, mock_token_data
+    ) -> None:
+        """Test token retrieval with specific provider_type using DataRobot OAuth client."""
+        with patch(
+            "datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.refresh_access_token.return_value = mock_token_data
+            mock_client_class.return_value = mock_client
+
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_multiple_identities)
+            token = await provider.get_token(auth_type=ToolAuth.OBO, provider_type="provider2")
+
+            assert token == "test_access_token"
+            mock_client.refresh_access_token.assert_called_once_with(
+                identity_id="cc3f4426-9db1-4e77-bccb-72bcf7bc1ace"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_token_real_world_google(
+        self, auth_ctx_obj: AuthCtx, mock_token_data
+    ) -> None:
+        """Test token retrieval for Google OAuth in real-world scenario.
+
+        DataRobot manages the OAuth token refresh for Google and other providers.
+        """
+        with patch(
+            "datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.refresh_access_token.return_value = mock_token_data
+            mock_client_class.return_value = mock_client
+
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_obj)
+            token = await provider.get_token(auth_type=ToolAuth.OBO, provider_type="google")
+
+            assert token == "test_access_token"
+            # Verify DataRobot client is used to refresh Google OAuth token
+            mock_client.refresh_access_token.assert_called_once_with(
+                identity_id="3d0edc76-95c6-4b75-9541-3fe17ccf068b"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_token_unsupported_auth_type(self, auth_ctx_single_identity: AuthCtx) -> None:
+        """Test error with unsupported auth type."""
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_single_identity)
+            with pytest.raises(
+                ValueError,
+                match=r"Unsupported auth type: invalid\. Only OBO \(on-behalf-of\) is supported\.",
+            ):
+                await provider.get_token(auth_type="invalid", provider_type="provider1")
+
+    @pytest.mark.asyncio
+    async def test_get_token_no_oauth_providers_connected(
+        self, auth_ctx_datarobot_only: AuthCtx
+    ) -> None:
+        """Test error when user has no OAuth providers connected.
+
+        This occurs when a user is authenticated via DataRobot but hasn't connected
+        any external OAuth providers like Google or Microsoft.
+        """
+        with patch("datarobot_genai.core.utils.auth.DatarobotAsyncOAuthClient"):
+            provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_datarobot_only)
+            with pytest.raises(ValueError, match="No identities found in authorization context."):
+                await provider.get_token(auth_type=ToolAuth.OBO)

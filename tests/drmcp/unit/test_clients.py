@@ -16,8 +16,14 @@ from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
+from datarobot.auth.identity import Identity
+from datarobot.auth.session import AuthCtx
+from datarobot.auth.users import User
+
+from datarobot_genai.drmcp.core.clients import _extract_token_from_auth_context
 from datarobot_genai.drmcp.core.clients import _extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import dr
+from datarobot_genai.drmcp.core.clients import extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.clients import get_s3_bucket_info
 from datarobot_genai.drmcp.core.clients import get_sdk_client
@@ -232,6 +238,109 @@ class TestExtractTokenFromHeaders:
         assert result == "token-123"
 
 
+class TestExtractTokenFromAuthContext:
+    """Test cases for _extract_token_from_auth_context function - critical path only."""
+
+    @patch("datarobot_genai.drmcp.core.clients.AuthContextHeaderHandler")
+    def test_extracts_api_key_from_dr_ctx_metadata(self, mock_handler_class):
+        """Test successful extraction of API key from dr_ctx in authorization context metadata."""
+        auth_ctx = AuthCtx(
+            user=User(id="test-user-123", email="test.user@example.com"),
+            identities=[
+                Identity(
+                    id="identity-1",
+                    type="datarobot",
+                    provider_type="datarobot_ext_email",
+                    provider_user_id="test.user@example.com",
+                    provider_identity_id=None,
+                ),
+            ],
+            metadata={"dr_ctx": {"email": "test.user@example.com", "api_key": "test-api-key-789"}},
+        )
+
+        mock_handler = Mock()
+        mock_handler.get_context.return_value = auth_ctx
+        mock_handler_class.return_value = mock_handler
+
+        headers = {"x-datarobot-authorization-context": "jwt-token"}
+        result = _extract_token_from_auth_context(headers)
+
+        assert result == "test-api-key-789"
+        mock_handler.get_context.assert_called_once_with(headers)
+
+    @patch("datarobot_genai.drmcp.core.clients.AuthContextHeaderHandler")
+    def test_returns_none_when_no_api_key_in_metadata(self, mock_handler_class):
+        """Test that function returns None when auth context has no metadata or no api_key."""
+        mock_handler = Mock()
+        mock_handler_class.return_value = mock_handler
+
+        # Test with no auth context
+        mock_handler.get_context.return_value = None
+        assert _extract_token_from_auth_context({}) is None
+
+        # Test with no metadata
+        mock_handler.get_context.return_value = AuthCtx(
+            user=User(id="test-user-123", email="test.user@example.com"),
+            identities=[],
+            metadata=None,
+        )
+        assert _extract_token_from_auth_context({}) is None
+
+        # Test with empty api_key
+        mock_handler.get_context.return_value = AuthCtx(
+            user=User(id="test-user-123", email="test.user@example.com"),
+            identities=[],
+            metadata={"dr_ctx": {"email": "test.user@example.com", "api_key": ""}},
+        )
+        assert _extract_token_from_auth_context({}) is None
+
+    @patch("datarobot_genai.drmcp.core.clients.AuthContextHeaderHandler")
+    def test_handles_exceptions_gracefully(self, mock_handler_class):
+        """Test that function handles exceptions and returns None."""
+        mock_handler = Mock()
+        mock_handler.get_context.side_effect = ValueError("Invalid JWT")
+        mock_handler_class.return_value = mock_handler
+
+        result = _extract_token_from_auth_context(
+            {"x-datarobot-authorization-context": "bad-token"}
+        )
+        assert result is None
+
+
+class TestExtractTokenFromHeadersWithFallback:
+    """Test cases for extract_token_from_headers - critical path only."""
+
+    def test_prefers_standard_header_over_auth_context(self):
+        """Test that standard headers are preferred over auth context metadata."""
+        headers = {"authorization": "Bearer standard-token"}
+
+        with patch(
+            "datarobot_genai.drmcp.core.clients._extract_token_from_auth_context"
+        ) as mock_auth_extract:
+            result = extract_token_from_headers(headers)
+
+            assert result == "standard-token"
+            mock_auth_extract.assert_not_called()
+
+    @patch("datarobot_genai.drmcp.core.clients.AuthContextHeaderHandler")
+    def test_falls_back_to_auth_context_when_no_standard_headers(self, mock_handler_class):
+        """Test fallback to auth context metadata when standard headers are missing."""
+        auth_ctx = AuthCtx(
+            user=User(id="test-user-123", email="test.user@example.com"),
+            identities=[],
+            metadata={"dr_ctx": {"email": "test.user@example.com", "api_key": "fallback-api-key"}},
+        )
+
+        mock_handler = Mock()
+        mock_handler.get_context.return_value = auth_ctx
+        mock_handler_class.return_value = mock_handler
+
+        headers = {"x-datarobot-authorization-context": "jwt-token"}
+        result = extract_token_from_headers(headers)
+
+        assert result == "fallback-api-key"
+
+
 class TestGetSdkClientWithHeaders:
     """Test cases for get_sdk_client function with header extraction."""
 
@@ -371,3 +480,80 @@ class TestGetSdkClientWithHeaders:
 
         # Verify use_case was reset to None
         assert mock_dr_context.use_case is None
+
+    @patch("datarobot_genai.drmcp.core.clients.dr.Client")
+    @patch("datarobot_genai.drmcp.core.clients.AuthContextHeaderHandler")
+    @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
+    @patch("datarobot_genai.drmcp.core.clients.get_credentials")
+    def test_extracts_token_from_auth_context_when_no_standard_headers(
+        self, mock_get_creds, mock_get_headers, mock_handler_class, mock_client
+    ):
+        """Test scenario where a user is authenticated via DataRobot
+        and the API key is stored in the authorization context metadata rather than in
+        standard headers.
+        """
+        # Create realistic auth context with metadata containing API key
+        auth_ctx = AuthCtx(
+            user=User(
+                id="real-user-456",
+                email="jane.smith@company.com",
+                name="Jane Smith",
+                phone_number=None,
+                given_name="Jane",
+                family_name="Smith",
+                profile_picture_url=None,
+                metadata={},
+            ),
+            identities=[
+                Identity(
+                    id="dr-identity-1",
+                    type="datarobot",
+                    provider_type="datarobot_ext_email",
+                    provider_user_id="jane.smith@company.com",
+                    provider_identity_id=None,
+                ),
+                Identity(
+                    id="google-identity-2",
+                    type="oauth2",
+                    provider_type="google",
+                    provider_user_id="jane.smith@company.com",
+                    provider_identity_id="b2c3d4e5-f6a7-8901-bcde-f1234567890a",
+                ),
+            ],
+            metadata={
+                "dr_ctx": {
+                    "email": "jane.smith@company.com",
+                    "api_key": "auth-context-api-key",
+                }
+            },
+        )
+
+        # Mock AuthContextHeaderHandler to return the auth context
+        mock_handler = Mock()
+        mock_handler.get_context.return_value = auth_ctx
+        mock_handler_class.return_value = mock_handler
+
+        jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+        # Setup: only auth context header present, no standard auth headers
+        mock_get_headers.return_value = {
+            "x-datarobot-authorization-context": jwt,
+            "content-type": "application/json",
+        }
+
+        mock_creds = MagicMock()
+        mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
+        mock_get_creds.return_value = mock_creds
+
+        _ = get_sdk_client()
+
+        # Verify the token was extracted from auth context metadata
+        mock_client.assert_called_once_with(
+            token="auth-context-api-key",
+            endpoint="https://app.datarobot.com/api/v2",
+        )
+
+        # Verify the auth handler was used to decode the JWT
+        mock_handler.get_context.assert_called_once()
+        call_args = mock_handler.get_context.call_args[0][0]
+        assert call_args["x-datarobot-authorization-context"] == jwt
