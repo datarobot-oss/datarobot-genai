@@ -47,8 +47,8 @@ class OAuthMiddleWare(Middleware):
         Handler for encoding/decoding JWT tokens containing auth context.
     """
 
-    def __init__(self) -> None:
-        self.auth_handler = AuthContextHeaderHandler()
+    def __init__(self, auth_handler: AuthContextHeaderHandler | None = None) -> None:
+        self.auth_handler = auth_handler or AuthContextHeaderHandler()
 
     async def on_call_tool(
         self, context: MiddlewareContext, call_next: CallNext[Any, ToolResult]
@@ -68,14 +68,12 @@ class OAuthMiddleWare(Middleware):
             The result from the tool execution.
         """
         auth_context = self._extract_auth_context()
+        if not auth_context:
+            logger.debug("No valid authorization context extracted from request headers.")
 
         if context.fastmcp_context is not None:
             context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
-            logger.debug(
-                f"Authorization context attached to state: {auth_context.model_dump()}"
-                if auth_context
-                else "No authorization context found."
-            )
+            logger.debug("Authorization context attached to state.")
 
         return await call_next(context)
 
@@ -112,8 +110,6 @@ async def must_get_auth_context() -> AuthCtx:
         The authorization context associated with the current request.
     """
     context = get_context()
-    if not context:
-        raise RuntimeError("No authorization context available.")
 
     auth_ctx = context.get_state(AUTH_CTX_KEY)
     if not auth_ctx:
