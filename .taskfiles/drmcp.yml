@@ -1,5 +1,8 @@
 version: '3'
 
+env:
+  SESSION_SECRET_KEY: acceptance-test-secret
+
 tasks:
   drmcp-install:
     desc: "🔧 Install drmcp and dev dependencies for development"
