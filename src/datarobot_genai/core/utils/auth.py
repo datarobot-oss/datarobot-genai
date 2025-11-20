@@ -23,12 +23,20 @@ from datarobot.auth.session import AuthCtx
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import get_authorization_context
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
 class AuthContextConfig(DataRobotAppFrameworkBaseSettings):
     session_secret_key: str = ""
+
+
+class DRAppCtx(BaseModel):
+    """DataRobot application context from authorization metadata."""
+
+    email: str | None = None
+    api_key: str | None = None
 
 
 class AuthContextHeaderHandler:
