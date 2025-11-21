@@ -33,19 +33,33 @@ class TestMCPConfig:
         """Test MCP config when no environment variables are set."""
         with patch.dict(os.environ, {}, clear=True):
             config = MCPConfig()
-            assert config.external_mcp_url is None
-            assert config.mcp_deployment_id is None
-            assert config.server_config is None
+        assert config.external_mcp_url is None
+        assert config.mcp_deployment_id is None
+        assert config.server_config is None
+        assert config.external_mcp_headers is None
+        assert config.external_mcp_transport == "streamable-http"
+        assert config.mcp_deployment_id is None
+        assert config.datarobot_api_token is None
+        assert config.server_config is None
 
     def test_mcp_config_with_external_url(self):
         """Test MCP config with external URL."""
         test_url = "https://mcp-server.example.com/mcp"
-        with patch.dict(os.environ, {"EXTERNAL_MCP_URL": test_url}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
             config = MCPConfig()
             assert config.external_mcp_url == test_url
             assert config.server_config is not None
             assert config.server_config["url"] == test_url
             assert config.server_config["headers"] == {}
+            assert config.server_config["transport"] == "streamable-http"
 
     def test_mcp_config_with_datarobot_deployment_id(self, agent_auth_context_data):
         """Test MCP config with DataRobot deployment ID."""
@@ -105,13 +119,35 @@ class TestMCPConfig:
         # be propagated to the MCP Server.
         assert "X-DataRobot-Authorization-Context" not in config.server_config["headers"]
 
-    def test_mcp_config_with_datarobot_deployment_id_no_api_key(self):
+    @pytest.mark.parametrize(
+        "additional_env_params, expected_error_message",
+        [
+            pytest.param(
+                {"DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2"},
+                "When using a DataRobot hosted MCP deployment, datarobot_api_token must be set.",
+                id="with-endpoint",
+            ),
+            pytest.param(
+                {"DATAROBOT_API_TOKEN": "test-api-key"},
+                "When using a DataRobot hosted MCP deployment, datarobot_endpoint must be set.",
+                id="with-api-key",
+            ),
+        ],
+    )
+    def test_mcp_config_with_datarobot_deployment_id_no_api_key(
+        self, additional_env_params, expected_error_message
+    ):
         """Test MCP config with DataRobot deployment ID but no API key."""
         deployment_id = "abc123def456789012345678"
-
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            config = MCPConfig()
-            assert config.server_config is None
+        with patch.dict(
+            os.environ, {"MCP_DEPLOYMENT_ID": deployment_id, **additional_env_params}, clear=True
+        ):
+            with pytest.raises(
+                ValueError,
+                match=expected_error_message,
+            ):
+                config = MCPConfig()
+                config.server_config
 
     def test_mcp_config_with_datarobot_deployment_id_no_deployment_id(self):
         """Test MCP config with API key but no deployment ID."""
@@ -154,11 +190,14 @@ class TestMCPConfig:
         external_url = "https://external-mcp.com/mcp"
         deployment_id = "abc123def456789012345678"
         api_key = "test-api-key"
+        headers = {"X-Custom-Header": "custom-value"}
 
         with patch.dict(
             os.environ,
             {
                 "EXTERNAL_MCP_URL": external_url,
+                "EXTERNAL_MCP_HEADERS": json.dumps(headers),
+                "EXTERNAL_MCP_TRANSPORT": "sse",
                 "MCP_DEPLOYMENT_ID": deployment_id,
                 "DATAROBOT_API_TOKEN": api_key,
             },
@@ -166,34 +205,24 @@ class TestMCPConfig:
         ):
             config = MCPConfig()
             assert config.server_config["url"] == external_url
-            assert config.server_config["headers"] == {}
-
-    def test_mcp_config_with_external_headers(self):
-        test_url = "https://mcp-server.example.com/mcp"
-        headers = {"X-Test": "value", "Authorization": "Bearer fake_api_key"}
-        with patch.dict(
-            os.environ,
-            {
-                "EXTERNAL_MCP_URL": test_url,
-                "EXTERNAL_MCP_HEADERS": json.dumps(headers),
-            },
-            clear=True,
-        ):
-            config = MCPConfig()
-            assert config.server_config["url"] == test_url
+            assert config.server_config["headers"] == headers
+            assert config.server_config["transport"] == "sse"
             assert config.server_config["headers"] == headers
 
     def test_mcp_config_with_external_headers_invalid_json(self):
+        """Invalid JSON should raise ValueError via field validator."""
         test_url = "https://mcp-server.example.com/mcp"
         with patch.dict(
             os.environ,
             {
                 "EXTERNAL_MCP_URL": test_url,
                 "EXTERNAL_MCP_HEADERS": "not-a-json",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
             },
             clear=True,
         ):
-            with pytest.raises(json.JSONDecodeError):
+            with pytest.raises(ValueError):
                 MCPConfig()
 
     def test_mcp_config_with_external_transport(self):
@@ -202,12 +231,12 @@ class TestMCPConfig:
             os.environ,
             {
                 "EXTERNAL_MCP_URL": test_url,
-                "EXTERNAL_MCP_TRANSPORT": "custom-transport",
+                "EXTERNAL_MCP_TRANSPORT": "sse",
             },
             clear=True,
         ):
             config = MCPConfig()
-            assert config.external_mcp_transport == "custom-transport"
+            assert config.external_mcp_transport == "sse"
             assert config.server_config["url"] == test_url
 
     def test_mcp_config_with_direct_params(self):
@@ -216,10 +245,14 @@ class TestMCPConfig:
         api_key = "fake_api_key"
         with patch.dict(
             os.environ,
-            {"MCP_DEPLOYMENT_ID": deployment_id},
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DaTAROBOT_API_TOKEN": api_key,
+            },
             clear=True,
         ):
-            config = MCPConfig(api_base=api_base, api_key=api_key)
+            config = MCPConfig()
             expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert config.server_config["url"] == expected_url
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
@@ -230,10 +263,14 @@ class TestMCPConfig:
         api_key = "Bearer fake_api_key"
         with patch.dict(
             os.environ,
-            {"MCP_DEPLOYMENT_ID": deployment_id},
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
             clear=True,
         ):
-            config = MCPConfig(api_base=api_base, api_key=api_key)
+            config = MCPConfig()
             assert config.server_config["headers"]["Authorization"] == "Bearer fake_api_key"
 
     def test_mcp_config_with_whitespace_api_key(self):
@@ -242,35 +279,116 @@ class TestMCPConfig:
         api_key = "fake_api_key"
         with patch.dict(
             os.environ,
-            {"MCP_DEPLOYMENT_ID": deployment_id},
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
             clear=True,
         ):
-            config = MCPConfig(api_base=api_base, api_key=api_key)
-            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
-
-    def test_mcp_config_none_when_no_env(self):
-        with patch.dict(os.environ, {}, clear=True):
             config = MCPConfig()
-            assert config.server_config is None
+            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
 
     def test_mcp_config_none_when_all_empty(self):
         with patch.dict(
             os.environ,
             {
                 "EXTERNAL_MCP_URL": "",
-                "MCP_DEPLOYMENT_ID": "",
                 "DATAROBOT_API_TOKEN": "",
+                "DATAROBOT_ENDPOINT": "",
             },
             clear=True,
         ):
             config = MCPConfig()
             assert config.server_config is None
 
+    def test_external_mcp_headers_whitespace_trim(self):
+        """Leading/trailing whitespace in headers JSON should be trimmed."""
+        raw = '  {"X-Test": "value"}  '
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": "https://mcp-server.example.com/mcp",
+                "EXTERNAL_MCP_HEADERS": raw,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.external_mcp_headers == raw.strip()
+            assert config.server_config["headers"] == {"X-Test": "value"}
+
+    def test_mcp_deployment_id_validation_errors(self):
+        """Invalid deployment IDs should raise ValueError or TypeError."""
+        # Invalid length / characters
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": "short-id",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            with pytest.raises(
+                ValueError, match="mcp_deployment_id must be a valid 24-character hex ID"
+            ):
+                MCPConfig()
+        # Non-string type
+        with patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            with pytest.raises(TypeError, match="mcp_deployment_id must be a string"):
+                MCPConfig(mcp_deployment_id=1234)  # type: ignore[arg-type]
+
+    def test_mcp_deployment_id_whitespace_trim(self):
+        """Whitespace around valid deployment id should be trimmed and accepted."""
+        deployment_id = "abc123def456789012345678"
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": f"  {deployment_id}  ",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.mcp_deployment_id == deployment_id
+
+    def test_authorization_context_header_exception(self, agent_auth_context_data):
+        """Simulate an exception when retrieving auth context; header should be omitted."""
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://app.datarobot.com/api/v2"
+        api_key = "test-api-key"
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            # Monkeypatch auth_context_handler.get_header to raise LookupError
+            with patch.object(config.auth_context_handler, "get_header", side_effect=LookupError):
+                # Re-evaluate headers by calling the private helper directly
+                headers = {
+                    **config._authorization_bearer_header(),
+                    **config._authorization_context_header(),
+                }
+                assert headers == {"Authorization": f"Bearer {api_key}"}
+
     def test_mcp_config_with_direct_authorization_context(self, agent_auth_context_data):
         """Test MCPConfig with direct authorization_context parameter."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
         with patch.dict(
@@ -282,8 +400,6 @@ class TestMCPConfig:
             clear=True,
         ):
             config = MCPConfig(
-                api_base=api_base,
-                api_key=api_key,
                 authorization_context=agent_auth_context_data,
             )
             assert config.authorization_context == agent_auth_context_data
@@ -302,8 +418,6 @@ class TestMCPConfig:
     ):
         """Test that direct authorization_context param takes priority over ContextVar."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
         # Set different context in ContextVar
@@ -320,8 +434,6 @@ class TestMCPConfig:
             clear=True,
         ):
             config = MCPConfig(
-                api_base=api_base,
-                api_key=api_key,
                 authorization_context=agent_auth_context_data,
             )
 
@@ -335,8 +447,6 @@ class TestMCPConfig:
     def test_mcp_config_with_empty_authorization_context(self):
         """Test MCPConfig with empty authorization_context dict."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "fake_api_key"
 
         with patch.dict(
             os.environ,
@@ -344,8 +454,6 @@ class TestMCPConfig:
             clear=True,
         ):
             config = MCPConfig(
-                api_base=api_base,
-                api_key=api_key,
                 authorization_context={},
             )
 
@@ -356,8 +464,6 @@ class TestMCPConfig:
     def test_mcp_config_with_none_authorization_context(self, agent_auth_context_data):
         """Test MCPConfig with None authorization_context falls back to ContextVar."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
         # Set context in ContextVar
@@ -373,8 +479,6 @@ class TestMCPConfig:
         ):
             # Pass None explicitly - should fall back to ContextVar
             config = MCPConfig(
-                api_base=api_base,
-                api_key=api_key,
                 authorization_context=None,
             )
 
@@ -389,8 +493,6 @@ class TestMCPConfig:
     def test_mcp_config_authorization_context_with_complex_data(self):
         """Test authorization_context with complex nested data structures."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "fake_api_key"
         secret_key = "test-secret-key"
 
         complex_auth_context = {
@@ -417,8 +519,6 @@ class TestMCPConfig:
             clear=True,
         ):
             config = MCPConfig(
-                api_base=api_base,
-                api_key=api_key,
                 authorization_context=complex_auth_context,
             )
 
@@ -463,13 +563,13 @@ class TestMCPConfig:
             {
                 "MCP_DEPLOYMENT_ID": deployment_id,
                 "SESSION_SECRET_KEY": secret_key,
+                "DATAROBOT_API_TOKEN": api_key,
+                "DATAROBOT_ENDPOINT": api_base,
             },
             clear=True,
         ):
             # Create config with auth context
             config1 = MCPConfig(
-                api_base=api_base,
-                api_key=api_key,
                 authorization_context=agent_auth_context_data,
             )
 
@@ -489,8 +589,6 @@ class TestMCPConfig:
     ):
         """Test authorization_context encoding with missing secret key shows warning."""
         deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "fake_api_key"
 
         with patch.dict(
             os.environ,
@@ -499,8 +597,6 @@ class TestMCPConfig:
         ):
             with pytest.warns(UserWarning, match="No secret key provided"):
                 config = MCPConfig(
-                    api_base=api_base,
-                    api_key=api_key,
                     authorization_context=agent_auth_context_data,
                 )
 

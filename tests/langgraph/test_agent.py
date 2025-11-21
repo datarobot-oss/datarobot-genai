@@ -298,8 +298,6 @@ async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_conte
 
             # THEN mcp_tools_context is called with correct parameters
             mock_mcp_context.assert_called_once_with(
-                api_base=agent.api_base,
-                api_key=agent.api_key,
                 authorization_context=authorization_context,
             )
 
@@ -345,8 +343,6 @@ async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorizat
                 if items_consumed == 1:
                     # Verify mcp_tools_context is called with correct parameters
                     mock_mcp_context.assert_called_once_with(
-                        api_base=agent.api_base,
-                        api_key=agent.api_key,
                         authorization_context=authorization_context,
                     )
                     # Verify context is entered and tools are set
