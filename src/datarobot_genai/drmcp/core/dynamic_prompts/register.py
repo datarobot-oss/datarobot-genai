@@ -25,6 +25,7 @@ from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
 
 from .dr_lib import DrPrompt
+from .dr_lib import DrPromptVersion
 from .dr_lib import DrVariable
 from .dr_lib import get_datarobot_prompt_templates
 
@@ -45,12 +46,14 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
 
 
 async def register_prompt_from_datarobot_prompt_management(
-    prompt: DrPrompt,
+    prompt_template: DrPrompt, prompt_template_version: DrPromptVersion | None = None
 ) -> Prompt:
     """Register a single prompt.
 
     Args:
-        prompt: The prompt within DataRobot Prompt Management.
+        prompt_template: The prompt within DataRobot Prompt Management.
+        prompt_template_version: Optional prompt version within DataRobot Prompt Management.
+            If not provided -- latest version will be used
 
     Raises
     ------
@@ -60,42 +63,52 @@ async def register_prompt_from_datarobot_prompt_management(
     -------
         The registered Prompt instance.
     """
-    latest_version = prompt.get_latest_version()
+    if not prompt_template_version:
+        prompt_template_version_to_register = prompt_template.get_latest_version()
 
-    if latest_version is None:
-        logger.info(f"No latest version in Prompts Management for prompt id: {prompt.id}")
-        raise DynamicPromptRegistrationError
+        if prompt_template_version_to_register is None:
+            logger.info(
+                f"No latest version in Prompts Management for prompt id: {prompt_template.id}"
+            )
+            raise DynamicPromptRegistrationError
+
+    else:
+        prompt_template_version_to_register = prompt_template_version
 
     logger.info(
-        f"Found prompt: id: {prompt.id}, "
-        f"name: {prompt.name}, "
-        f"latest version id: {latest_version.id}, "
-        f"version: {latest_version.version}."
+        f"Found prompt: id: {prompt_template.id}, "
+        f"name: {prompt_template.name}, "
+        f"prompt version id: {prompt_template_version_to_register.id}, "
+        f"version: {prompt_template_version_to_register.version}."
     )
 
     try:
-        valid_fn_name = to_valid_mcp_prompt_name(prompt.name)
+        valid_fn_name = to_valid_mcp_prompt_name(prompt_template.name)
     except ValueError as e:
         raise DynamicPromptRegistrationError from e
 
     prompt_fn = make_prompt_function(
         name=valid_fn_name,
-        description=prompt.description,
-        prompt_text=latest_version.prompt_text,
-        variables=latest_version.variables,
+        description=prompt_template.description,
+        prompt_text=prompt_template_version_to_register.prompt_text,
+        variables=prompt_template_version_to_register.variables,
     )
 
     try:
         # Register using generic external tool registration with the config
         return await register_prompt(
             fn=prompt_fn,
-            name=prompt.name,
-            description=prompt.description,
-            meta={"prompt_template_id": prompt.id, "prompt_template_version_id": latest_version.id},
+            name=prompt_template.name,
+            description=prompt_template.description,
+            meta={
+                "prompt_template_id": prompt_template.id,
+                "prompt_template_version_id": prompt_template_version_to_register.id,
+            },
+            prompt_template=(prompt_template.id, prompt_template_version_to_register.id),
         )
 
     except Exception as exc:
-        logger.error(f"Skipping prompt {prompt.id}. Registration failed: {exc}")
+        logger.error(f"Skipping prompt {prompt_template.id}. Registration failed: {exc}")
         raise DynamicPromptRegistrationError(
             "Registration failed. Could not create prompt."
         ) from exc
@@ -105,6 +118,10 @@ def to_valid_mcp_prompt_name(s: str) -> str:
     """Convert an arbitrary string into a valid MCP prompt name."""
     # Replace any sequence of invalid characters with '_'
     s = re.sub(r"[^0-9a-zA-Z_]+", "_", s)
+
+    # If its ONLY numbers return "prompt_[number]"
+    if s.isdigit():
+        return f"prompt_{s}"
 
     # Remove leading characters that are not letters or underscores (can't start with a digit or _)
     s = re.sub(r"^[^a-zA-Z]+", "", s)
@@ -116,7 +133,7 @@ def to_valid_mcp_prompt_name(s: str) -> str:
     if not s:
         raise ValueError(f"Cannot convert {s} to valid MCP prompt name.")
 
-    # Make sure it’s a valid identifier and not a reserved keyword
+    # Make sure it's a valid identifier and not a reserved keyword
     if keyword.iskeyword(s) or not s.isidentifier():
         s = f"{s}_prompt"
 
@@ -126,21 +143,28 @@ def to_valid_mcp_prompt_name(s: str) -> str:
 def make_prompt_function(
     name: str, description: str, prompt_text: str, variables: list[DrVariable]
 ) -> Callable:
-    params = [
-        Parameter(
-            name=v.name,
-            kind=Parameter.POSITIONAL_OR_KEYWORD,
-            default=Field(description=v.description),
-        )
-        for v in variables
-    ]
+    params = []
+    for v in variables:
+        if keyword.iskeyword(v.name):
+            raise ValueError(f"Variable name '{v.name}' is invalid.")
+
+        try:
+            param = Parameter(
+                name=v.name,
+                kind=Parameter.POSITIONAL_OR_KEYWORD,
+                default=Field(description=v.description),
+            )
+        except ValueError as e:
+            raise ValueError(f"Variable name '{v.name}' is invalid.") from e
+
+        params.append(param)
 
     async def template_function(**kwargs) -> str:  # type: ignore
         prompt_text_correct = prompt_text.replace("{{", "{").replace("}}", "}")
         try:
             return prompt_text_correct.format(**kwargs)
-        except KeyError as e:
-            raise ValueError(f"Missing variable {e.args[0]} for prompt '{name}'")
+        except KeyError as exc:
+            raise ValueError(f"Missing variable {exc.args[0]} for prompt '{name}'") from exc
 
     # Apply metadata
     template_function.__name__ = name

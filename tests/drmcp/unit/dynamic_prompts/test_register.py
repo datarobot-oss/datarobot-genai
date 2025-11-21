@@ -48,6 +48,20 @@ class TestMakePrompt:
 
         assert prompt == "dummy prompt text variable_a_value and variable_b_value"
 
+    @pytest.mark.parametrize(
+        "var_name",
+        ["23124125", "class", "True", "var-name"],
+    )
+    def test_make_prompt_function_incorrect_variable_names(self, var_name) -> None:
+        """Test making a prompt when incorrect variable names."""
+        name = "dummy prompt name"
+        description = "dummy prompt description"
+        prompt_text = "dummy prompt text {{True}} and {{class}}"
+        variables = [DrVariable(name=var_name, description=f"{var_name}_desc")]
+
+        with pytest.raises(ValueError):
+            make_prompt_function(name, description, prompt_text, variables)
+
 
 class TestToValidFunctionName:
     """Tests for to_valid_function_name."""
@@ -58,7 +72,9 @@ class TestToValidFunctionName:
             ("HeLlo W0Rld 1", "HeLlo_W0Rld_1"),
             ("1 Test Prompt", "Test_Prompt"),
             ("my-name(second)", "my_name_second"),
+            ("23124125", "prompt_23124125"),
             ("class", "class_prompt"),  # Python keyword
+            ("True", "True_prompt"),  # Python keyword
         ],
     )
     @pytest.mark.asyncio
@@ -67,8 +83,7 @@ class TestToValidFunctionName:
         assert to_valid_mcp_prompt_name(s) == expected
 
     @pytest.mark.parametrize("s", ["$$$", "123-456-789", "---", "_123"])
-    @pytest.mark.asyncio
-    async def test_to_valid_function_name_when_cannot_convert(self, s: str) -> None:
+    def test_to_valid_function_name_when_cannot_convert(self, s: str) -> None:
         """Test converting to valid function name."""
         with pytest.raises(ValueError):
             to_valid_mcp_prompt_name(s)

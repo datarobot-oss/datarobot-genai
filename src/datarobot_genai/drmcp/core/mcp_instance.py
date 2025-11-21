@@ -308,6 +308,16 @@ class TaggedFastMCP(FastMCP):
                     f"skipping removal."
                 )
             else:
+                prompts_d = await mcp.get_prompts()
+                for prompt in prompts_d.values():
+                    if (
+                        prompt.meta is not None
+                        and prompt.meta.get("prompt_template_id", "") == prompt_template_id
+                        and prompt.meta.get("prompt_template_version_id", "")
+                        == prompt_template_version_id
+                    ):
+                        prompt.disable()
+
                 self._prompts_map.pop(prompt_template_id, None)
         else:
             logger.debug(
