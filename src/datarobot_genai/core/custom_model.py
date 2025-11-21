@@ -26,7 +26,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from typing import Literal
 
-from datarobot_drum import RuntimeParameters
 from openai.types.chat import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
@@ -39,26 +38,6 @@ from datarobot_genai.core.chat.auth import resolve_authorization_context
 from datarobot_genai.core.telemetry_agent import instrument
 
 logger = logging.getLogger(__name__)
-
-
-def maybe_set_env_from_runtime_parameters(key: str) -> None:
-    """Set an environment variable from a DRUM Runtime Parameter if it exists.
-
-    This is safe to call outside of the DataRobot runtime. If the parameter is not available,
-    the function does nothing.
-    """
-    runtime_parameter_placeholder_value = "SET_VIA_PULUMI_OR_MANUALLY"
-    try:
-        runtime_parameter_value = RuntimeParameters.get(key)
-        if (
-            runtime_parameter_value
-            and len(runtime_parameter_value) > 0
-            and runtime_parameter_value != runtime_parameter_placeholder_value
-        ):
-            os.environ[key] = runtime_parameter_value
-    except ValueError:
-        # Local dev: runtime parameters may be unavailable
-        pass
 
 
 def load_model() -> tuple[ThreadPoolExecutor, asyncio.AbstractEventLoop]:
@@ -83,7 +62,6 @@ def chat_entrypoint(
     load_model_result: tuple[ThreadPoolExecutor, asyncio.AbstractEventLoop],
     *,
     work_dir: str | None = None,
-    runtime_parameter_keys: list[str] | None = None,
     framework: Literal["crewai", "langgraph", "llamaindex", "nat"] | None = None,
     **kwargs: Any,
 ) -> CustomModelChatResponse | Iterator[CustomModelStreamingResponse]:
@@ -103,10 +81,6 @@ def chat_entrypoint(
     work_dir : Optional[str]
         Working directory to ``chdir`` into before invoking the agent. This is useful
         when relative paths are used in agent templates.
-    runtime_parameter_keys : Optional[List[str]]
-        Runtime parameter keys (DataRobot custom model) to propagate into env. When
-        ``None``, defaults to
-        ``['EXTERNAL_MCP_URL', 'MCP_DEPLOYMENT_ID']``.
     framework : Optional[Literal["crewai", "langgraph", "llamaindex", "nat"]]
         When provided, idempotently instruments HTTP clients, OpenAI SDK, and the
         given framework. If omitted, general instrumentation is still applied.
@@ -128,12 +102,6 @@ def chat_entrypoint(
             os.chdir(work_dir)
         except Exception as e:
             logger.warning(f"Failed to change working directory to {work_dir}: {e}")
-
-    # Load MCP runtime parameters and session secret if configured
-    if runtime_parameter_keys is None:
-        runtime_parameter_keys = ["EXTERNAL_MCP_URL", "MCP_DEPLOYMENT_ID"]
-    for key in runtime_parameter_keys:
-        maybe_set_env_from_runtime_parameters(key)
 
     # Retrieve authorization context using all supported methods for downstream agents/tools
     completion_create_params["authorization_context"] = resolve_authorization_context(
