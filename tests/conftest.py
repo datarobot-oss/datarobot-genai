@@ -30,7 +30,7 @@ def agent_auth_context_data() -> dict[str, Any]:
     }
 
 
-@pytest.fixture(autouse=True, scope="session")
+@pytest.fixture(autouse=True, scope="function")
 def disable_env_file(monkeypatch):
     """Disable loading of .env file for MCPConfig and related settings classes.
 
