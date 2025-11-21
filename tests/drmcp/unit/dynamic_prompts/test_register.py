@@ -77,7 +77,8 @@ class TestToValidFunctionName:
             ("True", "True_prompt"),  # Python keyword
         ],
     )
-    def test_to_valid_function_name(self, s: str, expected: str) -> None:
+    @pytest.mark.asyncio
+    async def test_to_valid_function_name(self, s: str, expected: str) -> None:
         """Test converting to valid function name."""
         assert to_valid_mcp_prompt_name(s) == expected
 
