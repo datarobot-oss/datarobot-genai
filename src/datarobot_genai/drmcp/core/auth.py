@@ -18,7 +18,6 @@ import logging
 from typing import Any
 
 from datarobot.auth.session import AuthCtx
-from datarobot.models.genai.agent.auth import OAuthAccessTokenProvider
 from datarobot.models.genai.agent.auth import ToolAuth
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.dependencies import get_http_headers
@@ -27,10 +26,13 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
+from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
-from datarobot_genai.drmcp import get_config
 
 logger = logging.getLogger(__name__)
+
+
+AUTH_CTX_KEY = "authorization_context"
 
 
 class OAuthMiddleWare(Middleware):
@@ -45,16 +47,8 @@ class OAuthMiddleWare(Middleware):
         Handler for encoding/decoding JWT tokens containing auth context.
     """
 
-    def __init__(self, secret_key: str | None = None) -> None:
-        """Initialize the middleware with authentication handler.
-
-        Parameters
-        ----------
-        secret_key : Optional[str]
-            Secret key for JWT validation. If None, uses the value from config.
-        """
-        secret_key = secret_key or get_config().session_secret_key
-        self.auth_handler = AuthContextHeaderHandler(secret_key)
+    def __init__(self, auth_handler: AuthContextHeaderHandler | None = None) -> None:
+        self.auth_handler = auth_handler or AuthContextHeaderHandler()
 
     async def on_call_tool(
         self, context: MiddlewareContext, call_next: CallNext[Any, ToolResult]
@@ -74,9 +68,12 @@ class OAuthMiddleWare(Middleware):
             The result from the tool execution.
         """
         auth_context = self._extract_auth_context()
+        if not auth_context:
+            logger.debug("No valid authorization context extracted from request headers.")
 
         if context.fastmcp_context is not None:
-            context.fastmcp_context.auth_context = auth_context
+            context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
+            logger.debug("Authorization context attached to state.")
 
         return await call_next(context)
 
@@ -99,8 +96,8 @@ class OAuthMiddleWare(Middleware):
             return None
 
 
-async def get_auth_context() -> AuthCtx:
-    """Retrieve the AuthCtx from the current request context, if available.
+async def must_get_auth_context() -> AuthCtx:
+    """Retrieve the AuthCtx from the current request context or raise error.
 
     Raises
     ------
@@ -113,14 +110,15 @@ async def get_auth_context() -> AuthCtx:
         The authorization context associated with the current request.
     """
     context = get_context()
-    auth_ctx = getattr(context, "auth_context", None)
+
+    auth_ctx = context.get_state(AUTH_CTX_KEY)
     if not auth_ctx:
-        raise RuntimeError("No authorization context found.")
+        raise RuntimeError("Could not retrieve authorization context from FastMCP context state.")
 
     return auth_ctx
 
 
-async def get_access_token(provider: str | None = None) -> str:
+async def get_access_token(provider_type: str | None = None) -> str:
     """Retrieve access token from the DataRobot OAuth Provider Service.
 
     OAuth access tokens can be retrieved only for providers where the user completed
@@ -132,7 +130,7 @@ async def get_access_token(provider: str | None = None) -> str:
 
     Parameters
     ----------
-    provider : str, optional
+    provider_type : str, optional
         The name of the OAuth provider. It should match the name of the provider configured
         during provider setup. If no value is provided and only one OAuth provider exists, that
         provider will be used. If multiple providers exist and none is specified, an error will be
@@ -142,12 +140,18 @@ async def get_access_token(provider: str | None = None) -> str:
     -------
     The oauth access token.
     """
-    token_provider = OAuthAccessTokenProvider(await get_auth_context())
-    access_token = token_provider.get_token(ToolAuth.OBO, provider)
-    return access_token
+    auth_ctx = await must_get_auth_context()
+    logger.debug("Retrieved authorization context")
+
+    oauth_token_provider = AsyncOAuthTokenProvider(auth_ctx)
+    oauth_access_token = await oauth_token_provider.get_token(
+        auth_type=ToolAuth.OBO,
+        provider_type=provider_type,
+    )
+    return oauth_access_token
 
 
-def initialize_oauth_middleware(mcp: Any, secret_key: str | None = None) -> None:
+def initialize_oauth_middleware(mcp: Any) -> None:
     """Initialize and register OAuth middleware with the MCP server.
 
     Parameters
@@ -157,6 +161,5 @@ def initialize_oauth_middleware(mcp: Any, secret_key: str | None = None) -> None
     secret_key : Optional[str]
         Secret key for JWT validation. If None, uses the value from config.
     """
-    middleware = OAuthMiddleWare(secret_key=secret_key)
-    mcp.add_middleware(middleware)
+    mcp.add_middleware(OAuthMiddleWare())
     logger.info("OAuth middleware registered successfully")

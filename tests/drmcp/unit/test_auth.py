@@ -19,12 +19,16 @@ from unittest.mock import patch
 
 import jwt
 import pytest
+from datarobot.auth.identity import Identity
 from datarobot.auth.session import AuthCtx
+from datarobot.auth.users import User
+from fastmcp.server.context import Context
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.drmcp.core.auth import OAuthMiddleWare
-from datarobot_genai.drmcp.core.auth import get_auth_context
+from datarobot_genai.drmcp.core.auth import must_get_auth_context
 
 
 @pytest.fixture
@@ -62,14 +66,29 @@ def auth_token(auth_context_data: dict[str, Any], secret_key: str) -> str:
 @pytest.fixture
 def middleware(secret_key: str) -> OAuthMiddleWare:
     """Create an OAuthMiddleware instance with mocked config."""
-    return OAuthMiddleWare(secret_key)
+    auth_handler = AuthContextHeaderHandler(secret_key=secret_key, algorithm="HS256")
+    middleware_instance = OAuthMiddleWare(auth_handler=auth_handler)
+    return middleware_instance
 
 
 @pytest.fixture
 def middleware_context() -> MiddlewareContext:
     """Create a mock middleware context with fastmcp_context."""
     context = MagicMock(spec=MiddlewareContext)
+
+    # Create a dict to store state
+    state_storage = {}
+
+    def set_state(key: str, value: Any) -> None:
+        state_storage[key] = value
+
+    def get_state(key: str) -> Any:
+        return state_storage.get(key)
+
     context.fastmcp_context = MagicMock()
+    context.fastmcp_context.set_state = set_state
+    context.fastmcp_context.get_state = get_state
+
     return context
 
 
@@ -104,7 +123,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was attached to fastmcp_context
-            auth_context = middleware_context.fastmcp_context.auth_context
+            auth_context = middleware_context.fastmcp_context.get_state("authorization_context")
             assert auth_context is not None
             assert isinstance(auth_context, AuthCtx)
             assert auth_context.user.id == "user123"
@@ -129,7 +148,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None
-            assert middleware_context.fastmcp_context.auth_context is None
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is None
 
     async def test_on_call_tool_with_invalid_auth_header(
         self,
@@ -150,7 +169,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to invalid token
-            assert middleware_context.fastmcp_context.auth_context is None
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is None
 
     async def test_on_call_tool_with_multiple_headers(
         self,
@@ -174,8 +193,10 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was properly extracted
-            assert middleware_context.fastmcp_context.auth_context is not None
-            assert isinstance(middleware_context.fastmcp_context.auth_context, AuthCtx)
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is not None
+            assert isinstance(
+                middleware_context.fastmcp_context.get_state("authorization_context"), AuthCtx
+            )
 
     async def test_on_call_tool_exception_handling(
         self,
@@ -197,7 +218,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert middleware_context.fastmcp_context.auth_context is None
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is None
 
     async def test_on_call_tool_propagates_tool_result(
         self,
@@ -220,7 +241,7 @@ class TestOAuthMiddleware:
 
     async def test_middleware_initialization(self, secret_key: str) -> None:
         """Test that middleware initializes correctly with config."""
-        middleware = OAuthMiddleWare(secret_key)
+        middleware = OAuthMiddleWare(AuthContextHeaderHandler(secret_key))
 
         assert middleware.auth_handler is not None
         assert middleware.auth_handler.secret_key == secret_key
@@ -228,10 +249,10 @@ class TestOAuthMiddleware:
 
     async def test_middleware_initialization_without_secret_key(self) -> None:
         """Test that middleware initializes correctly without explicit secret key."""
-        with patch("datarobot_genai.drmcp.core.auth.get_config") as mock_config:
+        with patch("datarobot_genai.core.utils.auth.AuthContextConfig") as mock_config_class:
             mock_config_instance = MagicMock()
             mock_config_instance.session_secret_key = "config-secret-key"
-            mock_config.return_value = mock_config_instance
+            mock_config_class.return_value = mock_config_instance
 
             middleware = OAuthMiddleWare()
 
@@ -255,7 +276,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was attached despite lowercase header name
-            auth_context = middleware_context.fastmcp_context.auth_context
+            auth_context = middleware_context.fastmcp_context.get_state("authorization_context")
             assert auth_context is not None
             assert isinstance(auth_context, AuthCtx)
             assert auth_context.user.id == "user123"
@@ -277,7 +298,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was attached
-            auth_context = middleware_context.fastmcp_context.auth_context
+            auth_context = middleware_context.fastmcp_context.get_state("authorization_context")
             assert auth_context is not None
             assert isinstance(auth_context, AuthCtx)
 
@@ -316,7 +337,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert middleware_context.fastmcp_context.auth_context is None
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is None
 
     async def test_middleware_handles_key_error_exception(
         self,
@@ -334,7 +355,7 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert middleware_context.fastmcp_context.auth_context is None
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is None
 
     async def test_middleware_handles_type_error_exception(
         self,
@@ -352,41 +373,222 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert middleware_context.fastmcp_context.auth_context is None
+            assert middleware_context.fastmcp_context.get_state("authorization_context") is None
 
 
 class TestGetAuthContext:
-    """Test cases for get_auth_context function."""
+    """Test cases for must_get_auth_context function."""
 
     @pytest.mark.asyncio
     async def test_get_auth_context_success(self) -> None:
-        """Test that get_auth_context returns auth context when available."""
-        mock_context = MagicMock()
-        mock_auth_ctx = MagicMock(spec=AuthCtx)
-        mock_context.auth_context = mock_auth_ctx
+        """Test that must_get_auth_context returns auth context when available.
 
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=mock_context):
-            result = await get_auth_context()
+        This test mocks at the fastmcp.server.context level to simulate a real
+        Context with state management.
+        """
+        mock_fastmcp = MagicMock()
+        context = Context(mock_fastmcp)
 
-            assert result is mock_auth_ctx
+        # Create a real AuthCtx object to store in state
+        auth_ctx = AuthCtx(
+            user=User(id="user123", name="Test User", email="test@example.com"),
+            identities=[
+                Identity(
+                    id="identity123",
+                    type="user",
+                    provider_type="datarobot",
+                    provider_user_id="user123",
+                )
+            ],
+            metadata={"endpoint": "https://app.datarobot.com", "account_id": "account456"},
+        )
+
+        # Set the auth context in the context state
+        context.set_state("authorization_context", auth_ctx)
+
+        # Patch get_context to return our context with the auth context in state
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+            result = await must_get_auth_context()
+
+            # Verify the auth context was retrieved correctly
+            assert result is auth_ctx
+            assert result.user.id == "user123"
+            assert result.user.name == "Test User"
+            assert result.user.email == "test@example.com"
+            assert len(result.identities) == 1
+            assert result.identities[0].provider_type == "datarobot"
 
     @pytest.mark.asyncio
     async def test_get_auth_context_raises_when_missing(self) -> None:
-        """Test that get_auth_context raises RuntimeError when auth context is missing."""
-        mock_context = MagicMock()
-        mock_context.auth_context = None
+        """Test that must_get_auth_context raises RuntimeError when auth context is missing.
 
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=mock_context):
-            with pytest.raises(RuntimeError, match="No authorization context found"):
-                await get_auth_context()
+        This test uses a real Context object without any auth context set in state.
+        """
+        mock_fastmcp = MagicMock()
+        context = Context(mock_fastmcp)
+
+        # Don't set any auth context - state will be empty
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+            with pytest.raises(
+                RuntimeError,
+                match="Could not retrieve authorization context from FastMCP context state.",
+            ):
+                await must_get_auth_context()
 
     @pytest.mark.asyncio
-    async def test_get_auth_context_raises_when_attribute_missing(self) -> None:
-        """Test that RuntimeError is raised when auth_context attribute doesn't exist."""
-        mock_context = MagicMock()
-        # Remove auth_context attribute
-        del mock_context.auth_context
+    async def test_get_auth_context_raises_when_no_context(self) -> None:
+        """Test that RuntimeError is raised when no active context exists.
 
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=mock_context):
-            with pytest.raises(RuntimeError, match="No authorization context found"):
-                await get_auth_context()
+        This simulates the case where get_context() is called outside of a
+        FastMCP request context.
+        """
+        with patch("datarobot_genai.drmcp.core.auth.get_context") as mock_get_context:
+            # Simulate no active context
+            mock_get_context.side_effect = RuntimeError("No active context found.")
+
+            with pytest.raises(RuntimeError, match="No active context found."):
+                await must_get_auth_context()
+
+    @pytest.mark.asyncio
+    async def test_get_auth_context_with_state_isolation(self) -> None:
+        """Test that auth context is properly isolated in context state.
+
+        This test verifies that different contexts maintain separate state,
+        which is important for concurrent request handling.
+        """
+        mock_fastmcp = MagicMock()
+        context1 = Context(mock_fastmcp)
+        context2 = Context(mock_fastmcp)
+
+        # Create different auth contexts with different users
+        auth_ctx1 = AuthCtx(
+            user=User(id="user1", name="Alice", email="alice@example.com"),
+            identities=[
+                Identity(
+                    id="identity1",
+                    type="user",
+                    provider_type="datarobot",
+                    provider_user_id="user1",
+                )
+            ],
+            metadata={"endpoint": "https://app.datarobot.com"},
+        )
+
+        auth_ctx2 = AuthCtx(
+            user=User(id="user2", name="Bob", email="bob@example.com"),
+            identities=[
+                Identity(
+                    id="identity2",
+                    type="user",
+                    provider_type="datarobot",
+                    provider_user_id="user2",
+                )
+            ],
+            metadata={"endpoint": "https://app.datarobot.com"},
+        )
+
+        # Set different auth contexts in each context
+        context1.set_state("authorization_context", auth_ctx1)
+        context2.set_state("authorization_context", auth_ctx2)
+
+        # Verify context1 returns the correct auth context
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context1):
+            result1 = await must_get_auth_context()
+            assert result1.user.id == "user1"
+            assert result1.user.name == "Alice"
+
+        # Verify context2 returns its own auth context (state isolation)
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context2):
+            result2 = await must_get_auth_context()
+            assert result2.user.id == "user2"
+            assert result2.user.name == "Bob"
+
+    @pytest.mark.asyncio
+    async def test_get_auth_context_retrieves_correct_key(self) -> None:
+        """Test that must_get_auth_context retrieves the correct state key.
+
+        This ensures we're using the right key ('authorization_context') and not
+        accidentally retrieving other state values.
+        """
+        mock_fastmcp = MagicMock()
+        context = Context(mock_fastmcp)
+
+        # Set multiple state values to ensure we retrieve the correct one
+        context.set_state("other_key", "other_value")
+        context.set_state("another_key", {"some": "data"})
+
+        auth_ctx = AuthCtx(
+            user=User(id="user123", name="Test User", email="test@example.com"),
+            identities=[
+                Identity(
+                    id="identity123",
+                    type="user",
+                    provider_type="datarobot",
+                    provider_user_id="user123",
+                )
+            ],
+            metadata={},
+        )
+        context.set_state("authorization_context", auth_ctx)
+
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+            result = await must_get_auth_context()
+
+            # Verify we got the auth context, not other state values
+            assert result is auth_ctx
+            assert isinstance(result, AuthCtx)
+            assert result.user.id == "user123"
+            # Ensure we didn't get other state values
+            assert result != "other_value"
+            assert result != {"some": "data"}
+
+    @pytest.mark.asyncio
+    async def test_get_auth_context_with_complex_metadata(self) -> None:
+        """Test that auth context with complex metadata is properly preserved.
+
+        This verifies that all fields of AuthCtx are properly stored and retrieved
+        from the context state.
+        """
+        mock_fastmcp = MagicMock()
+        context = Context(mock_fastmcp)
+
+        # Create an auth context with complex metadata
+        auth_ctx = AuthCtx(
+            user=User(id="user456", name="Complex User", email="complex@example.com"),
+            identities=[
+                Identity(
+                    id="identity1",
+                    type="oauth2",
+                    provider_type="provider1",
+                    provider_user_id="oauth-user-123",
+                ),
+                Identity(
+                    id="identity2",
+                    type="datarobot",
+                    provider_type="provider2",
+                    provider_user_id="service-account-456",
+                ),
+            ],
+            metadata={
+                "endpoint": "https://app.datarobot.com",
+                "account_id": "account789",
+                "permissions": ["read", "write", "execute"],
+                "custom_data": {"key1": "value1", "key2": 42},
+            },
+        )
+
+        context.set_state("authorization_context", auth_ctx)
+
+        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+            result = await must_get_auth_context()
+
+            # Verify all fields are preserved
+            assert result is auth_ctx
+            assert result.user.id == "user456"
+            assert len(result.identities) == 2
+            assert result.identities[0].provider_type == "provider1"
+            assert result.identities[1].provider_type == "provider2"
+            assert result.metadata["endpoint"] == "https://app.datarobot.com"
+            assert result.metadata["account_id"] == "account789"
+            assert "permissions" in result.metadata
+            assert result.metadata["custom_data"]["key2"] == 42

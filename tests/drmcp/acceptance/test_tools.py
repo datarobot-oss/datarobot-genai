@@ -18,7 +18,7 @@ Test tools for acceptance/E2E tests.
 These tools are loaded by the MCP server and are available for testing purposes.
 """
 
-from datarobot_genai.drmcp.core.auth import get_auth_context
+from datarobot_genai.drmcp.core.auth import must_get_auth_context
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 
 
@@ -35,7 +35,7 @@ async def get_auth_context_user_info() -> str:
     String with user information from the auth context in the format:
     "User ID: <id>, User Name: <name>, User Email: <email>"
     """
-    auth_ctx = await get_auth_context()
+    auth_ctx = await must_get_auth_context()
     return (
         f"User ID: {auth_ctx.user.id}, "
         f"User Name: {auth_ctx.user.name}, "

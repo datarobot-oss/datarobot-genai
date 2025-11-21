@@ -14,8 +14,8 @@
 
 import inspect
 import os
+import warnings
 from typing import Any
-from unittest.mock import patch
 
 import jwt
 import pytest
@@ -31,7 +31,12 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 @pytest.fixture(scope="session")
 def secret_key() -> str:
     """Return a test secret key for JWT signing."""
-    return "acceptance-test-secret-key-12345"
+    secret_key = os.environ.get("SESSION_SECRET_KEY")
+    if not secret_key:
+        warnings.warn(
+            "SESSION_SECRET_KEY env variable is not set. The authorization context tests may fail."
+        )
+    return secret_key
 
 
 @pytest.fixture(scope="session")
@@ -82,7 +87,6 @@ def expectations_for_auth_context_tool_success(
     )
 
 
-@pytest.mark.skip(reason="RuntimeError: No authorization context found.")
 @pytest.mark.asyncio
 class TestAuthContextE2E(ToolBaseE2E):
     """End-to-end acceptance tests for OAuth middleware and auth context propagation."""
@@ -104,20 +108,18 @@ class TestAuthContextE2E(ToolBaseE2E):
         secret_key: str,
     ) -> None:
         """Test OAuth middleware processes auth header and tool accesses auth context."""
-        # Set the secret key in environment so the server can validate tokens
-        with patch.dict(os.environ, {"SESSION_SECRET_KEY": secret_key}, clear=False):
-            # Create MCP session with auth headers
-            async with ete_test_mcp_session(
-                additional_headers={"X-DataRobot-Authorization-Context": auth_token}
-            ) as session:
-                await self._run_test_with_expectations(
-                    prompt,
-                    expectations_for_auth_context_tool_success,
-                    openai_llm_client,
-                    session,
-                    (
-                        inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
-                        if inspect.currentframe()
-                        else "test_auth_context_tool_with_valid_token"
-                    ),
-                )
+        # Create MCP session with auth headers
+        async with ete_test_mcp_session(
+            additional_headers={"X-DataRobot-Authorization-Context": auth_token}
+        ) as session:
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_auth_context_tool_success,
+                openai_llm_client,
+                session,
+                (
+                    inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
+                    if inspect.currentframe()
+                    else "test_auth_context_tool_with_valid_token"
+                ),
+            )
