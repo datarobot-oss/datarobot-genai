@@ -119,6 +119,10 @@ def to_valid_mcp_prompt_name(s: str) -> str:
     # Replace any sequence of invalid characters with '_'
     s = re.sub(r"[^0-9a-zA-Z_]+", "_", s)
 
+    # If its ONLY numbers return "prompt_[number]"
+    if s.isdigit():
+        return f"prompt_{s}"
+
     # Remove leading characters that are not letters or underscores (can't start with a digit or _)
     s = re.sub(r"^[^a-zA-Z]+", "", s)
 
@@ -129,7 +133,7 @@ def to_valid_mcp_prompt_name(s: str) -> str:
     if not s:
         raise ValueError(f"Cannot convert {s} to valid MCP prompt name.")
 
-    # Make sure it’s a valid identifier and not a reserved keyword
+    # Make sure it's a valid identifier and not a reserved keyword
     if keyword.iskeyword(s) or not s.isidentifier():
         s = f"{s}_prompt"
 
@@ -139,21 +143,25 @@ def to_valid_mcp_prompt_name(s: str) -> str:
 def make_prompt_function(
     name: str, description: str, prompt_text: str, variables: list[DrVariable]
 ) -> Callable:
-    params = [
-        Parameter(
-            name=v.name,
-            kind=Parameter.POSITIONAL_OR_KEYWORD,
-            default=Field(description=v.description),
-        )
-        for v in variables
-    ]
+    params = []
+    for v in variables:
+        try:
+            param = Parameter(
+                name=v.name,
+                kind=Parameter.POSITIONAL_OR_KEYWORD,
+                default=Field(description=v.description),
+            )
+        except ValueError as e:
+            raise ValueError(f"Variable name '{v.name}' is invalid.") from e
+
+        params.append(param)
 
     async def template_function(**kwargs) -> str:  # type: ignore
         prompt_text_correct = prompt_text.replace("{{", "{").replace("}}", "}")
         try:
             return prompt_text_correct.format(**kwargs)
-        except KeyError as e:
-            raise ValueError(f"Missing variable {e.args[0]} for prompt '{name}'")
+        except KeyError as exc:
+            raise ValueError(f"Missing variable {exc.args[0]} for prompt '{name}'") from exc
 
     # Apply metadata
     template_function.__name__ = name

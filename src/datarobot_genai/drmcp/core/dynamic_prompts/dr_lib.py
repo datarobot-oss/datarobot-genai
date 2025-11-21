@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from typing import Self
 
 import datarobot as dr
 
@@ -38,6 +39,18 @@ class DrPromptVersion:
     prompt_text: str
     variables: list[DrVariable]
 
+    @classmethod
+    def from_dict(cls, d: dict) -> Self:
+        variables = [
+            DrVariable(name=v["name"], description=v["description"]) for v in d["variables"]
+        ]
+        return cls(
+            id=d["id"],
+            version=d["version"],
+            prompt_text=d["promptText"],
+            variables=variables,
+        )
+
 
 @dataclass
 class DrPrompt:
@@ -52,20 +65,17 @@ class DrPrompt:
         latest_version = max(prompt_template_versions, key=lambda v: v.version)
         return latest_version
 
+    @classmethod
+    def from_dict(cls, d: dict) -> Self:
+        return cls(id=d["id"], name=d["name"], description=d["description"])
+
 
 def get_datarobot_prompt_templates() -> list[DrPrompt]:
     prompt_templates_data = dr.utils.pagination.unpaginate(
         initial_url="genai/promptTemplates/", initial_params={}, client=get_api_client()
     )
 
-    return [
-        DrPrompt(
-            id=prompt_template["id"],
-            name=prompt_template["name"],
-            description=prompt_template["description"],
-        )
-        for prompt_template in prompt_templates_data
-    ]
+    return [DrPrompt.from_dict(prompt_template) for prompt_template in prompt_templates_data]
 
 
 def get_datarobot_prompt_template_versions(prompt_template_id: str) -> list[DrPromptVersion]:
@@ -76,39 +86,34 @@ def get_datarobot_prompt_template_versions(prompt_template_id: str) -> list[DrPr
     )
     prompt_template_versions = []
     for prompt_template_version in prompt_template_versions_data:
-        variables = [
-            DrVariable(name=v["name"], description=v["description"])
-            for v in prompt_template_version["variables"]
-        ]
-        prompt_template_versions.append(
-            DrPromptVersion(
-                id=prompt_template_version["id"],
-                version=prompt_template_version["version"],
-                prompt_text=prompt_template_version["promptText"],
-                variables=variables,
-            )
-        )
+        prompt_template_versions.append(DrPromptVersion.from_dict(prompt_template_version))
     return prompt_template_versions
 
 
-def get_datarobot_prompt_template_and_version(
-    prompt_template_id: str, prompt_template_version_id: str
-) -> tuple[DrPrompt, DrPromptVersion] | None:
-    prompts = get_datarobot_prompt_templates()
-    matching_prompt = None
-    matching_prompt_version = None
-    for prompt in prompts:
-        if prompt.id == prompt_template_id:
-            matching_prompt = prompt
-            prompt_template_versions = get_datarobot_prompt_template_versions(prompt_template_id)
-
-            for prompt_version in prompt_template_versions:
-                if prompt_version.id == prompt_template_version_id:
-                    matching_prompt_version = prompt_version
-                    break
-            break
-
-    if not matching_prompt or not matching_prompt_version:
+def get_datarobot_prompt_template(prompt_template_id: str) -> DrPrompt | None:
+    api_client = get_api_client()
+    try:
+        prompt_template_response = api_client.get(
+            f"genai/promptTemplates/{prompt_template_id}/", join_endpoint=True
+        )
+        prompt_template_json = prompt_template_response.json()
+    except Exception:
         return None
 
-    return matching_prompt, matching_prompt_version
+    return DrPrompt.from_dict(prompt_template_json)
+
+
+def get_datarobot_prompt_template_version(
+    prompt_template_id: str, prompt_template_version_id: str
+) -> DrPromptVersion | None:
+    api_client = get_api_client()
+    try:
+        prompt_template_version_response = api_client.get(
+            f"genai/promptTemplates/{prompt_template_id}/versions/{prompt_template_version_id}/",
+            join_endpoint=True,
+        )
+        prompt_template_version_json = prompt_template_version_response.json()
+    except Exception:
+        return None
+
+    return DrPromptVersion.from_dict(prompt_template_version_json)

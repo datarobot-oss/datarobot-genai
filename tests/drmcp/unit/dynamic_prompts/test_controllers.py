@@ -20,9 +20,8 @@ import pytest
 import pytest_asyncio
 
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import delete_registered_prompt_template
-from datarobot_genai.drmcp.core.dynamic_prompts.controllers import get_registered_prompt_templates
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
-    register_prompt_for_prompt_template_id_and_version,
+    register_prompt_from_prompt_template_id_and_version,
 )
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPromptVersion
@@ -52,8 +51,12 @@ def dr_lib_mock() -> Iterator[None]:
 
     with (
         patch(
-            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template_and_version",
-            Mock(return_value=(prompt_template, prompt_template_version)),
+            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template",
+            Mock(return_value=prompt_template),
+        ),
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template_version",
+            Mock(return_value=prompt_template_version),
         ),
     ):
         yield
@@ -63,7 +66,7 @@ def dr_lib_mock() -> Iterator[None]:
 def dr_lib_mock_empty() -> Iterator[None]:
     with (
         patch(
-            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template_and_version",
+            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template",
             Mock(return_value=None),
         ),
     ):
@@ -80,7 +83,7 @@ class TestPromptTemplatesAdd:
         existing_prompts = await mcp_server.get_prompt_mapping()
         assert existing_prompts == {}
 
-        await register_prompt_for_prompt_template_id_and_version(
+        await register_prompt_from_prompt_template_id_and_version(
             prompt_template_id="pt1", prompt_template_version_id="ptv1.1"
         )
 
@@ -100,7 +103,7 @@ class TestPromptTemplatesAdd:
         assert existing_prompts == {}
 
         with pytest.raises(DynamicPromptRegistrationError):
-            await register_prompt_for_prompt_template_id_and_version(
+            await register_prompt_from_prompt_template_id_and_version(
                 prompt_template_id="pt_not_existing", prompt_template_version_id="ptv1.1"
             )
 
@@ -118,7 +121,7 @@ class TestPromptTemplatesAdd:
         existing_prompts = await mcp_server.get_prompt_mapping()
         assert existing_prompts == {"pt1": ("ptv1.0", "dummy v0")}
 
-        await register_prompt_for_prompt_template_id_and_version(
+        await register_prompt_from_prompt_template_id_and_version(
             prompt_template_id="pt1", prompt_template_version_id="ptv1.1"
         )
 
@@ -138,13 +141,10 @@ class TestPromptTemplatesListing:
         await mcp_server.set_prompt_mapping("pt1", "ptv1.2", "abc2")
         await mcp_server.set_prompt_mapping("pt2", "ptv3", "def")
 
-        result = await get_registered_prompt_templates()
-
         expected_mappings = {
             "pt1": ("ptv1.2", "abc2"),
             "pt2": ("ptv3", "def"),
         }
-        assert result == expected_mappings
 
         # Verify MCP internal state consistency
         internal_mappings = await mcp_server.get_prompt_mapping()
@@ -153,10 +153,6 @@ class TestPromptTemplatesListing:
     @pytest.mark.asyncio
     async def test_get_registered_prompt_templates_when_empty(self, mcp_server: TaggedFastMCP):
         """Test listing registered prompt templates when no data exist."""
-        result = await get_registered_prompt_templates()
-
-        assert result == {}
-
         # Verify MCP internal state consistency
         internal_mappings = await mcp_server.get_prompt_mapping()
         assert internal_mappings == {}

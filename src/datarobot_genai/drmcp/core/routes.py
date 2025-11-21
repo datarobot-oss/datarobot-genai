@@ -11,32 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from http import HTTPStatus
 from logging import getLogger
 
 from botocore.exceptions import ClientError
-from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .dynamic_prompts.controllers import delete_registered_prompt_template
-from .dynamic_prompts.controllers import get_registered_prompt_templates
-from .dynamic_prompts.controllers import register_prompt_for_prompt_template_id_and_version
+from .dynamic_prompts.controllers import register_prompt_from_prompt_template_id_and_version
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
+from .mcp_instance import TaggedFastMCP
 from .memory_management.manager import get_memory_manager
 from .routes_utils import prefix_mount_path
 
 logger = getLogger(__name__)
 
 
-def register_routes(mcp: FastMCP) -> None:
+def register_routes(mcp: TaggedFastMCP) -> None:
     """Register all routes with the MCP server."""
 
     @mcp.custom_route(prefix_mount_path("/"), methods=["GET"])
     async def handle_health(_: Request) -> JSONResponse:
         return JSONResponse(
-            status_code=200,
+            status_code=HTTPStatus.OK,
             content={
                 "status": "healthy",
                 "message": "DataRobot MCP Server is running",
@@ -50,7 +50,7 @@ def register_routes(mcp: FastMCP) -> None:
             # TaggedFastMCP extends FastMCP with get_all_tags
             tags = await mcp.get_all_tags()  # type: ignore[attr-defined]
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={
                     "tags": tags,
                     "count": len(tags),
@@ -59,7 +59,7 @@ def register_routes(mcp: FastMCP) -> None:
             )
         except Exception as e:
             return JSONResponse(
-                status_code=500,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={
                     "error": f"Failed to retrieve tags: {str(e)}",
                 },
@@ -83,7 +83,7 @@ def register_routes(mcp: FastMCP) -> None:
             )
 
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={
                     "agentId": agent_id,
                     "storageId": storage_id,
@@ -99,7 +99,7 @@ def register_routes(mcp: FastMCP) -> None:
 
             if not storages:
                 return JSONResponse(
-                    status_code=200,
+                    status_code=HTTPStatus.OK,
                     content={"agentId": agent_id, "storages": []},
                 )
 
@@ -113,7 +113,7 @@ def register_routes(mcp: FastMCP) -> None:
             ]
 
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={"agentId": agent_id, "storages": storage_list},
             )
 
@@ -132,7 +132,7 @@ def register_routes(mcp: FastMCP) -> None:
 
             if storage:
                 return JSONResponse(
-                    status_code=200,
+                    status_code=HTTPStatus.OK,
                     content={
                         "agentId": agent_id,
                         "storageId": storage.id,
@@ -143,7 +143,7 @@ def register_routes(mcp: FastMCP) -> None:
                 )
 
             return JSONResponse(
-                status_code=404,
+                status_code=HTTPStatus.NOT_FOUND,
                 content={"error": f"Storage {storage_id} not found for agent {agent_id}"},
             )
 
@@ -162,12 +162,12 @@ def register_routes(mcp: FastMCP) -> None:
 
             if success:
                 return JSONResponse(
-                    status_code=200,
+                    status_code=HTTPStatus.OK,
                     content={"message": f"Storage {storage_id} deleted successfully"},
                 )
 
             return JSONResponse(
-                status_code=404,
+                status_code=HTTPStatus.NOT_FOUND,
                 content={"error": f"Storage {storage_id} not found for agent {agent_id}"},
             )
 
@@ -180,12 +180,12 @@ def register_routes(mcp: FastMCP) -> None:
 
             if success:
                 return JSONResponse(
-                    status_code=200,
+                    status_code=HTTPStatus.OK,
                     content={"message": f"Agent {agent_id} and all storages deleted successfully"},
                 )
 
             return JSONResponse(
-                status_code=404,
+                status_code=HTTPStatus.NOT_FOUND,
                 content={"error": f"Agent {agent_id} not found"},
             )
 
@@ -205,7 +205,7 @@ def register_routes(mcp: FastMCP) -> None:
 
             if not storage:
                 return JSONResponse(
-                    status_code=404,
+                    status_code=HTTPStatus.NOT_FOUND,
                     content={"error": f"Storage {storage_id} not found for agent {agent_id}"},
                 )
 
@@ -217,7 +217,7 @@ def register_routes(mcp: FastMCP) -> None:
             )
 
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={
                     "agentId": agent_id,
                     "storageId": storage_id,
@@ -238,13 +238,15 @@ def register_routes(mcp: FastMCP) -> None:
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
                     return JSONResponse(
-                        status_code=404,
+                        status_code=HTTPStatus.NOT_FOUND,
                         content={"error": f"No active storage found for agent {agent_id}"},
                     )
-                return JSONResponse(status_code=500, content={"error": str(e)})
+                return JSONResponse(
+                    status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content={"error": str(e)}
+                )
 
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={
                     "agentId": agent_id,
                     "storageId": storage_id,
@@ -262,13 +264,13 @@ def register_routes(mcp: FastMCP) -> None:
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
                     return JSONResponse(
-                        status_code=404,
+                        status_code=HTTPStatus.NOT_FOUND,
                         content={"error": f"No active storage found for agent {agent_id}"},
                     )
                 return JSONResponse(status_code=500, content={"error": str(e)})
 
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={"message": f"Active storage cleared for agent {agent_id}"},
             )
     else:
@@ -281,7 +283,7 @@ def register_routes(mcp: FastMCP) -> None:
         try:
             tool = await register_tool_for_deployment_id(deployment_id)
             return JSONResponse(
-                status_code=201,
+                status_code=HTTPStatus.CREATED,
                 content={
                     "name": tool.name,
                     "description": tool.description,
@@ -291,7 +293,7 @@ def register_routes(mcp: FastMCP) -> None:
             )
         except Exception as e:
             return JSONResponse(
-                status_code=400,
+                status_code=HTTPStatus.BAD_REQUEST,
                 content={"error": f"Failed to add deployment: {str(e)}"},
             )
 
@@ -304,7 +306,7 @@ def register_routes(mcp: FastMCP) -> None:
                 {"deploymentId": k, "toolName": v} for k, v in deployments.items()
             ]
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={
                     "deployments": formatted_deployments,
                     "count": len(deployments),
@@ -312,7 +314,7 @@ def register_routes(mcp: FastMCP) -> None:
             )
         except Exception as e:
             return JSONResponse(
-                status_code=500,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to retrieve deployments: {str(e)}"},
             )
 
@@ -326,18 +328,18 @@ def register_routes(mcp: FastMCP) -> None:
             deleted = await delete_registered_tool_deployment(deployment_id)
             if deleted is True:
                 return JSONResponse(
-                    status_code=200,
+                    status_code=HTTPStatus.OK,
                     content={
                         "message": f"Tool with deployment {deployment_id} deleted successfully"
                     },
                 )
             return JSONResponse(
-                status_code=404,
+                status_code=HTTPStatus.NOT_FOUND,
                 content={"error": f"Tool with deployment {deployment_id} not found"},
             )
         except Exception as e:
             return JSONResponse(
-                status_code=500,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to delete deployment: {str(e)}"},
             )
 
@@ -345,7 +347,7 @@ def register_routes(mcp: FastMCP) -> None:
     async def list_prompt_templates(_: Request) -> JSONResponse:
         """List all prompt templates."""
         try:
-            prompts = await get_registered_prompt_templates()
+            prompts = await mcp.get_prompt_mapping()
             formatted_prompts = [
                 {
                     "promptTemplateId": pt_id,
@@ -355,7 +357,7 @@ def register_routes(mcp: FastMCP) -> None:
                 for pt_id, (ptv_id, p_name) in prompts.items()
             ]
             return JSONResponse(
-                status_code=200,
+                status_code=HTTPStatus.OK,
                 content={
                     "promptTemplates": formatted_prompts,
                     "count": len(formatted_prompts),
@@ -363,7 +365,7 @@ def register_routes(mcp: FastMCP) -> None:
             )
         except Exception as e:
             return JSONResponse(
-                status_code=500,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to retrieve promptTemplates: {str(e)}"},
             )
 
@@ -377,47 +379,45 @@ def register_routes(mcp: FastMCP) -> None:
             deleted = await delete_registered_prompt_template(prompt_template_id)
             if deleted:
                 return JSONResponse(
-                    status_code=200,
+                    status_code=HTTPStatus.OK,
                     content={
                         "message": f"Prompt with prompt template id {prompt_template_id} "
                         f"deleted successfully"
                     },
                 )
             return JSONResponse(
-                status_code=404,
+                status_code=HTTPStatus.NOT_FOUND,
                 content={"error": f"Prompt with prompt template id {prompt_template_id} not found"},
             )
         except Exception as e:
             return JSONResponse(
-                status_code=500,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to delete prompt: {str(e)}"},
             )
 
     @mcp.custom_route(
-        prefix_mount_path(
-            "/registeredPrompts/{prompt_template_id}/versions/{prompt_template_version_id}"
-        ),
+        prefix_mount_path("/registeredPrompts/{prompt_template_id}"),
         methods=["PUT"],
     )
     async def add_prompt_template(request: Request) -> JSONResponse:
         """Add or update prompt template."""
         prompt_template_id = request.path_params["prompt_template_id"]
-        prompt_template_version_id = request.path_params["prompt_template_version_id"]
+        prompt_template_version_id = request.query_params.get("promptTemplateVersionId")
         try:
-            prompt = await register_prompt_for_prompt_template_id_and_version(
+            prompt = await register_prompt_from_prompt_template_id_and_version(
                 prompt_template_id, prompt_template_version_id
             )
             return JSONResponse(
-                status_code=201,
+                status_code=HTTPStatus.CREATED,
                 content={
                     "name": prompt.name,
                     "description": prompt.description,
                     "promptTemplateId": prompt_template_id,
-                    "promptTemplateVersionId": prompt_template_version_id,
+                    "promptTemplateVersionId": prompt.meta["prompt_template_version_id"],
                 },
             )
         except Exception as e:
             return JSONResponse(
-                status_code=400,
+                status_code=HTTPStatus.BAD_REQUEST,
                 content={"error": f"Failed to add prompt template: {str(e)}"},
             )
