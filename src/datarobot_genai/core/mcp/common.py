@@ -36,6 +36,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     mcp_deployment_id: str | None = None
     datarobot_endpoint: str | None = None
     datarobot_api_token: str | None = None
+    authorization_context: dict[str, Any] | None = None
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None

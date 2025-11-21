@@ -41,9 +41,7 @@ async def load_mcp_tools(
     -------
         List of MCP tools, or empty list if no MCP configuration is present.
     """
-    config = MCPConfig(
-        authorization_context=authorization_context
-    )
+    config = MCPConfig(authorization_context=authorization_context)
     server_params = config.server_config
 
     if not server_params:

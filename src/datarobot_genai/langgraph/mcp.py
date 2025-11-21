@@ -35,16 +35,10 @@ async def mcp_tools_context(
 
     Parameters
     ----------
-    api_base : str | None
-        Base URL for the DataRobot API
-    api_key : str | None
-        API key for authentication
     authorization_context : dict[str, Any] | None
         Authorization context to use for MCP connections
     """
-    mcp_config = MCPConfig(
-        authorization_context=authorization_context
-    )
+    mcp_config = MCPConfig(authorization_context=authorization_context)
     server_config = mcp_config.server_config
 
     if not server_config:

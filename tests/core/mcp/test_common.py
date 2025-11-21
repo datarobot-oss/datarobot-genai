@@ -226,7 +226,7 @@ class TestMCPConfig:
             {"MCP_DEPLOYMENT_ID": deployment_id},
             clear=True,
         ):
-            config = MCPConfig(api_base=api_base, api_key=api_key)
+            config = MCPConfig()
             expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert config.server_config["url"] == expected_url
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"

@@ -29,7 +29,8 @@ def agent_auth_context_data() -> dict[str, Any]:
         ],
     }
 
-@pytest.fixture(autouse=True, scope='session')
+
+@pytest.fixture(autouse=True, scope="session")
 def disable_env_file(monkeypatch):
     """Disable loading of .env file for MCPConfig and related settings classes.
 
@@ -38,9 +39,7 @@ def disable_env_file(monkeypatch):
     This fixture patches the class-level config so any implicit .env lookup is skipped.
     """
     # Pydantic v2: model_config is a mapping; ensure env_file fields are disabled.
-    if hasattr(MCPConfig, "model_config") and isinstance(
-        getattr(MCPConfig, "model_config"), dict
-    ):
+    if hasattr(MCPConfig, "model_config") and isinstance(getattr(MCPConfig, "model_config"), dict):
         # Create a shallow copy to avoid mutating original dict in-place across tests.
         new_config = {**MCPConfig.model_config}
         new_config["env_file"] = None

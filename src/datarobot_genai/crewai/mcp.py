@@ -32,10 +32,7 @@ def mcp_tools_context(
     authorization_context: dict[str, Any] | None = None,
 ) -> Generator[list[Any], None, None]:
     """Context manager for MCP tools that handles connection lifecycle."""
-    config = MCPConfig(
-        authorization_context=authorization_context
-    )
-
+    config = MCPConfig(authorization_context=authorization_context)
     # If no MCP server configured, return empty tools list
     if not config.server_config:
         print("No MCP server configured, using empty tools list", flush=True)
