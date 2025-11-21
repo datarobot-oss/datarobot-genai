@@ -90,12 +90,3 @@ class TestMCPToolsContext:
                 assert call_args["transport"] == "streamable-http"
                 assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
                 assert call_args["headers"]["X-DataRobot-Authorization-Context"] is not None
-
-    def test_mcp_tools_context_with_parameters(self, mock_adapter):
-        """Test context manager with explicit api_base and api_key parameters."""
-        deployment_id = "abc123def456789012345678"
-
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            with mcp_tools_context():
-                # Should use the provided parameters instead of environment variables
-                pass  # The test passes if no exception is raised

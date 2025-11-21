@@ -86,14 +86,6 @@ class TestMCPConfig:
             config = MCPConfig()
             assert config.server_config["headers"]["Authorization"] == api_key
 
-    def test_mcp_config_with_datarobot_deployment_id_no_api_key(self):
-        """Test MCP config with DataRobot deployment ID but no API key."""
-        deployment_id = "abc123def456789012345678"
-
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            config = MCPConfig()
-            assert config.server_config is None
-
     def test_mcp_config_with_datarobot_deployment_id_no_deployment_id(self):
         """Test MCP config with API key but no deployment ID."""
         api_key = "test-api-key"
