@@ -145,6 +145,9 @@ def make_prompt_function(
 ) -> Callable:
     params = []
     for v in variables:
+        if keyword.iskeyword(v.name):
+            raise ValueError(f"Variable name '{v.name}' is invalid.")
+
         try:
             param = Parameter(
                 name=v.name,
