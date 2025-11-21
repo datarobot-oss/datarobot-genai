@@ -52,8 +52,7 @@ class TestMakePrompt:
         "var_name",
         ["23124125", "class", "True", "var-name"],
     )
-    @pytest.mark.asyncio
-    async def test_make_prompt_function_incorrect_variable_names(self, var_name) -> None:
+    def test_make_prompt_function_incorrect_variable_names(self, var_name) -> None:
         """Test making a prompt when incorrect variable names."""
         name = "dummy prompt name"
         description = "dummy prompt description"
@@ -78,14 +77,12 @@ class TestToValidFunctionName:
             ("True", "True_prompt"),  # Python keyword
         ],
     )
-    @pytest.mark.asyncio
-    async def test_to_valid_function_name(self, s: str, expected: str) -> None:
+    def test_to_valid_function_name(self, s: str, expected: str) -> None:
         """Test converting to valid function name."""
         assert to_valid_mcp_prompt_name(s) == expected
 
     @pytest.mark.parametrize("s", ["$$$", "123-456-789", "---", "_123"])
-    @pytest.mark.asyncio
-    async def test_to_valid_function_name_when_cannot_convert(self, s: str) -> None:
+    def test_to_valid_function_name_when_cannot_convert(self, s: str) -> None:
         """Test converting to valid function name."""
         with pytest.raises(ValueError):
             to_valid_mcp_prompt_name(s)
