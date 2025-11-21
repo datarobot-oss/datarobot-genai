@@ -151,7 +151,15 @@ class TestMCPConfig:
             # Without MCP_DEPLOYMENT_ID, should return None
             assert config.server_config is None
 
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_API_TOKEN": custom_api_key,
+                "DATAROBOT_ENDPOINT": custom_api_base,
+            },
+            clear=True,
+        ):
             config = MCPConfig()
             assert config.server_config is not None
             expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
@@ -251,7 +259,15 @@ class TestLoadMCPTools:
         custom_api_base = "https://custom.datarobot.com/api/v2"
         custom_api_key = "custom-key"
 
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_API_TOKEN": custom_api_key,
+                "DATAROBOT_ENDPOINT": custom_api_base,
+            },
+            clear=True,
+        ):
             tools = await load_mcp_tools()
             assert tools == mock_tools
             mock_aget.assert_awaited_once()
