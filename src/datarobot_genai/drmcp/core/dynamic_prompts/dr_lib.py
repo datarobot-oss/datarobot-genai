@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Self
 
 import datarobot as dr
 
@@ -40,7 +39,7 @@ class DrPromptVersion:
     variables: list[DrVariable]
 
     @classmethod
-    def from_dict(cls, d: dict) -> Self:
+    def from_dict(cls, d: dict) -> "DrPromptVersion":
         variables = [
             DrVariable(name=v["name"], description=v["description"]) for v in d["variables"]
         ]
@@ -66,7 +65,7 @@ class DrPrompt:
         return latest_version
 
     @classmethod
-    def from_dict(cls, d: dict) -> Self:
+    def from_dict(cls, d: dict) -> "DrPrompt":
         return cls(id=d["id"], name=d["name"], description=d["description"])
 
 
