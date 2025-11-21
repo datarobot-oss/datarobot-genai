@@ -96,8 +96,6 @@ class TestMCPToolsContext:
         deployment_id = "abc123def456789012345678"
 
         with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            with mcp_tools_context(
-                api_base="https://custom.datarobot.com/api/v2", api_key="custom-key"
-            ):
+            with mcp_tools_context():
                 # Should use the provided parameters instead of environment variables
                 pass  # The test passes if no exception is raised

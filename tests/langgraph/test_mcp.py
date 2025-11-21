@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import pytest
 from datarobot.models.genai.agent.auth import set_authorization_context
+from pydantic import ValidationError
 
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
@@ -168,8 +169,16 @@ class TestMCPToolsContext:
         # process, so subsequent tools and MCP calls receive it via a dedicated header.
         set_authorization_context(agent_auth_context_data)
 
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            async with mcp_tools_context(api_base=custom_api_base, api_key=custom_api_key) as tools:
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_API_TOKEN": custom_api_key,
+                "DATAROBOT_ENDPOINT": custom_api_base,
+            },
+            clear=True,
+        ):
+            async with mcp_tools_context() as tools:
                 assert tools == setup_session_and_tools["tools"]
                 # Check that create_session was called with custom parameters
                 setup_session_and_tools["session"].assert_called_once()
@@ -207,7 +216,7 @@ class TestMCPToolsContext:
             {"EXTERNAL_MCP_URL": external_url, "EXTERNAL_MCP_TRANSPORT": "invalid-transport"},
             clear=True,
         ):
-            # mcp_tools_context will raise RuntimeError for unsupported transport
-            with pytest.raises(RuntimeError, match="Unsupported MCP transport specified"):
+            # mcp_tools_context will raise ValidationError for unsupported transport
+            with pytest.raises(ValidationError):
                 async with mcp_tools_context():
                     pass
