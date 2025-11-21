@@ -132,15 +132,15 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 "headers": headers,
             }
             return config
-        elif self.mcp_deployment_id and self.datarobot_api_token:
+        elif self.mcp_deployment_id:
             # DataRobot deployment ID - requires authentication
             if self.datarobot_endpoint is None:
                 raise ValueError(
-                    "When using a DataRobot hosted MCP deployment, api_base must be set."
+                    "When using a DataRobot hosted MCP deployment, datarobot_endpoint must be set."
                 )
             if self.datarobot_api_token is None:
                 raise ValueError(
-                    "When using a DataRobot hosted MCP deployment, api_key must be set."
+                    "When using a DataRobot hosted MCP deployment, datarobot_api_token must be set."
                 )
             base_url = self.datarobot_endpoint.rstrip("/")
             if not base_url.endswith("/api/v2"):

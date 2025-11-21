@@ -119,13 +119,35 @@ class TestMCPConfig:
         # be propagated to the MCP Server.
         assert "X-DataRobot-Authorization-Context" not in config.server_config["headers"]
 
-    def test_mcp_config_with_datarobot_deployment_id_no_api_key(self):
+    @pytest.mark.parametrize(
+        "additional_env_params, expected_error_message",
+        [
+            pytest.param(
+                {"DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2"},
+                "When using a DataRobot hosted MCP deployment, datarobot_api_token must be set.",
+                id="with-endpoint",
+            ),
+            pytest.param(
+                {"DATAROBOT_API_TOKEN": "test-api-key"},
+                "When using a DataRobot hosted MCP deployment, datarobot_endpoint must be set.",
+                id="with-api-key",
+            ),
+        ],
+    )
+    def test_mcp_config_with_datarobot_deployment_id_no_api_key(
+        self, additional_env_params, expected_error_message
+    ):
         """Test MCP config with DataRobot deployment ID but no API key."""
         deployment_id = "abc123def456789012345678"
-
-        with patch.dict(os.environ, {"MCP_DEPLOYMENT_ID": deployment_id}, clear=True):
-            config = MCPConfig()
-            assert config.server_config is None
+        with patch.dict(
+            os.environ, {"MCP_DEPLOYMENT_ID": deployment_id, **additional_env_params}, clear=True
+        ):
+            with pytest.raises(
+                ValueError,
+                match=expected_error_message,
+            ):
+                config = MCPConfig()
+                config.server_config
 
     def test_mcp_config_with_datarobot_deployment_id_no_deployment_id(self):
         """Test MCP config with API key but no deployment ID."""
@@ -339,22 +361,6 @@ class TestMCPConfig:
         ):
             config = MCPConfig()
             assert config.mcp_deployment_id == deployment_id
-
-    def test_authorization_header_absent_when_api_key_empty(self):
-        """Empty api key should result in no Authorization header in deployment config."""
-        deployment_id = "abc123def456789012345678"
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
-                "DATAROBOT_API_TOKEN": "",  # Empty
-            },
-            clear=True,
-        ):
-            config = MCPConfig()
-            # With empty api key, the deployment branch should not activate (needs api_key)
-            assert config.server_config is None
 
     def test_authorization_context_header_exception(self, agent_auth_context_data):
         """Simulate an exception when retrieving auth context; header should be omitted."""
