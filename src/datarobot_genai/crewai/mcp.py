@@ -29,15 +29,10 @@ from datarobot_genai.core.mcp.common import MCPConfig
 
 @contextmanager
 def mcp_tools_context(
-    api_base: str | None = None,
-    api_key: str | None = None,
     authorization_context: dict[str, Any] | None = None,
 ) -> Generator[list[Any], None, None]:
     """Context manager for MCP tools that handles connection lifecycle."""
-    config = MCPConfig(
-        api_base=api_base, api_key=api_key, authorization_context=authorization_context
-    )
-
+    config = MCPConfig(authorization_context=authorization_context)
     # If no MCP server configured, return empty tools list
     if not config.server_config:
         print("No MCP server configured, using empty tools list", flush=True)
@@ -47,10 +42,8 @@ def mcp_tools_context(
     print(f"Connecting to MCP server: {config.server_config['url']}", flush=True)
 
     # Use MCPServerAdapter as context manager with the server config
-    adapter_setting = config.server_config.copy()
-    adapter_setting["transport"] = "streamable-http"
     try:
-        with MCPServerAdapter(adapter_setting) as tools:
+        with MCPServerAdapter(config.server_config) as tools:
             print(
                 f"Successfully connected to MCP server, got {len(tools)} tools",
                 flush=True,

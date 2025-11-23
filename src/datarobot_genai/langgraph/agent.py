@@ -84,8 +84,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 tuple[str, Any | None, UsageMetrics], None
             ]:
                 async with mcp_tools_context(
-                    api_base=self.api_base,
-                    api_key=self.api_key,
                     authorization_context=self._authorization_context,
                 ) as mcp_tools:
                     self.set_mcp_tools(mcp_tools)
@@ -104,8 +102,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         else:
             # For non-streaming, use async with directly
             async with mcp_tools_context(
-                api_base=self.api_base,
-                api_key=self.api_key,
                 authorization_context=self._authorization_context,
             ) as mcp_tools:
                 self.set_mcp_tools(mcp_tools)
