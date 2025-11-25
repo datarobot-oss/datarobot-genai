@@ -21,6 +21,10 @@ from nat.eval.runtime_event_subscriber import pull_intermediate
 from nat.runtime.loader import load_workflow
 from nat.utils.type_utils import StrPath
 from openai.types.chat import CompletionCreateParams
+from ragas import MultiTurnSample
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
+from ragas.messages import ToolMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -28,6 +32,33 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 
 logger = logging.getLogger(__name__)
+
+
+def convert_to_ragas_messages(steps: list[dict]) -> list[HumanMessage | AIMessage | ToolMessage]:
+    def _to_ragas(step: dict) -> HumanMessage | AIMessage | ToolMessage:
+        if step["payload"]["event_type"] == IntermediateStepType.LLM_START:
+            return HumanMessage(content=step["payload"]["data"]["input"][-1]["content"])
+        elif step["payload"]["event_type"] == IntermediateStepType.LLM_END:
+            return AIMessage(content=step["payload"]["data"]["output"])
+        else:
+            raise ValueError(f"Unknown event type {step['payload']['event_type']}")
+
+    def _include_step(step: dict) -> bool:
+        return step["payload"]["event_type"] in {
+            IntermediateStepType.LLM_END,
+            IntermediateStepType.LLM_START,
+        }
+
+    return [_to_ragas(step) for step in steps if _include_step(step)]
+
+
+def create_pipeline_interactions_from_steps(
+    steps: list[dict],
+) -> MultiTurnSample | None:
+    if not steps:
+        return None
+    ragas_trace = convert_to_ragas_messages(steps)
+    return MultiTurnSample(user_input=ragas_trace)
 
 
 class NatAgent(BaseAgent[None]):
@@ -97,15 +128,11 @@ class NatAgent(BaseAgent[None]):
                 usage_metrics["prompt_tokens"] += token_usage["prompt_tokens"]
                 usage_metrics["completion_tokens"] += token_usage["completion_tokens"]
 
-        # Create a list of events from the event listener
-        events: list[Any]
-        events = []  # This should be populated with the agent's events/messages
-
         if isinstance(result, ChatResponse):
             result_text = result.choices[0].message.content
         else:
             result_text = str(result)
-        pipeline_interactions = self.create_pipeline_interactions_from_events(events)
+        pipeline_interactions = create_pipeline_interactions_from_steps(steps)
 
         return result_text, pipeline_interactions, usage_metrics
 
