@@ -19,6 +19,9 @@ from unittest.mock import patch
 import pytest
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.intermediate_step import IntermediateStepType
+from ragas import MultiTurnSample
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
 
 from datarobot_genai.nat.agent import NatAgent
 
@@ -49,6 +52,17 @@ def test_init_with_additional_kwargs(workflow_path):
 
 async def test_run_method(agent, workflow_path):
     # Patch the run_nat_workflow method
+    start_step = {
+        "payload": {
+            "event_type": IntermediateStepType.LLM_START,
+            "data": {
+                "input": [
+                    {"role": "system", "content": "system prompt"},
+                    {"role": "user", "content": "user prompt"},
+                ],
+            },
+        },
+    }
     new_token_step = {
         "payload": {
             "event_type": IntermediateStepType.LLM_NEW_TOKEN,
@@ -64,6 +78,7 @@ async def test_run_method(agent, workflow_path):
     end_step = {
         "payload": {
             "event_type": IntermediateStepType.LLM_END,
+            "data": {"output": "LLM response"},
             "usage_info": {
                 "token_usage": {
                     "total_tokens": 2,
@@ -74,7 +89,9 @@ async def test_run_method(agent, workflow_path):
         },
     }
     with patch.object(
-        NatAgent, "run_nat_workflow", return_value=("success", [new_token_step, end_step, end_step])
+        NatAgent,
+        "run_nat_workflow",
+        return_value=("success", [start_step, new_token_step, end_step, end_step]),
     ):
         # Call the run method with test inputs
         completion_create_params = {
@@ -91,7 +108,13 @@ async def test_run_method(agent, workflow_path):
         )
 
         assert result == "success"
-        assert pipeline_interactions is None
+        assert pipeline_interactions == MultiTurnSample(
+            user_input=[
+                HumanMessage(content="user prompt"),
+                AIMessage(content="LLM response"),
+                AIMessage(content="LLM response"),
+            ]
+        )
         assert usage == {
             "completion_tokens": 2,
             "prompt_tokens": 2,

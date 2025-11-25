@@ -62,7 +62,7 @@ async def test_run_method(agent):
 
     assert result
     assert isinstance(result, str)
-    assert pipeline_interactions is None
+    assert pipeline_interactions
     assert usage == {
         "completion_tokens": ANY,
         "prompt_tokens": ANY,
