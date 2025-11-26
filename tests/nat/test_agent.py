@@ -18,7 +18,13 @@ from unittest.mock import patch
 
 import pytest
 from nat.data_models.api_server import ChatRequest
+from nat.data_models.intermediate_step import IntermediateStep
+from nat.data_models.intermediate_step import IntermediateStepPayload
 from nat.data_models.intermediate_step import IntermediateStepType
+from nat.data_models.intermediate_step import StreamEventData
+from nat.data_models.intermediate_step import UsageInfo
+from nat.data_models.invocation_node import InvocationNode
+from nat.profiler.callbacks.token_usage_base_model import TokenUsageBaseModel
 from ragas import MultiTurnSample
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
@@ -52,42 +58,50 @@ def test_init_with_additional_kwargs(workflow_path):
 
 async def test_run_method(agent, workflow_path):
     # Patch the run_nat_workflow method
-    start_step = {
-        "payload": {
-            "event_type": IntermediateStepType.LLM_START,
-            "data": {
-                "input": [
+    start_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_START,
+            data=StreamEventData(
+                input=[
                     {"role": "system", "content": "system prompt"},
                     {"role": "user", "content": "user prompt"},
-                ],
-            },
-        },
-    }
-    new_token_step = {
-        "payload": {
-            "event_type": IntermediateStepType.LLM_NEW_TOKEN,
-            "usage_info": {
-                "token_usage": {
-                    "total_tokens": 2,
-                    "completion_tokens": 1,
-                    "prompt_tokens": 1,
-                },
-            },
-        },
-    }
-    end_step = {
-        "payload": {
-            "event_type": IntermediateStepType.LLM_END,
-            "data": {"output": "LLM response"},
-            "usage_info": {
-                "token_usage": {
-                    "total_tokens": 2,
-                    "completion_tokens": 1,
-                    "prompt_tokens": 1,
-                },
-            },
-        },
-    }
+                ]
+            ),
+        ),
+    )
+    new_token_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_NEW_TOKEN,
+            usage_info=UsageInfo(
+                token_usage=TokenUsageBaseModel(
+                    total_tokens=2, completion_tokens=1, prompt_tokens=1
+                )
+            ),
+        ),
+    )
+    end_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_END,
+            data=StreamEventData(output="LLM response"),
+            usage_info=UsageInfo(
+                token_usage=TokenUsageBaseModel(
+                    total_tokens=2, completion_tokens=1, prompt_tokens=1
+                )
+            ),
+        ),
+    )
     with patch.object(
         NatAgent,
         "run_nat_workflow",
