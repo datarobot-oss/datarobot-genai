@@ -36,17 +36,32 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 logger = logging.getLogger(__name__)
 
 
-def convert_to_ragas_messages(steps: list[dict]) -> list[HumanMessage | AIMessage | ToolMessage]:
-    def _to_ragas(step: dict) -> HumanMessage | AIMessage | ToolMessage:
-        if step["payload"]["event_type"] == IntermediateStepType.LLM_START:
-            return HumanMessage(content=step["payload"]["data"]["input"][-1]["content"])
-        elif step["payload"]["event_type"] == IntermediateStepType.LLM_END:
-            return AIMessage(content=step["payload"]["data"]["output"])
-        else:
-            raise ValueError(f"Unknown event type {step['payload']['event_type']}")
+def convert_to_ragas_messages(
+    steps: list[IntermediateStep],
+) -> list[HumanMessage | AIMessage | ToolMessage]:
+    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage | ToolMessage:
+        if step.event_type == IntermediateStepType.LLM_START:
+            input = step.data.input
+            if isinstance(input, list):
+                last_message = input[-1]
+            else:
+                last_message = input
 
-    def _include_step(step: dict) -> bool:
-        return step["payload"]["event_type"] in {
+            if isinstance(last_message, dict):
+                content = last_message.get("content")
+            elif hasattr(last_message, "content"):
+                content = getattr(last_message, "content")
+            else:
+                content = str(last_message)
+            return HumanMessage(content=content)
+        elif step.event_type == IntermediateStepType.LLM_END:
+            output = step.data.output
+            return AIMessage(content=str(output))
+        else:
+            raise ValueError(f"Unknown event type {step.event_type}")
+
+    def _include_step(step: IntermediateStep) -> bool:
+        return step.event_type in {
             IntermediateStepType.LLM_END,
             IntermediateStepType.LLM_START,
         }
@@ -55,7 +70,7 @@ def convert_to_ragas_messages(steps: list[dict]) -> list[HumanMessage | AIMessag
 
 
 def create_pipeline_interactions_from_steps(
-    steps: list[dict],
+    steps: list[IntermediateStep],
 ) -> MultiTurnSample | None:
     if not steps:
         return None
@@ -147,20 +162,18 @@ class NatAgent(BaseAgent[None]):
         # Create and invoke the NAT (Nemo Agent Toolkit) Agentic Workflow with the inputs
         result, steps = await self.run_nat_workflow(self.workflow_path, chat_request)
 
-        llm_end_steps = [
-            step for step in steps if step["payload"]["event_type"] == IntermediateStepType.LLM_END
-        ]
+        llm_end_steps = [step for step in steps if step.event_type == IntermediateStepType.LLM_END]
         usage_metrics: UsageMetrics = {
             "completion_tokens": 0,
             "prompt_tokens": 0,
             "total_tokens": 0,
         }
         for step in llm_end_steps:
-            if step["payload"]["usage_info"]:
-                token_usage = step["payload"]["usage_info"]["token_usage"]
-                usage_metrics["total_tokens"] += token_usage["total_tokens"]
-                usage_metrics["prompt_tokens"] += token_usage["prompt_tokens"]
-                usage_metrics["completion_tokens"] += token_usage["completion_tokens"]
+            if step.usage_info:
+                token_usage = step.usage_info.token_usage
+                usage_metrics["total_tokens"] += token_usage.total_tokens
+                usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
+                usage_metrics["completion_tokens"] += token_usage.completion_tokens
 
         if isinstance(result, ChatResponse):
             result_text = result.choices[0].message.content
@@ -172,7 +185,7 @@ class NatAgent(BaseAgent[None]):
 
     async def run_nat_workflow(
         self, workflow_path: StrPath, chat_request: ChatRequest
-    ) -> tuple[ChatResponse | str, list[dict]]:
+    ) -> tuple[ChatResponse | str, list[IntermediateStep]]:
         """Run the NAT workflow with the provided config file and input string.
 
         Args:
@@ -181,7 +194,8 @@ class NatAgent(BaseAgent[None]):
 
         Returns
         -------
-            str: The result from the NAT workflow
+            ChatResponse | str: The result from the NAT workflow
+            list[IntermediateStep]: The list of intermediate steps
         """
         async with load_workflow(workflow_path) as workflow:
             async with workflow.run(chat_request) as runner:
