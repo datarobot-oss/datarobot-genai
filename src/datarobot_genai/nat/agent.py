@@ -60,9 +60,9 @@ def convert_to_ragas_messages(
             last_message = messages
 
         if isinstance(last_message, dict):
-            content = last_message.get("content")
+            content = last_message.get("content") or last_message
         elif hasattr(last_message, "content"):
-            content = getattr(last_message, "content")
+            content = getattr(last_message, "content") or last_message
         else:
             content = last_message
         return str(content)
