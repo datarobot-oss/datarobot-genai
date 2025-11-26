@@ -18,7 +18,16 @@ from unittest.mock import patch
 
 import pytest
 from nat.data_models.api_server import ChatRequest
+from nat.data_models.intermediate_step import IntermediateStep
+from nat.data_models.intermediate_step import IntermediateStepPayload
 from nat.data_models.intermediate_step import IntermediateStepType
+from nat.data_models.intermediate_step import StreamEventData
+from nat.data_models.intermediate_step import UsageInfo
+from nat.data_models.invocation_node import InvocationNode
+from nat.profiler.callbacks.token_usage_base_model import TokenUsageBaseModel
+from ragas import MultiTurnSample
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
 
 from datarobot_genai.nat.agent import NatAgent
 
@@ -49,32 +58,54 @@ def test_init_with_additional_kwargs(workflow_path):
 
 async def test_run_method(agent, workflow_path):
     # Patch the run_nat_workflow method
-    new_token_step = {
-        "payload": {
-            "event_type": IntermediateStepType.LLM_NEW_TOKEN,
-            "usage_info": {
-                "token_usage": {
-                    "total_tokens": 2,
-                    "completion_tokens": 1,
-                    "prompt_tokens": 1,
-                },
-            },
-        },
-    }
-    end_step = {
-        "payload": {
-            "event_type": IntermediateStepType.LLM_END,
-            "usage_info": {
-                "token_usage": {
-                    "total_tokens": 2,
-                    "completion_tokens": 1,
-                    "prompt_tokens": 1,
-                },
-            },
-        },
-    }
+    start_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_START,
+            data=StreamEventData(
+                input=[
+                    {"role": "system", "content": "system prompt"},
+                    {"role": "user", "content": "user prompt"},
+                ]
+            ),
+        ),
+    )
+    new_token_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_NEW_TOKEN,
+            usage_info=UsageInfo(
+                token_usage=TokenUsageBaseModel(
+                    total_tokens=2, completion_tokens=1, prompt_tokens=1
+                )
+            ),
+        ),
+    )
+    end_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_END,
+            data=StreamEventData(output="LLM response"),
+            usage_info=UsageInfo(
+                token_usage=TokenUsageBaseModel(
+                    total_tokens=2, completion_tokens=1, prompt_tokens=1
+                )
+            ),
+        ),
+    )
     with patch.object(
-        NatAgent, "run_nat_workflow", return_value=("success", [new_token_step, end_step, end_step])
+        NatAgent,
+        "run_nat_workflow",
+        return_value=("success", [start_step, new_token_step, end_step, end_step]),
     ):
         # Call the run method with test inputs
         completion_create_params = {
@@ -91,7 +122,13 @@ async def test_run_method(agent, workflow_path):
         )
 
         assert result == "success"
-        assert pipeline_interactions is None
+        assert pipeline_interactions == MultiTurnSample(
+            user_input=[
+                HumanMessage(content="user prompt"),
+                AIMessage(content="LLM response"),
+                AIMessage(content="LLM response"),
+            ]
+        )
         assert usage == {
             "completion_tokens": 2,
             "prompt_tokens": 2,
