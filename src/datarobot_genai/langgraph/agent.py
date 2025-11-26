@@ -32,6 +32,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import is_streaming
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 logger = logging.getLogger(__name__)
@@ -136,10 +137,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # The following code demonstrate both a synchronous and streaming response.
         # You can choose one or the other based on your use case, they function the same.
         # The main difference is returning a generator for streaming or a final response for sync.
-        if completion_create_params.get("stream"):
+        if is_streaming(completion_create_params):
             # Streaming response: yield each message as it is generated
             async def stream_generator() -> AsyncGenerator[
-                tuple[str, Any | None, UsageMetrics], None
+                tuple[str, MultiTurnSample | None, UsageMetrics], None
             ]:
                 # Iterate over the graph stream. For message events, yield the content.
                 # For update events, accumulate the usage metrics.

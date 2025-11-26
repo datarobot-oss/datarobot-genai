@@ -63,8 +63,34 @@ async def test_run_method(agent):
     assert result
     assert isinstance(result, str)
     assert pipeline_interactions
-    assert usage == {
-        "completion_tokens": ANY,
-        "prompt_tokens": ANY,
-        "total_tokens": ANY,
+    assert usage["completion_tokens"] > 0
+    assert usage["prompt_tokens"] > 0
+    assert usage["total_tokens"] > 0
+
+
+async def test_run_method_streaming(agent):
+    # Call the run method with test inputs
+    completion_create_params = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "AI"}],
+        "environment_var": True,
+        "stream": True,
     }
+    streaming_response_iterator = await agent.invoke(completion_create_params)
+
+    async for (
+        result,
+        pipeline_interactions,
+        usage,
+    ) in streaming_response_iterator:
+        assert isinstance(result, str)
+        assert usage == {
+            "completion_tokens": ANY,
+            "prompt_tokens": ANY,
+            "total_tokens": ANY,
+        }
+    # Final chunk has the total usage and pipeline interactions
+    assert usage["completion_tokens"] > 0
+    assert usage["prompt_tokens"] > 0
+    assert usage["total_tokens"] > 0
+    assert pipeline_interactions
