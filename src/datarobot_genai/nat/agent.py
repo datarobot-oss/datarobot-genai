@@ -11,13 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
 import logging
 from typing import Any
 
+from nat.builder.context import Context
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
+from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepType
-from nat.eval.runtime_event_subscriber import pull_intermediate
 from nat.runtime.loader import load_workflow
 from nat.utils.type_utils import StrPath
 from openai.types.chat import CompletionCreateParams
@@ -59,6 +61,38 @@ def create_pipeline_interactions_from_steps(
         return None
     ragas_trace = convert_to_ragas_messages(steps)
     return MultiTurnSample(user_input=ragas_trace)
+
+
+def pull_intermediate_structured() -> asyncio.Future[list[IntermediateStep]]:
+    """
+    Subscribe to the runner's event stream using callbacks.
+    Intermediate steps are collected and, when complete, the future is set
+    with the list of dumped intermediate steps.
+    """
+    future: asyncio.Future[list[IntermediateStep]] = asyncio.Future()
+    intermediate_steps = []  # We'll store the dumped steps here.
+    context = Context.get()
+
+    def on_next_cb(item: IntermediateStep) -> None:
+        # Append each new intermediate step to the list.
+        intermediate_steps.append(item)
+
+    def on_error_cb(exc: Exception) -> None:
+        logger.error("Hit on_error: %s", exc)
+        if not future.done():
+            future.set_exception(exc)
+
+    def on_complete_cb() -> None:
+        logger.debug("Completed reading intermediate steps")
+        if not future.done():
+            future.set_result(intermediate_steps)
+
+    # Subscribe with our callbacks.
+    context.intermediate_step_manager.subscribe(
+        on_next=on_next_cb, on_error=on_error_cb, on_complete=on_complete_cb
+    )
+
+    return future
 
 
 class NatAgent(BaseAgent[None]):
@@ -151,7 +185,7 @@ class NatAgent(BaseAgent[None]):
         """
         async with load_workflow(workflow_path) as workflow:
             async with workflow.run(chat_request) as runner:
-                intermediate_future = pull_intermediate()
+                intermediate_future = pull_intermediate_structured()
                 runner_outputs = await runner.result()
                 steps = await intermediate_future
 
