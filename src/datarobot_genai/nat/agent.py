@@ -13,6 +13,7 @@
 # limitations under the License.
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from nat.builder.context import Context
@@ -32,6 +33,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import is_streaming
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +161,49 @@ class NatAgent(BaseAgent[None]):
 
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)
+
+        if is_streaming(completion_create_params):
+
+            async def stream_generator() -> AsyncGenerator[
+                tuple[str, MultiTurnSample | None, UsageMetrics], None
+            ]:
+                usage_metrics: UsageMetrics = {
+                    "completion_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0,
+                }
+                async with load_workflow(self.workflow_path) as workflow:
+                    async with workflow.run(chat_request) as runner:
+                        intermediate_future = pull_intermediate_structured()
+                        async for result in runner.result_stream():
+                            if isinstance(result, ChatResponse):
+                                result_text = result.choices[0].message.content
+                            else:
+                                result_text = str(result)
+
+                            yield (
+                                result_text,
+                                None,
+                                usage_metrics,
+                            )
+
+                        steps = await intermediate_future
+                        llm_end_steps = [
+                            step
+                            for step in steps
+                            if step.event_type == IntermediateStepType.LLM_END
+                        ]
+                        for step in llm_end_steps:
+                            if step.usage_info:
+                                token_usage = step.usage_info.token_usage
+                                usage_metrics["total_tokens"] += token_usage.total_tokens
+                                usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
+                                usage_metrics["completion_tokens"] += token_usage.completion_tokens
+
+                        pipeline_interactions = create_pipeline_interactions_from_steps(steps)
+                        yield "", pipeline_interactions, usage_metrics
+
+            return stream_generator()
 
         # Create and invoke the NAT (Nemo Agent Toolkit) Agentic Workflow with the inputs
         result, steps = await self.run_nat_workflow(self.workflow_path, chat_request)
