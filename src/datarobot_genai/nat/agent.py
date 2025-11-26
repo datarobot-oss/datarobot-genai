@@ -41,22 +41,9 @@ def convert_to_ragas_messages(
 ) -> list[HumanMessage | AIMessage | ToolMessage]:
     def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage | ToolMessage:
         if step.event_type == IntermediateStepType.LLM_START:
-            input = step.data.input
-            if isinstance(input, list):
-                last_message = input[-1]
-            else:
-                last_message = input
-
-            if isinstance(last_message, dict):
-                content = last_message.get("content")
-            elif hasattr(last_message, "content"):
-                content = getattr(last_message, "content")
-            else:
-                content = str(last_message)
-            return HumanMessage(content=content)
+            return HumanMessage(content=_parse(step.data.input))
         elif step.event_type == IntermediateStepType.LLM_END:
-            output = step.data.output
-            return AIMessage(content=str(output))
+            return AIMessage(content=_parse(step.data.output))
         else:
             raise ValueError(f"Unknown event type {step.event_type}")
 
@@ -65,6 +52,20 @@ def convert_to_ragas_messages(
             IntermediateStepType.LLM_END,
             IntermediateStepType.LLM_START,
         }
+
+    def _parse(messages: Any) -> str:
+        if isinstance(messages, list):
+            last_message = messages[-1]
+        else:
+            last_message = messages
+
+        if isinstance(last_message, dict):
+            content = last_message.get("content")
+        elif hasattr(last_message, "content"):
+            content = getattr(last_message, "content")
+        else:
+            content = last_message
+        return str(content)
 
     return [_to_ragas(step) for step in steps if _include_step(step)]
 
