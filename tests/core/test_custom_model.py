@@ -99,3 +99,87 @@ def test_chat_entrypoint_streaming() -> None:
             loop.call_soon_threadsafe(loop.stop)
         except Exception:
             pass
+
+
+def test_chat_entrypoint_filters_protected_headers() -> None:
+    """Test that protected headers are filtered from forwarded_headers."""
+    pool, loop = load_model()
+    captured_params: dict[str, Any] = {}
+
+    class _CapturingAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_params.update(kwargs)
+
+        async def invoke(self, completion_create_params: Any) -> tuple[str, None, dict[str, int]]:
+            return ("ok", None, {})
+
+    try:
+        headers = {
+            "x-datarobot-api-key": "scoped-token-123",
+            "x-custom-header": "custom-value",
+            "Authorization": "Bearer user-provided-token",  # Should be filtered
+            "authorization": "Bearer another-token",  # Should be filtered
+            "X-DataRobot-Authorization-Context": "fake-jwt-token",  # Should be filtered
+            "x-datarobot-authorization-context": "another-fake-token",  # Should be filtered
+        }
+
+        resp = chat_entrypoint(
+            _CapturingAgent,
+            _minimal_params(),
+            (pool, loop),
+            work_dir=".",
+            runtime_parameter_keys=[],
+            headers=headers,
+        )
+        assert isinstance(resp, CustomModelChatResponse)
+
+        # Verify forwarded_headers were filtered
+        forwarded_headers = captured_params.get("forwarded_headers", {})
+        assert "x-datarobot-api-key" in forwarded_headers
+        assert forwarded_headers["x-datarobot-api-key"] == "scoped-token-123"
+        assert "x-custom-header" in forwarded_headers
+        assert forwarded_headers["x-custom-header"] == "custom-value"
+        # Verify protected headers were filtered out
+        assert "Authorization" not in forwarded_headers
+        assert "authorization" not in forwarded_headers
+        assert "X-DataRobot-Authorization-Context" not in forwarded_headers
+        assert "x-datarobot-authorization-context" not in forwarded_headers
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except Exception:
+            pass
+
+
+def test_chat_entrypoint_forwarded_headers_empty_when_no_headers() -> None:
+    """Test that forwarded_headers is empty dict when no headers are provided."""
+    pool, loop = load_model()
+    captured_params: dict[str, Any] = {}
+
+    class _CapturingAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_params.update(kwargs)
+
+        async def invoke(self, completion_create_params: Any) -> tuple[str, None, dict[str, int]]:
+            return ("ok", None, {})
+
+    try:
+        resp = chat_entrypoint(
+            _CapturingAgent,
+            _minimal_params(),
+            (pool, loop),
+            work_dir=".",
+            runtime_parameter_keys=[],
+        )
+        assert isinstance(resp, CustomModelChatResponse)
+
+        # Verify forwarded_headers is empty dict when no headers provided
+        forwarded_headers = captured_params.get("forwarded_headers", {})
+        assert forwarded_headers == {}
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except Exception:
+            pass

@@ -148,3 +148,45 @@ async def test_crewai_agent_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
     assert text == ""
     assert interactions is not None
     assert usage == {"completion_tokens": 3, "prompt_tokens": 7, "total_tokens": 10}
+
+
+@pytest.mark.asyncio
+async def test_crewai_agent_passes_forwarded_headers_to_mcp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that CrewAI agent passes forwarded headers to MCP context."""
+    # Patch Crew constructor in base module
+    monkeypatch.setattr(base_mod, "Crew", _FakeCrew)
+
+    # Track MCP context calls
+    mcp_calls = []
+
+    class _FakeCtx:
+        def __init__(self, **kwargs: Any) -> None:
+            mcp_calls.append(kwargs)
+            self._tools = ["tool1"]
+
+        def __enter__(self) -> list[str]:
+            return self._tools
+
+        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
+            return None
+
+    monkeypatch.setattr(base_mod, "mcp_tools_context", _FakeCtx)
+
+    forwarded_headers = {
+        "x-datarobot-api-key": "scoped-token-123",
+        "x-custom-header": "custom-value",
+    }
+    agent = _TestAgent(api_key="k", api_base="https://x", forwarded_headers=forwarded_headers)
+
+    completion_create_params: Any = {
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": False,
+    }
+
+    await agent.invoke(cast(Any, completion_create_params))
+
+    # Verify MCP context was called with forwarded headers
+    assert len(mcp_calls) == 1
+    assert mcp_calls[0]["forwarded_headers"] == forwarded_headers

@@ -268,3 +268,37 @@ class TestLoadMCPTools:
             expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert call_args[1]["command_or_url"] == expected_url
             assert call_args[1]["client"].headers["Authorization"] == f"Bearer {custom_api_key}"
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
+    async def test_load_mcp_tools_with_forwarded_headers(self, mock_aget):
+        """Test loading tools with forwarded headers including scoped token."""
+        mock_tools = [MagicMock()]
+        mock_aget.return_value = mock_tools
+
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://app.datarobot.com/api/v2"
+        api_key = "test-api-key"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-123",
+            "x-custom-header": "custom-value",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            tools = await load_mcp_tools(forwarded_headers=forwarded_headers)
+            assert tools == mock_tools
+            mock_aget.assert_awaited_once()
+            # Check that forwarded headers are included in client headers
+            call_args = mock_aget.await_args
+            client_headers = call_args[1]["client"].headers
+            assert client_headers["x-datarobot-api-key"] == "scoped-token-123"
+            assert client_headers["x-custom-header"] == "custom-value"
+            assert client_headers["Authorization"] == f"Bearer {api_key}"

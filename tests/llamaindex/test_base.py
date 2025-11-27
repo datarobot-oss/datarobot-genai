@@ -54,8 +54,8 @@ class Workflow:
 
 
 class MyLlamaAgent(LlamaIndexAgent):
-    def __init__(self, workflow: Any) -> None:
-        super().__init__()
+    def __init__(self, workflow: Any, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._wf = workflow
 
     def build_workflow(self) -> Any:
@@ -126,6 +126,43 @@ async def test_llama_index_base_invoke_with_mcp_tools(monkeypatch: Any) -> None:
     # Verify MCP tools were loaded and are accessible
     assert agent.mcp_tools == mock_tools
     assert len(agent.mcp_tools) == 2
+
+
+@pytest.mark.asyncio
+async def test_llama_index_agent_passes_forwarded_headers_to_mcp(monkeypatch: Any) -> None:
+    """Test that LlamaIndex agent passes forwarded headers to MCP tools loading."""
+    mock_tools = [MagicMock()]
+
+    mcp_calls = []
+
+    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
+        mcp_calls.append(kwargs)
+        return mock_tools
+
+    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        base_mod,
+        "create_pipeline_interactions_from_events",
+        fake_create_pipeline_interactions,
+        raising=True,
+    )
+    monkeypatch.setattr(base_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
+
+    forwarded_headers = {
+        "x-datarobot-api-key": "scoped-token-123",
+        "x-custom-header": "custom-value",
+    }
+
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow, forwarded_headers=forwarded_headers)
+
+    await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
+
+    # Verify load_mcp_tools was called with forwarded headers
+    assert len(mcp_calls) == 1
+    assert mcp_calls[0]["forwarded_headers"] == forwarded_headers
 
 
 @pytest.mark.asyncio

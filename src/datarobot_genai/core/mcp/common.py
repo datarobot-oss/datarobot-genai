@@ -37,7 +37,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     datarobot_endpoint: str | None = None
     datarobot_api_token: str | None = None
     authorization_context: dict[str, Any] | None = None
-    forwarded_headers: dict[str, str] = {}
+    forwarded_headers: dict[str, str] | None = None
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None
@@ -148,11 +148,14 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 base_url = base_url + "/api/v2"
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
-            headers = {
-                **self._authorization_bearer_header(),
-                **self._authorization_context_header(),
-                **self.forwarded_headers,
-            }
+            headers = self.forwarded_headers or {}
+
+            headers.update(
+                {
+                    **self._authorization_bearer_header(),
+                    **self._authorization_context_header(),
+                }
+            )
 
             return {
                 "url": url,
