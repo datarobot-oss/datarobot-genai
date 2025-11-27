@@ -84,6 +84,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         # Load MCP tools (if configured) asynchronously before building workflow
         mcp_tools = await load_mcp_tools(
             authorization_context=self._authorization_context,
+            forwarded_headers=self.forwarded_headers,
         )
         self.set_mcp_tools(mcp_tools)
 

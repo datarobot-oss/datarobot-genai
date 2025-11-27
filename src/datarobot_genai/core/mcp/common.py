@@ -37,6 +37,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     datarobot_endpoint: str | None = None
     datarobot_api_token: str | None = None
     authorization_context: dict[str, Any] | None = None
+    forwarded_headers: dict[str, str] = {}
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None
@@ -150,6 +151,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             headers = {
                 **self._authorization_bearer_header(),
                 **self._authorization_context_header(),
+                **self.forwarded_headers,
             }
 
             return {

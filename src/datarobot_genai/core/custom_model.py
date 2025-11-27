@@ -139,6 +139,7 @@ def chat_entrypoint(
     completion_create_params["authorization_context"] = resolve_authorization_context(
         completion_create_params, **kwargs
     )
+    completion_create_params["forwarded_headers"] = kwargs.get("headers", {})
 
     # Instantiate user agent with all supplied completion params including auth context
     agent = agent_cls(**completion_create_params)
