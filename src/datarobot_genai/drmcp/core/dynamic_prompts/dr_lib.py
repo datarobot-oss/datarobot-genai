@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from collections import defaultdict
 from dataclasses import dataclass
 
 import datarobot as dr
@@ -34,6 +34,7 @@ class DrVariable:
 @dataclass
 class DrPromptVersion:
     id: str
+    prompt_template_id: str
     version: int
     prompt_text: str
     variables: list[DrVariable]
@@ -45,6 +46,7 @@ class DrPromptVersion:
         ]
         return cls(
             id=d["id"],
+            prompt_template_id=d["promptTemplateId"],
             version=d["version"],
             prompt_text=d["promptText"],
             variables=variables,
@@ -58,7 +60,9 @@ class DrPrompt:
     description: str
 
     def get_latest_version(self) -> DrPromptVersion | None:
-        prompt_template_versions = get_datarobot_prompt_template_versions(self.id)
+        all_prompt_template_versions = get_datarobot_prompt_template_versions([self.id])
+        prompt_template_versions = all_prompt_template_versions.get(self.id)
+
         if not prompt_template_versions:
             return None
         latest_version = max(prompt_template_versions, key=lambda v: v.version)
@@ -77,15 +81,21 @@ def get_datarobot_prompt_templates() -> list[DrPrompt]:
     return [DrPrompt.from_dict(prompt_template) for prompt_template in prompt_templates_data]
 
 
-def get_datarobot_prompt_template_versions(prompt_template_id: str) -> list[DrPromptVersion]:
+def get_datarobot_prompt_template_versions(
+    prompt_template_ids: list[str],
+) -> dict[str, list[DrPromptVersion]]:
     prompt_template_versions_data = dr.utils.pagination.unpaginate(
-        initial_url=f"genai/promptTemplates/{prompt_template_id}/versions/",
-        initial_params={},
+        initial_url="genai/promptTemplates/versions/",
+        initial_params={
+            "promptTemplateIds": prompt_template_ids,
+        },
         client=get_api_client(),
     )
-    prompt_template_versions = []
+    prompt_template_versions = defaultdict(list)
     for prompt_template_version in prompt_template_versions_data:
-        prompt_template_versions.append(DrPromptVersion.from_dict(prompt_template_version))
+        prompt_template_versions[prompt_template_version["promptTemplateId"]].append(
+            DrPromptVersion.from_dict(prompt_template_version)
+        )
     return prompt_template_versions
 
 

@@ -46,7 +46,7 @@ async def mcp_server() -> AsyncIterator[TaggedFastMCP]:
 def dr_lib_mock() -> Iterator[None]:
     prompt_template = DrPrompt(id="pt1", name="pt1 name", description="pt1 description")
     prompt_template_version = DrPromptVersion(
-        id="ptv1.1", version=1, prompt_text="Text 1", variables=[]
+        id="ptv1.1", prompt_template_id="pt1", version=1, prompt_text="Text 1", variables=[]
     )
 
     with (
