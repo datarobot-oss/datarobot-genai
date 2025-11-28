@@ -148,7 +148,7 @@ def to_valid_mcp_prompt_name(s: str) -> str:
 
     # First, ASCII-transliterate using hex escape for non-ASCII
     if not s.isascii():
-        # whole string non-ascii? -> prefix with fn_
+        # whole string non-ascii? -> escape and prefix with prompt_
         encoded = _escape_non_ascii(s)
         return f"prompt_{encoded}"
 
