@@ -418,9 +418,12 @@ async def test_list_tools_by_tags_no_tags() -> None:
         mock_tool2.annotations = Mock()
         mock_tool2.annotations.extra = {"tags": ["model", "train"]}
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
         result = await list_tools_by_tags()
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_once_with(tags=None, match_all=False)
 
         assert "All available tools:" in result
         assert "test_tool_1" in result
@@ -446,9 +449,12 @@ async def test_list_tools_by_tags_with_tags_or() -> None:
         mock_tool2.annotations = Mock()
         mock_tool2.annotations.extra = {"tags": ["model", "train"]}
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
         result = await list_tools_by_tags(tags=["data", "model"], match_all=False)
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_once_with(tags=["data", "model"], match_all=False)
 
         assert "Tools with any of the tags: data, model" in result
         assert "data_tool" in result
@@ -472,9 +478,12 @@ async def test_list_tools_by_tags_with_tags_and() -> None:
         mock_tool2.annotations = Mock()
         mock_tool2.annotations.extra = {"tags": ["data"]}
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1])
 
         result = await list_tools_by_tags(tags=["data", "model"], match_all=True)
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_once_with(tags=["data", "model"], match_all=True)
 
         assert "Tools with all of the tags: data, model" in result
         assert "data_model_tool" in result
@@ -485,9 +494,12 @@ async def test_list_tools_by_tags_with_tags_and() -> None:
 async def test_list_tools_by_tags_no_matches() -> None:
     """Test list_tools_by_tags when no tools match the criteria."""
     with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
+        mock_mcp.list_tools = AsyncMock(return_value=[])
 
         result = await list_tools_by_tags(tags=["nonexistent"])
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_once_with(tags=["nonexistent"], match_all=False)
 
         assert "No tools found with any of the tags: nonexistent" in result
 
@@ -502,9 +514,12 @@ async def test_list_tools_by_tags_no_annotations() -> None:
         mock_tool.description = "Tool without tags"
         mock_tool.annotations = None
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
 
         result = await list_tools_by_tags()
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_once_with(tags=None, match_all=False)
 
         assert "no_tags_tool" in result
         assert "Tags:" not in result  # Should not show tags section
@@ -529,9 +544,12 @@ async def test_get_tool_info_by_name_found() -> None:
         }
         mock_tool.inputSchema = mock_schema
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("test_tool")
+
+        # Verify list_tools was called without parameters (gets all tools)
+        mock_mcp.list_tools.assert_called_once_with()
 
         assert "Tool: test_tool" in result
         assert "Description: Test tool description" in result
@@ -545,9 +563,12 @@ async def test_get_tool_info_by_name_found() -> None:
 async def test_get_tool_info_by_name_not_found() -> None:
     """Test get_tool_info_by_name when tool is not found."""
     with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
+        mock_mcp.list_tools = AsyncMock(return_value=[])
 
         result = await get_tool_info_by_name("nonexistent_tool")
+
+        # Verify list_tools was called
+        mock_mcp.list_tools.assert_called_once_with()
 
         assert "Tool 'nonexistent_tool' not found." in result
 
@@ -564,9 +585,12 @@ async def test_get_tool_info_by_name_no_tags() -> None:
         mock_tool.annotations.extra = {}
         mock_tool.inputSchema = None
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_tags_tool")
+
+        # Verify list_tools was called
+        mock_mcp.list_tools.assert_called_once_with()
 
         assert "Tool: no_tags_tool" in result
         assert "Description: Tool without tags" in result
@@ -585,9 +609,12 @@ async def test_get_tool_info_by_name_no_annotations() -> None:
         mock_tool.annotations = None
         mock_tool.inputSchema = None
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_annotations_tool")
+
+        # Verify list_tools was called
+        mock_mcp.list_tools.assert_called_once_with()
 
         assert "Tool: no_annotations_tool" in result
         assert "Description: Tool without annotations" in result
@@ -606,9 +633,12 @@ async def test_get_tool_info_by_name_no_extra() -> None:
         mock_tool.annotations.extra = None
         mock_tool.inputSchema = None
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_extra_tool")
+
+        # Verify list_tools was called
+        mock_mcp.list_tools.assert_called_once_with()
 
         assert "Tool: no_extra_tool" in result
         assert "Description: Tool without extra" in result
@@ -630,9 +660,12 @@ async def test_get_tool_info_by_name_no_schema_properties() -> None:
         mock_schema.properties = None
         mock_tool.inputSchema = mock_schema
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool])
+        mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
 
         result = await get_tool_info_by_name("no_schema_props_tool")
+
+        # Verify list_tools was called
+        mock_mcp.list_tools.assert_called_once_with()
 
         assert "Tool: no_schema_props_tool" in result
         assert "Description: Tool without schema properties" in result
@@ -644,9 +677,12 @@ async def test_get_tool_info_by_name_no_schema_properties() -> None:
 async def test_list_tools_by_tags_empty_result() -> None:
     """Test list_tools_by_tags when no tools are returned."""
     with patch("datarobot_genai.drmcp.core.mcp_server_tools.mcp") as mock_mcp:
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
+        mock_mcp.list_tools = AsyncMock(return_value=[])
 
         result = await list_tools_by_tags()
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_once_with(tags=None, match_all=False)
 
         assert "No tools found." in result
 
@@ -690,22 +726,29 @@ async def test_list_tools_by_tags_complex_scenario() -> None:
         tool4.annotations.extra = {"tags": ["data", "model", "predict"]}
         tools.append(tool4)
 
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=tools)
+        mock_mcp.list_tools = AsyncMock(return_value=tools)
 
         # Test filtering by data tag (OR logic) - should return all tools with data tag
         result = await list_tools_by_tags(tags=["data"], match_all=False)
+
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_with(tags=["data"], match_all=False)
 
         assert "Tools with any of the tags: data" in result
         assert "read_data" in result
         assert "write_data" in result
         assert "predict_data" in result
-        # Note: train_model should not be included, but the mock returns all tools
-        # This test verifies the function works with the mock data
+
+        # Reset mock for next test
+        mock_mcp.list_tools.reset_mock()
+        mock_mcp.list_tools = AsyncMock(return_value=[tool4])
 
         # Test filtering by data AND model tags (AND logic) - should return only tools with
         # both tags
         result = await list_tools_by_tags(tags=["data", "model"], match_all=True)
 
+        # Verify list_tools was called with correct parameters
+        mock_mcp.list_tools.assert_called_with(tags=["data", "model"], match_all=True)
+
         assert "Tools with all of the tags: data, model" in result
-        # Note: In a real scenario, only predict_data would be returned
-        # But with the mock returning all tools, we just verify the function works
+        assert "predict_data" in result
