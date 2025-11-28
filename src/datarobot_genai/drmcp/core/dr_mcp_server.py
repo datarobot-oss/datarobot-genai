@@ -184,13 +184,17 @@ class DataRobotMCPServer:
             prompts = asyncio.run(self._mcp._list_prompts_mcp())
             resources = asyncio.run(self._mcp._list_resources_mcp())
 
-            self._logger.info(f"Registered tools: {len(tools)}")
+            tools_count = len(tools)
+            prompts_count = len(prompts)
+            resources_count = len(resources)
+
+            self._logger.info(f"Registered tools: {tools_count}")
             for tool in tools:
                 self._logger.info(f" > {tool.name}")
-            self._logger.info(f"Registered prompts: {len(prompts)}")
+            self._logger.info(f"Registered prompts: {prompts_count}")
             for prompt in prompts:
                 self._logger.info(f" > {prompt.name}")
-            self._logger.info(f"Registered resources: {len(resources)}")
+            self._logger.info(f"Registered resources: {resources_count}")
             for resource in resources:
                 self._logger.info(f" > {resource.name}")
 
@@ -209,6 +213,9 @@ class DataRobotMCPServer:
                         self._mcp,
                         self._mcp_transport,
                         port=self._config.mcp_server_port,
+                        tools_count=tools_count,
+                        prompts_count=prompts_count,
+                        resources_count=resources_count,
                     )
 
                 if self._mcp_transport == "stdio":
