@@ -299,10 +299,88 @@ async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_conte
             # THEN mcp_tools_context is called with correct parameters
             mock_mcp_context.assert_called_once_with(
                 authorization_context=authorization_context,
+                forwarded_headers={},
             )
 
             # THEN set_mcp_tools is called with the tools from context
             mock_set_mcp_tools.assert_called_once_with(mock_tools)
+
+
+async def test_invoke_passes_forwarded_headers_to_mcp_context(authorization_context):
+    """Test that invoke method passes forwarded headers to MCP context."""
+    # GIVEN a simple langgraph agent with forwarded headers
+    forwarded_headers = {
+        "x-datarobot-api-key": "scoped-token-123",
+    }
+    agent = SimpleLangGraphAgent(
+        authorization_context=authorization_context, forwarded_headers=forwarded_headers
+    )
+
+    # Mock the mcp_tools_context to return mock tools
+    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
+
+    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
+        # Configure the mock context manager
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_tools
+        mock_context_manager.__aexit__.return_value = None
+        mock_mcp_context.return_value = mock_context_manager
+
+        # WHEN invoking the agent
+        completion_create_params = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
+            "environment_var": True,
+        }
+
+        await agent.invoke(completion_create_params)
+
+        # THEN mcp_tools_context is called with forwarded headers
+        mock_mcp_context.assert_called_once_with(
+            authorization_context=authorization_context,
+            forwarded_headers=forwarded_headers,
+        )
+
+
+async def test_invoke_streaming_passes_forwarded_headers_to_mcp_context(authorization_context):
+    """Test that streaming invoke method passes forwarded headers to MCP context."""
+    # GIVEN a simple langgraph agent with forwarded headers
+    forwarded_headers = {"x-datarobot-api-key": "scoped-token-456"}
+    agent = SimpleLangGraphAgent(
+        authorization_context=authorization_context, forwarded_headers=forwarded_headers
+    )
+
+    # Mock the mcp_tools_context to return mock tools
+    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
+
+    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
+        # Configure the mock context manager
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_tools
+        mock_context_manager.__aexit__.return_value = None
+        mock_mcp_context.return_value = mock_context_manager
+
+        # WHEN invoking the agent with streaming
+        completion_create_params = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
+            "environment_var": True,
+            "stream": True,
+        }
+
+        streaming_response_iterator = await agent.invoke(completion_create_params)
+
+        # WHEN consuming the streaming generator
+        items_consumed = 0
+        async for _ in streaming_response_iterator:
+            items_consumed += 1
+            # THEN mcp_tools_context is called with forwarded headers
+            if items_consumed == 1:
+                mock_mcp_context.assert_called_once_with(
+                    authorization_context=authorization_context,
+                    forwarded_headers=forwarded_headers,
+                )
+                break
 
 
 async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorization_context):
@@ -344,6 +422,7 @@ async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorizat
                     # Verify mcp_tools_context is called with correct parameters
                     mock_mcp_context.assert_called_once_with(
                         authorization_context=authorization_context,
+                        forwarded_headers={},
                     )
                     # Verify context is entered and tools are set
                     mock_context_manager.__aenter__.assert_called_once()

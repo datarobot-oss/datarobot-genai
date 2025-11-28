@@ -90,3 +90,39 @@ class TestMCPToolsContext:
                 assert call_args["transport"] == "streamable-http"
                 assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
                 assert call_args["headers"]["X-DataRobot-Authorization-Context"] is not None
+
+    def test_mcp_tools_context_with_forwarded_headers(self, mock_adapter, agent_auth_context_data):
+        """Test context manager with forwarded headers including scoped token."""
+        mock_tools = [MagicMock()]
+        mock_adapter_instance = MagicMock()
+        mock_adapter_instance.__enter__.return_value = mock_tools
+        mock_adapter_instance.__exit__.return_value = None
+        mock_adapter.return_value = mock_adapter_instance
+
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://app.datarobot.com/api/v2"
+        api_key = "test-api-key"
+        secret_key = "my-secret-key"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-123",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+                "SESSION_SECRET_KEY": secret_key,
+            },
+            clear=True,
+        ):
+            with mcp_tools_context(
+                authorization_context=agent_auth_context_data, forwarded_headers=forwarded_headers
+            ) as tools:
+                assert tools == mock_tools
+                mock_adapter.assert_called_once()
+                # Check that forwarded headers are included in the server config
+                call_args = mock_adapter.call_args[0][0]
+                assert call_args["headers"]["x-datarobot-api-key"] == "scoped-token-123"
+                assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"

@@ -139,6 +139,11 @@ def chat_entrypoint(
     completion_create_params["authorization_context"] = resolve_authorization_context(
         completion_create_params, **kwargs
     )
+    # Keep only allowed headers from the forwarded_headers.
+    incoming_headers = kwargs.get("headers", {}) or {}
+    allowed_headers = {"x-datarobot-api-token", "x-datarobot-api-key"}
+    forwarded_headers = {k: v for k, v in incoming_headers.items() if k.lower() in allowed_headers}
+    completion_create_params["forwarded_headers"] = forwarded_headers
 
     # Instantiate user agent with all supplied completion params including auth context
     agent = agent_cls(**completion_create_params)

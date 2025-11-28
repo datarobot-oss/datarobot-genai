@@ -30,18 +30,23 @@ from datarobot_genai.core.mcp.common import MCPConfig
 
 async def load_mcp_tools(
     authorization_context: dict[str, Any] | None = None,
+    forwarded_headers: dict[str, str] | None = None,
 ) -> list[Any]:
     """
     Asynchronously load MCP tools for LlamaIndex.
 
     Args:
         authorization_context: Optional authorization context for MCP connections
+        forwarded_headers: Optional forwarded headers, e.g. x-datarobot-api-key for MCP auth
 
     Returns
     -------
         List of MCP tools, or empty list if no MCP configuration is present.
     """
-    config = MCPConfig(authorization_context=authorization_context)
+    config = MCPConfig(
+        authorization_context=authorization_context,
+        forwarded_headers=forwarded_headers,
+    )
     server_params = config.server_config
 
     if not server_params:

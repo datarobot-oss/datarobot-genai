@@ -28,6 +28,7 @@ from datarobot_genai.core.mcp.common import MCPConfig
 @asynccontextmanager
 async def mcp_tools_context(
     authorization_context: dict[str, Any] | None = None,
+    forwarded_headers: dict[str, str] | None = None,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """Yield a list of LangChain BaseTool instances loaded via MCP.
 
@@ -37,8 +38,13 @@ async def mcp_tools_context(
     ----------
     authorization_context : dict[str, Any] | None
         Authorization context to use for MCP connections
+    forwarded_headers : dict[str, str] | None
+        Forwarded headers, e.g. x-datarobot-api-key to use for MCP authentication
     """
-    mcp_config = MCPConfig(authorization_context=authorization_context)
+    mcp_config = MCPConfig(
+        authorization_context=authorization_context,
+        forwarded_headers=forwarded_headers,
+    )
     server_config = mcp_config.server_config
 
     if not server_config:

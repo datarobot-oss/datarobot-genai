@@ -52,6 +52,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         verbose: bool | str | None = True,
         timeout: int | None = 90,
         authorization_context: dict[str, Any] | None = None,
+        forwarded_headers: dict[str, str] | None = None,
         **_: Any,
     ) -> None:
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
@@ -68,6 +69,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
             self.verbose = bool(verbose)
         self._mcp_tools: list[TTool] = []
         self._authorization_context = authorization_context or {}
+        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
 
     def set_mcp_tools(self, tools: list[TTool]) -> None:
         self._mcp_tools = tools
@@ -85,6 +87,11 @@ class BaseAgent(Generic[TTool], abc.ABC):
     def authorization_context(self) -> dict[str, Any]:
         """Return the authorization context for this agent."""
         return self._authorization_context
+
+    @property
+    def forwarded_headers(self) -> dict[str, str]:
+        """Return the forwarded headers for this agent."""
+        return self._forwarded_headers
 
     def litellm_api_base(self, deployment_id: str | None) -> str:
         return get_api_base(self.api_base, deployment_id)
