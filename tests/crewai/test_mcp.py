@@ -105,7 +105,6 @@ class TestMCPToolsContext:
         secret_key = "my-secret-key"
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-123",
-            "x-custom-header": "custom-value",
         }
 
         with patch.dict(
@@ -126,5 +125,4 @@ class TestMCPToolsContext:
                 # Check that forwarded headers are included in the server config
                 call_args = mock_adapter.call_args[0][0]
                 assert call_args["headers"]["x-datarobot-api-key"] == "scoped-token-123"
-                assert call_args["headers"]["x-custom-header"] == "custom-value"
                 assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"

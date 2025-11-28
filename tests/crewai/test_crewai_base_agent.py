@@ -176,7 +176,6 @@ async def test_crewai_agent_passes_forwarded_headers_to_mcp(
 
     forwarded_headers = {
         "x-datarobot-api-key": "scoped-token-123",
-        "x-custom-header": "custom-value",
     }
     agent = _TestAgent(api_key="k", api_base="https://x", forwarded_headers=forwarded_headers)
 

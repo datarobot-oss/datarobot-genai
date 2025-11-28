@@ -281,7 +281,6 @@ class TestLoadMCPTools:
         api_key = "test-api-key"
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-123",
-            "x-custom-header": "custom-value",
         }
 
         with patch.dict(
@@ -300,5 +299,4 @@ class TestLoadMCPTools:
             call_args = mock_aget.await_args
             client_headers = call_args[1]["client"].headers
             assert client_headers["x-datarobot-api-key"] == "scoped-token-123"
-            assert client_headers["x-custom-header"] == "custom-value"
             assert client_headers["Authorization"] == f"Bearer {api_key}"

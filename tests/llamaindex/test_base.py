@@ -152,7 +152,6 @@ async def test_llama_index_agent_passes_forwarded_headers_to_mcp(monkeypatch: An
 
     forwarded_headers = {
         "x-datarobot-api-key": "scoped-token-123",
-        "x-custom-header": "custom-value",
     }
 
     workflow = Workflow(events=[], state="S")

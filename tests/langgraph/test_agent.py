@@ -311,7 +311,6 @@ async def test_invoke_passes_forwarded_headers_to_mcp_context(authorization_cont
     # GIVEN a simple langgraph agent with forwarded headers
     forwarded_headers = {
         "x-datarobot-api-key": "scoped-token-123",
-        "x-custom-header": "custom-value",
     }
     agent = SimpleLangGraphAgent(
         authorization_context=authorization_context, forwarded_headers=forwarded_headers

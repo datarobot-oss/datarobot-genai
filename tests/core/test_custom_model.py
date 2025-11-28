@@ -101,8 +101,8 @@ def test_chat_entrypoint_streaming() -> None:
             pass
 
 
-def test_chat_entrypoint_filters_protected_headers() -> None:
-    """Test that protected headers are filtered from forwarded_headers."""
+def test_chat_entrypoint_keeps_allowed_headers() -> None:
+    """Test that allowed headers are kept in forwarded_headers."""
     pool, loop = load_model()
     captured_params: dict[str, Any] = {}
 
@@ -115,8 +115,9 @@ def test_chat_entrypoint_filters_protected_headers() -> None:
 
     try:
         headers = {
-            "x-datarobot-api-key": "scoped-token-123",
-            "x-custom-header": "custom-value",
+            "x-datarobot-api-key": "scoped-token-123",  # Should be kept
+            "x-datarobot-api-token": "scoped-token-456",  # Should be kept
+            "x-custom-header": "custom-value",  # Should be filtered
             "Authorization": "Bearer user-provided-token",  # Should be filtered
             "authorization": "Bearer another-token",  # Should be filtered
             "X-DataRobot-Authorization-Context": "fake-jwt-token",  # Should be filtered
@@ -133,17 +134,59 @@ def test_chat_entrypoint_filters_protected_headers() -> None:
         )
         assert isinstance(resp, CustomModelChatResponse)
 
-        # Verify forwarded_headers were filtered
+        # Verify only allowed headers are kept in forwarded_headers
         forwarded_headers = captured_params.get("forwarded_headers", {})
         assert "x-datarobot-api-key" in forwarded_headers
         assert forwarded_headers["x-datarobot-api-key"] == "scoped-token-123"
-        assert "x-custom-header" in forwarded_headers
-        assert forwarded_headers["x-custom-header"] == "custom-value"
-        # Verify protected headers were filtered out
+        assert "x-datarobot-api-token" in forwarded_headers
+        assert forwarded_headers["x-datarobot-api-token"] == "scoped-token-456"
+        # Verify other headers are filtered out
+        assert "x-custom-header" not in forwarded_headers
         assert "Authorization" not in forwarded_headers
         assert "authorization" not in forwarded_headers
         assert "X-DataRobot-Authorization-Context" not in forwarded_headers
         assert "x-datarobot-authorization-context" not in forwarded_headers
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except Exception:
+            pass
+
+
+def test_chat_entrypoint_only_allows_specific_headers() -> None:
+    """Test that only x-datarobot-api-key and x-datarobot-api-token are allowed."""
+    pool, loop = load_model()
+    captured_params: dict[str, Any] = {}
+
+    class _CapturingAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_params.update(kwargs)
+
+        async def invoke(self, completion_create_params: Any) -> tuple[str, None, dict[str, int]]:
+            return ("ok", None, {})
+
+    try:
+        headers = {
+            "x-datarobot-api-key": "scoped-token-123",
+            "x-datarobot-api-token": "scoped-token-456",
+        }
+
+        resp = chat_entrypoint(
+            _CapturingAgent,
+            _minimal_params(),
+            (pool, loop),
+            work_dir=".",
+            runtime_parameter_keys=[],
+            headers=headers,
+        )
+        assert isinstance(resp, CustomModelChatResponse)
+
+        # Verify both allowed headers are present
+        forwarded_headers = captured_params.get("forwarded_headers", {})
+        assert len(forwarded_headers) == 2
+        assert forwarded_headers["x-datarobot-api-key"] == "scoped-token-123"
+        assert forwarded_headers["x-datarobot-api-token"] == "scoped-token-456"
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
         try:
