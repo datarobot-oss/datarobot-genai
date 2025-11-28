@@ -661,7 +661,7 @@ wheels = [
 
 [[package]]
 name = "chromadb"
-version = "1.1.1"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bcrypt" },
@@ -693,13 +693,13 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7f/48/11851dddeadad6abe36ee071fedc99b5bdd2c324df3afa8cb952ae02798b/chromadb-1.1.1.tar.gz", hash = "sha256:ebfce0122753e306a76f1e291d4ddaebe5f01b5979b97ae0bc80b1d4024ff223", size = 1338109, upload-time = "2025-10-05T02:49:14.834Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/b0/28fbd8985412ea903b0c43a0a50d2b49598242cadc38cac787637ed00973/chromadb-1.3.0.tar.gz", hash = "sha256:9fa223504e07477d019e7efd9e121ead89f9a177940bffabd31d5e473e4afafc", size = 1904155, upload-time = "2025-10-29T03:07:16.642Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/59/0d881a9b7eb63d8d2446cf67fcbb53fb8ae34991759d2b6024a067e90a9a/chromadb-1.1.1-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:27fe0e25ef0f83fb09c30355ab084fe6f246808a7ea29e8c19e85cf45785b90d", size = 19175479, upload-time = "2025-10-05T02:49:12.525Z" },
-    { url = "https://files.pythonhosted.org/packages/94/4f/5a9fa317c84c98e70af48f74b00aa25589626c03a0428b4381b2095f3d73/chromadb-1.1.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:95aed58869683f12e7dcbf68b039fe5f576dbe9d1b86b8f4d014c9d077ccafd2", size = 18267188, upload-time = "2025-10-05T02:49:09.236Z" },
-    { url = "https://files.pythonhosted.org/packages/45/1a/02defe2f1c8d1daedb084bbe85f5b6083510a3ba192ed57797a3649a4310/chromadb-1.1.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:06776dad41389a00e7d63d936c3a15c179d502becaf99f75745ee11b062c9b6a", size = 18855754, upload-time = "2025-10-05T02:49:03.299Z" },
-    { url = "https://files.pythonhosted.org/packages/5a/0d/80be82717e5dc19839af24558494811b6f2af2b261a8f21c51b872193b09/chromadb-1.1.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bba0096a7f5e975875ead23a91c0d41d977fbd3767f60d3305a011b0ace7afd3", size = 19893681, upload-time = "2025-10-05T02:49:06.481Z" },
-    { url = "https://files.pythonhosted.org/packages/2d/6e/956e62975305a4e31daf6114a73b3b0683a8f36f8d70b20aabd466770edb/chromadb-1.1.1-cp39-abi3-win_amd64.whl", hash = "sha256:a77aa026a73a18181fd89bbbdb86191c9a82fd42aa0b549ff18d8cae56394c8b", size = 19844042, upload-time = "2025-10-05T02:49:16.925Z" },
+    { url = "https://files.pythonhosted.org/packages/80/bf/274f0922e72a3fc9180278e10b2d80763e35139d0b16b11c5f271cc0479c/chromadb-1.3.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:7996c5f389b5b63cbfec55dcd5982bddb8ceff6bb1de35cdf8daf7bff9a3ce3f", size = 20063503, upload-time = "2025-10-29T03:07:13.863Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/e4/4f4613f426ce1e4a96c2586478a67c91923f093e926560b3181ad51e80b7/chromadb-1.3.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:a6d301c9ef3e3ac52dccbfd544589142f5a2c6b746d035ac9b7c59440c6835ce", size = 19152851, upload-time = "2025-10-29T03:07:10.874Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/49/842e7bc60bd81e8fdec239999c4c05eece8fac283253c2feaca378571356/chromadb-1.3.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3199ccd8730560baa7b25a33993d2a3acb8791d5c935f98873f4cfcc2e2ac85b", size = 19717704, upload-time = "2025-10-29T03:07:05.268Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/e1/ca0e8fc1146718e41b5afb27dfdf9cc999900b5890814ffb3940a108030b/chromadb-1.3.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:720ec8e4edcd6fba56a7743569b46ed4ceaeb2050fc0000b674f17033d746ed4", size = 20828998, upload-time = "2025-10-29T03:07:08.074Z" },
+    { url = "https://files.pythonhosted.org/packages/14/8e/1d52110b7f33d42b0d655f3ef2d6a4f6a10fe8229f0a4728a37e8e055eb8/chromadb-1.3.0-cp39-abi3-win_amd64.whl", hash = "sha256:b153b8d3293fe182f5937309f70ad9cd3c5c45171464cf6c9dbb2d70b7f0d4ba", size = 20802636, upload-time = "2025-10-29T03:07:18.741Z" },
 ]
 
 [[package]]
@@ -821,17 +821,19 @@ toml = [
 
 [[package]]
 name = "crewai"
-version = "1.6.1"
+version = "0.193.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "appdirs" },
+    { name = "blinker" },
     { name = "chromadb" },
     { name = "click" },
     { name = "instructor" },
     { name = "json-repair" },
     { name = "json5" },
     { name = "jsonref" },
-    { name = "mcp" },
+    { name = "litellm" },
+    { name = "onnxruntime" },
     { name = "openai" },
     { name = "openpyxl" },
     { name = "opentelemetry-api" },
@@ -840,17 +842,17 @@ dependencies = [
     { name = "pdfplumber" },
     { name = "portalocker" },
     { name = "pydantic" },
-    { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
+    { name = "pyvis" },
     { name = "regex" },
     { name = "tokenizers" },
     { name = "tomli" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1e/c4/37f5e8e0ccb2804a3e2acc0ccf58f82dc9415a08fad71a3868cdf830c669/crewai-1.6.1.tar.gz", hash = "sha256:b7d73a8a333abf71b30ab20c54086004cd0c016dfd86bba9c035ad5eb31e22a7", size = 4177912, upload-time = "2025-11-29T01:58:25.573Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/ac/329d62f5abfb24ffb096c041469ba24190feca1d5651084d5c332939b33f/crewai-0.193.2.tar.gz", hash = "sha256:239f1d299bbf493e76778434f6476604b585e1f228e2c75d39983a39a1522275", size = 6563484, upload-time = "2025-09-20T21:09:16.553Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/87/8ab9924b79025165ed7f1b04a90f9b80137d18ceae9b8e34445a8495320c/crewai-1.6.1-py3-none-any.whl", hash = "sha256:8cec403ab89183bda28b830c722b6bc22457a2151a6aa46f07730e6fe7ab2723", size = 642861, upload-time = "2025-11-29T01:58:23.232Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/81/699782ddfe3c18f6954355f4ec53d73d9c88a88bc5433f590163549a0fbf/crewai-0.193.2-py3-none-any.whl", hash = "sha256:cad4d6a5f32e902a390ca3fc84698839e7720c1ae7acdba002da9a18405a01c8", size = 431559, upload-time = "2025-09-20T21:09:08.676Z" },
 ]
 
 [[package]]
@@ -1040,7 +1042,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.1.75"
+version = "0.1.67"
 source = { editable = "." }
 dependencies = [
     { name = "datarobot" },
@@ -1098,9 +1100,9 @@ llamaindex = [
     { name = "pypdf" },
 ]
 nat = [
-    { name = "crewai", marker = "python_full_version >= '3.11'" },
     { name = "llama-index-llms-litellm" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11'" },
+    { name = "nvidia-nat-crewai", marker = "python_full_version >= '3.11'" },
     { name = "nvidia-nat-langchain", marker = "python_full_version >= '3.11'" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11'" },
     { name = "opentelemetry-instrumentation-crewai" },
@@ -1131,8 +1133,7 @@ requires-dist = [
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
     { name = "aiosignal", marker = "extra == 'drmcp'", specifier = ">=1.3.1,<2.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
-    { name = "crewai", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = ">=1.1.0" },
-    { name = "crewai", marker = "extra == 'crewai'", specifier = ">=1.1.0" },
+    { name = "crewai", marker = "extra == 'crewai'", specifier = ">=0.193.2,<1.0.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
     { name = "datarobot", specifier = ">=3.9.1,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
@@ -1152,6 +1153,7 @@ requires-dist = [
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
     { name = "logfire", marker = "extra == 'pydanticai'", specifier = ">=4.6.0,<5.0.0" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0" },
+    { name = "nvidia-nat-crewai", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0" },
     { name = "nvidia-nat-langchain", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.3.0" },
     { name = "openai", specifier = ">=1.76.2,<2.0.0" },
@@ -2472,6 +2474,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6d/86/08646239a313f895186ff0a4573452038eed8c86f54380b3ebac34d32fb2/jsonpath-ng-1.7.0.tar.gz", hash = "sha256:f6f5f7fd4e5ff79c785f1573b394043b39849fb2bb47bcead935d12b00beab3c", size = 37838, upload-time = "2024-10-11T15:41:42.404Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/35/5a/73ecb3d82f8615f32ccdadeb9356726d6cae3a4bbc840b437ceb95708063/jsonpath_ng-1.7.0-py3-none-any.whl", hash = "sha256:f3d7f9e848cba1b6da28c55b1c26ff915dc9e0b1ba7e752a53d6da8d5cbd00b6", size = 30105, upload-time = "2024-11-20T17:58:30.418Z" },
+]
+
+[[package]]
+name = "jsonpickle"
+version = "4.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/a6/d07afcfdef402900229bcca795f80506b207af13a838d4d99ad45abf530c/jsonpickle-4.1.1.tar.gz", hash = "sha256:f86e18f13e2b96c1c1eede0b7b90095bbb61d99fedc14813c44dc2f361dbbae1", size = 316885, upload-time = "2025-06-02T20:36:11.57Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/73/04df8a6fa66d43a9fd45c30f283cc4afff17da671886e451d52af60bdc7e/jsonpickle-4.1.1-py3-none-any.whl", hash = "sha256:bb141da6057898aa2438ff268362b126826c812a1721e31cf08a6e142910dc91", size = 47125, upload-time = "2025-06-02T20:36:08.647Z" },
 ]
 
 [[package]]
@@ -3888,6 +3899,23 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/b1/27596c61c21f4f51d3691b203a55cee1319211e6dcba7f964190e5479638/nvidia_nat-1.3.0-py3-none-any.whl", hash = "sha256:2e2499c204f2f91f4c6342f7fa5aa6b7934c0e7af58eed49933d32763cf841be", size = 828076, upload-time = "2025-10-24T22:11:45.636Z" },
+]
+
+[package.optional-dependencies]
+litellm = [
+    { name = "litellm", marker = "python_full_version >= '3.11'" },
+]
+
+[[package]]
+name = "nvidia-nat-crewai"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "crewai", marker = "python_full_version >= '3.11'" },
+    { name = "nvidia-nat", extra = ["litellm"], marker = "python_full_version >= '3.11'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/7d/20892c64f2f6b7fae257a7361fe38f509d25ea8c3592365f9ddf15f6279e/nvidia_nat_crewai-1.3.0-py3-none-any.whl", hash = "sha256:bd4a935ce36c4bb224cd96994fb4efa8288eb12d22e2268257e5abc5472269c9", size = 54418, upload-time = "2025-10-24T22:08:13.397Z" },
 ]
 
 [[package]]
@@ -5459,6 +5487,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f8/bf/abbd3cdfb8fbc7fb3d4d38d320f2441b1e7cbe29be4f23797b4a2b5d8aac/pytz-2025.2.tar.gz", hash = "sha256:360b9e3dbb49a209c21ad61809c7fb453643e048b38924c765813546746e81c3", size = 320884, upload-time = "2025-03-25T02:25:00.538Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/c4/34e93fe5f5429d7570ec1fa436f1986fb1f00c3e0f43a589fe2bbcd22c3f/pytz-2025.2-py2.py3-none-any.whl", hash = "sha256:5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00", size = 509225, upload-time = "2025-03-25T02:24:58.468Z" },
+]
+
+[[package]]
+name = "pyvis"
+version = "0.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ipython", version = "8.37.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "jinja2" },
+    { name = "jsonpickle" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "networkx", version = "3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/4b/e37e4e5d5ee1179694917b445768bdbfb084f5a59ecd38089d3413d4c70f/pyvis-0.3.2-py3-none-any.whl", hash = "sha256:5720c4ca8161dc5d9ab352015723abb7a8bb8fb443edeb07f7a322db34a97555", size = 756038, upload-time = "2023-02-24T20:29:46.758Z" },
 ]
 
 [[package]]

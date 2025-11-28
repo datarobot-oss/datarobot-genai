@@ -22,6 +22,7 @@ from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
+from fastmcp.server.dependencies import get_context
 from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
 from fastmcp.utilities.types import NotSet
@@ -90,6 +91,34 @@ class TaggedFastMCP(FastMCP):
         super().__init__(*args, **kwargs)
         self._deployments_map: dict[str, str] = {}
         self._prompts_map: dict[str, tuple[str, str]] = {}
+
+    async def notify_prompts_changed(self) -> None:
+        """
+        Notify connected clients that the prompt list has changed.
+
+        This method attempts to send a prompts/list_changed notification to inform
+        clients that they should refresh their prompt list.
+
+        Note: In stateless HTTP mode (default for this server), notifications may not
+        reach clients since each request is independent. This method still logs the
+        change for auditing purposes and will work if the server is configured for
+        stateful connections.
+
+        See: https://github.com/modelcontextprotocol/python-sdk/issues/710
+        """
+        logger.info("Prompt list changed - attempting to notify connected clients")
+
+        # Try to use FastMCP's built-in notification mechanism if in an MCP context
+        try:
+            context = get_context()
+            context._queue_prompt_list_changed()
+            logger.debug("Queued prompts_changed notification via MCP context")
+        except RuntimeError:
+            # No active MCP context - this is expected when called from REST API
+            logger.debug(
+                "No active MCP context for notification. "
+                "In stateless mode, clients will see changes on next request."
+            )
 
     @overload
     def tool(
@@ -308,7 +337,7 @@ class TaggedFastMCP(FastMCP):
                     f"skipping removal."
                 )
             else:
-                prompts_d = await mcp.get_prompts()
+                prompts_d = await self.get_prompts()
                 for prompt in prompts_d.values():
                     if (
                         prompt.meta is not None
@@ -319,6 +348,9 @@ class TaggedFastMCP(FastMCP):
                         prompt.disable()
 
                 self._prompts_map.pop(prompt_template_id, None)
+
+                # Notify clients that the prompt list has changed
+                await self.notify_prompts_changed()
         else:
             logger.debug(
                 f"Do not found prompt template with id = {prompt_template_id} in registry, "
@@ -538,5 +570,8 @@ async def register_prompt(
     if not any(prompt.name == prompt_name_no_duplicate for prompt in prompts.values()):
         raise RuntimeError(f"Prompt {prompt_name_no_duplicate} was not registered successfully")
     logger.info(f"Registered prompts: {len(prompts)}")
+
+    # Notify clients that the prompt list has changed
+    await mcp.notify_prompts_changed()
 
     return registered_prompt
