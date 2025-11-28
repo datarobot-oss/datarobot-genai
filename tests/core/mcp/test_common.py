@@ -797,3 +797,264 @@ class TestMCPConfig:
             assert headers["Authorization"] == f"Bearer {api_key}"
             # Verify forwarded headers that are not authorization are included
             assert headers["x-datarobot-api-key"] == "scoped-token-789"
+
+    def test_mcp_config_external_url_with_localhost_forwards_headers(self):
+        """Test that forwarded headers are included for localhost external MCP URLs."""
+        test_url = "http://localhost:8080/mcp"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-123",
+            "x-custom-header": "custom-value",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify forwarded headers are included for localhost
+            assert headers["x-datarobot-api-key"] == "scoped-token-123"
+            assert headers["x-custom-header"] == "custom-value"
+
+    def test_mcp_config_external_url_with_127_0_0_1_forwards_headers(self):
+        """Test that forwarded headers are included for 127.0.0.1 external MCP URLs."""
+        test_url = "http://127.0.0.1:8080/mcp"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-456",
+            "x-test-header": "test-value",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify forwarded headers are included for 127.0.0.1
+            assert headers["x-datarobot-api-key"] == "scoped-token-456"
+            assert headers["x-test-header"] == "test-value"
+
+    def test_mcp_config_external_url_non_localhost_no_forwarded_headers(self):
+        """Test that forwarded headers are NOT included for non-localhost external MCP URLs."""
+        test_url = "https://external-mcp.example.com/mcp"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-789",
+            "x-custom-header": "should-not-appear",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify forwarded headers are NOT included for non-localhost
+            assert "x-datarobot-api-key" not in headers
+            assert "x-custom-header" not in headers
+            assert headers == {}
+
+    def test_mcp_config_external_url_localhost_with_external_headers_merge(self):
+        """Test that forwarded headers and external headers are merged for localhost."""
+        test_url = "http://localhost:8080/mcp"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-123",
+            "x-forwarded-header": "forwarded-value",
+        }
+        external_headers = {
+            "X-Custom-Header": "external-value",
+            "X-Another-Header": "another-value",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_HEADERS": json.dumps(external_headers),
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify both forwarded and external headers are present
+            assert headers["x-datarobot-api-key"] == "scoped-token-123"
+            assert headers["x-forwarded-header"] == "forwarded-value"
+            assert headers["X-Custom-Header"] == "external-value"
+            assert headers["X-Another-Header"] == "another-value"
+
+    def test_mcp_config_external_url_localhost_external_headers_override_forwarded(self):
+        """Test that external headers override forwarded headers when both present."""
+        test_url = "http://localhost:8080/mcp"
+        forwarded_headers = {
+            "x-datarobot-api-key": "forwarded-token",
+            "X-Custom-Header": "forwarded-value",
+        }
+        external_headers = {
+            "X-Custom-Header": "external-value",  # Should override forwarded
+            "X-Another-Header": "another-value",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_HEADERS": json.dumps(external_headers),
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify forwarded header is present
+            assert headers["x-datarobot-api-key"] == "forwarded-token"
+            # Verify external header overrides forwarded header
+            assert headers["X-Custom-Header"] == "external-value"
+            assert headers["X-Another-Header"] == "another-value"
+
+    def test_mcp_config_external_url_with_external_headers_only(self):
+        """Test external MCP URL with only external headers (no forwarded headers)."""
+        test_url = "https://mcp-server.example.com/mcp"
+        external_headers = {
+            "X-Custom-Header": "custom-value",
+            "X-Auth-Token": "auth-token-123",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_HEADERS": json.dumps(external_headers),
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify external headers are present
+            assert headers["X-Custom-Header"] == "custom-value"
+            assert headers["X-Auth-Token"] == "auth-token-123"
+
+    def test_mcp_config_external_url_localhost_no_forwarded_headers(self):
+        """Test localhost external MCP URL without forwarded headers."""
+        test_url = "http://localhost:8080/mcp"
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify headers are empty when no forwarded headers provided
+            assert headers == {}
+
+    def test_mcp_config_external_url_127_0_0_1_with_external_headers(self):
+        """Test 127.0.0.1 external MCP URL with both forwarded and external headers."""
+        test_url = "http://127.0.0.1:3000/mcp"
+        forwarded_headers = {"x-forwarded": "value"}
+        external_headers = {"X-External": "external-value"}
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+                "EXTERNAL_MCP_HEADERS": json.dumps(external_headers),
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify both are present
+            assert headers["x-forwarded"] == "value"
+            assert headers["X-External"] == "external-value"
+
+    def test_mcp_config_external_url_localhost_in_domain(self):
+        """Test that localhost detection works when localhost appears in domain name."""
+        test_url = "https://mylocalhost.example.com/mcp"
+        forwarded_headers = {"x-forwarded": "value"}
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Should NOT forward headers (localhost is in domain, not hostname)
+            assert "x-forwarded" not in headers
+
+    def test_mcp_config_external_url_127_0_0_1_in_path(self):
+        """Test that 127.0.0.1 detection works correctly (not in path)."""
+        test_url = "https://example.com/127.0.0.1/mcp"
+        forwarded_headers = {"x-forwarded": "value"}
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": test_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Should NOT forward headers (127.0.0.1 is in path, not hostname)
+            assert "x-forwarded" not in headers
+
+    def test_mcp_config_deployment_id_with_forwarded_headers(self):
+        """Test that forwarded headers are included for DataRobot deployment ID config."""
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://app.datarobot.com/api/v2"
+        api_key = "test-api-key"
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-999",
+            "x-custom-header": "custom-value",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            assert config.server_config is not None
+            headers = config.server_config["headers"]
+
+            # Verify forwarded headers are included
+            assert headers["x-datarobot-api-key"] == "scoped-token-999"
+            assert headers["x-custom-header"] == "custom-value"
+            # Verify auth headers are also present
+            assert headers["Authorization"] == f"Bearer {api_key}"
