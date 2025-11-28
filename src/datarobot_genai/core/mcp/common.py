@@ -167,7 +167,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
             # Start with forwarded headers if available
-            headers: dict[str, str] = {}
+            headers = {}
             if self.forwarded_headers:
                 headers.update(self.forwarded_headers)
 
