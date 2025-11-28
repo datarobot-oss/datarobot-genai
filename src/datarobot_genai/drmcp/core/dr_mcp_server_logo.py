@@ -54,6 +54,9 @@ def log_server_custom_banner(
     host: str | None = None,
     port: int | None = None,
     path: str | None = None,
+    tools_count: int | None = None,
+    prompts_count: int | None = None,
+    resources_count: int | None = None,
 ) -> None:
     """
     Create and log a formatted banner with server information and logo.
@@ -64,13 +67,20 @@ def log_server_custom_banner(
         host: Host address (for HTTP transports)
         port: Port number (for HTTP transports)
         path: Server path (for HTTP transports)
+        tools_count: Number of tools registered
+        prompts_count: Number of prompts registered
+        resources_count: Number of resources registered
     """
     # Create the logo text
     # Use Text with no_wrap and markup disabled to preserve ANSI escape codes
     logo_text = Text.from_ansi(DR_LOGO_ASCII, no_wrap=True)
 
     # Create the main title
-    title_text = Text(f"DataRobot MCP Server {datarobot_genai_version}", style="bold green")
+    title_text = Text(f"DataRobot MCP Server {datarobot_genai_version}", style="dim green")
+    stats_text = Text(
+        f"{tools_count} tools, {prompts_count} prompts, {resources_count} resources",
+        style="bold green",
+    )
 
     # Create the information table
     info_table = Table.grid(padding=(0, 1))
@@ -107,6 +117,7 @@ def log_server_custom_banner(
         Align.center(logo_text),
         "",
         Align.center(title_text),
+        Align.center(stats_text),
         "",
         "",
         Align.center(info_table),
