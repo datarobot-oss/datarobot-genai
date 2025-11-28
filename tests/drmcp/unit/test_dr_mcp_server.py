@@ -30,6 +30,10 @@ def mock_mcp() -> MagicMock:
     mock._list_tools_mcp = AsyncMock(
         return_value=[MagicMock(name="tool1"), MagicMock(name="tool2")]
     )
+    # Mock low-level server for _configure_mcp_capabilities()
+    mock._mcp_server = MagicMock()
+    mock._mcp_server.notification_options = MagicMock()
+    mock._mcp_server.create_initialization_options = MagicMock()
     return mock
 
 
