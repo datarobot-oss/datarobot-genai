@@ -74,6 +74,7 @@ class TestDrLib:
                 return_value=[
                     {
                         "id": "89086ea4b65d70489c5b198d",
+                        "promptTemplateId": prompt_template_id,
                         "version": 2,
                         "promptText": "Text with {{variable}}.",
                         "variables": [{"name": "variable", "description": "Dummy variable"}],
@@ -81,17 +82,19 @@ class TestDrLib:
                 ]
             )
 
-            prompt_template_versions = get_datarobot_prompt_template_versions(prompt_template_id)
+            prompt_template_versions = get_datarobot_prompt_template_versions([prompt_template_id])
 
-        assert len(prompt_template_versions) == 1
-        assert prompt_template_versions == [
-            DrPromptVersion(
-                id="89086ea4b65d70489c5b198d",
-                version=2,
-                prompt_text="Text with {{variable}}.",
-                variables=[DrVariable(name="variable", description="Dummy variable")],
-            ),
-        ]
+        assert prompt_template_versions == {
+            prompt_template_id: [
+                DrPromptVersion(
+                    id="89086ea4b65d70489c5b198d",
+                    prompt_template_id=prompt_template_id,
+                    version=2,
+                    prompt_text="Text with {{variable}}.",
+                    variables=[DrVariable(name="variable", description="Dummy variable")],
+                ),
+            ]
+        }
 
     @pytest.mark.asyncio
     async def test_get_latest_prompt_template_version(self) -> None:
@@ -110,6 +113,7 @@ class TestDrLib:
                 return_value=[
                     {
                         "id": "89086ea4b65d70489c5b198d",
+                        "promptTemplateId": prompt_template.id,
                         "version": 2,
                         "promptText": "Text with {{variable}}.",
                         "variables": [{"name": "variable", "description": "Dummy variable"}],
@@ -121,6 +125,7 @@ class TestDrLib:
 
         assert latest_prompt_template_version == DrPromptVersion(
             id="89086ea4b65d70489c5b198d",
+            prompt_template_id=prompt_template.id,
             version=2,
             prompt_text="Text with {{variable}}.",
             variables=[DrVariable(name="variable", description="Dummy variable")],
@@ -176,6 +181,7 @@ class TestDrLib:
         prompt_template_version_get_mock = Mock()
         prompt_template_version_get_mock.json.return_value = {
             "id": "89086ea4b65d70489c5b198d",
+            "promptTemplateId": "69086ea4b65d70489c5b198d",
             "version": 2,
             "promptText": "Text with {{variable}}.",
             "variables": [{"name": "variable", "description": "Dummy variable"}],
@@ -195,6 +201,7 @@ class TestDrLib:
 
         assert prompt_template_version == DrPromptVersion(
             id="89086ea4b65d70489c5b198d",
+            prompt_template_id="69086ea4b65d70489c5b198d",
             version=2,
             prompt_text="Text with {{variable}}.",
             variables=[DrVariable(name="variable", description="Dummy variable")],

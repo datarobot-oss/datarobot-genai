@@ -27,6 +27,7 @@ from datarobot_genai.drmcp.core.mcp_instance import register_prompt
 from .dr_lib import DrPrompt
 from .dr_lib import DrPromptVersion
 from .dr_lib import DrVariable
+from .dr_lib import get_datarobot_prompt_template_versions
 from .dr_lib import get_datarobot_prompt_templates
 
 logger = logging.getLogger(__name__)
@@ -36,11 +37,21 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
     """Register prompts from DataRobot Prompt Management."""
     prompts = get_datarobot_prompt_templates()
     logger.info(f"Found {len(prompts)} prompts in Prompts Management.")
+    all_prompts_versions = get_datarobot_prompt_template_versions(
+        prompt_template_ids=list({prompt.id for prompt in prompts})
+    )
 
     # Try to register each prompt, continue on failure
     for prompt in prompts:
+        prompt_versions = all_prompts_versions.get(prompt.id)
+        if not prompt_versions:
+            logger.warning(f"Prompt template id {prompt.id} has no versions.")
+            continue
+
+        latest_version = max(prompt_versions, key=lambda v: v.version)
+
         try:
-            await register_prompt_from_datarobot_prompt_management(prompt)
+            await register_prompt_from_datarobot_prompt_management(prompt, latest_version)
         except DynamicPromptRegistrationError:
             pass
 
@@ -114,14 +125,35 @@ async def register_prompt_from_datarobot_prompt_management(
         ) from exc
 
 
+def _escape_non_ascii(s: str) -> str:
+    out = []
+    for ch in s:
+        # If its space -> change to underscore
+        if ch.isspace():
+            out.append("_")
+        # ASCII letter, digit or underscore -> keep
+        elif ch.isascii() and (ch.isalnum() or ch == "_"):
+            out.append(ch)
+        # Everything else -> encode as 'xHEX'
+        else:
+            out.append(f"x{ord(ch):x}")
+    return "".join(out)
+
+
 def to_valid_mcp_prompt_name(s: str) -> str:
     """Convert an arbitrary string into a valid MCP prompt name."""
-    # Replace any sequence of invalid characters with '_'
-    s = re.sub(r"[^0-9a-zA-Z_]+", "_", s)
-
     # If its ONLY numbers return "prompt_[number]"
     if s.isdigit():
         return f"prompt_{s}"
+
+    # First, ASCII-transliterate using hex escape for non-ASCII
+    if not s.isascii():
+        # whole string non-ascii? -> escape and prefix with prompt_
+        encoded = _escape_non_ascii(s)
+        return f"prompt_{encoded}"
+
+    # Replace any sequence of invalid characters with '_'
+    s = re.sub(r"[^0-9a-zA-Z_]+", "_", s)
 
     # Remove leading characters that are not letters or underscores (can't start with a digit or _)
     s = re.sub(r"^[^a-zA-Z]+", "", s)

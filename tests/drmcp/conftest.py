@@ -451,6 +451,11 @@ def prompt_template_id_ok() -> str:
 
 
 @pytest.fixture
+def prompt_template_id_ok_2() -> str:
+    return "79086ea4834952718366b2ce"
+
+
+@pytest.fixture
 def prompt_template_version_id_ok() -> str:
     return "69086ea4b65d70489c5b198d"
 
@@ -462,6 +467,7 @@ def get_prompt_template_mock(
     """Set up all API endpoint mocks."""
     dr_prompt_version = DrPromptVersion(
         id=prompt_template_version_id_ok,
+        prompt_template_id=prompt_template_id_ok,
         version=3,
         prompt_text="Write greeting for {{name}} in max {{sentences}} sentences.",
         variables=[
@@ -476,20 +482,27 @@ def get_prompt_template_mock(
     )
     dr_prompt.get_latest_version = lambda: dr_prompt_version
 
-    with patch(
-        "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_templates",
-        return_value=[dr_prompt],
+    with (
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_templates",
+            return_value=[dr_prompt],
+        ),
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_template_versions",
+            return_value={prompt_template_id_ok: [dr_prompt_version]},
+        ),
     ):
         yield
 
 
 @pytest.fixture
 def get_prompt_template_duplicated_name_mock(
-    prompt_template_id_ok: str, prompt_template_version_id_ok: str
+    prompt_template_id_ok: str, prompt_template_id_ok_2: str, prompt_template_version_id_ok: str
 ) -> Iterator[None]:
     """Set up all API endpoint mocks."""
     dr_prompt_version_1 = DrPromptVersion(
         id=prompt_template_version_id_ok,
+        prompt_template_id=prompt_template_id_ok,
         version=3,
         prompt_text="Write greeting for {{name}} in max {{sentences}} sentences.",
         variables=[
@@ -506,19 +519,29 @@ def get_prompt_template_duplicated_name_mock(
 
     dr_prompt_version_2 = DrPromptVersion(
         id=prompt_template_version_id_ok,
+        prompt_template_id=prompt_template_id_ok,
         version=1,
         prompt_text="Another prompt without variables.",
         variables=[],
     )
     dr_prompt_2 = DrPrompt(
-        id=prompt_template_id_ok,
+        id=prompt_template_id_ok_2,
         name="Dummy prompt name",
         description="Dummy description",
     )
     dr_prompt_2.get_latest_version = lambda: dr_prompt_version_2
 
-    with patch(
-        "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_templates",
-        return_value=[dr_prompt_1, dr_prompt_2],
+    with (
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_templates",
+            return_value=[dr_prompt_1, dr_prompt_2],
+        ),
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_template_versions",
+            return_value={
+                prompt_template_id_ok: [dr_prompt_version_1],
+                prompt_template_id_ok_2: [dr_prompt_version_2],
+            },
+        ),
     ):
         yield

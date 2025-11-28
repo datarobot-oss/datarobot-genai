@@ -75,6 +75,8 @@ class TestToValidFunctionName:
             ("23124125", "prompt_23124125"),
             ("class", "class_prompt"),  # Python keyword
             ("True", "True_prompt"),  # Python keyword
+            ("日本語", "prompt_x65e5x672cx8a9e"),  # Full not ascii
+            ("ABC 日本語", "prompt_ABC_x65e5x672cx8a9e"),  # Unicode mix with ascii
         ],
     )
     @pytest.mark.asyncio
