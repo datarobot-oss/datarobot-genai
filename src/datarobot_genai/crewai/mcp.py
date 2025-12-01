@@ -30,9 +30,13 @@ from datarobot_genai.core.mcp.common import MCPConfig
 @contextmanager
 def mcp_tools_context(
     authorization_context: dict[str, Any] | None = None,
+    forwarded_headers: dict[str, str] | None = None,
 ) -> Generator[list[Any], None, None]:
     """Context manager for MCP tools that handles connection lifecycle."""
-    config = MCPConfig(authorization_context=authorization_context)
+    config = MCPConfig(
+        authorization_context=authorization_context,
+        forwarded_headers=forwarded_headers,
+    )
     # If no MCP server configured, return empty tools list
     if not config.server_config:
         print("No MCP server configured, using empty tools list", flush=True)

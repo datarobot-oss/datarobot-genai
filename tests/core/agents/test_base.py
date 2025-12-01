@@ -103,3 +103,38 @@ def test_create_pipeline_interactions_from_events_simple() -> None:
     sample = BaseAgent.create_pipeline_interactions_from_events(msgs)
     assert sample is not None
     assert sample.user_input == msgs
+
+
+def test_base_agent_forwarded_headers_none() -> None:
+    """Test BaseAgent with no forwarded headers."""
+    agent = SimpleAgent(forwarded_headers=None)
+    assert agent.forwarded_headers == {}
+
+
+def test_base_agent_forwarded_headers_empty() -> None:
+    """Test BaseAgent with empty forwarded headers."""
+    agent = SimpleAgent(forwarded_headers={})
+    assert agent.forwarded_headers == {}
+
+
+def test_base_agent_forwarded_headers_with_scoped_token() -> None:
+    """Test BaseAgent with forwarded headers including scoped token."""
+    headers = {
+        "x-datarobot-api-key": "scoped-token-123",
+        "x-custom-header": "custom-value",
+    }
+    agent = SimpleAgent(forwarded_headers=headers)
+    assert agent.forwarded_headers == headers
+    assert agent.forwarded_headers["x-datarobot-api-key"] == "scoped-token-123"
+    assert agent.forwarded_headers["x-custom-header"] == "custom-value"
+
+
+def test_base_agent_forwarded_headers_with_bearer_token() -> None:
+    """Test BaseAgent with forwarded headers containing Bearer token format."""
+    headers = {
+        "x-datarobot-api-key": "Bearer scoped-token-456",
+        "authorization": "Bearer main-token",
+    }
+    agent = SimpleAgent(forwarded_headers=headers)
+    assert agent.forwarded_headers == headers
+    assert agent.forwarded_headers["x-datarobot-api-key"] == "Bearer scoped-token-456"

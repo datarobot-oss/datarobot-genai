@@ -16,6 +16,7 @@ import json
 import re
 from typing import Any
 from typing import Literal
+from urllib.parse import urlparse
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
@@ -37,6 +38,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     datarobot_endpoint: str | None = None
     datarobot_api_token: str | None = None
     authorization_context: dict[str, Any] | None = None
+    forwarded_headers: dict[str, str] | None = None
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None
@@ -121,18 +123,33 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         """
         if self.external_mcp_url:
             # External MCP URL - no authentication needed
-            if self.external_mcp_headers:
-                headers = json.loads(self.external_mcp_headers)
-            else:
-                headers = {}
+            headers: dict[str, str] = {}
 
-            config = {
+            # Forward headers for localhost connections
+            if self.forwarded_headers:
+                try:
+                    parsed_url = urlparse(self.external_mcp_url)
+                    hostname = parsed_url.hostname or ""
+                    # Check if hostname is localhost or 127.0.0.1
+                    if hostname in ("localhost", "127.0.0.1", "::1"):
+                        headers.update(self.forwarded_headers)
+                except Exception:
+                    # If URL parsing fails, fall back to simple string check
+                    if "localhost" in self.external_mcp_url or "127.0.0.1" in self.external_mcp_url:
+                        headers.update(self.forwarded_headers)
+
+            # Merge external headers if provided
+            if self.external_mcp_headers:
+                external_headers = json.loads(self.external_mcp_headers)
+                headers.update(external_headers)
+
+            return {
                 "url": self.external_mcp_url.rstrip("/"),
                 "transport": self.external_mcp_transport,
                 "headers": headers,
             }
-            return config
-        elif self.mcp_deployment_id:
+
+        if self.mcp_deployment_id:
             # DataRobot deployment ID - requires authentication
             if self.datarobot_endpoint is None:
                 raise ValueError(
@@ -142,15 +159,21 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 raise ValueError(
                     "When using a DataRobot hosted MCP deployment, datarobot_api_token must be set."
                 )
+
             base_url = self.datarobot_endpoint.rstrip("/")
             if not base_url.endswith("/api/v2"):
-                base_url = base_url + "/api/v2"
+                base_url = f"{base_url}/api/v2"
+
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
 
-            headers = {
-                **self._authorization_bearer_header(),
-                **self._authorization_context_header(),
-            }
+            # Start with forwarded headers if available
+            headers = {}
+            if self.forwarded_headers:
+                headers.update(self.forwarded_headers)
+
+            # Add authentication headers
+            headers.update(self._authorization_bearer_header())
+            headers.update(self._authorization_context_header())
 
             return {
                 "url": url,

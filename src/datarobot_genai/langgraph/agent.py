@@ -86,6 +86,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             ]:
                 async with mcp_tools_context(
                     authorization_context=self._authorization_context,
+                    forwarded_headers=self.forwarded_headers,
                 ) as mcp_tools:
                     self.set_mcp_tools(mcp_tools)
                     result = await self._invoke(completion_create_params)
@@ -104,6 +105,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             # For non-streaming, use async with directly
             async with mcp_tools_context(
                 authorization_context=self._authorization_context,
+                forwarded_headers=self.forwarded_headers,
             ) as mcp_tools:
                 self.set_mcp_tools(mcp_tools)
                 result = await self._invoke(completion_create_params)
