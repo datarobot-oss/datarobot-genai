@@ -18,6 +18,7 @@ from nat.builder.workflow_builder import WorkflowBuilder
 
 from datarobot_genai.nat.datarobot_llm_clients import DataRobotChatOpenAI
 from datarobot_genai.nat.datarobot_llm_clients import DataRobotLiteLLM
+from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotNIMModelConfig
@@ -95,6 +96,30 @@ async def test_datarobot_nim_crewai():
 
 async def test_datarobot_nim_llamaindex():
     llm_config = DataRobotNIMModelConfig(temperature=0.0, api_key="some_token")
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
+        assert isinstance(llm, DataRobotLiteLLM)
+
+
+async def test_datarobot_llm_component_langchain_use_gateway():
+    llm_config = DataRobotLLMComponentModelConfig()
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+        assert isinstance(llm, DataRobotChatOpenAI)
+
+
+async def test_datarobot_llm_component_crewai():
+    llm_config = DataRobotLLMComponentModelConfig()
+    async with WorkflowBuilder() as builder:
+        await builder.add_llm("datarobot_llm", llm_config)
+        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+        assert isinstance(llm, LLM)
+
+
+async def test_datarobot_llm_component_llamaindex():
+    llm_config = DataRobotLLMComponentModelConfig()
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
