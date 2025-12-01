@@ -103,7 +103,7 @@ async def test_datarobot_nim_llamaindex():
 
 
 async def test_datarobot_llm_component_langchain_use_gateway():
-    llm_config = DataRobotLLMComponentModelConfig()
+    llm_config = DataRobotLLMComponentModelConfig(api_key="some_token")
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
@@ -111,7 +111,7 @@ async def test_datarobot_llm_component_langchain_use_gateway():
 
 
 async def test_datarobot_llm_component_crewai():
-    llm_config = DataRobotLLMComponentModelConfig()
+    llm_config = DataRobotLLMComponentModelConfig(api_key="some_token")
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
@@ -119,7 +119,7 @@ async def test_datarobot_llm_component_crewai():
 
 
 async def test_datarobot_llm_component_llamaindex():
-    llm_config = DataRobotLLMComponentModelConfig()
+    llm_config = DataRobotLLMComponentModelConfig(api_key="some_token")
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
