@@ -18,6 +18,8 @@ from fastmcp.prompts.prompt import Prompt
 
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template_version
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template_versions
+from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
 from datarobot_genai.drmcp.core.dynamic_prompts.register import (
     register_prompt_from_datarobot_prompt_management,
 )
@@ -83,3 +85,46 @@ async def delete_registered_prompt_template(prompt_template_id: str) -> bool:
         f"version {prompt_template_version_id}"
     )
     return True
+
+
+async def refresh_registered_prompt_template() -> None:
+    """Refresh all registered prompt templates in the MCP instance."""
+    prompt_templates = get_datarobot_prompt_templates()
+    prompt_templates_ids = {p.id for p in prompt_templates}
+    prompt_templates_versions = get_datarobot_prompt_template_versions(list(prompt_templates_ids))
+
+    mcp_prompt_templates_mappings = await mcp.get_prompt_mapping()
+
+    for prompt_template in prompt_templates:
+        prompt_template_versions = prompt_templates_versions.get(prompt_template.id)
+        if not prompt_template_versions:
+            continue
+
+        latest_version = max(prompt_template_versions, key=lambda v: v.version)
+
+        if prompt_template.id not in mcp_prompt_templates_mappings:
+            # New prompt template -> add
+            await register_prompt_from_datarobot_prompt_management(
+                prompt_template=prompt_template, prompt_template_version=latest_version
+            )
+            continue
+
+        mcp_prompt_template_version, mcp_prompt = mcp_prompt_templates_mappings[prompt_template.id]
+
+        if mcp_prompt_template_version != latest_version:
+            # Current version saved in MCP is not the latest one => update it
+            await register_prompt_from_datarobot_prompt_management(
+                prompt_template=prompt_template, prompt_template_version=latest_version
+            )
+            continue
+
+        # Else => mcp_prompt_template_version == latest_version
+        # For now it means nothing changed as there's no possibility to edit promp template version.
+
+    for mcp_prompt_template_id, (
+        mcp_prompt_template_version_id,
+        _,
+    ) in mcp_prompt_templates_mappings.items():
+        if mcp_prompt_template_id not in prompt_templates_ids:
+            # We need to also delete prompt templates that are
+            await mcp.remove_prompt_mapping(mcp_prompt_template_id, mcp_prompt_template_version_id)
