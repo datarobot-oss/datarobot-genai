@@ -21,6 +21,9 @@ import pytest_asyncio
 
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import delete_registered_prompt_template
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
+    refresh_registered_prompt_template,
+)
+from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
     register_prompt_from_prompt_template_id_and_version,
 )
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
@@ -68,6 +71,43 @@ def dr_lib_mock_empty() -> Iterator[None]:
         patch(
             "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template",
             Mock(return_value=None),
+        ),
+    ):
+        yield
+
+
+@pytest.fixture
+def dr_lib_mock_for_refresh() -> Iterator[None]:
+    prompt_template_1 = DrPrompt(id="pt1", name="pt1 name", description="pt1 description")
+    prompt_template_version_1 = DrPromptVersion(
+        id="ptv1.2",
+        prompt_template_id=prompt_template_1.id,
+        version=2,
+        prompt_text="Text 1 (updated)",
+        variables=[],
+    )
+    prompt_template_3 = DrPrompt(id="pt3", name="pt3 name", description="pt3 description")
+    prompt_template_version_3 = DrPromptVersion(
+        id="ptv3.1",
+        prompt_template_id=prompt_template_3.id,
+        version=3,
+        prompt_text="Text 3",
+        variables=[],
+    )
+
+    with (
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_templates",
+            Mock(return_value=[prompt_template_1, prompt_template_3]),
+        ),
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_prompts.controllers.get_datarobot_prompt_template_versions",
+            Mock(
+                return_value={
+                    prompt_template_1.id: [prompt_template_version_1],
+                    prompt_template_3.id: [prompt_template_version_3],
+                }
+            ),
         ),
     ):
         yield
@@ -189,4 +229,35 @@ class TestPromptTemplatesDeletion:
         internal_mappings = await mcp_server.get_prompt_mapping()
         assert internal_mappings == {
             "pt1": ("ptv1.1", "abc"),
+        }
+
+
+class TestPromptTemplatesRefresh:
+    """Tests for prompt templates refresh functionality."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_prompt_templates(
+        self, mcp_server: TaggedFastMCP, dr_lib_mock_for_refresh: None
+    ) -> None:
+        """
+        Test refresh prompt templates.
+
+        In this test:
+        - 2 prompt template already registered in MCP
+        - 1 prompt template will be deleted in prompt templates API
+        - 1 prompt template will be updated in prompt templates API
+        - 1 prompt template will be added in prompt templates API
+        """
+        # Setup - add test prompts directly to MCP
+        await mcp_server.set_prompt_mapping("pt1", "ptv1.1", "abc")
+        await mcp_server.set_prompt_mapping("pt2", "ptv2.1", "def")
+
+        await refresh_registered_prompt_template()
+
+        # Verify MCP internal state consistency
+        internal_mappings = await mcp_server.get_prompt_mapping()
+        assert internal_mappings == {
+            "pt1": ("ptv1.2", "pt1 name"),  # Updated v1.1 -> v1.2
+            "pt3": ("ptv3.1", "pt3 name"),  # New pt3
+            # And pt2 deleted
         }

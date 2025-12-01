@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .dynamic_prompts.controllers import delete_registered_prompt_template
+from .dynamic_prompts.controllers import refresh_registered_prompt_template
 from .dynamic_prompts.controllers import register_prompt_from_prompt_template_id_and_version
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
@@ -418,6 +419,18 @@ def register_routes(mcp: TaggedFastMCP) -> None:
             )
         except Exception as e:
             return JSONResponse(
-                status_code=HTTPStatus.BAD_REQUEST,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to add prompt template: {str(e)}"},
+            )
+
+    @mcp.custom_route(prefix_mount_path("/registeredPrompts"), methods=["PUT"])
+    async def refresh_prompt_templates(_: Request) -> JSONResponse:
+        """Refresh prompt templates."""
+        try:
+            await refresh_registered_prompt_template()
+            return JSONResponse(status_code=HTTPStatus.NO_CONTENT, content=None)
+        except Exception as e:
+            return JSONResponse(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                content={"error": f"Failed to refresh prompt templates: {str(e)}"},
             )

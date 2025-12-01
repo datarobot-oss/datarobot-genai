@@ -11,14 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import json
+from collections.abc import Callable
 from datetime import datetime
+from http import HTTPStatus
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
 from botocore.exceptions import ClientError
+from fastmcp.prompts import Prompt
 
 from datarobot_genai.drmcp.core.memory_management.manager import MemoryStorage
 from datarobot_genai.drmcp.core.routes import register_routes
@@ -865,3 +868,182 @@ class TestRoutesSimpleFinal:
 
         # Test that routes were registered
         assert len(registered_routes) > 0
+
+
+class TestPromptTemplateRoutes:
+    """Test cases for route handlers for prompt templates in routes.py."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.mock_mcp = Mock()
+        self.mock_request = Mock()
+        self.mock_request.path_params = {}
+        self.mock_request.json = AsyncMock()
+
+        # This dictionary will store the handlers registered by custom_route
+        self.registered_routes: dict[tuple[str, str], Callable] = {}
+
+        def mock_custom_route(route_path: str, methods: list[str]):
+            def decorator(handler: Callable):
+                for method in methods:
+                    self.registered_routes[(method, route_path)] = handler
+                return handler
+
+            return decorator
+
+        self.mock_mcp.custom_route = mock_custom_route
+
+    @pytest.mark.asyncio
+    async def test_list_prompt_templates(self):
+        """Test list prompt templates endpoint."""
+        self.mock_mcp.get_prompt_mapping = AsyncMock(
+            return_value={
+                "pt1": ("ptv1.1", "Test name 1"),
+                "pt2": ("ptv2.1", "Test name 2"),
+            }
+        )
+
+        register_routes(self.mock_mcp)
+
+        list_handler = self.registered_routes["GET", "/registeredPrompts"]
+        response = await list_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.OK, response.body
+        assert json.loads(response.body.decode("utf-8")) == {
+            "promptTemplates": [
+                {
+                    "promptTemplateId": "pt1",
+                    "promptTemplateVersionId": "ptv1.1",
+                    "promptName": "Test name 1",
+                },
+                {
+                    "promptTemplateId": "pt2",
+                    "promptTemplateVersionId": "ptv2.1",
+                    "promptName": "Test name 2",
+                },
+            ],
+            "count": 2,
+        }
+
+    @pytest.mark.asyncio
+    async def test_list_prompt_templates_when_error(self):
+        """Test list prompt templates endpoint when error occurs."""
+        self.mock_mcp.get_prompt_mapping = AsyncMock(side_effect=ValueError("Dummy error"))
+
+        register_routes(self.mock_mcp)
+
+        list_handler = self.registered_routes["GET", "/registeredPrompts"]
+        response = await list_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
+        assert b"Failed to retrieve promptTemplates" in response.body
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
+    async def test_delete_prompt_template(self, delete_prompt_mock: Mock):
+        """Test delete prompt template endpoint."""
+        register_routes(self.mock_mcp)
+        delete_prompt_mock.return_value = True
+
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+
+        delete_handler = self.registered_routes["DELETE", "/registeredPrompts/{prompt_template_id}"]
+        response = await delete_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.OK, response.body
+        assert b"Prompt with prompt template id pt1 deleted successfully" in response.body
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
+    async def test_delete_prompt_template_when_does_not_exist(self, delete_prompt_mock: Mock):
+        """Test delete prompt template endpoint when does not exist."""
+        register_routes(self.mock_mcp)
+        delete_prompt_mock.return_value = False
+
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+
+        delete_handler = self.registered_routes["DELETE", "/registeredPrompts/{prompt_template_id}"]
+        response = await delete_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.NOT_FOUND, response.body
+        assert b"Prompt with prompt template id pt1 not found" in response.body
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
+    async def test_delete_prompt_template_when_error(self, delete_prompt_mock: Mock):
+        """Test delete prompt template endpoint when error occurs."""
+        register_routes(self.mock_mcp)
+        delete_prompt_mock.side_effect = ValueError("Dummy error")
+
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+
+        delete_handler = self.registered_routes["DELETE", "/registeredPrompts/{prompt_template_id}"]
+        response = await delete_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
+        assert b"Failed to delete prompt" in response.body
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.register_prompt_from_prompt_template_id_and_version")
+    @pytest.mark.parametrize(
+        "query_params,prompt_version_id",
+        [
+            ({}, "ptv1.3"),  # Pick latest version
+            ({"prompt_template_version_id": "ptv1.1"}, "ptv1.1"),  # Pick version chosen by user
+        ],
+    )
+    async def test_add_prompt_template(
+        self, add_prompt_mock: Mock, query_params: dict, prompt_version_id: str | None
+    ):
+        """Test add prompt template endpoint."""
+        register_routes(self.mock_mcp)
+        add_prompt_mock.return_value = Prompt(
+            name="Dummy prompt name",
+            description="Dummy prompt description",
+            meta={"prompt_template_version_id": prompt_version_id},
+        )
+
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+        self.mock_request.query_params = query_params
+
+        add_handler = self.registered_routes["PUT", "/registeredPrompts/{prompt_template_id}"]
+        response = await add_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.CREATED, response.body
+        assert json.loads(response.body.decode("utf-8")) == {
+            "name": "Dummy prompt name",
+            "description": "Dummy prompt description",
+            "promptTemplateId": "pt1",
+            "promptTemplateVersionId": prompt_version_id,
+        }
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.register_prompt_from_prompt_template_id_and_version")
+    async def test_add_prompt_template_when_error(self, add_prompt_mock: Mock):
+        """Test add prompt template endpoint when error occurs."""
+        register_routes(self.mock_mcp)
+        add_prompt_mock.side_effect = ValueError("Dummy error")
+
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+
+        add_handler = self.registered_routes["PUT", "/registeredPrompts/{prompt_template_id}"]
+        response = await add_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
+        assert b"Failed to add prompt template" in response.body
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.refresh_registered_prompt_template")
+    async def test_refresh_prompt_templates(self, refresh_prompts_mock: Mock):
+        """Test refresh prompt templates endpoint."""
+        register_routes(self.mock_mcp)
+        refresh_prompts_mock.return_value = None
+
+        refresh_handler = self.registered_routes["PUT", "/registeredPrompts"]
+        response = await refresh_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.NO_CONTENT, response.body
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.refresh_registered_prompt_template")
+    async def test_refresh_prompt_templates_when_error(self, refresh_prompts_mock: Mock):
+        """Test refresh prompt templates endpoint when error occurs."""
+        register_routes(self.mock_mcp)
+        refresh_prompts_mock.side_effect = ValueError("Dummy error")
+
+        refresh_handler = self.registered_routes["PUT", "/registeredPrompts"]
+        response = await refresh_handler(self.mock_request)
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
+        assert b"Failed to refresh prompt template" in response.body
