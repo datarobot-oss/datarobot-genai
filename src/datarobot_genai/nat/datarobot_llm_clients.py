@@ -23,6 +23,7 @@ from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
 
+from ..nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 from ..nat.datarobot_llm_providers import DataRobotNIMModelConfig
@@ -75,6 +76,7 @@ async def datarobot_llm_gateway_langchain(
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     config["base_url"] = config["base_url"] + "/genai/llmgw"
     config["stream_options"] = {"include_usage": True}
+    config["model"] = config["model"].removeprefix("datarobot/")
     yield DataRobotChatOpenAI(**config)
 
 
@@ -85,7 +87,8 @@ async def datarobot_llm_gateway_crewai(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
-    config["model"] = "datarobot/" + config["model"]
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
     config["base_url"] = config["base_url"].removesuffix("/api/v2")
     yield LLM(**config)
 
@@ -97,7 +100,8 @@ async def datarobot_llm_gateway_llamaindex(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
-    config["model"] = "datarobot/" + config["model"]
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
     yield DataRobotLiteLLM(**config)
 
@@ -109,11 +113,12 @@ async def datarobot_llm_deployment_langchain(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "datarobot_endpoint", "llm_deployment_id"},
+        exclude={"type", "thinking"},
         by_alias=True,
         exclude_none=True,
     )
     config["stream_options"] = {"include_usage": True}
+    config["model"] = config["model"].removeprefix("datarobot/")
     yield DataRobotChatOpenAI(**config)
 
 
@@ -128,7 +133,8 @@ async def datarobot_llm_deployment_crewai(
         by_alias=True,
         exclude_none=True,
     )
-    config["model"] = "datarobot/" + config["model"]
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
     yield LLM(**config)
 
@@ -144,7 +150,8 @@ async def datarobot_llm_deployment_llamaindex(
         by_alias=True,
         exclude_none=True,
     )
-    config["model"] = "datarobot/" + config["model"]
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
     yield DataRobotLiteLLM(**config)
 
@@ -159,6 +166,7 @@ async def datarobot_nim_langchain(
         exclude_none=True,
     )
     config["stream_options"] = {"include_usage": True}
+    config["model"] = config["model"].removeprefix("datarobot/")
     yield DataRobotChatOpenAI(**config)
 
 
@@ -171,7 +179,8 @@ async def datarobot_nim_crewai(
         by_alias=True,
         exclude_none=True,
     )
-    config["model"] = "datarobot/" + config["model"]
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
     yield LLM(**config)
 
@@ -185,6 +194,56 @@ async def datarobot_nim_llamaindex(
         by_alias=True,
         exclude_none=True,
     )
-    config["model"] = "datarobot/" + config["model"]
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
+    yield DataRobotLiteLLM(**config)
+
+
+@register_llm_client(
+    config_type=DataRobotLLMComponentModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN
+)
+async def datarobot_llm_component_langchain(
+    llm_config: DataRobotLLMComponentModelConfig, builder: Builder
+) -> AsyncGenerator[ChatOpenAI]:
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    if config["use_datarobot_llm_gateway"]:
+        config["base_url"] = config["base_url"] + "/genai/llmgw"
+    config["stream_options"] = {"include_usage": True}
+    config["model"] = config["model"].removeprefix("datarobot/")
+    config.pop("use_datarobot_llm_gateway")
+    yield DataRobotChatOpenAI(**config)
+
+
+@register_llm_client(
+    config_type=DataRobotLLMComponentModelConfig, wrapper_type=LLMFrameworkEnum.CREWAI
+)
+async def datarobot_llm_component_crewai(
+    llm_config: DataRobotLLMComponentModelConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
+    if config["use_datarobot_llm_gateway"]:
+        config["base_url"] = config["base_url"].removesuffix("/api/v2")
+    else:
+        config["api_base"] = config.pop("base_url") + "/chat/completions"
+    config.pop("use_datarobot_llm_gateway")
+    yield LLM(**config)
+
+
+@register_llm_client(
+    config_type=DataRobotLLMComponentModelConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
+)
+async def datarobot_llm_component_llamaindex(
+    llm_config: DataRobotLLMComponentModelConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    if not config["model"].startswith("datarobot/"):
+        config["model"] = "datarobot/" + config["model"]
+    if config["use_datarobot_llm_gateway"]:
+        config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
+    else:
+        config["api_base"] = config.pop("base_url") + "/chat/completions"
+    config.pop("use_datarobot_llm_gateway")
     yield DataRobotLiteLLM(**config)

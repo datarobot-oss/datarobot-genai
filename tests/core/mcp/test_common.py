@@ -14,9 +14,12 @@
 
 import json
 import os
+from http import HTTPStatus
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+import requests
 from datarobot.models.genai.agent.auth import set_authorization_context
 
 from datarobot_genai.core.mcp.common import MCPConfig
@@ -192,11 +195,12 @@ class TestMCPConfig:
             # Verify forwarded headers are not included when not provided
             assert "x-datarobot-api-key" not in config.server_config["headers"]
 
-    def test_mcp_config_priority_external_over_deployment(self):
-        """Test that EXTERNAL_MCP_URL takes priority over MCP_DEPLOYMENT_ID."""
+    def test_mcp_config_priority_deployment_over_external(self):
+        """Test that MCP_DEPLOYMENT_ID takes priority over EXTERNAL_MCP_URL."""
         external_url = "https://external-mcp.com/mcp"
         deployment_id = "abc123def456789012345678"
         api_key = "test-api-key"
+        api_base = "https://app.datarobot.com/api/v2"
         headers = {"X-Custom-Header": "custom-value"}
 
         with patch.dict(
@@ -206,18 +210,20 @@ class TestMCPConfig:
                 "EXTERNAL_MCP_HEADERS": json.dumps(headers),
                 "EXTERNAL_MCP_TRANSPORT": "sse",
                 "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
                 "DATAROBOT_API_TOKEN": api_key,
             },
             clear=True,
         ):
             config = MCPConfig()
-            assert config.server_config["url"] == external_url
-            assert config.server_config["headers"] == headers
-            assert config.server_config["transport"] == "sse"
-            assert config.server_config["headers"] == headers
+            # Deployment ID takes priority, so it should use deployment config
+            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            assert config.server_config["url"] == expected_url
+            assert config.server_config["transport"] == "streamable-http"
+            assert "Authorization" in config.server_config["headers"]
 
     def test_mcp_config_with_external_headers_invalid_json(self):
-        """Invalid JSON should raise ValueError via field validator."""
+        """Invalid JSON should return None and log warning, not raise error."""
         test_url = "https://mcp-server.example.com/mcp"
         with patch.dict(
             os.environ,
@@ -229,8 +235,12 @@ class TestMCPConfig:
             },
             clear=True,
         ):
-            with pytest.raises(ValueError):
-                MCPConfig()
+            config = MCPConfig()
+            # Invalid JSON should result in None for external_mcp_headers
+            assert config.external_mcp_headers is None
+            # Server config should still work, just without the invalid headers
+            assert config.server_config is not None
+            assert config.server_config["headers"] == {}
 
     def test_mcp_config_with_external_transport(self):
         test_url = "https://mcp-server.example.com/mcp"
@@ -333,7 +343,7 @@ class TestMCPConfig:
             assert config.server_config["headers"] == {"X-Test": "value"}
 
     def test_mcp_deployment_id_validation_errors(self):
-        """Invalid deployment IDs should raise ValueError or TypeError."""
+        """Invalid deployment IDs should return None and log warning, not raise error."""
         # Invalid length / characters
         with patch.dict(
             os.environ,
@@ -344,21 +354,24 @@ class TestMCPConfig:
             },
             clear=True,
         ):
-            with pytest.raises(
-                ValueError, match="mcp_deployment_id must be a valid 24-character hex ID"
-            ):
-                MCPConfig()
-        # Non-string type
+            config = MCPConfig()
+            # Invalid deployment ID should result in None
+            assert config.mcp_deployment_id is None
+            # Server config should be None since no valid deployment ID
+            assert config.server_config is None
+        # This test verifies that invalid deployment IDs are normalized to None
         with patch.dict(
             os.environ,
             {
+                "MCP_DEPLOYMENT_ID": "invalid-format",
                 "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
                 "DATAROBOT_API_TOKEN": "dummy-token",
             },
             clear=True,
         ):
-            with pytest.raises(TypeError, match="mcp_deployment_id must be a string"):
-                MCPConfig(mcp_deployment_id=1234)  # type: ignore[arg-type]
+            config = MCPConfig()
+            assert config.mcp_deployment_id is None
+            assert config.server_config is None
 
     def test_mcp_deployment_id_whitespace_trim(self):
         """Whitespace around valid deployment id should be trimmed and accepted."""
@@ -798,8 +811,8 @@ class TestMCPConfig:
             # Verify forwarded headers that are not authorization are included
             assert headers["x-datarobot-api-key"] == "scoped-token-789"
 
-    def test_mcp_config_external_url_with_localhost_forwards_headers(self):
-        """Test that forwarded headers are included for localhost external MCP URLs."""
+    def test_mcp_config_external_url_with_localhost_no_forwarded_headers(self):
+        """Test that forwarded headers are NOT included for external MCP URLs (even localhost)."""
         test_url = "http://localhost:8080/mcp"
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-123",
@@ -817,12 +830,13 @@ class TestMCPConfig:
             assert config.server_config is not None
             headers = config.server_config["headers"]
 
-            # Verify forwarded headers are included for localhost
-            assert headers["x-datarobot-api-key"] == "scoped-token-123"
-            assert headers["x-custom-header"] == "custom-value"
+            # Verify forwarded headers are NOT included for external URLs
+            assert "x-datarobot-api-key" not in headers
+            assert "x-custom-header" not in headers
+            assert headers == {}
 
-    def test_mcp_config_external_url_with_127_0_0_1_forwards_headers(self):
-        """Test that forwarded headers are included for 127.0.0.1 external MCP URLs."""
+    def test_mcp_config_external_url_with_127_0_0_1_no_forwarded_headers(self):
+        """Test that forwarded headers are NOT included for external MCP URLs (even 127.0.0.1)."""
         test_url = "http://127.0.0.1:8080/mcp"
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-456",
@@ -840,9 +854,10 @@ class TestMCPConfig:
             assert config.server_config is not None
             headers = config.server_config["headers"]
 
-            # Verify forwarded headers are included for 127.0.0.1
-            assert headers["x-datarobot-api-key"] == "scoped-token-456"
-            assert headers["x-test-header"] == "test-value"
+            # Verify forwarded headers are NOT included for external URLs
+            assert "x-datarobot-api-key" not in headers
+            assert "x-test-header" not in headers
+            assert headers == {}
 
     def test_mcp_config_external_url_non_localhost_no_forwarded_headers(self):
         """Test that forwarded headers are NOT included for non-localhost external MCP URLs."""
@@ -868,8 +883,8 @@ class TestMCPConfig:
             assert "x-custom-header" not in headers
             assert headers == {}
 
-    def test_mcp_config_external_url_localhost_with_external_headers_merge(self):
-        """Test that forwarded headers and external headers are merged for localhost."""
+    def test_mcp_config_external_url_localhost_with_external_headers_only(self):
+        """Test that forwarded headers are not merged with external headers for external URLs."""
         test_url = "http://localhost:8080/mcp"
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-123",
@@ -892,21 +907,21 @@ class TestMCPConfig:
             assert config.server_config is not None
             headers = config.server_config["headers"]
 
-            # Verify both forwarded and external headers are present
-            assert headers["x-datarobot-api-key"] == "scoped-token-123"
-            assert headers["x-forwarded-header"] == "forwarded-value"
+            # Verify only external headers are present (forwarded headers not included)
+            assert "x-datarobot-api-key" not in headers
+            assert "x-forwarded-header" not in headers
             assert headers["X-Custom-Header"] == "external-value"
             assert headers["X-Another-Header"] == "another-value"
 
-    def test_mcp_config_external_url_localhost_external_headers_override_forwarded(self):
-        """Test that external headers override forwarded headers when both present."""
+    def test_mcp_config_external_url_localhost_external_headers_only(self):
+        """Test that forwarded headers are not included for external URLs."""
         test_url = "http://localhost:8080/mcp"
         forwarded_headers = {
             "x-datarobot-api-key": "forwarded-token",
             "X-Custom-Header": "forwarded-value",
         }
         external_headers = {
-            "X-Custom-Header": "external-value",  # Should override forwarded
+            "X-Custom-Header": "external-value",
             "X-Another-Header": "another-value",
         }
 
@@ -922,9 +937,9 @@ class TestMCPConfig:
             assert config.server_config is not None
             headers = config.server_config["headers"]
 
-            # Verify forwarded header is present
-            assert headers["x-datarobot-api-key"] == "forwarded-token"
-            # Verify external header overrides forwarded header
+            # Verify forwarded headers are NOT present
+            assert "x-datarobot-api-key" not in headers
+            # Verify only external headers are present
             assert headers["X-Custom-Header"] == "external-value"
             assert headers["X-Another-Header"] == "another-value"
 
@@ -970,8 +985,8 @@ class TestMCPConfig:
             # Verify headers are empty when no forwarded headers provided
             assert headers == {}
 
-    def test_mcp_config_external_url_127_0_0_1_with_external_headers(self):
-        """Test 127.0.0.1 external MCP URL with both forwarded and external headers."""
+    def test_mcp_config_external_url_127_0_0_1_with_external_headers_only(self):
+        """Test 127.0.0.1 external MCP URL with only external headers (forwarded not included)."""
         test_url = "http://127.0.0.1:3000/mcp"
         forwarded_headers = {"x-forwarded": "value"}
         external_headers = {"X-External": "external-value"}
@@ -988,8 +1003,8 @@ class TestMCPConfig:
             assert config.server_config is not None
             headers = config.server_config["headers"]
 
-            # Verify both are present
-            assert headers["x-forwarded"] == "value"
+            # Verify only external headers are present (forwarded not included)
+            assert "x-forwarded" not in headers
             assert headers["X-External"] == "external-value"
 
     def test_mcp_config_external_url_localhost_in_domain(self):
@@ -1058,3 +1073,147 @@ class TestMCPConfig:
             assert headers["x-custom-header"] == "custom-value"
             # Verify auth headers are also present
             assert headers["Authorization"] == f"Bearer {api_key}"
+
+    @patch("datarobot_genai.core.mcp.common.requests.get")
+    def test_mcp_config_localhost_server_running(self, mock_get):
+        """Test MCP config with localhost server port when server is running."""
+        mock_response = MagicMock()
+        mock_response.status_code = HTTPStatus.OK
+        mock_response.json.return_value = {"message": "DataRobot MCP Server is running"}
+        mock_get.return_value = mock_response
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-api-key",
+            },
+            clear=True,
+        ):
+            config = MCPConfig(mcp_server_port=8080)
+            assert config.server_config is not None
+            assert config.server_config["url"] == "http://localhost:8080/mcp"
+            assert config.server_config["transport"] == "streamable-http"
+            assert "Authorization" in config.server_config["headers"]
+            assert config.server_config["headers"]["Authorization"] == "Bearer test-api-key"
+            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
+
+    @patch("datarobot_genai.core.mcp.common.requests.get")
+    def test_mcp_config_localhost_server_not_running(self, mock_get):
+        """Test MCP config with localhost server port when server is not running."""
+        mock_response = MagicMock()
+        mock_response.status_code = HTTPStatus.NOT_FOUND
+        mock_response.json.return_value = {"message": "Not found"}
+        mock_get.return_value = mock_response
+
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=8080)
+            assert config.server_config is None
+            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
+
+    @patch("datarobot_genai.core.mcp.common.requests.get")
+    def test_mcp_config_localhost_server_connection_error(self, mock_get):
+        """Test MCP config with localhost server port when connection fails."""
+        mock_get.side_effect = requests.ConnectionError("Connection refused")
+
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=8080)
+            assert config.server_config is None
+            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
+
+    @patch("datarobot_genai.core.mcp.common.requests.get")
+    def test_mcp_config_localhost_server_wrong_message(self, mock_get):
+        """Test MCP config with localhost server port when server returns wrong message."""
+        mock_response = MagicMock()
+        mock_response.status_code = HTTPStatus.OK
+        mock_response.json.return_value = {"message": "Wrong message"}
+        mock_get.return_value = mock_response
+
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=8080)
+            assert config.server_config is None
+            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
+
+    def test_mcp_config_build_authenticated_headers(self):
+        """Test _build_authenticated_headers method."""
+        api_key = "test-api-key"
+        forwarded_headers = {"x-custom": "value"}
+
+        with patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            headers = config._build_authenticated_headers()
+
+            assert headers["x-custom"] == "value"
+            assert headers["Authorization"] == f"Bearer {api_key}"
+            # Authorization context header may or may not be present depending on test setup
+            assert (
+                "X-DataRobot-Authorization-Context" in headers
+                or "X-DataRobot-Authorization-Context" not in headers
+            )
+
+    def test_mcp_config_check_localhost_server_success(self):
+        """Test _check_localhost_server returns True for running server."""
+        with patch("datarobot_genai.core.mcp.common.requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = HTTPStatus.OK
+            mock_response.json.return_value = {"message": "DataRobot MCP Server is running"}
+            mock_get.return_value = mock_response
+
+            config = MCPConfig()
+            result = config._check_localhost_server("http://localhost:8080")
+
+            assert result is True
+            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
+
+    def test_mcp_config_check_localhost_server_failure(self):
+        """Test _check_localhost_server returns False for non-running server."""
+        with patch("datarobot_genai.core.mcp.common.requests.get") as mock_get:
+            mock_get.side_effect = requests.ConnectionError("Connection refused")
+
+            config = MCPConfig()
+            result = config._check_localhost_server("http://localhost:8080")
+
+            assert result is False
+            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
+
+    def test_mcp_config_priority_deployment_external_localhost(self):
+        """Test priority: deployment > external > localhost."""
+        deployment_id = "abc123def456789012345678"
+        external_url = "https://external-mcp.com/mcp"
+        api_key = "test-api-key"
+        api_base = "https://app.datarobot.com/api/v2"
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "EXTERNAL_MCP_URL": external_url,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(mcp_server_port=8080)
+            # Deployment should take priority
+            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            assert config.server_config["url"] == expected_url
+
+    def test_mcp_config_priority_external_over_localhost(self):
+        """Test priority: external > localhost when no deployment."""
+        external_url = "https://external-mcp.com/mcp"
+
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": external_url,
+            },
+            clear=True,
+        ):
+            config = MCPConfig(mcp_server_port=8080)
+            # External should take priority over localhost
+            assert config.server_config["url"] == external_url

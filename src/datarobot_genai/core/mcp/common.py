@@ -13,15 +13,19 @@
 # limitations under the License.
 
 import json
+import logging
 import re
+from http import HTTPStatus
 from typing import Any
 from typing import Literal
-from urllib.parse import urlparse
 
+import requests
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+
+logger = logging.getLogger(__name__)
 
 
 class MCPConfig(DataRobotAppFrameworkBaseSettings):
@@ -39,6 +43,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     datarobot_api_token: str | None = None
     authorization_context: dict[str, Any] | None = None
     forwarded_headers: dict[str, str] | None = None
+    mcp_server_port: int | None = None
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None
@@ -49,17 +54,14 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         if value is None:
             return None
 
-        if not isinstance(value, str):
-            msg = "external_mcp_headers must be a JSON string"
-            raise TypeError(msg)
-
         candidate = value.strip()
 
         try:
             json.loads(candidate)
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             msg = "external_mcp_headers must be valid JSON"
-            raise ValueError(msg) from exc
+            logger.warning(msg)
+            return None
 
         return candidate
 
@@ -69,15 +71,12 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         if value is None:
             return None
 
-        if not isinstance(value, str):
-            msg = "mcp_deployment_id must be a string"
-            raise TypeError(msg)
-
         candidate = value.strip()
 
         if not re.fullmatch(r"[0-9a-fA-F]{24}", candidate):
             msg = "mcp_deployment_id must be a valid 24-character hex ID"
-            raise ValueError(msg)
+            logger.warning(msg)
+            return None
 
         return candidate
 
@@ -112,6 +111,45 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             # Authorization context not available (e.g., in tests)
             return {}
 
+    def _build_authenticated_headers(self) -> dict[str, str]:
+        """Build headers for authenticated requests.
+
+        Returns
+        -------
+            Dictionary containing forwarded headers (if available) and authentication headers.
+        """
+        headers: dict[str, str] = {}
+        if self.forwarded_headers:
+            headers.update(self.forwarded_headers)
+        headers.update(self._authorization_bearer_header())
+        headers.update(self._authorization_context_header())
+        return headers
+
+    def _check_localhost_server(self, url: str, timeout: float = 2.0) -> bool:
+        """Check if MCP server is running on localhost.
+
+        Parameters
+        ----------
+        url : str
+            The URL to check.
+        timeout : float, optional
+            Request timeout in seconds (default: 2.0).
+
+        Returns
+        -------
+        bool
+            True if server is running and responding with OK status, False otherwise.
+        """
+        try:
+            response = requests.get(url, timeout=timeout)
+            return (
+                response.status_code == HTTPStatus.OK
+                and response.json().get("message") == "DataRobot MCP Server is running"
+            )
+        except requests.RequestException as e:
+            logger.debug(f"Failed to connect to MCP server at {url}: {e}")
+            return False
+
     def _build_server_config(self) -> dict[str, Any] | None:
         """
         Get MCP server configuration.
@@ -121,34 +159,6 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             Server configuration dict with url, transport, and optional headers,
             or None if not configured.
         """
-        if self.external_mcp_url:
-            # External MCP URL - no authentication needed
-            headers: dict[str, str] = {}
-
-            # Forward headers for localhost connections
-            if self.forwarded_headers:
-                try:
-                    parsed_url = urlparse(self.external_mcp_url)
-                    hostname = parsed_url.hostname or ""
-                    # Check if hostname is localhost or 127.0.0.1
-                    if hostname in ("localhost", "127.0.0.1", "::1"):
-                        headers.update(self.forwarded_headers)
-                except Exception:
-                    # If URL parsing fails, fall back to simple string check
-                    if "localhost" in self.external_mcp_url or "127.0.0.1" in self.external_mcp_url:
-                        headers.update(self.forwarded_headers)
-
-            # Merge external headers if provided
-            if self.external_mcp_headers:
-                external_headers = json.loads(self.external_mcp_headers)
-                headers.update(external_headers)
-
-            return {
-                "url": self.external_mcp_url.rstrip("/"),
-                "transport": self.external_mcp_transport,
-                "headers": headers,
-            }
-
         if self.mcp_deployment_id:
             # DataRobot deployment ID - requires authentication
             if self.datarobot_endpoint is None:
@@ -165,20 +175,44 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 base_url = f"{base_url}/api/v2"
 
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
+            headers = self._build_authenticated_headers()
 
-            # Start with forwarded headers if available
-            headers = {}
-            if self.forwarded_headers:
-                headers.update(self.forwarded_headers)
-
-            # Add authentication headers
-            headers.update(self._authorization_bearer_header())
-            headers.update(self._authorization_context_header())
+            logger.info(f"Using DataRobot hosted MCP deployment: {url}")
 
             return {
                 "url": url,
                 "transport": "streamable-http",
                 "headers": headers,
             }
+
+        if self.external_mcp_url:
+            # External MCP URL - no authentication needed
+            headers = {}
+
+            # Merge external headers if provided
+            if self.external_mcp_headers:
+                external_headers = json.loads(self.external_mcp_headers)
+                headers.update(external_headers)
+
+            logger.info(f"Using external MCP URL: {self.external_mcp_url}")
+
+            return {
+                "url": self.external_mcp_url.rstrip("/"),
+                "transport": self.external_mcp_transport,
+                "headers": headers,
+            }
+
+        # No MCP configuration found, setup localhost if running locally
+        if self.mcp_server_port:
+            url = f"http://localhost:{self.mcp_server_port}"
+            if self._check_localhost_server(url):
+                headers = self._build_authenticated_headers()
+                logger.info(f"Using localhost MCP server: {url}")
+                return {
+                    "url": f"{url}/mcp",
+                    "transport": "streamable-http",
+                    "headers": headers,
+                }
+            logger.warning(f"MCP server is not running or not responding at {url}")
 
         return None

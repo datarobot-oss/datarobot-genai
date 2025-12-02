@@ -38,7 +38,7 @@ def _apply_green(text: str) -> str:
     return "\n".join(colored_lines)
 
 
-DR_LOGO_ASCII = _apply_green("""\
+DR_LOGO_ASCII = _apply_green(r"""
  ____        _        ____       _           _   
 |  _ \  __ _| |_ __ _|  _ \ ___ | |__   ___ | |_ 
 | | | |/ _` | __/ _` | |_) / _ \| '_ \ / _ \| __|

@@ -113,24 +113,29 @@ class TestMCPConfig:
             expected_url = "https://app.datarobot.com/api/v2/deployments/abc123def456789012345678/directAccess/mcp"
             assert config.server_config["url"] == expected_url
 
-    def test_mcp_config_priority_external_over_deployment(self):
-        """Test that EXTERNAL_MCP_URL takes priority over MCP_DEPLOYMENT_ID."""
+    def test_mcp_config_priority_deployment_over_external(self):
+        """Test that MCP_DEPLOYMENT_ID takes priority over EXTERNAL_MCP_URL."""
         external_url = "https://external-mcp.com/mcp"
         deployment_id = "abc123def456789012345678"
         api_key = "test-api-key"
+        api_base = "https://app.datarobot.com/api/v2"
 
         with patch.dict(
             os.environ,
             {
                 "EXTERNAL_MCP_URL": external_url,
                 "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
                 "DATAROBOT_API_TOKEN": api_key,
             },
             clear=True,
         ):
             config = MCPConfig()
-            assert config.server_config["url"] == external_url.rstrip("/")
-            assert config.server_config["headers"] == {}
+            # Deployment ID takes priority, so it should use deployment config
+            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            assert config.server_config["url"] == expected_url
+            assert config.server_config["transport"] == "streamable-http"
+            assert "Authorization" in config.server_config["headers"]
 
     def test_mcp_config_with_explicit_parameters(self):
         """Test MCP config with explicit api_base and api_key parameters."""
