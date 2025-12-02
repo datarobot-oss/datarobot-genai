@@ -80,6 +80,37 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         """
         raise NotImplementedError
 
+    def _extract_pipeline_interactions(self) -> MultiTurnSample | None:
+        """Extract pipeline interactions from event listener if available."""
+        if not hasattr(self, "event_listener"):
+            return None
+        try:
+            listener = getattr(self, "event_listener", None)
+            messages = getattr(listener, "messages", None) if listener is not None else None
+            return create_pipeline_interactions_from_messages(messages)
+        except Exception:
+            return None
+
+    def _extract_usage_metrics(self, crew_output: Any) -> UsageMetrics:
+        """Extract usage metrics from crew output."""
+        token_usage = getattr(crew_output, "token_usage", None)
+        if token_usage is not None:
+            return {
+                "completion_tokens": int(getattr(token_usage, "completion_tokens", 0)),
+                "prompt_tokens": int(getattr(token_usage, "prompt_tokens", 0)),
+                "total_tokens": int(getattr(token_usage, "total_tokens", 0)),
+            }
+        return default_usage_metrics()
+
+    def _process_crew_output(
+        self, crew_output: Any
+    ) -> tuple[str, MultiTurnSample | None, UsageMetrics]:
+        """Process crew output into response tuple."""
+        response_text = str(crew_output.raw)
+        pipeline_interactions = self._extract_pipeline_interactions()
+        usage_metrics = self._extract_usage_metrics(crew_output)
+        return response_text, pipeline_interactions, usage_metrics
+
     async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(completion_create_params)
@@ -116,64 +147,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 async def _gen() -> AsyncGenerator[
                     tuple[str, MultiTurnSample | None, UsageMetrics]
                 ]:
-                    # Run kickoff in a worker thread.
                     crew_output = await asyncio.to_thread(
                         crew.kickoff,
                         inputs=self.make_kickoff_inputs(user_prompt_content),
                     )
-
-                    pipeline_interactions = None
-                    if hasattr(self, "event_listener"):
-                        try:
-                            listener = getattr(self, "event_listener", None)
-                            messages = (
-                                getattr(listener, "messages", None)
-                                if listener is not None
-                                else None
-                            )
-                            pipeline_interactions = create_pipeline_interactions_from_messages(
-                                messages
-                            )
-                        except Exception:
-                            pipeline_interactions = None
-
-                    token_usage = getattr(crew_output, "token_usage", None)
-                    if token_usage is not None:
-                        usage_metrics: UsageMetrics = {
-                            "completion_tokens": int(getattr(token_usage, "completion_tokens", 0)),
-                            "prompt_tokens": int(getattr(token_usage, "prompt_tokens", 0)),
-                            "total_tokens": int(getattr(token_usage, "total_tokens", 0)),
-                        }
-                    else:
-                        usage_metrics = default_usage_metrics()
-
-                    response_text = str(crew_output.raw)
-                    yield response_text, pipeline_interactions, usage_metrics
+                    yield self._process_crew_output(crew_output)
 
                 return _gen()
 
-            # Non-streaming: run to completion and return final result
             crew_output = crew.kickoff(inputs=self.make_kickoff_inputs(user_prompt_content))
-
-            response_text = str(crew_output.raw)
-
-            pipeline_interactions = None
-            if hasattr(self, "event_listener"):
-                try:
-                    listener = getattr(self, "event_listener", None)
-                    messages = getattr(listener, "messages", None) if listener is not None else None
-                    pipeline_interactions = create_pipeline_interactions_from_messages(messages)
-                except Exception:
-                    pipeline_interactions = None
-
-            token_usage = getattr(crew_output, "token_usage", None)
-            if token_usage is not None:
-                usage_metrics: UsageMetrics = {
-                    "completion_tokens": int(getattr(token_usage, "completion_tokens", 0)),
-                    "prompt_tokens": int(getattr(token_usage, "prompt_tokens", 0)),
-                    "total_tokens": int(getattr(token_usage, "total_tokens", 0)),
-                }
-            else:
-                usage_metrics = default_usage_metrics()
-
-            return response_text, pipeline_interactions, usage_metrics
+            return self._process_crew_output(crew_output)
