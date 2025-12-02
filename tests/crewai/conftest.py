@@ -24,6 +24,7 @@ import datarobot_genai.crewai.base as base_mod
 @pytest.fixture
 def mock_mcp_context(monkeypatch: Any) -> None:
     """Mock MCP tools context to return empty tools list."""
+
     class _Ctx:
         def __enter__(self) -> list[Any]:
             return []
