@@ -84,21 +84,38 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             async def wrapped_generator() -> AsyncGenerator[
                 tuple[str, Any | None, UsageMetrics], None
             ]:
-                async with mcp_tools_context(
-                    authorization_context=self._authorization_context,
-                    forwarded_headers=self.forwarded_headers,
-                ) as mcp_tools:
-                    self.set_mcp_tools(mcp_tools)
-                    result = await self._invoke(completion_create_params)
+                try:
+                    async with mcp_tools_context(
+                        authorization_context=self._authorization_context,
+                        forwarded_headers=self.forwarded_headers,
+                    ) as mcp_tools:
+                        self.set_mcp_tools(mcp_tools)
+                        result = await self._invoke(completion_create_params)
 
-                    # Yield all items from the result generator
-                    # The context will be closed when this generator is exhausted
-                    # Cast to async generator since we know stream=True means it's a generator
-                    result_generator = cast(
-                        AsyncGenerator[tuple[str, Any | None, UsageMetrics], None], result
-                    )
-                    async for item in result_generator:
-                        yield item
+                        # Yield all items from the result generator
+                        # The context will be closed when this generator is exhausted
+                        # Cast to async generator since we know stream=True means it's a generator
+                        result_generator = cast(
+                            AsyncGenerator[tuple[str, Any | None, UsageMetrics], None], result
+                        )
+                        async for item in result_generator:
+                            yield item
+                except RuntimeError as e:
+                    error_message = str(e).lower()
+                    if "different task" in error_message and "cancel scope" in error_message:
+                        # Due to anyio task group constraints when consuming async generators
+                        # across task boundaries, we cannot always clean up properly.
+                        # The underlying HTTP client/connection pool should handle resource cleanup
+                        # via timeouts and connection pooling, but this
+                        # may lead to delayed resource release.
+                        logger.debug(
+                            "MCP context cleanup attempted in different task. "
+                            "This is a limitation when consuming async generators "
+                            "across task boundaries."
+                        )
+                    else:
+                        # Re-raise if it's a different RuntimeError
+                        raise
 
             return wrapped_generator()
         else:
