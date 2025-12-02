@@ -32,9 +32,41 @@ class Config(DataRobotAppFrameworkBaseSettings):
     datarobot_api_token: str | None = None
     llm_deployment_id: str | None = None
     nim_deployment_id: str | None = None
+    use_datarobot_llm_gateway: bool = False
+    llm_default_model: str | None = None
 
 
 config = Config()
+
+
+class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
+    """A DataRobot LLM provider to be used with an LLM client."""
+
+    api_key: str | None = Field(
+        default=config.datarobot_api_token, description="DataRobot API key."
+    )
+    base_url: str | None = Field(
+        default=config.datarobot_endpoint.rstrip("/")
+        if config.use_datarobot_llm_gateway
+        else config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}",
+        description="DataRobot LLM URL.",
+    )
+    model_name: str = Field(
+        validation_alias=AliasChoices("model_name", "model"),
+        serialization_alias="model",
+        description="The model name.",
+        default=config.llm_default_model or "datarobot-deployed-llm",
+    )
+    use_datarobot_llm_gateway: bool = config.use_datarobot_llm_gateway
+
+
+@register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
+async def datarobot_llm_component(
+    config: DataRobotLLMComponentModelConfig, _builder: Builder
+) -> LLMProviderInfo:
+    yield LLMProviderInfo(
+        config=config, description="DataRobot LLM Component for use with an LLM client."
+    )
 
 
 class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gateway"):  # type: ignore[call-arg]
