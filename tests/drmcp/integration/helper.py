@@ -55,7 +55,9 @@ def get_or_create_prompt_template_version(
     prompt_template_id: str, prompt_text: str, variables: list[str]
 ) -> dict:
     try:
-        for prompt_template_version in get_datarobot_prompt_template_versions([prompt_template_id]):
+        all_prompt_template_versions = get_datarobot_prompt_template_versions([prompt_template_id])
+        prompt_template_versions = all_prompt_template_versions[prompt_template_id]
+        for prompt_template_version in prompt_template_versions:
             if (
                 prompt_template_version.prompt_text == prompt_text
                 and prompt_template_version.prompt_template_id == prompt_template_id
