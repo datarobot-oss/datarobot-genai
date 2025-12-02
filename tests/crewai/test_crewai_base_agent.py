@@ -72,22 +72,11 @@ class _TestAgent(CrewAIAgent):
 
 
 @pytest.mark.asyncio
-async def test_crewai_agent_non_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_crewai_agent_non_streaming(
+    monkeypatch: pytest.MonkeyPatch, mock_mcp_context: None
+) -> None:
     # Patch Crew constructor in base module
     monkeypatch.setattr(base_mod, "Crew", _FakeCrew)
-
-    # Patch MCP context manager to provide tools list
-    class _FakeCtx:
-        def __init__(self) -> None:
-            self._tools = ["tool1"]
-
-        def __enter__(self) -> list[str]:
-            return self._tools
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-    monkeypatch.setattr(base_mod, "mcp_tools_context", lambda **_: _FakeCtx())
 
     agent = _TestAgent(api_key="k", api_base="https://x")
 
@@ -107,22 +96,10 @@ async def test_crewai_agent_non_streaming(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_crewai_agent_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Patch Crew constructor in base module
+async def test_crewai_agent_streaming(
+    monkeypatch: pytest.MonkeyPatch, mock_mcp_context: None
+) -> None:
     monkeypatch.setattr(base_mod, "Crew", _FakeCrew)
-
-    # Patch MCP context manager to provide tools list
-    class _FakeCtx:
-        def __init__(self) -> None:
-            self._tools = ["tool2"]
-
-        def __enter__(self) -> list[str]:
-            return self._tools
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-    monkeypatch.setattr(base_mod, "mcp_tools_context", lambda **_: _FakeCtx())
 
     agent = _TestAgent(api_key="k", api_base="https://y")
 

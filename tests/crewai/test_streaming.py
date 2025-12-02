@@ -18,29 +18,11 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from typing import cast
 
-import pytest
 from ragas import MultiTurnSample
 from ragas.messages import HumanMessage
 
-import datarobot_genai.crewai.base as base_mod
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.crewai.base import CrewAIAgent
-
-
-@pytest.fixture
-def mock_mcp_context(monkeypatch: Any) -> None:
-    """Mock MCP tools context to return empty tools list."""
-    class _Ctx:
-        def __enter__(self) -> list[Any]:
-            return []
-
-        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-            pass
-
-    def _ctx_factory(**_: Any) -> Any:
-        return _Ctx()
-
-    monkeypatch.setattr(base_mod, "mcp_tools_context", _ctx_factory, raising=True)
 
 
 class _Crew:
