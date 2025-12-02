@@ -145,7 +145,7 @@ async def test_crewai_agent_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
     # Streaming currently yields a single final chunk with empty text
     assert len(chunks) == 1
     text, interactions, usage = chunks[0]
-    assert text == ""
+    assert text == "final-output"
     assert interactions is not None
     assert usage == {"completion_tokens": 3, "prompt_tokens": 7, "total_tokens": 10}
 
