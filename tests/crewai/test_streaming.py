@@ -28,7 +28,7 @@ from datarobot_genai.crewai.base import CrewAIAgent
 class _Crew:
     def kickoff(self, *, inputs: dict[str, Any]) -> Any:  # noqa: ARG002
         class Output:
-            raw = "R"
+            raw = "Agent response"
             token_usage = None
 
         return Output()
@@ -77,6 +77,6 @@ async def test_crewai_streaming_minimal(monkeypatch: Any) -> None:
     chunks = [c async for c in cast(AsyncGenerator[tuple[str, Any, UsageMetrics], None], gen)]
     assert len(chunks) == 1
     text, interactions, usage = chunks[0]
-    assert text == ""
+    assert text == "Agent response"
     assert interactions is None
     assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}

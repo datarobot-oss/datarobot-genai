@@ -147,8 +147,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     else:
                         usage_metrics = default_usage_metrics()
 
-                    # Finalize stream with empty chunk carrying interactions and usage
-                    yield "", pipeline_interactions, usage_metrics
+                    response_text = str(crew_output.raw)
+                    yield response_text, pipeline_interactions, usage_metrics
 
                 return _gen()
 
