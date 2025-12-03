@@ -14,6 +14,10 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import asyncio
+import threading
+import queue
+
 from pathlib import Path
 from unittest.mock import ANY
 
@@ -99,6 +103,38 @@ async def test_run_method_streaming(agent):
     assert pipeline_interactions
 
 
+def async_to_sync_iterator(async_generator):
+    """
+    Converts an asynchronous generator into a synchronous iterator
+    using a separate event loop in a new thread.
+    """
+    q = queue.Queue()
+    _END_SIGNAL = object()
+
+    def run_async_generator():
+        async def producer():
+            try:
+                async with asyncio.Runner() as runner:
+                    async for item in async_generator:
+                        q.put(item)
+            finally:
+                q.put(_END_SIGNAL)
+
+        asyncio.run(producer())
+
+    # Start the async generator in a new thread
+    thread = threading.Thread(target=run_async_generator)
+    thread.daemon = True  # Allow the program to exit even if the thread is running
+    thread.start()
+
+    # Yield items from the queue in the synchronous loop
+    while True:
+        item = q.get()
+        if item is _END_SIGNAL:
+            break
+        yield item
+
+
 async def test_custom_model_streaming_response(agent):
     # Call the run method with test inputs
     completion_create_params = {
@@ -108,38 +144,11 @@ async def test_custom_model_streaming_response(agent):
         "stream": True,
     }
 
-    # thread_pool_executor = ThreadPoolExecutor(1)
-    # event_loop = asyncio.new_event_loop()
-    # thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
-
-    # def invoke_with_auth_context():  # type: ignore[no-untyped-def]
-    #     return event_loop.run_until_complete(
-    #         agent.invoke(completion_create_params=completion_create_params)
-    #     )
-
-    # result = thread_pool_executor.submit(invoke_with_auth_context).result()
-
-    try:
-        event_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        try:
-            event_loop = asyncio.get_event_loop()
-        except RuntimeError:
-            event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(event_loop)
-
-    result = await event_loop.create_task(
-        agent.invoke(completion_create_params=completion_create_params)
+    streaming_response_iterator = async_to_sync_iterator(
+        await agent.invoke(completion_create_params=completion_create_params)
     )
 
-    streaming_response_iterator = to_custom_model_streaming_response_old(
-        # thread_pool_executor,
-        event_loop,
-        result,
-        model=completion_create_params.get("model"),
-    )
-
-    async for response in streaming_response_iterator:
+    for response in streaming_response_iterator:
         result = response.choices[0].delta.content
         usage = response.usage
         pipeline_interactions = response.pipeline_interactions
