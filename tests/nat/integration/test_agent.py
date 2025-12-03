@@ -14,9 +14,8 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import asyncio
-import threading
-import queue
+from collections.abc import AsyncIterator, Iterator
+from typing import TypeVar
 
 from pathlib import Path
 from unittest.mock import ANY
@@ -103,36 +102,25 @@ async def test_run_method_streaming(agent):
     assert pipeline_interactions
 
 
-def async_to_sync_iterator(async_generator):
-    """
-    Converts an asynchronous generator into a synchronous iterator
-    using a separate event loop in a new thread.
-    """
-    q = queue.Queue()
-    _END_SIGNAL = object()
+T = TypeVar("T")
 
-    def run_async_generator():
-        async def producer():
+
+def async_iterable_to_sync_iterable(async_iterator: AsyncIterator[T]) -> Iterator[T]:
+    """
+    Converts an async iterator to a sync iterator using asyncio.Runner (Python 3.11+).
+    """
+    with asyncio.Runner() as runner:
+        while True:
             try:
-                async with asyncio.Runner() as runner:
-                    async for item in async_generator:
-                        q.put(item)
-            finally:
-                q.put(_END_SIGNAL)
-
-        asyncio.run(producer())
-
-    # Start the async generator in a new thread
-    thread = threading.Thread(target=run_async_generator)
-    thread.daemon = True  # Allow the program to exit even if the thread is running
-    thread.start()
-
-    # Yield items from the queue in the synchronous loop
-    while True:
-        item = q.get()
-        if item is _END_SIGNAL:
-            break
-        yield item
+                # Run the next iteration within the persistent event loop
+                result = runner.run(anext(async_iterator))
+                yield result
+            except StopAsyncIteration:
+                # The async generator is exhausted
+                break
+            except Exception as e:
+                # Handle other exceptions as needed
+                raise e
 
 
 async def test_custom_model_streaming_response(agent):
@@ -144,7 +132,7 @@ async def test_custom_model_streaming_response(agent):
         "stream": True,
     }
 
-    streaming_response_iterator = async_to_sync_iterator(
+    streaming_response_iterator = async_iterable_to_sync_iterable(
         await agent.invoke(completion_create_params=completion_create_params)
     )
 
