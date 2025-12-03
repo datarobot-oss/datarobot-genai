@@ -21,7 +21,9 @@ import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
 from datarobot_genai.core.chat.responses import async_gen_to_sync_thread
-from datarobot_genai.core.chat.responses import to_custom_model_streaming_response_old
+from datarobot_genai.core.chat.responses import (
+    streaming_iterator_to_custom_model_streaming_response,
+)
 from datarobot_genai.nat.agent import NatAgent
 
 
@@ -124,7 +126,7 @@ def test_custom_model_streaming_response(agent):
 
     streaming_response_iterator = async_gen_to_sync_thread(result, thread_pool_executor, event_loop)
 
-    for response in to_custom_model_streaming_response_old(
+    for response in streaming_iterator_to_custom_model_streaming_response(
         streaming_response_iterator, model=completion_create_params.get("model")
     ):
         result = response.choices[0].delta.content

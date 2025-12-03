@@ -175,7 +175,7 @@ def to_custom_model_streaming_response(
         )
 
 
-def to_custom_model_streaming_response_old(
+def streaming_iterator_to_custom_model_streaming_response(
     streaming_response_iterator: Iterator[tuple[str, MultiTurnSample | None, dict[str, int]]],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
