@@ -13,18 +13,14 @@
 # limitations under the License.
 
 import asyncio
-import queue
-from collections.abc import AsyncIterator
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
-from typing import TypeVar
 from unittest.mock import ANY
 
 import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
+from datarobot_genai.core.chat.responses import async_gen_to_sync_thread
 from datarobot_genai.core.chat.responses import to_custom_model_streaming_response_old
 from datarobot_genai.nat.agent import NatAgent
 
@@ -102,44 +98,6 @@ async def test_run_method_streaming(agent):
     assert usage["prompt_tokens"] > 0
     assert usage["total_tokens"] > 0
     assert pipeline_interactions
-
-
-T = TypeVar("T")
-
-
-def async_gen_to_sync_thread(
-    async_iterator: AsyncIterator[T],
-    thread_pool_executor: ThreadPoolExecutor,
-    event_loop: asyncio.AbstractEventLoop,
-) -> Iterator[T]:
-    """Run an async iterator in a separate thread and provide a sync iterator."""
-    # A thread-safe queue for communication
-    sync_queue: queue.Queue[Any] = queue.Queue()
-    # A sentinel object to signal the end of the async generator
-    SENTINEL = object()  # noqa: N806
-
-    async def run_async_to_queue():
-        """Run in the separate thread's event loop."""
-        try:
-            async for item in async_iterator:
-                sync_queue.put(item)
-        except Exception as e:
-            # Put the exception on the queue to be re-raised in the main thread
-            sync_queue.put(e)
-        finally:
-            # Signal the end of iteration
-            sync_queue.put(SENTINEL)
-
-    thread_pool_executor.submit(event_loop.run_until_complete, run_async_to_queue()).result()
-
-    # The main thread consumes items synchronously
-    while True:
-        item = sync_queue.get()
-        if item is SENTINEL:
-            break
-        if isinstance(item, Exception):
-            raise item
-        yield item
 
 
 def test_custom_model_streaming_response(agent):
