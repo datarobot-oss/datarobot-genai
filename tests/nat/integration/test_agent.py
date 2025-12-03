@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import ANY
 
 import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
+from datarobot_genai.core.chat.responses import to_custom_model_streaming_response
 from datarobot_genai.nat.agent import NatAgent
 
 
@@ -93,4 +96,48 @@ async def test_run_method_streaming(agent):
     assert usage["completion_tokens"] > 0
     assert usage["prompt_tokens"] > 0
     assert usage["total_tokens"] > 0
+    assert pipeline_interactions
+
+
+async def test_custom_model_streaming_response(agent):
+    # Call the run method with test inputs
+    completion_create_params = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "AI"}],
+        "environment_var": True,
+        "stream": True,
+    }
+
+    thread_pool_executor = ThreadPoolExecutor(1)
+    event_loop = asyncio.new_event_loop()
+    thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
+
+    def invoke_with_auth_context():  # type: ignore[no-untyped-def]
+        return event_loop.run_until_complete(
+            agent.invoke(completion_create_params=completion_create_params)
+        )
+
+    result = thread_pool_executor.submit(invoke_with_auth_context).result()
+
+    streaming_response_iterator = to_custom_model_streaming_response(
+        thread_pool_executor,
+        event_loop,
+        result,
+        model=completion_create_params.get("model"),
+    )
+
+    for response in streaming_response_iterator:
+        result = response.choices[0].delta.content
+        usage = response.usage
+        pipeline_interactions = response.pipeline_interactions
+        if result:
+            assert isinstance(result, str)
+        if usage:
+            assert isinstance(usage.completion_tokens, int)
+            assert isinstance(usage.prompt_tokens, int)
+            assert isinstance(usage.total_tokens, int)
+    # Final chunk has the total usage and pipeline interactions
+    assert usage.completion_tokens > 0
+    assert usage.prompt_tokens > 0
+    assert usage.total_tokens > 0
     assert pipeline_interactions
