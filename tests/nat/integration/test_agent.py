@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import asyncio
-import threading
 import queue
-from typing import TypeVar, Any
-from collections.abc import AsyncIterator, Iterator
-
+import threading
+from collections.abc import AsyncIterator
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+from typing import TypeVar
 from unittest.mock import ANY
 
 import pytest
@@ -118,7 +119,7 @@ def async_gen_to_sync_thread(async_iterator: AsyncIterator[T]) -> Iterator[T]:
     async def run_async_to_queue():
         """The coroutine that runs in the separate thread's event loop."""
         try:
-            async for item in async_iterator:
+            async for item in await async_iterator:
                 sync_queue.put(item)
         except Exception as e:
             # Put the exception on the queue to be re-raised in the main thread
@@ -149,7 +150,7 @@ def async_gen_to_sync_thread(async_iterator: AsyncIterator[T]) -> Iterator[T]:
         yield item
 
 
-async def test_custom_model_streaming_response(agent):
+def test_custom_model_streaming_response(agent):
     # Call the run method with test inputs
     completion_create_params = {
         "model": "test-model",
@@ -159,7 +160,7 @@ async def test_custom_model_streaming_response(agent):
     }
 
     streaming_response_iterator = async_gen_to_sync_thread(
-        await agent.invoke(completion_create_params=completion_create_params)
+        agent.invoke(completion_create_params=completion_create_params)
     )
 
     for response in to_custom_model_streaming_response_old(
