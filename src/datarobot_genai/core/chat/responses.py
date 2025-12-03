@@ -170,16 +170,11 @@ def to_custom_model_streaming_response(
         )
 
 
-async def to_custom_model_streaming_response_old(
-    event_loop: AbstractEventLoop,
-    streaming_response_generator: AsyncGenerator[
-        tuple[str, MultiTurnSample | None, dict[str, int]], None
-    ],
+def to_custom_model_streaming_response_old(
+    streaming_response_iterator: Iterator[tuple[str, MultiTurnSample | None, dict[str, int]]],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
-    from openai.types.chat.chat_completion_chunk import Choice
-    from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
     completion_id = str(uuid.uuid4())
     created = int(time.time())
@@ -187,19 +182,18 @@ async def to_custom_model_streaming_response_old(
     last_pipeline_interactions = None
     last_usage_metrics = None
 
-    agent_response = streaming_response_generator.__aiter__()
     while True:
         try:
             (
                 response_text,
                 pipeline_interactions,
                 usage_metrics,
-            ) = await event_loop.create_task(agent_response.__anext__())
+            ) = next(streaming_response_iterator)
             last_pipeline_interactions = pipeline_interactions
             last_usage_metrics = usage_metrics
 
             if response_text:
-                choice = Choice(
+                choice = ChunkChoice(
                     index=0,
                     delta=ChoiceDelta(role="assistant", content=response_text),
                     finish_reason=None,
@@ -212,10 +206,10 @@ async def to_custom_model_streaming_response_old(
                     choices=[choice],
                     usage=CompletionUsage(**usage_metrics) if usage_metrics else None,
                 )
-        except StopAsyncIteration:
+        except StopIteration:
             break
     # Yield final chunk indicating end of stream
-    choice = Choice(
+    choice = ChunkChoice(
         index=0,
         delta=ChoiceDelta(role="assistant"),
         finish_reason="stop",

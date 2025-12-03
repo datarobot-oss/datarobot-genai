@@ -13,9 +13,10 @@
 # limitations under the License.
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import threading
+import queue
+from typing import TypeVar, Any
 from collections.abc import AsyncIterator, Iterator
-from typing import TypeVar
 
 from pathlib import Path
 from unittest.mock import ANY
@@ -105,22 +106,47 @@ async def test_run_method_streaming(agent):
 T = TypeVar("T")
 
 
-def async_iterable_to_sync_iterable(async_iterator: AsyncIterator[T]) -> Iterator[T]:
+def async_gen_to_sync_thread(async_iterator: AsyncIterator[T]) -> Iterator[T]:
     """
-    Converts an async iterator to a sync iterator using asyncio.Runner (Python 3.11+).
+    Runs an async iterator in a separate thread and provides a sync iterator.
     """
-    with asyncio.Runner() as runner:
-        while True:
-            try:
-                # Run the next iteration within the persistent event loop
-                result = runner.run(anext(async_iterator))
-                yield result
-            except StopAsyncIteration:
-                # The async generator is exhausted
-                break
-            except Exception as e:
-                # Handle other exceptions as needed
-                raise e
+    # A thread-safe queue for communication
+    sync_queue: queue.Queue[Any] = queue.Queue()
+    # A sentinel object to signal the end of the async generator
+    SENTINEL = object()
+
+    async def run_async_to_queue():
+        """The coroutine that runs in the separate thread's event loop."""
+        try:
+            async for item in async_iterator:
+                sync_queue.put(item)
+        except Exception as e:
+            # Put the exception on the queue to be re-raised in the main thread
+            sync_queue.put(e)
+        finally:
+            # Signal the end of iteration
+            sync_queue.put(SENTINEL)
+
+    def thread_target():
+        """The entry point for the separate thread."""
+        # Create a new event loop for this new thread and run the coroutine
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_async_to_queue())
+        loop.close()
+
+    # Start the background thread
+    thread = threading.Thread(target=thread_target, daemon=True)
+    thread.start()
+
+    # The main thread consumes items synchronously
+    while True:
+        item = sync_queue.get()
+        if item is SENTINEL:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
 
 
 async def test_custom_model_streaming_response(agent):
@@ -132,11 +158,13 @@ async def test_custom_model_streaming_response(agent):
         "stream": True,
     }
 
-    streaming_response_iterator = async_iterable_to_sync_iterable(
+    streaming_response_iterator = async_gen_to_sync_thread(
         await agent.invoke(completion_create_params=completion_create_params)
     )
 
-    for response in streaming_response_iterator:
+    for response in to_custom_model_streaming_response_old(
+        streaming_response_iterator, model=completion_create_params.get("model")
+    ):
         result = response.choices[0].delta.content
         usage = response.usage
         pipeline_interactions = response.pipeline_interactions
