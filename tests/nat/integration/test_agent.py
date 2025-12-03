@@ -14,7 +14,6 @@
 
 import asyncio
 import queue
-import threading
 from collections.abc import AsyncIterator
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -108,17 +107,19 @@ async def test_run_method_streaming(agent):
 T = TypeVar("T")
 
 
-def async_gen_to_sync_thread(async_iterator: AsyncIterator[T]) -> Iterator[T]:
-    """
-    Runs an async iterator in a separate thread and provides a sync iterator.
-    """
+def async_gen_to_sync_thread(
+    async_iterator: AsyncIterator[T],
+    thread_pool_executor: ThreadPoolExecutor,
+    event_loop: asyncio.AbstractEventLoop,
+) -> Iterator[T]:
+    """Run an async iterator in a separate thread and provide a sync iterator."""
     # A thread-safe queue for communication
     sync_queue: queue.Queue[Any] = queue.Queue()
     # A sentinel object to signal the end of the async generator
-    SENTINEL = object()
+    SENTINEL = object()  # noqa: N806
 
     async def run_async_to_queue():
-        """The coroutine that runs in the separate thread's event loop."""
+        """Run in the separate thread's event loop."""
         try:
             async for item in async_iterator:
                 sync_queue.put(item)
@@ -129,17 +130,7 @@ def async_gen_to_sync_thread(async_iterator: AsyncIterator[T]) -> Iterator[T]:
             # Signal the end of iteration
             sync_queue.put(SENTINEL)
 
-    def thread_target():
-        """The entry point for the separate thread."""
-        # Create a new event loop for this new thread and run the coroutine
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_async_to_queue())
-        loop.close()
-
-    # Start the background thread
-    thread = threading.Thread(target=thread_target, daemon=True)
-    thread.start()
+    thread_pool_executor.submit(event_loop.run_until_complete, run_async_to_queue()).result()
 
     # The main thread consumes items synchronously
     while True:
@@ -173,7 +164,7 @@ def test_custom_model_streaming_response(agent):
 
     result = thread_pool_executor.submit(invoke_with_auth_context).result()
 
-    streaming_response_iterator = async_gen_to_sync_thread(result)
+    streaming_response_iterator = async_gen_to_sync_thread(result, thread_pool_executor, event_loop)
 
     for response in to_custom_model_streaming_response_old(
         streaming_response_iterator, model=completion_create_params.get("model")
