@@ -168,3 +168,66 @@ def to_custom_model_streaming_response(
             choices=[choice],
             usage=None,
         )
+
+
+async def to_custom_model_streaming_response_old(
+    event_loop: AbstractEventLoop,
+    streaming_response_generator: AsyncGenerator[
+        tuple[str, MultiTurnSample | None, dict[str, int]], None
+    ],
+    model: str | object | None,
+) -> Iterator[CustomModelStreamingResponse]:
+    """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
+    from openai.types.chat.chat_completion_chunk import Choice
+    from openai.types.chat.chat_completion_chunk import ChoiceDelta
+
+    completion_id = str(uuid.uuid4())
+    created = int(time.time())
+
+    last_pipeline_interactions = None
+    last_usage_metrics = None
+
+    agent_response = streaming_response_generator.__aiter__()
+    while True:
+        try:
+            (
+                response_text,
+                pipeline_interactions,
+                usage_metrics,
+            ) = await event_loop.create_task(agent_response.__anext__())
+            last_pipeline_interactions = pipeline_interactions
+            last_usage_metrics = usage_metrics
+
+            if response_text:
+                choice = Choice(
+                    index=0,
+                    delta=ChoiceDelta(role="assistant", content=response_text),
+                    finish_reason=None,
+                )
+                yield CustomModelStreamingResponse(
+                    id=completion_id,
+                    object="chat.completion.chunk",
+                    created=created,
+                    model=model,
+                    choices=[choice],
+                    usage=CompletionUsage(**usage_metrics) if usage_metrics else None,
+                )
+        except StopAsyncIteration:
+            break
+    # Yield final chunk indicating end of stream
+    choice = Choice(
+        index=0,
+        delta=ChoiceDelta(role="assistant"),
+        finish_reason="stop",
+    )
+    yield CustomModelStreamingResponse(
+        id=completion_id,
+        object="chat.completion.chunk",
+        created=created,
+        model=model,
+        choices=[choice],
+        usage=CompletionUsage(**last_usage_metrics) if last_usage_metrics else None,
+        pipeline_interactions=last_pipeline_interactions.model_dump_json()
+        if last_pipeline_interactions
+        else None,
+    )

@@ -20,7 +20,7 @@ from unittest.mock import ANY
 import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
-from datarobot_genai.core.chat.responses import to_custom_model_streaming_response
+from datarobot_genai.core.chat.responses import to_custom_model_streaming_response_old
 from datarobot_genai.nat.agent import NatAgent
 
 
@@ -108,25 +108,38 @@ async def test_custom_model_streaming_response(agent):
         "stream": True,
     }
 
-    thread_pool_executor = ThreadPoolExecutor(1)
-    event_loop = asyncio.new_event_loop()
-    thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
+    # thread_pool_executor = ThreadPoolExecutor(1)
+    # event_loop = asyncio.new_event_loop()
+    # thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
 
-    def invoke_with_auth_context():  # type: ignore[no-untyped-def]
-        return event_loop.run_until_complete(
-            agent.invoke(completion_create_params=completion_create_params)
-        )
+    # def invoke_with_auth_context():  # type: ignore[no-untyped-def]
+    #     return event_loop.run_until_complete(
+    #         agent.invoke(completion_create_params=completion_create_params)
+    #     )
 
-    result = thread_pool_executor.submit(invoke_with_auth_context).result()
+    # result = thread_pool_executor.submit(invoke_with_auth_context).result()
 
-    streaming_response_iterator = to_custom_model_streaming_response(
-        thread_pool_executor,
+    try:
+        event_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            event_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(event_loop)
+
+    result = await event_loop.create_task(
+        agent.invoke(completion_create_params=completion_create_params)
+    )
+
+    streaming_response_iterator = to_custom_model_streaming_response_old(
+        # thread_pool_executor,
         event_loop,
         result,
         model=completion_create_params.get("model"),
     )
 
-    for response in streaming_response_iterator:
+    async for response in streaming_response_iterator:
         result = response.choices[0].delta.content
         usage = response.usage
         pipeline_interactions = response.pipeline_interactions
