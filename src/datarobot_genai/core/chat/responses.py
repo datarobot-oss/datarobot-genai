@@ -175,7 +175,6 @@ def to_custom_model_streaming_response_old(
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
-
     completion_id = str(uuid.uuid4())
     created = int(time.time())
 

@@ -17,6 +17,7 @@ import queue
 import threading
 from collections.abc import AsyncIterator
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from typing import TypeVar
@@ -119,7 +120,7 @@ def async_gen_to_sync_thread(async_iterator: AsyncIterator[T]) -> Iterator[T]:
     async def run_async_to_queue():
         """The coroutine that runs in the separate thread's event loop."""
         try:
-            async for item in await async_iterator:
+            async for item in async_iterator:
                 sync_queue.put(item)
         except Exception as e:
             # Put the exception on the queue to be re-raised in the main thread
@@ -159,9 +160,20 @@ def test_custom_model_streaming_response(agent):
         "stream": True,
     }
 
-    streaming_response_iterator = async_gen_to_sync_thread(
-        agent.invoke(completion_create_params=completion_create_params)
-    )
+    thread_pool_executor = ThreadPoolExecutor(1)
+    event_loop = asyncio.new_event_loop()
+    thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
+
+    # Invoke the agent and check if it returns a generator or a tuple
+    # Set the authorization context in the worker thread before invoking the agent
+    def invoke_with_auth_context():  # type: ignore[no-untyped-def]
+        return event_loop.run_until_complete(
+            agent.invoke(completion_create_params=completion_create_params)
+        )
+
+    result = thread_pool_executor.submit(invoke_with_auth_context).result()
+
+    streaming_response_iterator = async_gen_to_sync_thread(result)
 
     for response in to_custom_model_streaming_response_old(
         streaming_response_iterator, model=completion_create_params.get("model")
