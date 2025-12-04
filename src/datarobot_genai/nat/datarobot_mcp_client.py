@@ -14,24 +14,26 @@
 
 from typing import Literal
 
-from nat.plugins.mcp.client_config import MCPServerConfig as NATMCPServerConfig
+from nat.plugins.mcp.client_config import MCPServerConfig
 from nat.plugins.mcp.client_impl import MCPClientConfig
 from pydantic import Field
 from pydantic import HttpUrl
 
-from datarobot_genai.drmcp.core.config import MCPServerConfig
+from datarobot_genai.core.mcp.common import MCPConfig
 
-config = MCPServerConfig()
+config = MCPConfig().server_config
 
 
-class DataRobotMCPServerConfig(NATMCPServerConfig):
-    transport: Literal["streamable-http"] = Field(
-        default="streamable-http",
-        description="Transport type to connect to the MCP server (streamable-http)",
+class DataRobotMCPServerConfig(MCPServerConfig):
+    transport: Literal["streamable-http", "sse"] = Field(
+        default=config["transport"] if config else "streamable-http",
+        description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
-    url: HttpUrl = Field(
-        default=config.mcp_url, description="URL of the MCP server (for streamable-http transport)"
+    url: HttpUrl | None = Field(
+        default=config["url"] if config else None,
+        description="URL of the MCP server (for sse or streamable-http transport)",
     )
+    headers: dict[str, str] | None = Field(default=config["headers"] if config else None)
 
 
 class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  # type: ignore[call-arg]
