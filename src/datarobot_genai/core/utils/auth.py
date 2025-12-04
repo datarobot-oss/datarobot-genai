@@ -65,7 +65,15 @@ class AuthContextHeaderHandler:
             JWT algorithm. Default is "HS256".
         validate_signature : bool
             Whether to validate JWT signatures. Default is True.
+
+        Raises
+        ------
+        ValueError
+            If algorithm is 'none' (insecure).
         """
+        if algorithm is None:
+            raise ValueError("Algorithm None is not allowed. Use a secure algorithm like HS256.")
+
         # Get secret key from parameter, config, or environment variable
         # Handle the case where AuthContextConfig() initialization fails due to
         # a bug in the datarobot package when SESSION_SECRET_KEY is not set
