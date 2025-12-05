@@ -27,6 +27,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from typing import TypeVar
 
+from ag_ui.core import BaseEvent
+from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 from openai.types.chat import ChatCompletionChunk
@@ -45,6 +48,7 @@ class CustomModelChatResponse(ChatCompletion):
 
 class CustomModelStreamingResponse(ChatCompletionChunk):
     pipeline_interactions: str | None = None
+    event: BaseEvent | None = None
 
 
 def to_custom_model_chat_response(
@@ -88,7 +92,7 @@ def to_custom_model_streaming_response(
     thread_pool_executor: ThreadPoolExecutor,
     event_loop: AbstractEventLoop,
     streaming_response_generator: AsyncGenerator[
-        tuple[str, MultiTurnSample | None, dict[str, int]], None
+        tuple[str | BaseEvent, MultiTurnSample | None, dict[str, int]], None
     ],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
@@ -110,7 +114,7 @@ def to_custom_model_streaming_response(
         while True:
             try:
                 (
-                    response_text,
+                    response_text_or_event,
                     pipeline_interactions,
                     usage_metrics,
                 ) = thread_pool_executor.submit(
@@ -119,10 +123,10 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                if response_text:
+                if isinstance(response_text_or_event, str) and response_text_or_event:
                     choice = ChunkChoice(
                         index=0,
-                        delta=ChoiceDelta(role="assistant", content=response_text),
+                        delta=ChoiceDelta(role="assistant", content=response_text_or_event),
                         finish_reason=None,
                     )
                     yield CustomModelStreamingResponse(
@@ -134,6 +138,29 @@ def to_custom_model_streaming_response(
                         usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
                         if usage_metrics
                         else None,
+                    )
+                elif isinstance(response_text_or_event, BaseEvent):
+                    content = ""
+                    if isinstance(
+                        response_text_or_event, (TextMessageContentEvent, TextMessageChunkEvent)
+                    ):
+                        content = response_text_or_event.delta or content
+                    choice = ChunkChoice(
+                        index=0,
+                        delta=ChoiceDelta(role="assistant", content=content),
+                        finish_reason=None,
+                    )
+
+                    yield CustomModelStreamingResponse(
+                        id=completion_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=model,
+                        choices=[choice],
+                        usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
+                        if usage_metrics
+                        else None,
+                        event=response_text_or_event,
                     )
             except StopAsyncIteration:
                 break

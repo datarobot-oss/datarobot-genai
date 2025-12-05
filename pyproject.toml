@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.1.75"
+version = "0.1.76"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -24,6 +24,7 @@ dependencies = [
   "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
   "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
   "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
+  "ag-ui-protocol>=0.1.9,<0.2.0",
 ]
 
 [project.urls]
