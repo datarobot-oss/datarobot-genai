@@ -28,6 +28,7 @@ from typing import Any
 from typing import TypeVar
 
 from ag_ui.core import BaseEvent
+from ag_ui.core import Event
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from openai.types import CompletionUsage
@@ -48,7 +49,7 @@ class CustomModelChatResponse(ChatCompletion):
 
 class CustomModelStreamingResponse(ChatCompletionChunk):
     pipeline_interactions: str | None = None
-    event: BaseEvent | None = None
+    event: Event | None = None
 
 
 def to_custom_model_chat_response(
@@ -92,7 +93,7 @@ def to_custom_model_streaming_response(
     thread_pool_executor: ThreadPoolExecutor,
     event_loop: AbstractEventLoop,
     streaming_response_generator: AsyncGenerator[
-        tuple[str | BaseEvent, MultiTurnSample | None, dict[str, int]], None
+        tuple[str | Event, MultiTurnSample | None, dict[str, int]], None
     ],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
