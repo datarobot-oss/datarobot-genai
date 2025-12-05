@@ -16,6 +16,11 @@ from collections.abc import AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from ag_ui.core import EventType
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
+
 from datarobot_genai.core.chat.responses import CustomModelChatResponse
 from datarobot_genai.core.chat.responses import CustomModelStreamingResponse
 from datarobot_genai.core.chat.responses import to_custom_model_chat_response
@@ -59,6 +64,58 @@ def test_to_custom_model_streaming_response_sequence() -> None:
     assert isinstance(chunks[0], CustomModelStreamingResponse)
     assert chunks[0].choices[0].delta.content == "Hello "
     assert chunks[0].choices[0].finish_reason is None
+    assert chunks[-1].choices[0].finish_reason == "stop"
+    assert chunks[-1].usage is not None
+    assert chunks[-1].usage.total_tokens == 3
+
+
+def test_to_custom_model_streaming_response_sequence_with_event() -> None:
+    async def gen() -> AsyncGenerator[tuple[str, Any | None, dict[str, int]], None]:
+        yield (
+            TextMessageStartEvent(
+                type=EventType.TEXT_MESSAGE_START, message_id="1", role="assistant"
+            ),
+            None,
+            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        )
+        yield (
+            TextMessageContentEvent(
+                type=EventType.TEXT_MESSAGE_CONTENT, message_id="1", delta="Hello World"
+            ),
+            None,
+            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        )
+        yield (
+            TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id="1"),
+            None,
+            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        )
+        # final: no text, but returns last usage + last pipeline interactions when present
+        yield (
+            "",
+            type("X", (), {"model_dump_json": lambda self: "{}"})(),
+            {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        )
+
+    with ThreadPoolExecutor(1) as thread_pool_executor:
+        event_loop = asyncio.new_event_loop()
+        thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
+
+        response_generator = to_custom_model_streaming_response(
+            thread_pool_executor, event_loop, gen(), model="m"
+        )
+        chunks = list(response_generator)
+    assert isinstance(chunks[0], CustomModelStreamingResponse)
+    assert chunks[0].choices[0].delta.content == ""
+    assert chunks[0].event is not None
+    assert chunks[0].event.type == EventType.TEXT_MESSAGE_START
+    assert chunks[1].choices[0].delta.content == "Hello World"
+    assert chunks[1].event is not None
+    assert chunks[1].event.type == EventType.TEXT_MESSAGE_CONTENT
+    assert chunks[2].choices[0].delta.content == ""
+    assert chunks[2].event is not None
+    assert chunks[2].event.type == EventType.TEXT_MESSAGE_END
+
     assert chunks[-1].choices[0].finish_reason == "stop"
     assert chunks[-1].usage is not None
     assert chunks[-1].usage.total_tokens == 3

@@ -17,6 +17,15 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from typing import cast
 
+from ag_ui.core import Event
+from ag_ui.core import EventType
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
@@ -158,43 +167,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # The main difference is returning a generator for streaming or a final response for sync.
         if is_streaming(completion_create_params):
             # Streaming response: yield each message as it is generated
-            async def stream_generator() -> AsyncGenerator[
-                tuple[str, MultiTurnSample | None, UsageMetrics], None
-            ]:
-                # Iterate over the graph stream. For message events, yield the content.
-                # For update events, accumulate the usage metrics.
-                events = []
-                async for _, mode, event in graph_stream:
-                    if mode == "messages":
-                        message_event: tuple[AIMessageChunk, dict[str, Any]] = event  # type: ignore[assignment]
-                        llm_token, _ = message_event
-                        yield (
-                            str(llm_token.content),
-                            None,
-                            usage_metrics,
-                        )
-                    elif mode == "updates":
-                        update_event: dict[str, Any] = event  # type: ignore[assignment]
-                        events.append(update_event)
-                        current_node = next(iter(update_event))
-                        node_data = update_event[current_node]
-                        current_usage = node_data.get("usage", {}) if node_data is not None else {}
-                        if current_usage:
-                            usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
-                            usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
-                            usage_metrics["completion_tokens"] += current_usage.get(
-                                "completion_tokens", 0
-                            )
-                    else:
-                        raise ValueError(f"Invalid mode: {mode}")
-
-                # Create a list of events from the event listener
-                pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-
-                # yield the final response indicating completion
-                yield "", pipeline_interactions, usage_metrics
-
-            return stream_generator()
+            return self._stream_generator(graph_stream, usage_metrics)
         else:
             # Synchronous response: collect all events and return the final message
             events: list[dict[str, Any]] = [
@@ -221,6 +194,129 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 usage_metrics["completion_tokens"] += current_usage.get("completion_tokens", 0)
 
             return response_text, pipeline_interactions, usage_metrics
+
+    async def _stream_generator(
+        self, graph_stream: AsyncGenerator[tuple[Any, str, Any], None], usage_metrics: UsageMetrics
+    ) -> AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]:
+        # Iterate over the graph stream. For message events, yield the content.
+        # For update events, accumulate the usage metrics.
+        events = []
+        current_message_id = None
+        tool_call_id = ""
+        async for _, mode, event in graph_stream:
+            if mode == "messages":
+                message_event: tuple[AIMessageChunk | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
+                message = message_event[0]
+                if isinstance(message, ToolMessage):
+                    yield (
+                        ToolCallEndEvent(
+                            type=EventType.TOOL_CALL_END, tool_call_id=message.tool_call_id
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    yield (
+                        ToolCallResultEvent(
+                            type=EventType.TOOL_CALL_RESULT,
+                            message_id=message.id,
+                            tool_call_id=message.tool_call_id,
+                            content=message.content,
+                            role="tool",
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    tool_call_id = ""
+                elif isinstance(message, AIMessageChunk):
+                    if message.tool_call_chunks:
+                        # This is a tool call message
+                        for tool_call_chunk in message.tool_call_chunks:
+                            if tool_call_chunk["name"]:
+                                # Its a tool call start message
+                                tool_call_id = tool_call_chunk["id"]
+                                yield (
+                                    ToolCallStartEvent(
+                                        type=EventType.TOOL_CALL_START,
+                                        tool_call_id=tool_call_chunk["id"],
+                                        tool_call_name=tool_call_chunk["name"],
+                                        parent_message_id=message.id,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                            elif tool_call_chunk["args"]:
+                                # Its a tool call args message
+                                yield (
+                                    ToolCallArgsEvent(
+                                        type=EventType.TOOL_CALL_ARGS,
+                                        # Its empty when the tool chunk is not a start message
+                                        # So we use the tool call id from a previous start message
+                                        tool_call_id=tool_call_id,
+                                        delta=tool_call_chunk["args"],
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                    elif message.content:
+                        # Its a text message
+                        # Handle the start and end of the text message
+                        if message.id != current_message_id:
+                            if current_message_id:
+                                yield (
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=current_message_id,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                            current_message_id = message.id
+                            yield (
+                                TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START,
+                                    message_id=message.id,
+                                    role="assistant",
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message.id,
+                                delta=message.content,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                else:
+                    raise ValueError(f"Invalid message event: {message_event}")
+            elif mode == "updates":
+                update_event: dict[str, Any] = event  # type: ignore[assignment]
+                events.append(update_event)
+                current_node = next(iter(update_event))
+                node_data = update_event[current_node]
+                current_usage = node_data.get("usage", {}) if node_data is not None else {}
+                if current_usage:
+                    usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
+                    usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
+                    usage_metrics["completion_tokens"] += current_usage.get("completion_tokens", 0)
+                if current_message_id:
+                    yield (
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=current_message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    current_message_id = None
+
+        # Create a list of events from the event listener
+        pipeline_interactions = self.create_pipeline_interactions_from_events(events)
+
+        # yield the final response indicating completion
+        yield "", pipeline_interactions, usage_metrics
 
     @classmethod
     def create_pipeline_interactions_from_events(
