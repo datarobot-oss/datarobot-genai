@@ -176,6 +176,16 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 if mode == "updates"
             ]
 
+            # Accumulate the usage metrics from the updates
+            for update in events:
+                current_node = next(iter(update))
+                node_data = update[current_node]
+                current_usage = node_data.get("usage", {}) if node_data is not None else {}
+                if current_usage:
+                    usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
+                    usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
+                    usage_metrics["completion_tokens"] += current_usage.get("completion_tokens", 0)
+
             pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
             # Extract the final event from the graph stream as the synchronous response
@@ -187,11 +197,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 if node_data is not None and "messages" in node_data
                 else ""
             )
-            current_usage = node_data.get("usage", {}) if node_data is not None else {}
-            if current_usage:
-                usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
-                usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
-                usage_metrics["completion_tokens"] += current_usage.get("completion_tokens", 0)
 
             return response_text, pipeline_interactions, usage_metrics
 
@@ -231,20 +236,20 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     if message.tool_call_chunks:
                         # This is a tool call message
                         for tool_call_chunk in message.tool_call_chunks:
-                            if tool_call_chunk["name"]:
+                            if name := tool_call_chunk.get("name"):
                                 # Its a tool call start message
                                 tool_call_id = tool_call_chunk["id"]
                                 yield (
                                     ToolCallStartEvent(
                                         type=EventType.TOOL_CALL_START,
-                                        tool_call_id=tool_call_chunk["id"],
-                                        tool_call_name=tool_call_chunk["name"],
+                                        tool_call_id=tool_call_id,
+                                        tool_call_name=name,
                                         parent_message_id=message.id,
                                     ),
                                     None,
                                     usage_metrics,
                                 )
-                            elif tool_call_chunk["args"]:
+                            elif args := tool_call_chunk.get("args"):
                                 # Its a tool call args message
                                 yield (
                                     ToolCallArgsEvent(
@@ -252,7 +257,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                         # Its empty when the tool chunk is not a start message
                                         # So we use the tool call id from a previous start message
                                         tool_call_id=tool_call_id,
-                                        delta=tool_call_chunk["args"],
+                                        delta=args,
                                     ),
                                     None,
                                     usage_metrics,
