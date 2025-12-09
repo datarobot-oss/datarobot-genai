@@ -32,7 +32,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
 config = Config()
 
 
-class DataRobotAPIKeyAuthProviderConfig(APIKeyAuthProviderConfig):
+class DataRobotAPIKeyAuthProviderConfig(APIKeyAuthProviderConfig, name="datarobot_api_key"):  # type: ignore[call-arg]
     raw_key: str = Field(
         description=(
             "Raw API token or credential to be injected into the request parameter. "
