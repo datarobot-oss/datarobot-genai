@@ -53,8 +53,10 @@ class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  #
     )
 
 
-@register_function_group(config_type=MCPClientConfig)
-async def mcp_client_function_group(config: MCPClientConfig, _builder: Builder) -> MCPFunctionGroup:
+@register_function_group(config_type=DataRobotMCPClientConfig)
+async def datarobot_mcp_client_function_group(
+    config: DataRobotMCPClientConfig, _builder: Builder
+) -> MCPFunctionGroup:
     """
     Connect to an MCP server and expose tools as a function group.
 
