@@ -17,6 +17,7 @@ from typing import Literal
 
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_function_group
+from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client_base import MCPSSEClient
 from nat.plugins.mcp.client_base import MCPStdioClient
 from nat.plugins.mcp.client_base import MCPStreamableHTTPClient
@@ -44,7 +45,10 @@ class DataRobotMCPServerConfig(MCPServerConfig):
         default=config["url"] if config else None,
         description="URL of the MCP server (for sse or streamable-http transport)",
     )
-    headers: dict[str, str] | None = Field(default=config["headers"] if config else None)
+    # Authentication configuration
+    auth_provider: str | AuthenticationRef = Field(
+        default="datarobot_api_key", description="Reference to authentication provider"
+    )
 
 
 class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  # type: ignore[call-arg]
