@@ -18,9 +18,9 @@ from unittest.mock import Mock
 from unittest.mock import patch
 from uuid import UUID
 
+import datarobot as dr
 import pytest
 
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
 from datarobot_genai.drmcp.core.dynamic_prompts.register import make_prompt_function
 from datarobot_genai.drmcp.core.dynamic_prompts.register import (
     register_prompts_from_datarobot_prompt_management,
@@ -39,8 +39,8 @@ class TestMakePrompt:
         description = "dummy prompt description"
         prompt_text = "dummy prompt text {{variable_a}} and {{variable_b}}"
         variables = [
-            DrVariable(name="variable_a", description="variable_a_desc"),
-            DrVariable(name="variable_b", description="variable_b_desc"),
+            dr.genai.Variable(name="variable_a", description="variable_a_desc"),
+            dr.genai.Variable(name="variable_b", description="variable_b_desc"),
         ]
 
         prompt_function = make_prompt_function(name, description, prompt_text, variables)
@@ -57,7 +57,7 @@ class TestMakePrompt:
         name = "dummy prompt name"
         description = "dummy prompt description"
         prompt_text = "dummy prompt text {{True}} and {{class}}"
-        variables = [DrVariable(name=var_name, description=f"{var_name}_desc")]
+        variables = [dr.genai.Variable(name=var_name, description=f"{var_name}_desc")]
 
         with pytest.raises(ValueError):
             make_prompt_function(name, description, prompt_text, variables)

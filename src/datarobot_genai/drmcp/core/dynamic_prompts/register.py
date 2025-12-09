@@ -18,15 +18,13 @@ from collections.abc import Callable
 from inspect import Parameter
 from inspect import Signature
 
+import datarobot as dr
 from fastmcp.prompts.prompt import Prompt
 from pydantic import Field
 
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
 
-from .dr_lib import DrPrompt
-from .dr_lib import DrPromptVersion
-from .dr_lib import DrVariable
 from .dr_lib import get_datarobot_prompt_template_versions
 from .dr_lib import get_datarobot_prompt_templates
 
@@ -57,7 +55,8 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
 
 
 async def register_prompt_from_datarobot_prompt_management(
-    prompt_template: DrPrompt, prompt_template_version: DrPromptVersion | None = None
+    prompt_template: dr.genai.PromptTemplate,
+    prompt_template_version: dr.genai.PromptTemplateVersion | None = None,
 ) -> Prompt:
     """Register a single prompt.
 
@@ -173,7 +172,7 @@ def to_valid_mcp_prompt_name(s: str) -> str:
 
 
 def make_prompt_function(
-    name: str, description: str, prompt_text: str, variables: list[DrVariable]
+    name: str, description: str, prompt_text: str, variables: list[dr.genai.Variable]
 ) -> Callable:
     params = []
     for v in variables:

@@ -286,6 +286,9 @@ class TaggedFastMCP(FastMCP):
                 f"already mapped to {existing_prompt_template_version_id}. "
                 f"Updating to version id = {prompt_template_version_id} and name = {prompt_name}"
             )
+            await self.remove_prompt_mapping(
+                prompt_template_id, existing_prompt_template_version_id
+            )
 
         self._prompts_map[prompt_template_id] = (prompt_template_version_id, prompt_name)
 
@@ -526,12 +529,13 @@ async def register_prompt(
     )
 
     # Register the prompt
-    registered_prompt = mcp.add_prompt(prompt)
     if prompt_template:
         prompt_template_id, prompt_template_version_id = prompt_template
         await mcp.set_prompt_mapping(
             prompt_template_id, prompt_template_version_id, prompt_name_no_duplicate
         )
+
+    registered_prompt = mcp.add_prompt(prompt)
 
     # Verify prompt is registered
     prompts = await mcp.get_prompts()

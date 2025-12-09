@@ -25,7 +25,7 @@ from tests.drmcp.integration.helper import get_or_create_prompt_template_version
 
 
 @contextmanager
-def _create_prompt_template_with_versions() -> Iterator[tuple[str, str, str]]:
+def _create_prompt_template_with_versions() -> Iterator[tuple[str, str, str, str]]:
     # Helper to create data and then delete it
     new_prompt_api_name = str(uuid4())
     new_prompt_api = create_prompt_template(new_prompt_api_name)
@@ -36,7 +36,10 @@ def _create_prompt_template_with_versions() -> Iterator[tuple[str, str, str]]:
     second_version = get_or_create_prompt_template_version(
         new_prompt_api_id, "prompt text 2", variables=[]
     )
-    yield new_prompt_api_id, first_version["id"], second_version["id"]
+    third_version = get_or_create_prompt_template_version(
+        new_prompt_api_id, "prompt text 3", variables=[]
+    )
+    yield new_prompt_api_id, first_version["id"], second_version["id"], third_version["id"]
     delete_prompt_template(new_prompt_api_id)
 
 
@@ -52,6 +55,7 @@ class TestCustomRoutesE2E:
                 prompt_template_id,
                 first_version_id,
                 second_version_id,
+                third_version_id,
             ):
                 # Test list
                 resp = await session.get("/registeredPrompts")
@@ -82,10 +86,34 @@ class TestCustomRoutesE2E:
                 }
                 assert (prompt_template_id, first_version_id) in available_prompt_ids
                 assert (prompt_template_id, second_version_id) not in available_prompt_ids
+                assert (prompt_template_id, third_version_id) not in available_prompt_ids
 
-                # Test refresh (should update to the newest version)
+                # Test update (add newer version of already existing)
+                # should add new (2nd) and remove previous one (1st)
+                resp = await session.put(
+                    f"/registeredPrompts/{prompt_template_id}",
+                    params={"promptTemplateVersionId": second_version_id},
+                )
+                assert resp.status == HTTPStatus.CREATED
+                jsoned = await resp.json()
+                assert jsoned["promptTemplateId"] == prompt_template_id
+                assert jsoned["promptTemplateVersionId"] == second_version_id
+
+                # Test list after updating prompt
+                resp = await session.get("/registeredPrompts")
+                assert resp.status == HTTPStatus.OK
+                jsoned = await resp.json()
+                available_prompt_ids = {
+                    (prompt["promptTemplateId"], prompt["promptTemplateVersionId"])
+                    for prompt in jsoned["promptTemplates"]
+                }
+                assert (prompt_template_id, first_version_id) not in available_prompt_ids
+                assert (prompt_template_id, second_version_id) in available_prompt_ids
+                assert (prompt_template_id, third_version_id) not in available_prompt_ids
+
+                # Test refresh (should update to the newest -- 3rd -- version)
                 resp = await session.put("/registeredPrompts")
-                assert resp.status == HTTPStatus.NO_CONTENT
+                assert resp.status == HTTPStatus.OK
 
                 # Test list after refresh
                 resp = await session.get("/registeredPrompts")
@@ -96,7 +124,8 @@ class TestCustomRoutesE2E:
                     for prompt in jsoned["promptTemplates"]
                 }
                 assert (prompt_template_id, first_version_id) not in available_prompt_ids
-                assert (prompt_template_id, second_version_id) in available_prompt_ids
+                assert (prompt_template_id, second_version_id) not in available_prompt_ids
+                assert (prompt_template_id, third_version_id) in available_prompt_ids
 
                 # Test delete
                 resp = await session.delete(f"/registeredPrompts/{prompt_template_id}")
@@ -112,3 +141,4 @@ class TestCustomRoutesE2E:
                 }
                 assert (prompt_template_id, first_version_id) not in available_prompt_ids
                 assert (prompt_template_id, second_version_id) not in available_prompt_ids
+                assert (prompt_template_id, third_version_id) not in available_prompt_ids
