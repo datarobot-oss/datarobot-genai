@@ -23,6 +23,7 @@ from typing import TypedDict
 from typing import TypeVar
 from typing import cast
 
+from ag_ui.core import Event
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -167,7 +168,7 @@ class UsageMetrics(TypedDict):
 
 # Canonical return type for DRUM-compatible invoke implementations
 InvokeReturn = (
-    AsyncGenerator[tuple[str, MultiTurnSample | None, UsageMetrics], None]
+    AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]
     | tuple[str, MultiTurnSample | None, UsageMetrics]
 )
 
