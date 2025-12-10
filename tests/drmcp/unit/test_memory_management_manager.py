@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from datetime import datetime
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -349,8 +350,6 @@ class TestMemoryManager:
     @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_with_resource_id(self):
         """Test _handle_s3_error with resource ID."""
-        import logging
-
         # Suppress error logging for this test
         logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
         with patch.object(logger, "error"):
@@ -365,8 +364,6 @@ class TestMemoryManager:
     @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_with_resource_id_other_error(self):
         """Test _handle_s3_error with other ClientError."""
-        import logging
-
         # Suppress error logging for this test
         logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
         with patch.object(logger, "error"):
@@ -383,8 +380,6 @@ class TestMemoryManager:
     @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_without_resource_id(self):
         """Test _handle_s3_error without resource ID."""
-        import logging
-
         # Suppress error logging for this test
         logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
         with patch.object(logger, "error"):
@@ -398,8 +393,6 @@ class TestMemoryManager:
     @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_404(self):
         """Test _handle_s3_error with 404 error."""
-        import logging
-
         # Suppress error logging for this test
         logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
         with patch.object(logger, "error"):
@@ -412,8 +405,6 @@ class TestMemoryManager:
     @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_non_client_error(self):
         """Test _handle_s3_error with non-ClientError."""
-        import logging
-
         # Suppress error logging for this test
         logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
         with patch.object(logger, "error"):
