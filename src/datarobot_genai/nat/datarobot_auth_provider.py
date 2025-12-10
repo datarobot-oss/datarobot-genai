@@ -26,7 +26,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
     Pulumi output variables.
     """
 
-    datarobot_api_token: str
+    datarobot_api_token: str | None = None
 
 
 config = Config()
