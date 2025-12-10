@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import datarobot as dr
 import pytest
 import pytest_asyncio
 
@@ -26,8 +27,6 @@ from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
     register_prompt_from_prompt_template_id_and_version,
 )
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPromptVersion
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
 
@@ -47,8 +46,10 @@ async def mcp_server() -> AsyncIterator[TaggedFastMCP]:
 
 @pytest.fixture
 def dr_lib_mock() -> Iterator[None]:
-    prompt_template = DrPrompt(id="pt1", name="pt1 name", description="pt1 description")
-    prompt_template_version = DrPromptVersion(
+    prompt_template = dr.genai.PromptTemplate(
+        id="pt1", name="pt1 name", description="pt1 description"
+    )
+    prompt_template_version = dr.genai.PromptTemplateVersion(
         id="ptv1.1", prompt_template_id="pt1", version=1, prompt_text="Text 1", variables=[]
     )
 
@@ -78,16 +79,20 @@ def dr_lib_mock_empty() -> Iterator[None]:
 
 @pytest.fixture
 def dr_lib_mock_for_refresh() -> Iterator[None]:
-    prompt_template_1 = DrPrompt(id="pt1", name="pt1 name", description="pt1 description")
-    prompt_template_version_1 = DrPromptVersion(
+    prompt_template_1 = dr.genai.PromptTemplate(
+        id="pt1", name="pt1 name", description="pt1 description"
+    )
+    prompt_template_version_1 = dr.genai.PromptTemplateVersion(
         id="ptv1.2",
         prompt_template_id=prompt_template_1.id,
         version=2,
         prompt_text="Text 1 (updated)",
         variables=[],
     )
-    prompt_template_3 = DrPrompt(id="pt3", name="pt3 name", description="pt3 description")
-    prompt_template_version_3 = DrPromptVersion(
+    prompt_template_3 = dr.genai.PromptTemplate(
+        id="pt3", name="pt3 name", description="pt3 description"
+    )
+    prompt_template_version_3 = dr.genai.PromptTemplateVersion(
         id="ptv3.1",
         prompt_template_id=prompt_template_3.id,
         version=3,

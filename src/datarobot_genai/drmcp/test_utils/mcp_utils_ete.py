@@ -16,6 +16,8 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import aiohttp
+from aiohttp import ClientSession as HttpClientSession
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
@@ -27,6 +29,11 @@ load_env()
 def get_dr_mcp_server_url() -> str | None:
     """Get DataRobot MCP server URL."""
     return os.environ.get("DR_MCP_SERVER_URL")
+
+
+def get_dr_mcp_server_http_url() -> str | None:
+    """Get DataRobot MCP server http URL."""
+    return os.environ.get("DR_MCP_SERVER_HTTP_URL")
 
 
 def get_openai_llm_client_config() -> dict[str, str]:
@@ -94,3 +101,25 @@ async def ete_test_mcp_session(
                 yield session
     except asyncio.TimeoutError:
         raise TimeoutError(f"Check if the MCP server is running at {get_dr_mcp_server_url()}")
+
+
+@asynccontextmanager
+async def ete_test_http_session(
+    additional_headers: dict[str, str] | None = None,
+) -> AsyncGenerator[HttpClientSession, None]:
+    """Create an HTTP session for each test that can connect to MCP custom http routes.
+
+    Parameters
+    ----------
+    additional_headers : dict[str, str], optional
+        Additional headers to include in the HTTP session (e.g., auth headers for testing).
+    """
+    headers = get_headers()
+    if additional_headers:
+        headers.update(additional_headers)
+
+    async with ete_test_mcp_session(additional_headers=additional_headers):
+        async with aiohttp.ClientSession(
+            base_url=get_dr_mcp_server_http_url(), headers=headers
+        ) as client:
+            yield client

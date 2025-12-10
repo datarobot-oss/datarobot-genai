@@ -1034,7 +1034,8 @@ class TestPromptTemplateRoutes:
 
         refresh_handler = self.registered_routes["PUT", "/registeredPrompts"]
         response = await refresh_handler(self.mock_request)
-        assert response.status_code == HTTPStatus.NO_CONTENT, response.body
+        assert response.status_code == HTTPStatus.OK, response.body
+        assert b"Prompts refreshed successfully" in response.body
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.routes.refresh_registered_prompt_template")
