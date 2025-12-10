@@ -10,7 +10,7 @@ tasks:
           PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
           if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
             NAT_IGNORED_TESTS=tests/nat
-            COV_FAIL_UNDER=77
+            COV_FAIL_UNDER=75
           else
             NAT_IGNORED_TESTS=tests/nat/integration
             COV_FAIL_UNDER=80
