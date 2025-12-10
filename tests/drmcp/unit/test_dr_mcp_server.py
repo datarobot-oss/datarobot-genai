@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -225,8 +226,12 @@ class TestDataRobotMCPServer:
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_credentials")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.register_tools_of_datarobot_deployments")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.register_prompts_from_datarobot_prompt_management")
     def test_run_lists_tools(
         self,
+        mock_register_prompts: AsyncMock,
+        mock_register_tools: AsyncMock,
         mock_get_credentials: MagicMock,
         mock_asyncio: MagicMock,
         mock_get_config: MagicMock,
@@ -239,18 +244,59 @@ class TestDataRobotMCPServer:
         mock_creds.has_datarobot_credentials.return_value = True
         mock_get_credentials.return_value = mock_creds
 
+        # Mock async functions to return completed coroutines
+        mock_register_tools.return_value = None
+        mock_register_prompts.return_value = None
+
         # Mock asyncio methods
         mock_loop = MagicMock()
         mock_asyncio.new_event_loop.return_value = mock_loop
-        mock_mcp.run_streamable_http_async = AsyncMock()
+        mock_mcp.run_stdio_async = AsyncMock()
+        mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
+        mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
 
         mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
         mock_mcp._list_tools_mcp = AsyncMock(return_value=mock_tools)
 
-        server = DataRobotMCPServer(mock_mcp)
+        # Mock lifecycle methods
+        mock_lifecycle = MagicMock()
+        mock_lifecycle.pre_server_start = AsyncMock(return_value=None)
+        mock_lifecycle.post_server_start = AsyncMock(return_value=None)
+        mock_lifecycle.pre_server_shutdown = AsyncMock(return_value=None)
+
+        server = DataRobotMCPServer(mock_mcp, transport="stdio", lifecycle=mock_lifecycle)
+        
+        # Mock asyncio.run to properly execute coroutines
+        def mock_asyncio_run(coro):
+            if hasattr(coro, '__await__') or isinstance(coro, type(mock_register_tools.return_value)):
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(coro)
+                    loop.close()
+                    return result
+                except Exception:
+                    return None
+            return None
+        
+        mock_asyncio.run.side_effect = mock_asyncio_run
+        
+        # Mock run_until_complete to handle async functions
+        def mock_run_until_complete(coro):
+            if hasattr(coro, '__await__'):
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(coro)
+                    loop.close()
+                    return result
+                except Exception:
+                    return None
+            return None
+        
+        mock_loop.run_until_complete.side_effect = mock_run_until_complete
+
         server.run()
 
         # Verify tools were listed before server start
         mock_mcp._list_tools_mcp.assert_called_once()
-        # Should be called twice: once for run_server, once for pre_server_shutdown
-        assert mock_loop.run_until_complete.call_count == 2

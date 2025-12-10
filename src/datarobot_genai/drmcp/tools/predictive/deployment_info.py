@@ -335,7 +335,12 @@ async def validate_prediction_data(
             and not (df[ts_config["datetime_column"]] == "").all()
         ):
             try:
-                pd.to_datetime(df[ts_config["datetime_column"]])
+                # Try with format='mixed' first (pandas 2.0+), fall back to default if not available
+                try:
+                    pd.to_datetime(df[ts_config["datetime_column"]], format="mixed")
+                except (TypeError, ValueError):
+                    # Fall back to default parsing if format='mixed' is not supported
+                    pd.to_datetime(df[ts_config["datetime_column"]])
             except ValueError:
                 validation_report["errors"].append(
                     f"Datetime column {ts_config['datetime_column']} cannot be parsed as dates"
