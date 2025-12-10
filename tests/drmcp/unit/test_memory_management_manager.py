@@ -346,51 +346,81 @@ class TestMemoryManager:
         expected = "agents/agent123/active_storage.json"
         assert key == expected
 
+    @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_with_resource_id(self):
         """Test _handle_s3_error with resource ID."""
-        error = ClientError({"Error": {"Code": "NoSuchKey", "Message": "Not found"}}, "GetObject")
+        import logging
 
-        # Should not raise exception for NoSuchKey
-        result = MemoryManager._handle_s3_error("test operation", error, "resource123")
-        assert result is None
+        # Suppress error logging for this test
+        logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
+        with patch.object(logger, "error"):
+            error = ClientError({"Error": {"Code": "NoSuchKey", "Message": "Not found"}}, "GetObject")
 
+            # Should not raise exception for NoSuchKey
+            result = MemoryManager._handle_s3_error("test operation", error, "resource123")
+            assert result is None
+
+    @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_with_resource_id_other_error(self):
         """Test _handle_s3_error with other ClientError."""
-        error = ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access denied"}}, "GetObject"
-        )
+        import logging
 
-        with pytest.raises(
-            S3StorageError,
-            match="Error during test operation for resource resource123: AccessDenied",
-        ):
-            MemoryManager._handle_s3_error("test operation", error, "resource123")
+        # Suppress error logging for this test
+        logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
+        with patch.object(logger, "error"):
+            error = ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access denied"}}, "GetObject"
+            )
 
+            with pytest.raises(
+                S3StorageError,
+                match="Error during test operation for resource resource123: AccessDenied",
+            ):
+                MemoryManager._handle_s3_error("test operation", error, "resource123")
+
+    @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_without_resource_id(self):
         """Test _handle_s3_error without resource ID."""
-        error = ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access denied"}}, "GetObject"
-        )
+        import logging
 
-        with pytest.raises(S3StorageError, match="Error during test operation: AccessDenied"):
-            MemoryManager._handle_s3_error("test operation", error)
+        # Suppress error logging for this test
+        logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
+        with patch.object(logger, "error"):
+            error = ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access denied"}}, "GetObject"
+            )
 
+            with pytest.raises(S3StorageError, match="Error during test operation: AccessDenied"):
+                MemoryManager._handle_s3_error("test operation", error)
+
+    @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_404(self):
         """Test _handle_s3_error with 404 error."""
-        error = ClientError({"Error": {"Code": "404", "Message": "Not found"}}, "GetObject")
+        import logging
 
-        # Should not raise exception for 404
-        result = MemoryManager._handle_s3_error("test operation", error, "resource123")
-        assert result is None
+        # Suppress error logging for this test
+        logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
+        with patch.object(logger, "error"):
+            error = ClientError({"Error": {"Code": "404", "Message": "Not found"}}, "GetObject")
 
+            # Should not raise exception for 404
+            result = MemoryManager._handle_s3_error("test operation", error, "resource123")
+            assert result is None
+
+    @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_handle_s3_error_non_client_error(self):
         """Test _handle_s3_error with non-ClientError."""
-        error = Exception("Generic error")
+        import logging
 
-        with pytest.raises(
-            S3StorageError, match="Error during test operation for resource resource123"
-        ):
-            MemoryManager._handle_s3_error("test operation", error, "resource123")
+        # Suppress error logging for this test
+        logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
+        with patch.object(logger, "error"):
+            error = Exception("Generic error")
+
+            with pytest.raises(
+                S3StorageError, match="Error during test operation for resource resource123"
+            ):
+                MemoryManager._handle_s3_error("test operation", error, "resource123")
 
 
 class TestMemoryManagementErrorScenarios:
