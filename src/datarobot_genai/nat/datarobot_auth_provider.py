@@ -40,7 +40,10 @@ class DataRobotAPIKeyAuthProviderConfig(APIKeyAuthProviderConfig, name="datarobo
         ),
         default=config.datarobot_api_token,
     )
-    default_user_id: str | None = Field(default=None, description="Default user ID")
+    default_user_id: str | None = Field(default="default-user", description="Default user ID")
+    allow_default_user_id_for_tool_calls: bool = Field(
+        default=True, description="Allow default user ID for tool calls"
+    )
 
 
 @register_auth_provider(config_type=DataRobotAPIKeyAuthProviderConfig)

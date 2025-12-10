@@ -20,8 +20,6 @@ functions:
 function_groups:
   mcp_tools:
     _type: datarobot_mcp_client
-    include:
-      - user_tool_example
 authentication:
   datarobot_api_key:
     _type: datarobot_api_key
@@ -33,4 +31,5 @@ llms:
 workflow:
   _type: react_agent
   llm_name: datarobot_llm
-  tool_names: [completion_tool, mcp_tools.user_tool_example]
+  tool_names:
+    - mcp_tools
