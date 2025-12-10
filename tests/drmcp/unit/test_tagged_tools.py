@@ -39,7 +39,7 @@ from datarobot_genai.drmcp.core.tool_filter import list_all_tags
 @pytest.mark.asyncio
 async def test_tagged_tool_decorator() -> None:
     """Test that the mcp.tool decorator properly applies tags."""
-    mcp = TaggedFastMCP(name="test", port=8000)
+    mcp = TaggedFastMCP(name="test")
 
     @mcp.tool(tags={"test", "example"})
     def test_function() -> str:
@@ -58,7 +58,7 @@ async def test_tagged_tool_decorator() -> None:
 @pytest.mark.asyncio
 async def test_tagged_tool_with_additional_annotations() -> None:
     """Test that mcp.tool can handle additional annotations."""
-    mcp = TaggedFastMCP(name="test", port=8000)
+    mcp = TaggedFastMCP(name="test")
 
     @mcp.tool(tags={"test"}, annotations={"title": "Test Tool", "readOnlyHint": True})
     def test_function() -> str:
@@ -79,7 +79,7 @@ async def test_tagged_tool_with_additional_annotations() -> None:
 @pytest.mark.asyncio
 async def test_tool_without_tags() -> None:
     """Test that tools work without tags."""
-    mcp = TaggedFastMCP(name="test", port=8000)
+    mcp = TaggedFastMCP(name="test")
 
     @mcp.tool()
     def test_function() -> str:
@@ -193,7 +193,7 @@ def test_get_tools_by_tag() -> None:
 @pytest.mark.asyncio
 async def test_list_tools_filtering() -> None:
     """Test the enhanced list_tools method with tag filtering."""
-    mcp = TaggedFastMCP(name="test", port=8000)
+    mcp = TaggedFastMCP(name="test")
 
     @mcp.tool(tags={"data", "read"})
     async def read_file(file_path: str) -> str:
@@ -242,7 +242,7 @@ async def test_list_tools_filtering() -> None:
 @pytest.mark.asyncio
 async def test_get_all_tags() -> None:
     """Test the get_all_tags method."""
-    mcp = TaggedFastMCP(name="test", port=8000)
+    mcp = TaggedFastMCP(name="test")
 
     @mcp.tool(tags={"data", "read"})
     async def read_file(file_path: str) -> str:

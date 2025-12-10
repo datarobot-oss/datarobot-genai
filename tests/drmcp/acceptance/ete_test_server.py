@@ -23,9 +23,10 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Import to register test tools with the MCP server
-from tests.drmcp.acceptance.test_tools import (  # noqa: E402
-    get_auth_context_user_info as _,  # noqa: F401
-)
+from tests.drmcp.acceptance.test_tools import get_auth_context_user_info  # noqa: E402, F401
+
+# Import integration test tools if they exist (for integration tests)
+from tests.drmcp.integration.elicitation_test_tool import get_user_greeting  # noqa: E402, F401
 
 if __name__ == "__main__":
     server = create_mcp_server()
