@@ -354,7 +354,9 @@ class TestMemoryManager:
         # Suppress error logging for this test
         logger = logging.getLogger("datarobot_genai.drmcp.core.memory_management.manager")
         with patch.object(logger, "error"):
-            error = ClientError({"Error": {"Code": "NoSuchKey", "Message": "Not found"}}, "GetObject")
+            error = ClientError(
+                {"Error": {"Code": "NoSuchKey", "Message": "Not found"}}, "GetObject"
+            )
 
             # Should not raise exception for NoSuchKey
             result = MemoryManager._handle_s3_error("test operation", error, "resource123")
