@@ -38,14 +38,14 @@ from datarobot_genai.drmcp.core.mcp_instance import mcp
 async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
     """
     Get a personalized greeting for a user.
-    
+
     This tool demonstrates FastMCP's built-in elicitation by requiring a username parameter.
     If username is not provided, it uses ctx.elicit() to request it from the user.
-    
+
     Args:
         ctx: FastMCP context (automatically injected)
         username: The username to greet. If None, elicitation will be triggered.
-        
+
     Returns
     -------
         Dictionary with greeting message or error if elicitation was declined/cancelled
@@ -61,7 +61,7 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
         except (AttributeError, TypeError):
             # If check_client_capability doesn't exist or fails, assume no support
             has_elicitation = False
-        
+
         if not has_elicitation:
             # According to MCP spec, when elicitation is not supported, return a no-op response
             # rather than throwing an error
@@ -73,13 +73,13 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
                 ),
                 "elicitation_supported": False,
             }
-        
+
         # Use FastMCP's built-in elicitation
         result = await ctx.elicit(
             message="Username is required to generate a personalized greeting",
             response_type=str,
         )
-        
+
         if isinstance(result, AcceptedElicitation):
             username = result.data
         elif isinstance(result, DeclinedElicitation):
@@ -94,10 +94,9 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
                 "error": "Operation cancelled",
                 "message": "Greeting request was cancelled",
             }
-    
+
     return {
         "status": "success",
         "message": f"Hello, {username}! Welcome to the DataRobot MCP server.",
         "username": username,
     }
-

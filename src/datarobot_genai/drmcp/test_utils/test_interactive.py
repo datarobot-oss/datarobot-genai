@@ -68,7 +68,7 @@ class LLMResponse:
 class LLMMCPClient:
     """
     Client for interacting with LLMs via MCP.
-    
+
     Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
     Tools using FastMCP's built-in elicitation will work automatically.
     """
@@ -79,7 +79,7 @@ class LLMMCPClient:
     ):
         """
         Initialize the LLM MCP client.
-        
+
         Args:
             config: Configuration string or dict with:
                 - openai_api_key: OpenAI API key
@@ -136,15 +136,15 @@ class LLMMCPClient:
     ) -> str:
         """
         Call an MCP tool and return the result as a string.
-        
+
         Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
         Tools using FastMCP's built-in elicitation will work automatically.
-        
+
         Args:
             tool_name: Name of the tool to call
             parameters: Parameters to pass to the tool
             mcp_session: MCP client session
-            
+
         Returns
         -------
             Result text from the tool call
@@ -155,7 +155,7 @@ class LLMMCPClient:
             if result.content and isinstance(result.content[0], TextContent)
             else str(result.content)
         )
-        
+
         # FastMCP handles elicitation at the protocol level via ctx.elicit()
         # No need to manually check for elicitation patterns
         return result_text
@@ -233,20 +233,20 @@ class LLMMCPClient:
     ) -> LLMResponse:
         """
         Process a prompt with MCP tool support and elicitation handling.
-        
+
         This method:
         1. Adds MCP tools to available tools
         2. Sends prompt to LLM
         3. Processes tool calls
         4. Continues until LLM provides final response
-        
+
         Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
-        
+
         Args:
             prompt: User prompt
             mcp_session: MCP client session
             output_file_name: Optional file name to save response
-            
+
         Returns
         -------
             LLMResponse with content, tool calls, and tool results
@@ -338,7 +338,7 @@ async def test_mcp_interactive() -> None:
         "openai_api_version": openai_api_version,
         "save_llm_responses": False,
     }
-    
+
     llm_client = LLMMCPClient(str(config))
 
     # Get MCP server URL
@@ -392,9 +392,7 @@ async def test_mcp_interactive() -> None:
                 print("\n" + "=" * 60)
                 print("🎯 Interactive Testing Mode")
                 print("=" * 60)
-                print(
-                    "Type your questions/commands. The AI will decide which tools to use."
-                )
+                print("Type your questions/commands. The AI will decide which tools to use.")
                 print("If a tool requires additional information, you will be prompted.")
                 print("Type 'quit' or 'exit' to stop.")
                 print()
@@ -469,4 +467,3 @@ if __name__ == "__main__":
     print()
 
     asyncio.run(test_mcp_interactive())
-

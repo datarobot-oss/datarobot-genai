@@ -227,7 +227,9 @@ class TestDataRobotMCPServer:
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_credentials")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.register_tools_of_datarobot_deployments")
-    @patch("datarobot_genai.drmcp.core.dr_mcp_server.register_prompts_from_datarobot_prompt_management")
+    @patch(
+        "datarobot_genai.drmcp.core.dr_mcp_server.register_prompts_from_datarobot_prompt_management"
+    )
     def test_run_lists_tools(
         self,
         mock_register_prompts: AsyncMock,
@@ -265,10 +267,12 @@ class TestDataRobotMCPServer:
         mock_lifecycle.pre_server_shutdown = AsyncMock(return_value=None)
 
         server = DataRobotMCPServer(mock_mcp, transport="stdio", lifecycle=mock_lifecycle)
-        
+
         # Mock asyncio.run to properly execute coroutines
         def mock_asyncio_run(coro):
-            if hasattr(coro, '__await__') or isinstance(coro, type(mock_register_tools.return_value)):
+            if hasattr(coro, "__await__") or isinstance(
+                coro, type(mock_register_tools.return_value)
+            ):
                 try:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
@@ -278,12 +282,12 @@ class TestDataRobotMCPServer:
                 except Exception:
                     return None
             return None
-        
+
         mock_asyncio.run.side_effect = mock_asyncio_run
-        
+
         # Mock run_until_complete to handle async functions
         def mock_run_until_complete(coro):
-            if hasattr(coro, '__await__'):
+            if hasattr(coro, "__await__"):
                 try:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
@@ -293,7 +297,7 @@ class TestDataRobotMCPServer:
                 except Exception:
                     return None
             return None
-        
+
         mock_loop.run_until_complete.side_effect = mock_run_until_complete
 
         server.run()
