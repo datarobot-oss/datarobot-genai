@@ -35,6 +35,7 @@ import openai
 from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.shared.context import RequestContext
 from mcp.types import CallToolResult
 from mcp.types import ElicitRequestParams
 from mcp.types import ElicitResult
@@ -351,7 +352,9 @@ async def test_mcp_interactive() -> None:
     print(f"🔗 Connecting to MCP server at: {mcp_server_url}")
 
     # Elicitation handler: prompt user for required values
-    async def elicitation_handler(context, params: ElicitRequestParams) -> ElicitResult:
+    async def elicitation_handler(
+        context: RequestContext[ClientSession, Any], params: ElicitRequestParams
+    ) -> ElicitResult:
         print(f"\n📋 Elicitation Request: {params.message}")
         if params.requestedSchema:
             print(f"   Schema: {params.requestedSchema}")
