@@ -966,7 +966,7 @@ wheels = [
 
 [[package]]
 name = "datarobot"
-version = "3.9.1"
+version = "3.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -980,9 +980,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ec/90/90c0a143f7e1564b0d7e909e70b70a1358c701528a8205b3f8e51bdf9a03/datarobot-3.9.1.tar.gz", hash = "sha256:1c35fee01c06c8077973bbf4b5cf012ed40520903a038afa4fe72e137bc27135", size = 735758, upload-time = "2025-10-10T18:02:58.234Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/e9/4341d6268122ce5fe0d6819ddb4aec441f7208d8c13e6b837758f598ac42/datarobot-3.10.0.tar.gz", hash = "sha256:d8dceb439c6fb078604986f2de8c206adca5fd72fb921c64327fc4d1f8077a6f", size = 745615, upload-time = "2025-12-03T21:28:02.85Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/d3/d49cb61bf83220bc34764abe82f31ef64500513ab82d78a24cddc2114d63/datarobot-3.9.1-py3-none-any.whl", hash = "sha256:4aa1f47ca96c3aa031fdaea43faf6410e8ed90c57e09f4b1335ec2369a49c83d", size = 792560, upload-time = "2025-10-10T18:02:55.969Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/50/96a134bc3b730c7343f346d76fd41db9955b9ad66eea3e45fa6b5916fd41/datarobot-3.10.0-py3-none-any.whl", hash = "sha256:c863fffb9eb6c253348ceb07887a777fa5b800e715ecfaac97558dea15eff355", size = 801627, upload-time = "2025-12-03T21:28:00.889Z" },
 ]
 
 [[package]]
@@ -1042,9 +1042,10 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.1.61"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
+    { name = "ag-ui-protocol" },
     { name = "datarobot" },
     { name = "datarobot-drum" },
     { name = "datarobot-predict" },
@@ -1129,13 +1130,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ag-ui-protocol", specifier = ">=0.1.9,<0.2.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
     { name = "aiosignal", marker = "extra == 'drmcp'", specifier = ">=1.3.1,<2.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
     { name = "crewai", marker = "extra == 'crewai'", specifier = ">=0.193.2,<1.0.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
-    { name = "datarobot", specifier = ">=3.9.1,<4.0.0" },
+    { name = "datarobot", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "datarobot-drum", specifier = ">=1.17.5,<2.0.0" },
     { name = "datarobot-predict", specifier = ">=1.13.2,<2.0.0" },

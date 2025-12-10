@@ -21,9 +21,6 @@ import datarobot as dr
 import pytest
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPrompt
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrPromptVersion
-from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import DrVariable
 
 
 @pytest.fixture(scope="session")
@@ -465,17 +462,17 @@ def get_prompt_template_mock(
     prompt_template_id_ok: str, prompt_template_version_id_ok: str
 ) -> Iterator[None]:
     """Set up all API endpoint mocks."""
-    dr_prompt_version = DrPromptVersion(
+    dr_prompt_version = dr.genai.PromptTemplateVersion(
         id=prompt_template_version_id_ok,
         prompt_template_id=prompt_template_id_ok,
         version=3,
         prompt_text="Write greeting for {{name}} in max {{sentences}} sentences.",
         variables=[
-            DrVariable(name="name", description="Person name"),
-            DrVariable(name="sentences", description="Number of sentences"),
+            {"name": "name", "description": "Person name", "type": "str"},
+            {"name": "sentences", "description": "Number of sentences", "type": "str"},
         ],
     )
-    dr_prompt = DrPrompt(
+    dr_prompt = dr.genai.PromptTemplate(
         id=prompt_template_id_ok,
         name="Dummy prompt name",
         description="Dummy description",
@@ -500,31 +497,31 @@ def get_prompt_template_duplicated_name_mock(
     prompt_template_id_ok: str, prompt_template_id_ok_2: str, prompt_template_version_id_ok: str
 ) -> Iterator[None]:
     """Set up all API endpoint mocks."""
-    dr_prompt_version_1 = DrPromptVersion(
+    dr_prompt_version_1 = dr.genai.PromptTemplateVersion(
         id=prompt_template_version_id_ok,
         prompt_template_id=prompt_template_id_ok,
         version=3,
         prompt_text="Write greeting for {{name}} in max {{sentences}} sentences.",
         variables=[
-            DrVariable(name="name", description="Person name"),
-            DrVariable(name="sentences", description="Number of sentences"),
+            {"name": "name", "description": "Person name", "type": "str"},
+            {"name": "sentences", "description": "Number of sentences", "type": "str"},
         ],
     )
-    dr_prompt_1 = DrPrompt(
+    dr_prompt_1 = dr.genai.PromptTemplate(
         id=prompt_template_id_ok,
         name="Dummy prompt name",
         description="Dummy description",
     )
     dr_prompt_1.get_latest_version = lambda: dr_prompt_version_1
 
-    dr_prompt_version_2 = DrPromptVersion(
+    dr_prompt_version_2 = dr.genai.PromptTemplateVersion(
         id=prompt_template_version_id_ok,
         prompt_template_id=prompt_template_id_ok,
         version=1,
         prompt_text="Another prompt without variables.",
         variables=[],
     )
-    dr_prompt_2 = DrPrompt(
+    dr_prompt_2 = dr.genai.PromptTemplate(
         id=prompt_template_id_ok_2,
         name="Dummy prompt name",
         description="Dummy description",

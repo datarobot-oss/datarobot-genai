@@ -428,7 +428,10 @@ def register_routes(mcp: TaggedFastMCP) -> None:
         """Refresh prompt templates."""
         try:
             await refresh_registered_prompt_template()
-            return JSONResponse(status_code=HTTPStatus.NO_CONTENT, content=None)
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content={"message": "Prompts refreshed successfully"},
+            )
         except Exception as e:
             return JSONResponse(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,

@@ -120,7 +120,7 @@ tasks:
           echo "Stopping Jaeger"
           docker stop jaeger || true
       - echo "Running DR MCP Library acceptance tests"
-      - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
+      - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp DR_MCP_SERVER_HTTP_URL=http://localhost:{{.PORT}}/ uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
     silent: true
 
   drmcp-test-interactive:
