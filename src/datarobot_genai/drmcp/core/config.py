@@ -197,6 +197,54 @@ class MCPServerConfig(BaseSettings):
         description="Enable/disable predictive tools",
     )
 
+    # Jira tools
+    enable_jira_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_JIRA_TOOLS",
+            "ENABLE_JIRA_TOOLS",
+        ),
+        description="Enable/disable Jira tools",
+    )
+    is_jira_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_JIRA_OAUTH_PROVIDER_CONFIGURED",
+            "IS_JIRA_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Jira OAuth provider is configured for Jira integration",
+    )
+
+    @property
+    def is_jira_oauth_configured(self) -> bool:
+        return self.is_jira_oauth_provider_configured or bool(
+            os.getenv("JIRA_CLIENT_ID") and os.getenv("JIRA_CLIENT_SECRET")
+        )
+
+    # Confluence tools
+    enable_confluence_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CONFLUENCE_TOOLS",
+            "ENABLE_CONFLUENCE_TOOLS",
+        ),
+        description="Enable/disable Confluence tools",
+    )
+    is_confluence_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED",
+            "IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Confluence OAuth provider is configured for Confluence integration",
+    )
+
+    @property
+    def is_confluence_oauth_configured(self) -> bool:
+        return self.is_confluence_oauth_provider_configured or bool(
+            os.getenv("CONFLUENCE_CLIENT_ID") and os.getenv("CONFLUENCE_CLIENT_SECRET")
+        )
+
     @field_validator(
         "otel_attributes",
         mode="before",
@@ -220,6 +268,10 @@ class MCPServerConfig(BaseSettings):
         "tool_registration_duplicate_behavior",
         "mcp_server_register_dynamic_prompts_on_startup",
         "enable_predictive_tools",
+        "enable_jira_tools",
+        "is_jira_oauth_provider_configured",
+        "enable_confluence_tools",
+        "is_confluence_oauth_provider_configured",
         mode="before",
     )
     @classmethod
