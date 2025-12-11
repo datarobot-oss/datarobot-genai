@@ -20,6 +20,7 @@ from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.dr_mcp_server import DataRobotMCPServer
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.default import Metadata
+from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
@@ -30,6 +31,10 @@ def mock_mcp() -> MagicMock:
     mock._list_tools_mcp = AsyncMock(
         return_value=[MagicMock(name="tool1"), MagicMock(name="tool2")]
     )
+    # Mock low-level server for _configure_mcp_capabilities()
+    mock._mcp_server = MagicMock()
+    mock._mcp_server.notification_options = MagicMock()
+    mock._mcp_server.create_initialization_options = MagicMock()
     return mock
 
 
@@ -254,3 +259,14 @@ class TestDataRobotMCPServer:
         mock_mcp._list_tools_mcp.assert_called_once()
         # Should be called twice: once for run_server, once for pre_server_shutdown
         assert mock_loop.run_until_complete.call_count == 2
+
+
+def test_mcp_server_capabilities():
+    """Server should declare required MCP capabilities."""
+    mcp = TaggedFastMCP()
+    DataRobotMCPServer(mcp)
+
+    opts = mcp._mcp_server.create_initialization_options()
+
+    assert opts.capabilities.prompts.listChanged is True
+    assert opts.capabilities.experimental == {"dynamic_prompts": {"enabled": True}}
