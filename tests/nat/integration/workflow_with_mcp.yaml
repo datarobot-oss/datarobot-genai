@@ -17,6 +17,12 @@ functions:
     llm_name: datarobot_llm
     system_prompt: |
       You are a helpful assistant.
+function_groups:
+  mcp_tools:
+    _type: datarobot_mcp_client
+authentication:
+  datarobot_api_key:
+    _type: datarobot_api_key
 llms:
   datarobot_llm:
     _type: datarobot-llm-gateway
@@ -25,4 +31,5 @@ llms:
 workflow:
   _type: react_agent
   llm_name: datarobot_llm
-  tool_names: [completion_tool]
+  tool_names:
+    - mcp_tools
