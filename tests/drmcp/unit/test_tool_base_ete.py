@@ -148,6 +148,7 @@ class TestToolBaseE2E:
 
     def test_tool_base_e2e_class_name_parsing(self) -> None:
         """Test that class name parsing works correctly."""
+
         class TestE2E(ToolBaseE2E):
             pass
 
@@ -158,6 +159,7 @@ class TestToolBaseE2E:
 
     def test_tool_base_e2e_class_name_with_test(self) -> None:
         """Test class name parsing with 'test' in name."""
+
         class TestDeploymentE2E(ToolBaseE2E):
             pass
 
