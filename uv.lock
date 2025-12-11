@@ -1040,7 +1040,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },
@@ -1052,6 +1052,7 @@ dependencies = [
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-openai" },
     { name = "opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-threading" },
     { name = "pandas" },
     { name = "pyjwt" },
     { name = "pypdf" },
@@ -1170,6 +1171,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-llamaindex", marker = "extra == 'nat'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-openai", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", specifier = ">=0.43b0,<1.0.0" },
+    { name = "opentelemetry-instrumentation-threading", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },
     { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2,<2.0.0" },
@@ -4210,6 +4212,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/49/01/31282a46b09684dfc636bc066deb090bae6973e71e85e253a8c74e727b1f/opentelemetry_instrumentation_requests-0.59b0.tar.gz", hash = "sha256:9af2ffe3317f03074d7f865919139e89170b6763a0251b68c25e8e64e04b3400", size = 15186, upload-time = "2025-10-16T08:40:00.558Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/ea/c282ba418b2669e4f730cb3f68b02a0ca65f4baf801e971169a4cc449ffb/opentelemetry_instrumentation_requests-0.59b0-py3-none-any.whl", hash = "sha256:d43121532877e31a46c48649279cec2504ee1e0ceb3c87b80fe5ccd7eafc14c1", size = 12966, upload-time = "2025-10-16T08:39:09.919Z" },
+]
+
+[[package]]
+name = "opentelemetry-instrumentation-threading"
+version = "0.59b0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/7a/84e97d8992808197006e607ae410c2219bdbbc23d1289ba0c244d3220741/opentelemetry_instrumentation_threading-0.59b0.tar.gz", hash = "sha256:ce5658730b697dcbc0e0d6d13643a69fd8aeb1b32fa8db3bade8ce114c7975f3", size = 8770, upload-time = "2025-10-16T08:40:03.587Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/50/32d29076aaa1c91983cdd3ca8c6bb4d344830cd7d87a7c0fdc2d98c58509/opentelemetry_instrumentation_threading-0.59b0-py3-none-any.whl", hash = "sha256:76da2fc01fe1dccebff6581080cff9e42ac7b27cc61eb563f3c4435c727e8eca", size = 9313, upload-time = "2025-10-16T08:39:15.876Z" },
 ]
 
 [[package]]
