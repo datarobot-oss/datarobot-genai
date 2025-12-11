@@ -91,10 +91,12 @@ class JiraClient:
         """Close the HTTP client."""
         await self._client.aclose()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "JiraClient":
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+    ) -> None:
         """Async context manager exit."""
         await self.close()

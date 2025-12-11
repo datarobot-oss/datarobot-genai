@@ -51,5 +51,8 @@ async def jira_get_issue(
     return ToolResult(
         content=f"Successfully retrieved details for issue '{issue_key}'.",
         # TODO: Add more fields to the structured content, note fields here are just examples
-        structured_content={"key": issue.key, "status": issue.status},
+        structured_content={
+            "key": issue.get("key", issue_key),
+            "status": issue.get("fields", {}).get("status", {}).get("name", "Unknown"),
+        },
     )
