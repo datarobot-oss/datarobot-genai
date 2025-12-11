@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.2.2"
+version = "0.2.3"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -66,6 +66,8 @@ nat = [
   "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
   "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
   "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
+  "pyarrow==20.0.0",
+  "anyio==4.11.0",
 ]
 pydanticai = [
   "logfire>=4.6.0,<5.0.0",
