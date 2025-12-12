@@ -117,6 +117,9 @@ class DataRobotMCPServer:
         self._mcp = mcp
         self._mcp_transport = transport
 
+        # Configure MCP server capabilities
+        self._configure_mcp_capabilities()
+
         # Initialize telemetry
         initialize_telemetry(mcp)
 
@@ -165,6 +168,37 @@ class DataRobotMCPServer:
         # Register HTTP routes if using streamable-http transport
         if transport == "streamable-http":
             register_routes(self._mcp)
+
+    def _configure_mcp_capabilities(self) -> None:
+        """Configure MCP capabilities that FastMCP doesn't expose directly.
+
+        See: https://github.com/modelcontextprotocol/python-sdk/issues/1126
+        """
+        server = self._mcp._mcp_server
+
+        # Declare prompts_changed capability  (capabilities.prompts.listChanged: true)
+        server.notification_options.prompts_changed = True
+
+        # Declare experimental capabilities ( experimental.dynamic_prompts: true)
+        server.experimental_capabilities = {"dynamic_prompts": {"enabled": True}}
+
+        # Patch to include experimental_capabilities (FastMCP doesn't expose this)
+        original = server.create_initialization_options
+
+        def patched(
+            notification_options: Any = None,
+            experimental_capabilities: dict[str, dict[str, Any]] | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            if experimental_capabilities is None:
+                experimental_capabilities = getattr(server, "experimental_capabilities", None)
+            return original(
+                notification_options=notification_options,
+                experimental_capabilities=experimental_capabilities,
+                **kwargs,
+            )
+
+        server.create_initialization_options = patched
 
     def run(self, show_banner: bool = False) -> None:
         """Run the DataRobot MCP server synchronously."""
