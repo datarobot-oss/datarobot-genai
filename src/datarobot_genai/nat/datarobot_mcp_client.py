@@ -37,8 +37,8 @@ config = MCPConfig().server_config
 
 
 class DataRobotMCPServerConfig(MCPServerConfig):
-    transport: Literal["streamable-http", "sse"] = Field(
-        default=config["transport"] if config else "streamable-http",
+    transport: Literal["streamable-http", "sse", "stdio"] = Field(
+        default=config["transport"] if config else "stdio",
         description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
     url: HttpUrl | None = Field(
@@ -46,8 +46,13 @@ class DataRobotMCPServerConfig(MCPServerConfig):
         description="URL of the MCP server (for sse or streamable-http transport)",
     )
     # Authentication configuration
-    auth_provider: str | AuthenticationRef = Field(
-        default="datarobot_api_key", description="Reference to authentication provider"
+    auth_provider: str | AuthenticationRef | None = Field(
+        default="datarobot_api_key" if config else None,
+        description="Reference to authentication provider",
+    )
+    command: str | None = Field(
+        default=None if config else "docker",
+        description="Command to run for stdio transport (e.g. 'python' or 'docker')",
     )
 
 
