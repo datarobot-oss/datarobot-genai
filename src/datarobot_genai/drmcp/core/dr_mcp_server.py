@@ -40,6 +40,8 @@ from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
+from .tool_config import TOOL_CONFIGS
+from .tool_config import is_tool_enabled
 
 
 def _import_modules_from_dir(
@@ -142,11 +144,12 @@ class DataRobotMCPServer:
 
         # Load static tools modules
         base_dir = os.path.dirname(os.path.dirname(__file__))
-        if self._config.enable_predictive_tools:
-            _import_modules_from_dir(
-                os.path.join(base_dir, "tools", "predictive"),
-                "datarobot_genai.drmcp.tools.predictive",
-            )
+        for tool_type, tool_config in TOOL_CONFIGS.items():
+            if is_tool_enabled(tool_type, self._config):
+                _import_modules_from_dir(
+                    os.path.join(base_dir, "tools", tool_config["directory"]),
+                    tool_config["package_prefix"],
+                )
 
         # Load memory management tools if available
         if self._memory_manager:
@@ -213,6 +216,9 @@ class DataRobotMCPServer:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
 
+            # Execute pre-server start actions
+            asyncio.run(self._lifecycle.pre_server_start(self._mcp))
+
             # List registered tools, prompts, and resources before starting server
             tools = asyncio.run(self._mcp._list_tools_mcp())
             prompts = asyncio.run(self._mcp._list_prompts_mcp())
@@ -231,9 +237,6 @@ class DataRobotMCPServer:
             self._logger.info(f"Registered resources: {resources_count}")
             for resource in resources:
                 self._logger.info(f" > {resource.name}")
-
-            # Execute pre-server start actions
-            asyncio.run(self._lifecycle.pre_server_start(self._mcp))
 
             # Create event loop for async operations
             loop = asyncio.new_event_loop()

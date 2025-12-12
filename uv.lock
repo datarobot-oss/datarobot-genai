@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [manifest]
-overrides = [{ name = "ragas", specifier = ">=0.3.8" }]
+overrides = [{ name = "ragas", specifier = ">=0.3.8,<0.4.0" }]
 excludes = ["uv"]
 
 [[package]]
@@ -1040,7 +1040,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.2.3"
+version = "0.2.5"
 source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },
@@ -1054,6 +1054,7 @@ dependencies = [
     { name = "opentelemetry-instrumentation-requests" },
     { name = "opentelemetry-instrumentation-threading" },
     { name = "pandas" },
+    { name = "pyarrow" },
     { name = "pyjwt" },
     { name = "pypdf" },
     { name = "ragas" },
@@ -1109,7 +1110,6 @@ nat = [
     { name = "opentelemetry-instrumentation-crewai" },
     { name = "opentelemetry-instrumentation-langchain" },
     { name = "opentelemetry-instrumentation-llamaindex" },
-    { name = "pyarrow" },
 ]
 pydanticai = [
     { name = "logfire" },
@@ -1177,7 +1177,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-threading", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },
-    { name = "pyarrow", marker = "extra == 'nat'", specifier = "==20.0.0" },
+    { name = "pyarrow", specifier = "==20.0.0" },
     { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2,<2.0.0" },
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic-ai", marker = "extra == 'pydanticai'", specifier = ">=1.0.5,<1.9.0" },
