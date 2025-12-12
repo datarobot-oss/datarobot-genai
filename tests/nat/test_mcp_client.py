@@ -20,6 +20,7 @@ from nat.plugins.mcp.client_base import MCPBaseClient
 from nat.plugins.mcp.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 
+from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
 from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPClientConfig
 from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPServerConfig
 
@@ -86,7 +87,9 @@ async def test_datarobot_mcp_client():
         )
         server_config = DataRobotMCPServerConfig()
         config = DataRobotMCPClientConfig(server=server_config)
+        auth_provider_config = DataRobotAPIKeyAuthProviderConfig()
         async with WorkflowBuilder() as builder:
+            await builder.add_auth_provider("datarobot_api_key", auth_provider_config)
             await builder.add_function_group("datarobot_mcp_tools", config)
             function_group = await builder.get_function_group("datarobot_mcp_tools")
             assert isinstance(function_group, MCPFunctionGroup)
