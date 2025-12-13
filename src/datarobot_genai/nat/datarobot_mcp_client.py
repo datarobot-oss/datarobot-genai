@@ -13,11 +13,15 @@
 # limitations under the License.
 
 import logging
+from datetime import timedelta
 from typing import Literal
 
+import httpx
+from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.component_ref import AuthenticationRef
+from nat.plugins.mcp.client_base import AuthAdapter
 from nat.plugins.mcp.client_base import MCPSSEClient
 from nat.plugins.mcp.client_base import MCPStdioClient
 from nat.plugins.mcp.client_base import MCPStreamableHTTPClient
@@ -47,7 +51,7 @@ class DataRobotMCPServerConfig(MCPServerConfig):
     )
     # Authentication configuration
     auth_provider: str | AuthenticationRef | None = Field(
-        default="datarobot_api_key" if config else None,
+        default="datarobot_mcp_auth" if config else None,
         description="Reference to authentication provider",
     )
     command: str | None = Field(
@@ -60,6 +64,55 @@ class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  #
     server: DataRobotMCPServerConfig = Field(
         default=DataRobotMCPServerConfig(), description="DataRobot MCP Server configuration"
     )
+
+
+class DataRobotAuthAdapter(AuthAdapter):
+    async def _get_auth_headers(
+        self, request: httpx.Request | None = None, response: httpx.Response | None = None
+    ) -> dict[str, str]:
+        """Get authentication headers from the NAT auth provider."""
+        try:
+            # Use the user_id passed to this AuthAdapter instance
+            auth_result = await self.auth_provider.authenticate(
+                user_id=self.user_id, response=response
+            )
+            as_kwargs = auth_result.as_requests_kwargs()
+            return as_kwargs["headers"]
+        except Exception as e:
+            logger.warning("Failed to get auth token: %s", e)
+            return {}
+
+
+class DataRobotMCPStreamableHTTPClient(MCPStreamableHTTPClient):
+    def __init__(
+        self,
+        url: str,
+        auth_provider: AuthProviderBase | None = None,
+        user_id: str | None = None,
+        tool_call_timeout: timedelta = timedelta(seconds=60),
+        auth_flow_timeout: timedelta = timedelta(seconds=300),
+        reconnect_enabled: bool = True,
+        reconnect_max_attempts: int = 2,
+        reconnect_initial_backoff: float = 0.5,
+        reconnect_max_backoff: float = 50.0,
+    ):
+        super().__init__(
+            url=url,
+            auth_provider=auth_provider,
+            user_id=user_id,
+            tool_call_timeout=tool_call_timeout,
+            auth_flow_timeout=auth_flow_timeout,
+            reconnect_enabled=reconnect_enabled,
+            reconnect_max_attempts=reconnect_max_attempts,
+            reconnect_initial_backoff=reconnect_initial_backoff,
+            reconnect_max_backoff=reconnect_max_backoff,
+        )
+        effective_user_id = user_id or (
+            auth_provider.config.default_user_id if auth_provider else None
+        )
+        self._httpx_auth = (
+            DataRobotAuthAdapter(auth_provider, effective_user_id) if auth_provider else None
+        )
 
 
 @register_function_group(config_type=DataRobotMCPClientConfig)
@@ -108,7 +161,7 @@ async def datarobot_mcp_client_function_group(
     elif config.server.transport == "streamable-http":
         # Use default_user_id for the base client
         base_user_id = auth_provider.config.default_user_id if auth_provider else None
-        client = MCPStreamableHTTPClient(
+        client = DataRobotMCPStreamableHTTPClient(
             str(config.server.url),
             auth_provider=auth_provider,
             user_id=base_user_id,
