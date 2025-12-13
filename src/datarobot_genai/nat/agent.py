@@ -123,6 +123,8 @@ class NatAgent(BaseAgent[None]):
         model: str | None = None,
         verbose: bool | str | None = True,
         timeout: int | None = 90,
+        authorization_context: dict[str, Any] | None = None,
+        forwarded_headers: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -131,6 +133,8 @@ class NatAgent(BaseAgent[None]):
             model=model,
             verbose=verbose,
             timeout=timeout,
+            authorization_context=authorization_context,
+            forwarded_headers=forwarded_headers,
             **kwargs,
         )
         self.workflow_path = workflow_path

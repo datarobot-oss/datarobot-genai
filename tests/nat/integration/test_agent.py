@@ -57,6 +57,20 @@ def agent(workflow_path, config):
     )
 
 
+@pytest.fixture
+def workflow_with_mcp_path():
+    return Path(__file__).parent / "workflow_with_mcp.yaml"
+
+
+@pytest.fixture
+def agent_with_mcp(workflow_with_mcp_path, config):
+    return NatAgent(
+        workflow_path=workflow_with_mcp_path,
+        api_key=config.datarobot_api_token,
+        api_base=config.datarobot_endpoint,
+    )
+
+
 async def test_run_method(agent):
     # Call the run method with test inputs
     completion_create_params = {
@@ -65,6 +79,23 @@ async def test_run_method(agent):
         "environment_var": True,
     }
     result, pipeline_interactions, usage = await agent.invoke(completion_create_params)
+
+    assert result
+    assert isinstance(result, str)
+    assert pipeline_interactions
+    assert usage["completion_tokens"] > 0
+    assert usage["prompt_tokens"] > 0
+    assert usage["total_tokens"] > 0
+
+
+async def test_run_method_with_mcp(agent_with_mcp):
+    # Call the run method with test inputs
+    completion_create_params = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "List the projects"}],
+        "environment_var": True,
+    }
+    result, pipeline_interactions, usage = await agent_with_mcp.invoke(completion_create_params)
 
     assert result
     assert isinstance(result, str)
