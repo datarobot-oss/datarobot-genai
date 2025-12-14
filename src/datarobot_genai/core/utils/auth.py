@@ -12,17 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import warnings
+from dataclasses import dataclass
 from typing import Any
 
+import aiohttp
 import jwt
-from datarobot.auth.datarobot.oauth import AsyncOAuth as DatarobotAsyncOAuthClient
+from datarobot.auth.datarobot.oauth import AsyncOAuth as DatarobotOAuthClient
 from datarobot.auth.identity import Identity
-from datarobot.auth.oauth import AsyncOAuthComponent
+from datarobot.auth.oauth import OAuthToken
 from datarobot.auth.session import AuthCtx
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import get_authorization_context
+from mypy.semanal_shared import Protocol
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -183,52 +187,152 @@ class AuthContextHeaderHandler:
             return None
 
 
+# OAuth Token Provider Implementation
+
+
+@dataclass
+class OAuthConfig:
+    """Configuration for OAuth token retrieval."""
+
+    implementation: str  # 'datarobot' or 'authlib'
+    application_endpoint: str | None = None
+
+
+class TokenRetriever(Protocol):
+    """Protocol for OAuth token retrievers."""
+
+    async def get_token(self, identity: Identity) -> OAuthToken: ...
+
+
+class DatarobotTokenRetriever:
+    """Retrieves OAuth tokens via DataRobot's OAuth client."""
+
+    def __init__(self) -> None:
+        self.oauth_client = DatarobotOAuthClient()
+
+    async def get_token(self, identity: Identity) -> OAuthToken:
+        return await self.oauth_client.refresh_access_token(
+            identity_id=identity.provider_identity_id
+        )
+
+
+class AuthlibTokenRetriever:
+    """Retrieves OAuth tokens from an Authlib-based OAuth endpoint."""
+
+    def __init__(self, application_endpoint: str) -> None:
+        self.application_endpoint = application_endpoint
+
+    async def get_token(self, identity: Identity) -> OAuthToken:
+        """Retrieve OAuth token via HTTP POST to the OAuth endpoint."""
+        if not (api_token := os.environ.get("DATAROBOT_API_TOKEN")):
+            raise ValueError("DATAROBOT_API_TOKEN env variable required but not set.")
+
+        token_url = f"{self.application_endpoint.rstrip('/')}/oauth/token/"
+        headers = {
+            "Authorization": f"Bearer {api_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {"identity_id": identity.id}
+        timeout = aiohttp.ClientTimeout(total=30, connect=5)
+
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(token_url, headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    logger.debug(f"Retrieved access token from {token_url}")
+                    return OAuthToken(**data)
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"HTTP {e.status} error retrieving token from {token_url}: {e.message}")
+            raise
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error retrieving token from {token_url}: {e}")
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to parse OAuth token response from {token_url}: {e}", exc_info=True
+            )
+            raise
+
+
 class AsyncOAuthTokenProvider:
-    """Manages OAuth access tokens using generic OAuth client."""
+    """Main entry point for OAuth token retrieval.
+
+    Automatically selects between DataRobot and Authlib token retrievers
+    based on auth context metadata.
+    """
 
     def __init__(self, auth_ctx: AuthCtx) -> None:
         self.auth_ctx = auth_ctx
-        self.oauth_client = self._create_oauth_client()
+        self._config = self._extract_oauth_config()
+        self._retriever = self._create_retriever()
+
+    def _extract_oauth_config(self) -> OAuthConfig:
+        """Extract OAuth configuration from auth context metadata."""
+        metadata = self.auth_ctx.metadata or {}
+        implementation = metadata.get("application_oauth_impl", "datarobot").lower()
+        application_endpoint = metadata.get("application_endpoint")
+
+        if implementation == "authlib" and not application_endpoint:
+            raise ValueError(
+                "Authlib OAuth requires 'application_endpoint' in auth context metadata."
+            )
+
+        return OAuthConfig(
+            implementation=implementation,
+            application_endpoint=application_endpoint,
+        )
+
+    def _create_retriever(self) -> TokenRetriever:
+        """Create the appropriate token retriever based on configuration."""
+        if self._config.implementation == "authlib":
+            return AuthlibTokenRetriever(self._config.application_endpoint)
+        return DatarobotTokenRetriever()
 
     def _get_identity(self, provider_type: str | None) -> Identity:
-        """Retrieve the appropriate identity from the authentication context."""
-        identities = [x for x in self.auth_ctx.identities if x.provider_identity_id is not None]
+        """Get identity from auth context, filtered by provider_type if specified."""
+        identities = [i for i in self.auth_ctx.identities if i.provider_identity_id]
 
         if not identities:
-            raise ValueError("No identities found in authorization context.")
+            raise ValueError("No OAuth identities found in authorization context.")
 
         if provider_type is None:
             if len(identities) > 1:
-                raise ValueError(
-                    "Multiple identities found. Please specify 'provider_type' parameter."
-                )
+                raise ValueError("Multiple identities found. Specify 'provider_type' parameter.")
             return identities[0]
 
-        identity = next((id for id in identities if id.provider_type == provider_type), None)
-
-        if identity is None:
+        if not (
+            identity := next((i for i in identities if i.provider_type == provider_type), None)
+        ):
             raise ValueError(f"No identity found for provider '{provider_type}'.")
 
         return identity
 
     async def get_token(self, auth_type: ToolAuth, provider_type: str | None = None) -> str:
-        """Get OAuth access token using the specified method."""
+        """Get OAuth access token for the specified auth type and provider.
+
+        Parameters
+        ----------
+        auth_type : ToolAuth
+            Authentication type (only OBO is supported).
+        provider_type : str | None
+            Optional provider type filter (e.g., 'google', 'microsoft').
+
+        Returns
+        -------
+        str
+            OAuth access token.
+
+        Raises
+        ------
+        ValueError
+            If auth_type is not OBO or identity lookup fails.
+        """
         if auth_type != ToolAuth.OBO:
             raise ValueError(
                 f"Unsupported auth type: {auth_type}. Only {ToolAuth.OBO} is supported."
             )
 
         identity = self._get_identity(provider_type)
-        token_data = await self.oauth_client.refresh_access_token(
-            identity_id=identity.provider_identity_id
-        )
+        token_data = await self._retriever.get_token(identity)
         return token_data.access_token
-
-    def _create_oauth_client(self) -> AsyncOAuthComponent:
-        """Create either DataRobot or Authlib OAuth client based on
-        authorization context.
-
-        Note: at the moment, only DataRobot OAuth client is supported.
-        """
-        logger.debug("Using DataRobot OAuth client")
-        return DatarobotAsyncOAuthClient()
