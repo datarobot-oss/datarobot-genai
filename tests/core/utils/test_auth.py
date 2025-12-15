@@ -890,6 +890,45 @@ class TestAuthlibTokenRetriever:
             with pytest.raises(aiohttp.ClientError):
                 await retriever.refresh_access_token(identity)
 
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_with_responses_mock(self) -> None:
+        """Test token refresh with aioresponses mocking the authlib endpoint."""
+        retriever = AuthlibTokenRetriever("https://app.example.com/api/v1/")
+        identity = Identity(
+            id="test-identity-123",
+            provider_type="google",
+            type="oauth2",
+            provider_user_id="user@example.com",
+            provider_identity_id=None,
+        )
+
+        mock_response_data = {
+            "access_token": "access-token-value",
+            "token_type": None,
+            "expires_in": None,
+            "expires_at": None,
+            "refresh_token": None,
+            "id_token": None,
+            "scope": None,
+        }
+
+        with (
+            patch.dict(os.environ, {"DATAROBOT_API_TOKEN": "test-api-token"}),
+            aioresponses() as m,
+        ):
+            # Mock the POST request with 200 OK response
+            m.post(
+                "https://app.example.com/api/v1/oauth/token/",
+                status=200,
+                payload=mock_response_data,
+            )
+
+            token = await retriever.refresh_access_token(identity)
+
+            assert token.access_token == "access-token-value"
+            assert token.token_type is None
+            assert token.expires_in is None
+
 
 class TestAsyncOAuthTokenProviderWithAuthlib:
     """Tests for AsyncOAuthTokenProvider using Authlib implementation."""
