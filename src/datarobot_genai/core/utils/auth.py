@@ -357,7 +357,7 @@ class AsyncOAuthTokenProvider:
 
         identity = next((i for i in oauth_identities if i.provider_type == provider_type), None)
         if identity is None:
-            raise ValueError(f"No identity found for provider '{provider_type}'.")
+            raise OAuthValidationErr(f"No identity found for provider '{provider_type}'.")
         return identity
 
     async def get_token(self, auth_type: ToolAuth, provider_type: str | None = None) -> str:
