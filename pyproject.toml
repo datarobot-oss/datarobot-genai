@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.2.5"
+version = "0.2.8"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -125,6 +125,7 @@ dev = [
   "pytest-asyncio>=0.23.5",
   "responses>=0.25.8",
   "ipdb>=0.13.13",
+  "aioresponses>=0.7.8",
 ]
 
 
