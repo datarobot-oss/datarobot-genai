@@ -21,8 +21,8 @@ function_groups:
   mcp_tools:
     _type: datarobot_mcp_client
 authentication:
-  datarobot_api_key:
-    _type: datarobot_api_key
+  datarobot_mcp_auth:
+    _type: datarobot_mcp_auth
 llms:
   datarobot_llm:
     _type: datarobot-llm-gateway
