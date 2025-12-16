@@ -69,10 +69,10 @@ async def confluence_get_page(
 
     except ValueError as e:
         logger.error(f"Value error getting Confluence page: {e}")
-        return ToolError(str(e))
+        raise ToolError(str(e))
     except Exception as e:
         logger.error(f"Unexpected error getting Confluence page: {e}")
-        return ToolError(
+        raise ToolError(
             f"An unexpected error occurred while getting Confluence page "
             f"'{page_id_or_title}': {str(e)}"
         )
