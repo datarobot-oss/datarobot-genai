@@ -18,6 +18,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from fastmcp import FastMCP
+from fastmcp.resources import HttpResource
 
 from datarobot_genai.drmcp.core.resource_store.backends.filesystem import FilesystemBackend
 from datarobot_genai.drmcp.core.resource_store.conversation import ConversationState
@@ -25,10 +27,10 @@ from datarobot_genai.drmcp.core.resource_store.memory import MemoryAPI
 from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
 from datarobot_genai.drmcp.core.resource_store.registration import initialize_resource_store
 from datarobot_genai.drmcp.core.resource_store.resource_api import ResourceAPI
-from datarobot_genai.drmcp.core.resource_store.resource_manager import ResourceStoreBackedResourceManager
+from datarobot_genai.drmcp.core.resource_store.resource_manager import (
+    ResourceStoreBackedResourceManager,
+)
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
-from fastmcp import FastMCP
-from fastmcp.resources import HttpResource
 
 
 @pytest.mark.asyncio
@@ -140,4 +142,3 @@ class TestResourceStoreIntegration:
             notes_2 = await memory.search("user_2")
             assert len(notes_1) == 1
             assert len(notes_2) == 1
-

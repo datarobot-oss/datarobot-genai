@@ -20,27 +20,25 @@ This module provides utilities for accessing the ResourceManager from tools.
 
 from fastmcp import FastMCP
 
+from datarobot_genai.drmcp.core.mcp_instance import mcp as global_mcp
+
 from .resource_manager import ResourceStoreBackedResourceManager
 
 
 def get_resource_manager(mcp: FastMCP | None = None) -> ResourceStoreBackedResourceManager | None:
     """
     Get the ResourceStoreBackedResourceManager instance.
-    
+
     Args:
         mcp: Optional FastMCP instance. If provided, gets ResourceManager from it.
              If None, tries to get from the global mcp instance.
-    
-    Returns:
+
+    Returns
+    -------
         ResourceStoreBackedResourceManager instance or None if not found
     """
     if mcp is not None:
         return getattr(mcp, "_resource_manager", None)
-    
-    # Try to get from global mcp instance
-    try:
-        from ..mcp_instance import mcp as global_mcp
-        return getattr(global_mcp, "_resource_manager", None)
-    except ImportError:
-        return None
 
+    # Try to get from global mcp instance
+    return getattr(global_mcp, "_resource_manager", None)

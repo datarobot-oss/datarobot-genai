@@ -47,7 +47,7 @@ class TestAgentConversationWorkflow:
         3. Agent retrieves conversation history
         4. Model uses history in next turn
         """
-        async with resource_store_mcp_session as session:
+        async with resource_store_mcp_session as _session:  # noqa: F841
             # Simulate agent storing conversation messages
             # In a real agent, this would happen automatically via ConversationState
             # For this test, we'll use the ResourceStore directly to simulate the workflow
@@ -164,7 +164,9 @@ class TestAgentMemoryWorkflow:
             memory_id = result_text.split("ID:")[-1].strip()
 
             # Step 2: Agent retrieves preference using memory.read
-            memory_read_tool = next((t for t in tools_result.tools if t.name == "memory_read"), None)
+            memory_read_tool = next(
+                (t for t in tools_result.tools if t.name == "memory_read"), None
+            )
             assert memory_read_tool is not None, "memory_read tool should be available"
 
             read_result = await session.call_tool(
@@ -194,7 +196,7 @@ class TestAgentMemoryWorkflow:
             # Step 1: Store multiple memories
             tools_result = await session.list_tools()
             tools = tools_result.tools
-            memory_write = next((t for t in tools if t.name == "memory_write"), None)
+            assert any(t.name == "memory_write" for t in tools)
 
             scope_id = "user_agent_search"
 
@@ -266,7 +268,7 @@ class TestAgentMemoryWorkflow:
         async with resource_store_mcp_session as session:
             tools_result = await session.list_tools()
             tools = tools_result.tools
-            memory_write = next((t for t in tools if t.name == "memory_write"), None)
+            assert any(t.name == "memory_write" for t in tools)
 
             # Store a memory
             write_result = await session.call_tool(
@@ -294,7 +296,6 @@ class TestAgentMemoryWorkflow:
             assert "deleted successfully" in delete_result.content[0].text
 
             # Verify it's deleted
-            memory_read = next((t for t in tools_result.tools if t.name == "memory_read"), None)
             read_result = await session.call_tool(
                 "memory_read",
                 arguments={"resource_id": memory_id},
@@ -382,7 +383,7 @@ class TestAgentFullWorkflow:
             # Setup: Store user preference
             tools_result = await session.list_tools()
             tools = tools_result.tools
-            memory_write = next((t for t in tools if t.name == "memory_write"), None)
+            assert any(t.name == "memory_write" for t in tools)
 
             user_id = "user_full_workflow"
             conversation_id = f"{user_id}_conv_1"
@@ -449,4 +450,3 @@ class TestAgentFullWorkflow:
             assert len(final_history) == 4
             assert final_history[-1]["role"] == "assistant"
             assert "favorite color" in final_history[-1]["content"].lower()
-

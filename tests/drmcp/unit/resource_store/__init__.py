@@ -13,4 +13,3 @@
 # limitations under the License.
 
 """Tests for ResourceStore system."""
-

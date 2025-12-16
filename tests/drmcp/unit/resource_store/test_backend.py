@@ -16,7 +16,6 @@
 
 import pytest
 
-from datarobot_genai.drmcp.core.resource_store.backends.filesystem import BackendError
 from datarobot_genai.drmcp.core.resource_store.backends.filesystem import FilesystemBackend
 from datarobot_genai.drmcp.core.resource_store.models import Resource
 from datarobot_genai.drmcp.core.resource_store.models import Scope
@@ -360,7 +359,9 @@ class TestFilesystemBackend:
 
     async def test_cleanup_expired(self, backend: FilesystemBackend) -> None:
         """Test cleaning up expired ephemeral resources."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime  # noqa: PLC0415
+        from datetime import timedelta  # noqa: PLC0415
+        from datetime import timezone  # noqa: PLC0415
 
         scope = Scope(type="conversation", id="conv_123")
 
@@ -435,4 +436,3 @@ class TestFilesystemBackend:
         assert result is not None
         _, data = result
         assert data == "updated"
-

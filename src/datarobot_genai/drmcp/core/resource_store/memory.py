@@ -23,6 +23,7 @@ import logging
 from typing import Any
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 from .models import Scope
 from .store import ResourceStore
@@ -169,15 +170,12 @@ class MemoryAPI:
 def get_memory_api() -> MemoryAPI | None:
     """
     Get the MemoryAPI instance from the mcp server.
-    
-    Returns:
+
+    Returns
+    -------
         MemoryAPI instance or None if not found
     """
-    try:
-        from ..mcp_instance import mcp
-        return getattr(mcp, "_memory_api", None)
-    except (ImportError, AttributeError):
-        return None
+    return getattr(mcp, "_memory_api", None)
 
 
 @dr_core_mcp_tool()

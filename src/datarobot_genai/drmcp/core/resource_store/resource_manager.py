@@ -50,7 +50,7 @@ class ResourceStoreBackedResourceManager(ResourceManager):
         resource_manager = ResourceStoreBackedResourceManager(
             store, default_scope_id="conversation_123"
         )
-        
+
         # Use like FastMCP's ResourceManager
         resource = HttpResource(uri="...", url="...", name="...", mime_type="...")
         resource_manager.add_resource(resource, data=b"content", lifetime="ephemeral")
@@ -190,7 +190,7 @@ class ResourceStoreBackedResourceManager(ResourceManager):
         # Convert AnyUrl to string if needed
         if hasattr(uri, "__str__"):
             uri = str(uri)
-        
+
         # Handle various URI formats:
         # - "mcp://resources/abc123" -> "abc123"
         # - "predictions://abc123" -> "abc123"
@@ -258,4 +258,3 @@ class ResourceStoreBackedResourceManager(ResourceManager):
             resource, _ = result
             return resource.metadata
         return None
-

@@ -110,4 +110,3 @@ class ResourceBackend(ABC):
             Number of resources cleaned up
         """
         pass
-

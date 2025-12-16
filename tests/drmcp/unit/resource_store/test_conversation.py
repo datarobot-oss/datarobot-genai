@@ -115,7 +115,7 @@ class TestConversationState:
 
         await conversation.add_message("conv_123", "user", "Message")
         # Add a non-message resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope
+        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
 
         await store.put(
             scope=Scope(type="conversation", id="conv_123"),
@@ -149,4 +149,3 @@ class TestConversationState:
         """Test clearing empty history."""
         conversation = ConversationState(store)
         await conversation.clear_history("empty_conv")  # Should not raise
-

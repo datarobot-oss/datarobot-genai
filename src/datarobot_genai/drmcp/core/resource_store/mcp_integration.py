@@ -179,4 +179,3 @@ class MCPResourceIntegration:
         # For now, resources are registered via add_resource() and FastMCP handles them.
         # If we need dynamic querying, we'd need to check FastMCP's extension points.
         logger.debug("MCP handlers registered (FastMCP handles resources automatically)")
-

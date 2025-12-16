@@ -41,4 +41,3 @@ def backend(temp_dir: Path) -> FilesystemBackend:
 def store(backend: FilesystemBackend) -> ResourceStore:
     """Create a ResourceStore instance for testing."""
     return ResourceStore(backend)
-

@@ -44,16 +44,21 @@ class Resource(BaseModel):
         ...,
         description="Resource kind: 'message', 'tool-call', 'tool-result', 'note', 'blob', etc.",
     )
-    lifetime: Lifetime = Field(
-        ..., description="Resource lifetime: 'ephemeral' or 'persistent'"
-    )
+    lifetime: Lifetime = Field(..., description="Resource lifetime: 'ephemeral' or 'persistent'")
     createdAt: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")  # noqa: N815
     ttlSeconds: int | None = Field(  # noqa: N815
         None, description="Time-to-live in seconds for ephemeral resources"
     )
-    contentType: str = Field(..., description="MIME type: 'application/json', 'text/markdown', 'application/octet-stream', etc.")  # noqa: N815, E501
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata (tags, version, embeddings, etc.)")  # noqa: E501
-    contentRef: str = Field(..., description="Reference to content: file path, blob key, DB pointer, etc.")  # noqa: N815, E501
+    contentType: str = Field(  # noqa: N815
+        ...,
+        description="MIME type: 'application/json', 'text/markdown', etc.",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata (tags, version, embeddings, etc.)"
+    )  # noqa: E501
+    contentRef: str = Field(  # noqa: N815
+        ..., description="Reference to content: file path, blob key, DB pointer, etc."
+    )
 
     class Config:
         """Pydantic config."""
@@ -61,4 +66,3 @@ class Resource(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat(),
         }
-

@@ -14,12 +14,12 @@
 
 """Tests for ResourceStoreBackedResourceManager."""
 
-from unittest.mock import MagicMock
-
 import pytest
 from fastmcp.resources import HttpResource
 
-from datarobot_genai.drmcp.core.resource_store.resource_manager import ResourceStoreBackedResourceManager
+from datarobot_genai.drmcp.core.resource_store.resource_manager import (
+    ResourceStoreBackedResourceManager,
+)
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
 
 
@@ -134,7 +134,7 @@ class TestResourceStoreBackedResourceManager:
         manager = ResourceStoreBackedResourceManager(store=store, default_scope_id="test_scope")
 
         # Store a resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope
+        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
 
         await store.put(
             scope=Scope(type="resource", id="test_scope"),
@@ -162,7 +162,7 @@ class TestResourceStoreBackedResourceManager:
         manager = ResourceStoreBackedResourceManager(store=store, default_scope_id="test_scope")
 
         # Store multiple resources
-        from datarobot_genai.drmcp.core.resource_store.models import Scope
+        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
 
         scope = Scope(type="resource", id="test_scope")
         await store.put(
@@ -172,7 +172,11 @@ class TestResourceStoreBackedResourceManager:
             lifetime="ephemeral",
             contentType="text/plain",
             resource_id="res1",
-            metadata={"name": "Resource 1", "uri": "mcp://resources/res1", "url": "mcp://resources/res1"},
+            metadata={
+                "name": "Resource 1",
+                "uri": "mcp://resources/res1",
+                "url": "mcp://resources/res1",
+            },
         )
         await store.put(
             scope=scope,
@@ -181,7 +185,11 @@ class TestResourceStoreBackedResourceManager:
             lifetime="ephemeral",
             contentType="text/csv",
             resource_id="res2",
-            metadata={"name": "Resource 2", "uri": "mcp://resources/res2", "url": "mcp://resources/res2"},
+            metadata={
+                "name": "Resource 2",
+                "uri": "mcp://resources/res2",
+                "url": "mcp://resources/res2",
+            },
         )
 
         resources = await manager.list_resources_for_scope("test_scope")
@@ -196,8 +204,7 @@ class TestResourceStoreBackedResourceManager:
 
     async def test_inherits_from_resource_manager(self, store: ResourceStore) -> None:
         """Test that ResourceStoreBackedResourceManager inherits from ResourceManager."""
-        from fastmcp.resources import ResourceManager
+        from fastmcp.resources import ResourceManager  # noqa: PLC0415
 
         manager = ResourceStoreBackedResourceManager(store=store)
         assert isinstance(manager, ResourceManager)
-

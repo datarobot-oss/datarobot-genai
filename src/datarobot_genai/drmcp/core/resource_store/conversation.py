@@ -78,4 +78,3 @@ class ConversationState:
         resources = await self.store.query(scope=scope)
         for resource in resources:
             await self.store.delete(resource.id)
-

@@ -381,4 +381,3 @@ class FilesystemBackend(ResourceBackend):
         except Exception as e:
             logger.error(f"Failed to cleanup expired resources: {e}")
             raise BackendError(f"Failed to cleanup expired resources: {e}") from e
-

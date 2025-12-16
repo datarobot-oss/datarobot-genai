@@ -15,10 +15,10 @@
 """Tests for ResourceAPI."""
 
 import pytest
+from fastmcp.resources import HttpResource
 
 from datarobot_genai.drmcp.core.resource_store.resource_api import ResourceAPI
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
-from fastmcp.resources import HttpResource
 
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ class TestResourceAPI:
         api = ResourceAPI(store)
 
         # Create a non-resource scope resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope
+        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
 
         await store.put(
             scope=Scope(type="conversation", id="conv_123"),
@@ -143,4 +143,3 @@ class TestResourceAPI:
         http_resource = api.create_mcp_resource(resource_id, url=custom_url)
         assert str(http_resource.uri) == custom_url
         assert str(http_resource.url) == custom_url
-

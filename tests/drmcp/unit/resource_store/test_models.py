@@ -16,12 +16,8 @@
 
 from datetime import datetime
 
-import pytest
-
-from datarobot_genai.drmcp.core.resource_store.models import Lifetime
 from datarobot_genai.drmcp.core.resource_store.models import Resource
 from datarobot_genai.drmcp.core.resource_store.models import Scope
-from datarobot_genai.drmcp.core.resource_store.models import ScopeType
 
 
 class TestScope:
@@ -155,4 +151,3 @@ class TestResource:
         assert isinstance(json_str, str)
         assert "res_123" in json_str
         assert "conversation" in json_str
-

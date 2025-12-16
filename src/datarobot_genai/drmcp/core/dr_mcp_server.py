@@ -17,10 +17,9 @@ import glob
 import importlib
 import logging
 import os
+import tempfile
 from collections.abc import Callable
 from typing import Any
-
-import tempfile
 
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
@@ -145,7 +144,9 @@ class DataRobotMCPServer:
         # Replace FastMCP's ResourceManager with our ResourceStore-backed one
         # FastMCP stores it as _resource_manager (private attribute)
         mcp._resource_manager = resource_manager
-        self._logger.info("Replaced FastMCP's _resource_manager with ResourceStoreBackedResourceManager")
+        self._logger.info(
+            "Replaced FastMCP's _resource_manager with ResourceStoreBackedResourceManager"
+        )
 
         # Attach ResourceStore and MemoryAPI to mcp instance for tool access
         mcp._resource_store = store  # type: ignore[attr-defined]

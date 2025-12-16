@@ -14,8 +14,6 @@
 
 """Tests for MemoryAPI."""
 
-import json
-
 import pytest
 
 from datarobot_genai.drmcp.core.resource_store.memory import MemoryAPI
@@ -99,7 +97,9 @@ class TestMemoryAPI:
         memory = MemoryAPI(store)
 
         await memory.write("user_123", "note", "Note 1", {"tag": "important", "category": "work"})
-        await memory.write("user_123", "note", "Note 2", {"tag": "important", "category": "personal"})
+        await memory.write(
+            "user_123", "note", "Note 2", {"tag": "important", "category": "personal"}
+        )
         await memory.write("user_123", "note", "Note 3", {"tag": "unimportant"})
 
         results = await memory.search("user_123", metadata={"tag": "important"})
@@ -128,7 +128,7 @@ class TestMemoryAPI:
         memory = MemoryAPI(store)
 
         # Create a non-memory resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope
+        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
 
         await store.put(
             scope=Scope(type="conversation", id="conv_123"),
@@ -141,4 +141,3 @@ class TestMemoryAPI:
 
         success = await memory.delete("non_memory_res")
         assert success is False
-

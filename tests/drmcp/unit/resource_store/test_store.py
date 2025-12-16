@@ -88,9 +88,27 @@ class TestResourceStore:
         scope1 = Scope(type="conversation", id="conv_123")
         scope2 = Scope(type="conversation", id="conv_456")
 
-        await store.put(scope=scope1, kind="message", data="msg1", lifetime="ephemeral", contentType="text/plain")
-        await store.put(scope=scope1, kind="message", data="msg2", lifetime="ephemeral", contentType="text/plain")
-        await store.put(scope=scope2, kind="message", data="msg3", lifetime="ephemeral", contentType="text/plain")
+        await store.put(
+            scope=scope1,
+            kind="message",
+            data="msg1",
+            lifetime="ephemeral",
+            contentType="text/plain",
+        )
+        await store.put(
+            scope=scope1,
+            kind="message",
+            data="msg2",
+            lifetime="ephemeral",
+            contentType="text/plain",
+        )
+        await store.put(
+            scope=scope2,
+            kind="message",
+            data="msg3",
+            lifetime="ephemeral",
+            contentType="text/plain",
+        )
 
         results = await store.query(scope=scope1)
         assert len(results) == 2
@@ -99,9 +117,19 @@ class TestResourceStore:
         """Test querying by kind."""
         scope = Scope(type="conversation", id="conv_123")
 
-        await store.put(scope=scope, kind="message", data="msg1", lifetime="ephemeral", contentType="text/plain")
-        await store.put(scope=scope, kind="tool-call", data="call1", lifetime="ephemeral", contentType="application/json")
-        await store.put(scope=scope, kind="message", data="msg2", lifetime="ephemeral", contentType="text/plain")
+        await store.put(
+            scope=scope, kind="message", data="msg1", lifetime="ephemeral", contentType="text/plain"
+        )
+        await store.put(
+            scope=scope,
+            kind="tool-call",
+            data="call1",
+            lifetime="ephemeral",
+            contentType="application/json",
+        )
+        await store.put(
+            scope=scope, kind="message", data="msg2", lifetime="ephemeral", contentType="text/plain"
+        )
 
         results = await store.query(scope=scope, kind="message")
         assert len(results) == 2
@@ -110,9 +138,27 @@ class TestResourceStore:
         """Test querying by lifetime."""
         scope = Scope(type="memory", id="user_123")
 
-        await store.put(scope=scope, kind="note", data="note1", lifetime="ephemeral", contentType="text/markdown")
-        await store.put(scope=scope, kind="note", data="note2", lifetime="persistent", contentType="text/markdown")
-        await store.put(scope=scope, kind="note", data="note3", lifetime="persistent", contentType="text/markdown")
+        await store.put(
+            scope=scope,
+            kind="note",
+            data="note1",
+            lifetime="ephemeral",
+            contentType="text/markdown",
+        )
+        await store.put(
+            scope=scope,
+            kind="note",
+            data="note2",
+            lifetime="persistent",
+            contentType="text/markdown",
+        )
+        await store.put(
+            scope=scope,
+            kind="note",
+            data="note3",
+            lifetime="persistent",
+            contentType="text/markdown",
+        )
 
         results = await store.query(scope=scope, lifetime="persistent")
         assert len(results) == 2
@@ -179,9 +225,9 @@ class TestResourceStore:
         )
 
         # Wait a bit and cleanup
-        import asyncio
+        import asyncio  # noqa: PLC0415
+
         await asyncio.sleep(1.1)
 
         count = await store.cleanup_expired()
         assert count >= 1
-

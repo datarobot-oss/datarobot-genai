@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -158,7 +159,6 @@ async def resource_store_mcp_session(test_storage_path: str):
     ResourceStore is automatically initialized by DataRobotMCPServer,
     so we just need to set the storage path via environment variable.
     """
-    import os
     original_path = os.environ.get("RESOURCE_STORE_STORAGE_PATH")
     try:
         os.environ["RESOURCE_STORE_STORAGE_PATH"] = test_storage_path
