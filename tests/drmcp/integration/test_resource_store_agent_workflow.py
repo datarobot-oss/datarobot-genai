@@ -19,181 +19,16 @@ These tests simulate how agents from af-component-agent connect to drmcp
 and use conversation state, memory, and resources through the MCP protocol.
 """
 
-import asyncio
-import contextlib
 import json
-import os
-import tempfile
-from collections.abc import AsyncGenerator
-from pathlib import Path
 
 import pytest
-from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters
-from mcp.client.stdio import stdio_client
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.core.resource_store.backends.filesystem import FilesystemBackend
 from datarobot_genai.drmcp.core.resource_store.conversation import ConversationState
 from datarobot_genai.drmcp.core.resource_store.memory import MemoryAPI
-from datarobot_genai.drmcp.core.resource_store.registration import initialize_resource_store
+from datarobot_genai.drmcp.core.resource_store.resource_api import ResourceAPI
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
-from datarobot_genai.drmcp.core.resource_store.memory import set_memory_api
-from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
-from datarobot_genai.drmcp.core.dr_mcp_server import BaseServerLifecycle
-from datarobot_genai.drmcp.core.dr_mcp_server import create_mcp_server
-from fastmcp import FastMCP
-
-
-class ResourceStoreTestLifecycle(BaseServerLifecycle):
-    """Lifecycle hook that initializes ResourceStore and MemoryAPI for tests."""
-
-    def __init__(self, storage_path: str | None = None):
-        self.storage_path = storage_path or tempfile.mkdtemp(prefix="test_resources_")
-
-    async def pre_server_start(self, mcp: FastMCP) -> None:
-        """Initialize ResourceStore and MemoryAPI before server starts."""
-        # Initialize ResourceStore
-        resource_manager = initialize_resource_store(
-            mcp=mcp,
-            storage_path=self.storage_path,
-            default_scope_id="test_conversation",
-        )
-
-        # Initialize MemoryAPI
-        store = resource_manager.store
-        memory_api = MemoryAPI(store)
-        set_memory_api(memory_api)
-
-
-@pytest.fixture(scope="function")
-def test_storage_path(tmp_path: Path) -> str:
-    """Create a temporary storage path for each test."""
-    storage_dir = tmp_path / "resource_store"
-    storage_dir.mkdir()
-    return str(storage_dir)
-
-
-@pytest.fixture(scope="function")
-def test_mcp_server(test_storage_path: str):
-    """Create an MCP server with ResourceStore initialized."""
-    lifecycle = ResourceStoreTestLifecycle(storage_path=test_storage_path)
-    server = create_mcp_server(
-        lifecycle=lifecycle,
-        transport="stdio",
-    )
-    return server
-
-
-@contextlib.asynccontextmanager
-async def resource_store_mcp_session(
-    storage_path: str, timeout: int = 30
-) -> AsyncGenerator[ClientSession, None]:
-    """
-    Create and connect a client for the ResourceStore MCP server as a context manager.
-
-    Args:
-        storage_path: Path to storage directory for ResourceStore
-        timeout: Timeout for session initialization
-
-    Yields
-    ------
-        ClientSession: Connected MCP client session
-
-    Raises
-    ------
-        TimeoutError: If session initialization exceeds timeout
-    """
-    # Create a temporary server script that uses ResourceStoreTestLifecycle
-    script_dir = Path(__file__).resolve().parent.parent.parent.parent / "src"
-    # Use json.dumps for proper string escaping
-    script_dir_str = json.dumps(str(script_dir))
-    storage_path_str = json.dumps(storage_path)
-    
-    server_script_content = f'''#!/usr/bin/env python3
-import sys
-from pathlib import Path
-
-# Add src/ directory to Python path
-sys.path.insert(0, {script_dir_str})
-
-from datarobot_genai.drmcp.core.dr_mcp_server import create_mcp_server
-from datarobot_genai.drmcp.core.server_life_cycle import BaseServerLifecycle
-
-class ResourceStoreTestLifecycle(BaseServerLifecycle):
-    """Lifecycle hook that initializes ResourceStore and MemoryAPI for tests."""
-
-    def __init__(self, storage_path: str | None = None):
-        super().__init__()
-        self.storage_path = storage_path
-
-    async def pre_server_start(self, mcp):
-        """Initialize ResourceStore and MemoryAPI before server starts."""
-        from datarobot_genai.drmcp.core.resource_store.registration import initialize_resource_store
-        from datarobot_genai.drmcp.core.resource_store.memory import MemoryAPI, set_memory_api
-
-        # Initialize ResourceStore
-        resource_manager = initialize_resource_store(
-            mcp=mcp,
-            storage_path=self.storage_path,
-            default_scope_id="test_conversation",
-        )
-
-        # Initialize MemoryAPI
-        store = resource_manager.store
-        memory_api = MemoryAPI(store)
-        set_memory_api(memory_api)
-
-if __name__ == "__main__":
-    lifecycle = ResourceStoreTestLifecycle(storage_path={storage_path_str})
-    server = create_mcp_server(
-        lifecycle=lifecycle,
-        transport="stdio",
-    )
-    server.run()
-'''
-
-    # Write temporary server script
-    import tempfile as tf
-
-    with tf.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(server_script_content)
-        server_script = f.name
-
-    try:
-        # Make script executable
-        os.chmod(server_script, 0o755)
-
-        # Create server parameters
-        server_params = StdioServerParameters(
-            command="uv",
-            args=["run", server_script],
-            env={
-                "PYTHONPATH": str(script_dir),
-                "DATAROBOT_API_TOKEN": os.environ.get("DATAROBOT_API_TOKEN", "test-token"),
-                "DATAROBOT_ENDPOINT": os.environ.get(
-                    "DATAROBOT_ENDPOINT", "https://test.datarobot.com/api/v2"
-                ),
-                "MCP_SERVER_LOG_LEVEL": os.environ.get("MCP_SERVER_LOG_LEVEL", "WARNING"),
-                "APP_LOG_LEVEL": os.environ.get("APP_LOG_LEVEL", "WARNING"),
-                "OTEL_ENABLED": os.environ.get("OTEL_ENABLED", "false"),
-            },
-        )
-
-        try:
-            async with stdio_client(server_params) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await asyncio.wait_for(session.initialize(), timeout=timeout)
-                    yield session
-
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Session initialization timed out after {timeout} seconds")
-    finally:
-        # Clean up temporary script
-        try:
-            os.unlink(server_script)
-        except OSError:
-            pass
 
 
 @pytest.mark.asyncio
@@ -201,7 +36,7 @@ class TestAgentConversationWorkflow:
     """Test agent workflow using conversation state via MCP."""
 
     async def test_agent_conversation_memory_persistence(
-        self, test_mcp_server, test_storage_path: str
+        self, resource_store_mcp_session, test_storage_path: str
     ):
         """
         Test that an agent can store conversation messages and retrieve history.
@@ -212,8 +47,7 @@ class TestAgentConversationWorkflow:
         3. Agent retrieves conversation history
         4. Model uses history in next turn
         """
-        # Connect as an agent would
-        async with resource_store_mcp_session(test_storage_path) as session:
+        async with resource_store_mcp_session as session:
             # Simulate agent storing conversation messages
             # In a real agent, this would happen automatically via ConversationState
             # For this test, we'll use the ResourceStore directly to simulate the workflow
@@ -296,7 +130,7 @@ class TestAgentMemoryWorkflow:
     """Test agent workflow using memory tools via MCP."""
 
     async def test_agent_memory_write_read_via_mcp(
-        self, test_mcp_server, test_storage_path: str
+        self, resource_store_mcp_session, test_storage_path: str
     ):
         """
         Test that an agent can use memory.write and memory.read via MCP tools.
@@ -306,7 +140,7 @@ class TestAgentMemoryWorkflow:
         2. Agent retrieves preference using memory.read
         3. Model uses preference in conversation
         """
-        async with resource_store_mcp_session(test_storage_path) as session:
+        async with resource_store_mcp_session as session:
             # Step 1: Agent stores user preference via MCP tool
             tools_result = await session.list_tools()
             tools = tools_result.tools
@@ -346,7 +180,7 @@ class TestAgentMemoryWorkflow:
             assert memory_data["metadata"]["category"] == "ui"
 
     async def test_agent_memory_search_via_mcp(
-        self, test_mcp_server, test_storage_path: str
+        self, resource_store_mcp_session, test_storage_path: str
     ):
         """
         Test that an agent can search memories via MCP tool.
@@ -356,7 +190,7 @@ class TestAgentMemoryWorkflow:
         2. Agent searches memories by kind
         3. Agent searches memories by metadata
         """
-        async with resource_store_mcp_session(test_storage_path) as session:
+        async with resource_store_mcp_session as session:
             # Step 1: Store multiple memories
             tools_result = await session.list_tools()
             tools = tools_result.tools
@@ -426,10 +260,10 @@ class TestAgentMemoryWorkflow:
             assert results[0]["content"] == "Remember to buy milk"
 
     async def test_agent_memory_delete_via_mcp(
-        self, test_mcp_server, test_storage_path: str
+        self, resource_store_mcp_session, test_storage_path: str
     ):
         """Test that an agent can delete memories via MCP tool."""
-        async with resource_store_mcp_session(test_storage_path) as session:
+        async with resource_store_mcp_session as session:
             tools_result = await session.list_tools()
             tools = tools_result.tools
             memory_write = next((t for t in tools if t.name == "memory_write"), None)
@@ -473,7 +307,7 @@ class TestAgentResourceWorkflow:
     """Test agent workflow using resources via MCP."""
 
     async def test_agent_store_and_retrieve_resource_via_mcp(
-        self, test_mcp_server, test_storage_path: str
+        self, resource_store_mcp_session, test_storage_path: str
     ):
         """
         Test that an agent can store and retrieve resources via MCP.
@@ -483,16 +317,12 @@ class TestAgentResourceWorkflow:
         2. Tool stores it as a resource
         3. Agent retrieves resource via MCP list_resources/read_resource
         """
-        async with resource_store_mcp_session(test_storage_path) as session:
+        async with resource_store_mcp_session as session:
             # Step 1: Simulate tool storing large output
             # In real usage, a tool would use ResourceManager.add_resource()
             # For this test, we'll simulate it by directly using ResourceStore
             backend = FilesystemBackend(test_storage_path)
             store = ResourceStore(backend)
-
-            from datarobot_genai.drmcp.core.resource_store.models import Scope
-            from datarobot_genai.drmcp.core.resource_store.resource_api import ResourceAPI
-
             resource_api = ResourceAPI(store)
             conversation_id = "agent_resource_conv"
 
@@ -537,7 +367,7 @@ class TestAgentFullWorkflow:
     """Test complete agent workflow combining conversation, memory, and resources."""
 
     async def test_agent_full_workflow_with_conversation_and_memory(
-        self, test_mcp_server, test_storage_path: str
+        self, resource_store_mcp_session, test_storage_path: str
     ):
         """
         Test a complete agent workflow that uses conversation state and memory.
@@ -548,7 +378,7 @@ class TestAgentFullWorkflow:
         3. Agent retrieves memory to personalize response
         4. Agent uses conversation history for context
         """
-        async with resource_store_mcp_session(test_storage_path) as session:
+        async with resource_store_mcp_session as session:
             # Setup: Store user preference
             tools_result = await session.list_tools()
             tools = tools_result.tools

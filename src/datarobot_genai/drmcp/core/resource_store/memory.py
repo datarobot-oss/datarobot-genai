@@ -166,14 +166,18 @@ class MemoryAPI:
         return True
 
 
-# Global MemoryAPI instance (will be initialized by drmcp server)
-_memory_api: MemoryAPI | None = None
-
-
-def set_memory_api(api: MemoryAPI) -> None:
-    """Set the global MemoryAPI instance."""
-    global _memory_api  # noqa: PLW0603
-    _memory_api = api
+def get_memory_api() -> MemoryAPI | None:
+    """
+    Get the MemoryAPI instance from the mcp server.
+    
+    Returns:
+        MemoryAPI instance or None if not found
+    """
+    try:
+        from ..mcp_instance import mcp
+        return getattr(mcp, "_memory_api", None)
+    except (ImportError, AttributeError):
+        return None
 
 
 @dr_core_mcp_tool()
@@ -196,10 +200,11 @@ async def memory_write(
     -------
         Resource ID of the stored memory
     """
-    if not _memory_api:
+    memory_api = get_memory_api()
+    if not memory_api:
         return "Memory API not initialized"
 
-    resource_id = await _memory_api.write(scope_id, kind, content, metadata)
+    resource_id = await memory_api.write(scope_id, kind, content, metadata)
     return f"Memory stored with ID: {resource_id}"
 
 
@@ -215,10 +220,11 @@ async def memory_read(resource_id: str) -> str:
     -------
         JSON string with memory entry data
     """
-    if not _memory_api:
+    memory_api = get_memory_api()
+    if not memory_api:
         return "Memory API not initialized"
 
-    result = await _memory_api.read(resource_id)
+    result = await memory_api.read(resource_id)
     if not result:
         return "Memory not found"
 
@@ -243,10 +249,11 @@ async def memory_search(
     -------
         JSON string with list of matching memory entries
     """
-    if not _memory_api:
+    memory_api = get_memory_api()
+    if not memory_api:
         return "Memory API not initialized"
 
-    results = await _memory_api.search(scope_id, kind, metadata)
+    results = await memory_api.search(scope_id, kind, metadata)
     return json.dumps(results, default=str)
 
 
@@ -262,10 +269,11 @@ async def memory_delete(resource_id: str) -> str:
     -------
         Success or error message
     """
-    if not _memory_api:
+    memory_api = get_memory_api()
+    if not memory_api:
         return "Memory API not initialized"
 
-    success = await _memory_api.delete(resource_id)
+    success = await memory_api.delete(resource_id)
     if success:
         return f"Memory {resource_id} deleted successfully"
     return f"Memory {resource_id} not found or not a memory resource"

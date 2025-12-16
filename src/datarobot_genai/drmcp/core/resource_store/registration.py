@@ -12,87 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Registration helpers for ResourceStore with FastMCP."""
+"""Registration helpers for ResourceStore with FastMCP.
 
-import logging
-import tempfile
-from typing import Any
+ResourceStore is automatically initialized in DataRobotMCPServer.__init__.
+This module provides utilities for accessing the ResourceManager from tools.
+"""
 
 from fastmcp import FastMCP
 
-from .backends.filesystem import FilesystemBackend
 from .resource_manager import ResourceStoreBackedResourceManager
-from .store import ResourceStore
-
-logger = logging.getLogger(__name__)
-
-# Global ResourceManager instance (set during initialization)
-_resource_manager: ResourceStoreBackedResourceManager | None = None
 
 
-def get_resource_manager() -> ResourceStoreBackedResourceManager | None:
-    """Get the global ResourceStoreBackedResourceManager instance."""
-    return _resource_manager
-
-
-def initialize_resource_store(
-    mcp: FastMCP,
-    backend: Any | None = None,
-    storage_path: str | None = None,
-    default_scope_id: str | None = None,
-) -> ResourceStoreBackedResourceManager:
+def get_resource_manager(mcp: FastMCP | None = None) -> ResourceStoreBackedResourceManager | None:
     """
-    Initialize ResourceStore and register ResourceManager with FastMCP.
-
-    This should be called during server startup (e.g., in pre_server_start lifecycle hook).
-
+    Get the ResourceStoreBackedResourceManager instance.
+    
     Args:
-        mcp: FastMCP instance
-        backend: Optional ResourceBackend instance (if None, creates FilesystemBackend)
-        storage_path: Path for FilesystemBackend (if backend is None)
-        default_scope_id: Default scope ID for resources
-
-    Returns
-    -------
-        ResourceStoreBackedResourceManager instance
-
-    Example:
-        ```python
-        class MyLifecycle(BaseServerLifecycle):
-            async def pre_server_start(self, mcp: FastMCP) -> None:
-                initialize_resource_store(mcp, storage_path="/tmp/resources")
-        ```
+        mcp: Optional FastMCP instance. If provided, gets ResourceManager from it.
+             If None, tries to get from the global mcp instance.
+    
+    Returns:
+        ResourceStoreBackedResourceManager instance or None if not found
     """
-    global _resource_manager  # noqa: PLW0603
-
-    # Create backend if not provided
-    if backend is None:
-        if storage_path is None:
-            storage_path = tempfile.mkdtemp(prefix="drmcp_resources_")
-            logger.info(f"Using temporary storage path: {storage_path}")
-
-        backend = FilesystemBackend(storage_path)
-
-    # Create ResourceStore
-    store = ResourceStore(backend)
-
-    # Create ResourceStoreBackedResourceManager
-    resource_manager = ResourceStoreBackedResourceManager(
-        store=store,
-        default_scope_id=default_scope_id,
-    )
-
-    # Store globally for access by tools
-    _resource_manager = resource_manager
-
-    logger.info("ResourceStore initialized and ResourceManager registered")
-
-    # Note: FastMCP's mcp.add_resource() still works, but tools can now use
-    # ResourceManager() which will use ResourceStore as backend.
-    # To make tools use our ResourceManager, they should call:
-    #   from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
-    #   resource_manager = get_resource_manager() or ResourceManager()
-    #   resource_manager.add_resource(resource, data=data)
-
-    return resource_manager
+    if mcp is not None:
+        return getattr(mcp, "_resource_manager", None)
+    
+    # Try to get from global mcp instance
+    try:
+        from ..mcp_instance import mcp as global_mcp
+        return getattr(global_mcp, "_resource_manager", None)
+    except ImportError:
+        return None
 
