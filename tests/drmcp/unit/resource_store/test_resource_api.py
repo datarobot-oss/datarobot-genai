@@ -17,6 +17,7 @@
 import pytest
 from fastmcp.resources import HttpResource
 
+from datarobot_genai.drmcp.core.resource_store.models import Scope
 from datarobot_genai.drmcp.core.resource_store.resource_api import ResourceAPI
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
 
@@ -92,8 +93,6 @@ class TestResourceAPI:
         api = ResourceAPI(store)
 
         # Create a non-resource scope resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
-
         await store.put(
             scope=Scope(type="conversation", id="conv_123"),
             kind="message",

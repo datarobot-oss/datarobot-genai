@@ -66,41 +66,52 @@ ResourceStore provides:
 
 ### 3. Extended ResourceManager (`ResourceStoreBackedResourceManager`)
 
-We **extend FastMCP's ResourceManager** to use ResourceStore as the backend:
+We **extend FastMCP's ResourceManager** to use ResourceStore as the backend.
 
-**Initialization (during server startup):**
+**Automatic Initialization:**
+
+ResourceStore is automatically initialized during `DataRobotMCPServer.__init__`. The server:
+1. Creates a `FilesystemBackend` with the configured storage path
+2. Creates a `ResourceStore` with the backend
+3. Creates a `ResourceStoreBackedResourceManager` with the store
+4. Replaces FastMCP's `_resource_manager` with our ResourceStore-backed one
+
+This means all calls to `mcp.add_resource()` automatically use the ResourceStore backend.
+
+**Accessing the ResourceManager:**
+
+Tools that need the ResourceManager can access it directly:
+
 ```python
-from datarobot_genai.drmcp.core.resource_store.registration import initialize_resource_store
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 
-class MyLifecycle(BaseServerLifecycle):
-    async def pre_server_start(self, mcp: FastMCP) -> None:
-        # Initialize ResourceStore and register ResourceManager
-        initialize_resource_store(
-            mcp=mcp,
-            storage_path="/path/to/storage",
-            default_scope_id="conversation_123",
-        )
+# Access the ResourceStore-backed ResourceManager
+resource_manager = mcp._resource_manager
+
+# Access the underlying ResourceStore
+store = mcp._resource_manager.store
 ```
 
 **When storing a resource:**
 ```python
-from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
-from fastmcp.resources import ResourceManager
+from datarobot_genai.drmcp.core.mcp_instance import mcp
+from fastmcp.resources import HttpResource
+import uuid
 
 # Tool creates large output
 data = generate_large_csv()
 
-# Use ResourceStore-backed ResourceManager
-resource_manager = get_resource_manager() or ResourceManager()  # Fallback to default
+# Create HttpResource
+resource_id = str(uuid.uuid4())
 resource = HttpResource(
-    uri="mcp://resources/abc123",
-    url="mcp://resources/abc123",
+    uri=f"mcp://resources/{resource_id}",
+    url=f"mcp://resources/{resource_id}",
     name="Prediction Results",
     mime_type="text/csv",
 )
 
 # This stores in ResourceStore AND registers with FastMCP
-resource_manager.add_resource(
+mcp._resource_manager.add_resource(
     resource,
     data=data,
     scope_id="conversation_123",
@@ -112,27 +123,12 @@ resource_manager.add_resource(
 # 1. Data is stored in ResourceStore (backend)
 # 2. HttpResource is registered with FastMCP (via parent class)
 # 3. Clients can discover it via list_resources
-# 4. Clients can read it via read_resource("mcp://resources/abc123")
 ```
 
-**When listing resources:**
+**Retrieving resource data:**
 ```python
-# MCP client calls list_resources
-# FastMCP returns HttpResource instances registered via add_resource()
-# OR we can query ResourceStore dynamically:
-resource_manager = get_resource_manager()
-if resource_manager:
-    resources = await resource_manager.list_resources_for_scope("conversation_123")
-```
-
-**When reading a resource:**
-```python
-# MCP client calls read_resource("mcp://resources/abc123")
-# FastMCP extracts resource_id from URI
-# ResourceManager queries ResourceStore:
-resource_manager = get_resource_manager()
-if resource_manager:
-    data, content_type = await resource_manager.get_resource_data("abc123")
+# Get the data back from ResourceStore
+data, content_type = await mcp._resource_manager.get_resource_data("abc123")
 ```
 
 ## Usage Patterns
@@ -140,23 +136,15 @@ if resource_manager:
 ### Pattern 1: Tool Creates Large Output
 
 ```python
-from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 from fastmcp.resources import HttpResource
 import uuid
 
-# In a tool:
 @dr_mcp_tool()
 async def predict_large_dataset(deployment_id: str) -> dict:
     # Generate large results
     results = await make_predictions(deployment_id)
     csv_data = results.to_csv()
-    
-    # Get ResourceStore-backed ResourceManager
-    resource_manager = get_resource_manager()
-    if not resource_manager:
-        # Fallback to default ResourceManager if not initialized
-        from fastmcp.resources import ResourceManager
-        resource_manager = ResourceManager()
     
     # Create HttpResource
     resource_id = str(uuid.uuid4())
@@ -168,7 +156,7 @@ async def predict_large_dataset(deployment_id: str) -> dict:
     )
     
     # Store and register (ResourceStoreBackedResourceManager stores in ResourceStore)
-    resource_manager.add_resource(
+    mcp._resource_manager.add_resource(
         resource,
         data=csv_data,
         scope_id=f"deployment_{deployment_id}",
@@ -201,17 +189,16 @@ mcp.add_resource(resource)
 
 With ResourceStore:
 ```python
-# New approach - use ResourceStoreBackedResourceManager
-from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
+# New approach - data stored in ResourceStore, not S3
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 
-resource_manager = get_resource_manager() or ResourceManager()
 resource = HttpResource(
     uri=f"mcp://resources/{resource_id}",
     url=f"mcp://resources/{resource_id}",  # Points to ResourceStore, not S3
     name=resource_name,
     mime_type="text/csv",
 )
-resource_manager.add_resource(
+mcp._resource_manager.add_resource(
     resource,
     data=csv_data,  # Store actual data in ResourceStore
     scope_id=conversation_id,
@@ -223,22 +210,20 @@ resource_manager.add_resource(
 ### Pattern 3: Dynamic Resource Listing
 
 ```python
-from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 # List all resources for a conversation
-resource_manager = get_resource_manager()
-if resource_manager:
-    resources = await resource_manager.list_resources_for_scope("conversation_123")
-    
-    # Convert to MCP format
-    mcp_resources = [
-        {
-            "uri": r.uri,
-            "name": r.name,
-            "mimeType": r.mime_type,
-        }
-        for r in resources
-    ]
+resources = await mcp._resource_manager.list_resources_for_scope("conversation_123")
+
+# Convert to MCP format
+mcp_resources = [
+    {
+        "uri": r.uri,
+        "name": r.name,
+        "mimeType": r.mime_type,
+    }
+    for r in resources
+]
 ```
 
 ## Benefits
@@ -248,20 +233,15 @@ if resource_manager:
 3. **Rich Metadata**: Store embeddings, tags, and other metadata with resources
 4. **Lifetime Management**: Automatic cleanup of ephemeral resources
 5. **MCP Protocol Compliance**: Still works with FastMCP's resource system
-
-## Migration Path
-
-1. **Phase 1**: Initialize ResourceStore during server startup via `initialize_resource_store()`
-2. **Phase 2**: Migrate tools to use `get_resource_manager()` instead of creating new `ResourceManager()` instances
-3. **Phase 3**: Remove S3-based resource code, use ResourceStore exclusively
+6. **No Boilerplate**: ResourceStore is automatically initialized, no setup needed in tools
 
 ## Key Advantages of Extending ResourceManager
 
 1. **Clean Architecture**: Extends FastMCP's ResourceManager rather than creating parallel system
 2. **Backward Compatible**: Tools can still use ResourceManager interface
-3. **Proper Integration**: Registered during server startup, not a "side thing"
+3. **Automatic Setup**: Initialized during server startup, not a "side thing"
 4. **Type Safety**: Same interface as FastMCP's ResourceManager
-5. **Easy Migration**: Tools just need to call `get_resource_manager()` instead of `ResourceManager()`
+5. **Simple Access**: Just use `mcp._resource_manager` directly
 
 ## FastMCP Resource Protocol
 
@@ -276,4 +256,3 @@ ResourceStore enhances this by:
 - Adding metadata and querying capabilities
 - Supporting scoped resources (conversation, memory, etc.)
 - Managing resource lifetimes (ephemeral vs persistent)
-

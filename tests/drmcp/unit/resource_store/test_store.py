@@ -14,6 +14,8 @@
 
 """Tests for ResourceStore high-level API."""
 
+import asyncio
+
 import pytest
 
 from datarobot_genai.drmcp.core.resource_store.models import Scope
@@ -225,8 +227,6 @@ class TestResourceStore:
         )
 
         # Wait a bit and cleanup
-        import asyncio  # noqa: PLC0415
-
         await asyncio.sleep(1.1)
 
         count = await store.cleanup_expired()

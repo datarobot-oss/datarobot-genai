@@ -40,6 +40,8 @@ def mock_config() -> MagicMock:
     mock.has.return_value = True
     mock.mcp_server_register_dynamic_tools_on_startup = False
     mock.app_log_level = "INFO"
+    mock.resource_store_storage_path = None
+    mock.enable_memory_management = False
     return mock
 
 

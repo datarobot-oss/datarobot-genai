@@ -17,7 +17,6 @@ import glob
 import importlib
 import logging
 import os
-import tempfile
 from collections.abc import Callable
 from typing import Any
 
@@ -36,10 +35,8 @@ from .mcp_server_tools import get_all_available_tags  # noqa # pylint: disable=u
 from .mcp_server_tools import get_tool_info_by_name  # noqa # pylint: disable=unused-import
 from .mcp_server_tools import list_tools_by_tags  # noqa # pylint: disable=unused-import
 from .memory_management.manager import MemoryManager
-from .resource_store.backends.filesystem import FilesystemBackend
-from .resource_store.memory import MemoryAPI
-from .resource_store.resource_manager import ResourceStoreBackedResourceManager
-from .resource_store.store import ResourceStore
+from .resource_store import initialize_resource_store
+from .resource_store import memory as resource_store_memory  # noqa # pylint: disable=unused-import
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
@@ -126,37 +123,8 @@ class DataRobotMCPServer:
         # Initialize OAuth middleware
         initialize_oauth_middleware(mcp)
 
-        # Initialize ResourceStore and replace FastMCP's ResourceManager
-        storage_path = self._config.resource_store_storage_path
-        if storage_path is None:
-            storage_path = tempfile.mkdtemp(prefix="drmcp_resources_")
-            self._logger.info(f"Using temporary storage path for ResourceStore: {storage_path}")
-        else:
-            self._logger.info(f"Using configured storage path for ResourceStore: {storage_path}")
-
-        backend = FilesystemBackend(storage_path)
-        store = ResourceStore(backend)
-        resource_manager = ResourceStoreBackedResourceManager(
-            store=store,
-            default_scope_id=None,  # Can be set per-conversation
-        )
-
-        # Replace FastMCP's ResourceManager with our ResourceStore-backed one
-        # FastMCP stores it as _resource_manager (private attribute)
-        mcp._resource_manager = resource_manager
-        self._logger.info(
-            "Replaced FastMCP's _resource_manager with ResourceStoreBackedResourceManager"
-        )
-
-        # Attach ResourceStore and MemoryAPI to mcp instance for tool access
-        mcp._resource_store = store  # type: ignore[attr-defined]
-        self._logger.info("Attached ResourceStore to mcp instance")
-
-        # Initialize MemoryAPI if memory management is enabled
-        if self._config.enable_memory_management:
-            memory_api = MemoryAPI(store)
-            mcp._memory_api = memory_api  # type: ignore[attr-defined]
-            self._logger.info("Initialized and attached MemoryAPI to mcp instance")
+        # Initialize ResourceStore
+        initialize_resource_store(mcp, self._config.resource_store_storage_path)
 
         # Initialize memory manager if AWS credentials are available
         self._memory_manager: MemoryManager | None = None

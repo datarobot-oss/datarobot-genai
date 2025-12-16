@@ -17,6 +17,7 @@
 import pytest
 
 from datarobot_genai.drmcp.core.resource_store.memory import MemoryAPI
+from datarobot_genai.drmcp.core.resource_store.models import Scope
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
 
 
@@ -128,8 +129,6 @@ class TestMemoryAPI:
         memory = MemoryAPI(store)
 
         # Create a non-memory resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
-
         await store.put(
             scope=Scope(type="conversation", id="conv_123"),
             kind="message",

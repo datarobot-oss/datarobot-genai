@@ -167,17 +167,6 @@ class MemoryAPI:
         return True
 
 
-def get_memory_api() -> MemoryAPI | None:
-    """
-    Get the MemoryAPI instance from the mcp server.
-
-    Returns
-    -------
-        MemoryAPI instance or None if not found
-    """
-    return getattr(mcp, "_memory_api", None)
-
-
 @dr_core_mcp_tool()
 async def memory_write(
     scope_id: str,
@@ -198,10 +187,7 @@ async def memory_write(
     -------
         Resource ID of the stored memory
     """
-    memory_api = get_memory_api()
-    if not memory_api:
-        return "Memory API not initialized"
-
+    memory_api = MemoryAPI(mcp._resource_manager.store)
     resource_id = await memory_api.write(scope_id, kind, content, metadata)
     return f"Memory stored with ID: {resource_id}"
 
@@ -218,10 +204,7 @@ async def memory_read(resource_id: str) -> str:
     -------
         JSON string with memory entry data
     """
-    memory_api = get_memory_api()
-    if not memory_api:
-        return "Memory API not initialized"
-
+    memory_api = MemoryAPI(mcp._resource_manager.store)
     result = await memory_api.read(resource_id)
     if not result:
         return "Memory not found"
@@ -247,10 +230,7 @@ async def memory_search(
     -------
         JSON string with list of matching memory entries
     """
-    memory_api = get_memory_api()
-    if not memory_api:
-        return "Memory API not initialized"
-
+    memory_api = MemoryAPI(mcp._resource_manager.store)
     results = await memory_api.search(scope_id, kind, metadata)
     return json.dumps(results, default=str)
 
@@ -267,10 +247,7 @@ async def memory_delete(resource_id: str) -> str:
     -------
         Success or error message
     """
-    memory_api = get_memory_api()
-    if not memory_api:
-        return "Memory API not initialized"
-
+    memory_api = MemoryAPI(mcp._resource_manager.store)
     success = await memory_api.delete(resource_id)
     if success:
         return f"Memory {resource_id} deleted successfully"

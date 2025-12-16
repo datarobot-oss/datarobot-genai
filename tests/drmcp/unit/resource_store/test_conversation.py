@@ -19,6 +19,7 @@ import json
 import pytest
 
 from datarobot_genai.drmcp.core.resource_store.conversation import ConversationState
+from datarobot_genai.drmcp.core.resource_store.models import Scope
 from datarobot_genai.drmcp.core.resource_store.store import ResourceStore
 
 
@@ -115,8 +116,6 @@ class TestConversationState:
 
         await conversation.add_message("conv_123", "user", "Message")
         # Add a non-message resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
-
         await store.put(
             scope=Scope(type="conversation", id="conv_123"),
             kind="tool-call",

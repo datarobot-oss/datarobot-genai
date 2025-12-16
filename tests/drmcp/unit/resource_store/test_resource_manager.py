@@ -16,7 +16,9 @@
 
 import pytest
 from fastmcp.resources import HttpResource
+from fastmcp.resources import ResourceManager
 
+from datarobot_genai.drmcp.core.resource_store.models import Scope
 from datarobot_genai.drmcp.core.resource_store.resource_manager import (
     ResourceStoreBackedResourceManager,
 )
@@ -134,8 +136,6 @@ class TestResourceStoreBackedResourceManager:
         manager = ResourceStoreBackedResourceManager(store=store, default_scope_id="test_scope")
 
         # Store a resource
-        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
-
         await store.put(
             scope=Scope(type="resource", id="test_scope"),
             kind="blob",
@@ -162,8 +162,6 @@ class TestResourceStoreBackedResourceManager:
         manager = ResourceStoreBackedResourceManager(store=store, default_scope_id="test_scope")
 
         # Store multiple resources
-        from datarobot_genai.drmcp.core.resource_store.models import Scope  # noqa: PLC0415
-
         scope = Scope(type="resource", id="test_scope")
         await store.put(
             scope=scope,
@@ -204,7 +202,5 @@ class TestResourceStoreBackedResourceManager:
 
     async def test_inherits_from_resource_manager(self, store: ResourceStore) -> None:
         """Test that ResourceStoreBackedResourceManager inherits from ResourceManager."""
-        from fastmcp.resources import ResourceManager  # noqa: PLC0415
-
         manager = ResourceStoreBackedResourceManager(store=store)
         assert isinstance(manager, ResourceManager)

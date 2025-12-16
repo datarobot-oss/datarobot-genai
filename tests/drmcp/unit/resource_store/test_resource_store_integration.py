@@ -18,14 +18,11 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from fastmcp import FastMCP
 from fastmcp.resources import HttpResource
 
 from datarobot_genai.drmcp.core.resource_store.backends.filesystem import FilesystemBackend
 from datarobot_genai.drmcp.core.resource_store.conversation import ConversationState
 from datarobot_genai.drmcp.core.resource_store.memory import MemoryAPI
-from datarobot_genai.drmcp.core.resource_store.registration import get_resource_manager
-from datarobot_genai.drmcp.core.resource_store.registration import initialize_resource_store
 from datarobot_genai.drmcp.core.resource_store.resource_api import ResourceAPI
 from datarobot_genai.drmcp.core.resource_store.resource_manager import (
     ResourceStoreBackedResourceManager,
@@ -94,26 +91,6 @@ class TestResourceStoreIntegration:
             assert result is not None
             _, data = result
             assert data == "test content"
-
-    async def test_initialization_and_registration(self) -> None:
-        """Test initialize_resource_store and get_resource_manager."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mcp = FastMCP("test_server")
-
-            # Initialize
-            manager = initialize_resource_store(
-                mcp=mcp,
-                storage_path=tmpdir,
-                default_scope_id="default_scope",
-            )
-
-            assert isinstance(manager, ResourceStoreBackedResourceManager)
-            assert manager.default_scope_id == "default_scope"
-
-            # Get global instance
-            retrieved_manager = get_resource_manager()
-            assert retrieved_manager is not None
-            assert retrieved_manager == manager
 
     async def test_multiple_scopes_isolation(self) -> None:
         """Test that different scopes are isolated."""

@@ -14,6 +14,10 @@
 
 """Tests for FilesystemBackend."""
 
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
+
 import pytest
 
 from datarobot_genai.drmcp.core.resource_store.backends.filesystem import FilesystemBackend
@@ -359,10 +363,6 @@ class TestFilesystemBackend:
 
     async def test_cleanup_expired(self, backend: FilesystemBackend) -> None:
         """Test cleaning up expired ephemeral resources."""
-        from datetime import datetime  # noqa: PLC0415
-        from datetime import timedelta  # noqa: PLC0415
-        from datetime import timezone  # noqa: PLC0415
-
         scope = Scope(type="conversation", id="conv_123")
 
         # Create expired resource (TTL of 1 second, created 2 seconds ago)

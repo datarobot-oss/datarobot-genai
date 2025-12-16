@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,7 +18,6 @@ from typing import Any
 
 import pytest
 
-from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from tests.drmcp.integration.helper import create_prompt_template
 from tests.drmcp.integration.helper import delete_prompt_template
 from tests.drmcp.integration.helper import get_or_create_prompt_template
@@ -149,23 +147,3 @@ def test_storage_path(tmp_path: Path) -> str:
     storage_dir = tmp_path / "resource_store"
     storage_dir.mkdir()
     return str(storage_dir)
-
-
-@pytest.fixture(scope="function")
-async def resource_store_mcp_session(test_storage_path: str):
-    """
-    Create an MCP session with ResourceStore enabled.
-
-    ResourceStore is automatically initialized by DataRobotMCPServer,
-    so we just need to set the storage path via environment variable.
-    """
-    original_path = os.environ.get("RESOURCE_STORE_STORAGE_PATH")
-    try:
-        os.environ["RESOURCE_STORE_STORAGE_PATH"] = test_storage_path
-        async with integration_test_mcp_session() as session:
-            yield session
-    finally:
-        if original_path is not None:
-            os.environ["RESOURCE_STORE_STORAGE_PATH"] = original_path
-        elif "RESOURCE_STORE_STORAGE_PATH" in os.environ:
-            del os.environ["RESOURCE_STORE_STORAGE_PATH"]
