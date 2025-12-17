@@ -9,7 +9,9 @@ from datarobot_genai.drmcp import (
     ToolCallTestExpectations,
     ete_test_mcp_session,
 )
-from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
+from datarobot_genai.drmcp.test_utils.tool_base_ete import (
+    SHOULD_NOT_BE_EMPTY,
+)
 
 
 @pytest.fixture(scope="session")
