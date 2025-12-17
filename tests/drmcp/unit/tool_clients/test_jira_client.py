@@ -12,14 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+"""Tests for async Confluence client using httpx."""
+
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import httpx
 import pytest
 
-from datarobot_genai.drmcp.tools.clients.jira import Issue
-from datarobot_genai.drmcp.tools.clients.jira import JiraClient
+from datarobot_genai.drmcp.tools.clients.jira import JiraClient, Issue
 
 
 def make_response(status_code: int, json_data: dict, cloud_id: str) -> httpx.Response:
@@ -60,10 +62,10 @@ class TestJiraClient:
         }
 
     @pytest.mark.asyncio
-    async def test_get_issue_success(
+    async def test_get_issue_by_id_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_response: dict
     ) -> None:
-        """Test successfully getting an issue."""
+        """Test successfully getting an issue by ID."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
@@ -81,8 +83,10 @@ class TestJiraClient:
                 assert result == Issue(**mock_issue_response)
 
     @pytest.mark.asyncio
-    async def test_get_issue_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
-        """Test getting an issue that doesn't exist."""
+    async def test_get_page_by_id_not_found(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test getting a page that doesn't exist."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
