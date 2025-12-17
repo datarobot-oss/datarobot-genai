@@ -17,7 +17,6 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
-
 from pydantic import BaseModel
 from pydantic import Field
 
