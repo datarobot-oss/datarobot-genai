@@ -13,6 +13,7 @@
 # limitations under the License.
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -138,3 +139,11 @@ def prompt_templates_with_duplicates(
     # Cleanup
     delete_prompt_template(prompt_template_1["id"])
     delete_prompt_template(prompt_template_2["id"])
+
+
+@pytest.fixture(scope="function")
+def test_storage_path(tmp_path: Path) -> str:
+    """Create a temporary storage path for each test."""
+    storage_dir = tmp_path / "resource_store"
+    storage_dir.mkdir()
+    return str(storage_dir)

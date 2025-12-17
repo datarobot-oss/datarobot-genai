@@ -44,6 +44,9 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
         )
         or "true",
     }
+    # Pass through RESOURCE_STORE_STORAGE_PATH if set (for tests that need specific storage)
+    if "RESOURCE_STORE_STORAGE_PATH" in os.environ:
+        env["RESOURCE_STORE_STORAGE_PATH"] = os.environ["RESOURCE_STORE_STORAGE_PATH"]
 
     script_dir = Path(__file__).resolve().parent
     server_script = str(script_dir / "integration_mcp_server.py")

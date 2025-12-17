@@ -196,6 +196,14 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable predictive tools",
     )
+    resource_store_storage_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "RESOURCE_STORE_STORAGE_PATH",
+            "RESOURCE_STORE_STORAGE_PATH",
+        ),
+        description="Storage path for ResourceStore. If not set, uses a temporary directory.",
+    )
 
     # Jira tools
     enable_jira_tools: bool = Field(

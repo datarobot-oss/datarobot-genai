@@ -35,6 +35,8 @@ from .mcp_server_tools import get_all_available_tags  # noqa # pylint: disable=u
 from .mcp_server_tools import get_tool_info_by_name  # noqa # pylint: disable=unused-import
 from .mcp_server_tools import list_tools_by_tags  # noqa # pylint: disable=unused-import
 from .memory_management.manager import MemoryManager
+from .resource_store import initialize_resource_store
+from .resource_store import memory as resource_store_memory  # noqa # pylint: disable=unused-import
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
@@ -125,6 +127,9 @@ class DataRobotMCPServer:
 
         # Initialize OAuth middleware
         initialize_oauth_middleware(mcp)
+
+        # Initialize ResourceStore
+        initialize_resource_store(mcp, self._config.resource_store_storage_path)
 
         # Initialize memory manager if AWS credentials are available
         self._memory_manager: MemoryManager | None = None
