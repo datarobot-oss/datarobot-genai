@@ -18,13 +18,13 @@ from typing import Any
 
 import httpx
 
+from pydantic import BaseModel
+from pydantic import Field
+
 from .atlassian import ATLASSIAN_API_BASE
 from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
-
-from pydantic import BaseModel
-from pydantic import Field
 
 
 class _IssuePerson(BaseModel):
