@@ -59,10 +59,10 @@ class TestJiraClient:
         }
 
     @pytest.mark.asyncio
-    async def test_get_issue_by_id_success(
+    async def test_get_issue_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_response: dict
     ) -> None:
-        """Test successfully getting an issue by ID."""
+        """Test successfully getting an issue."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
@@ -80,10 +80,10 @@ class TestJiraClient:
                 assert result == Issue(**mock_issue_response)
 
     @pytest.mark.asyncio
-    async def test_get_page_by_id_not_found(
+    async def test_get_issue_not_found(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
-        """Test getting a page that doesn't exist."""
+        """Test getting an issue that doesn't exist."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
