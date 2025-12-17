@@ -49,6 +49,7 @@ async def mcp_session(http_mcp_server):
         _,
     ):
         async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
             yield session
 
 
@@ -68,6 +69,7 @@ async def mcp_session_with_elicitation(http_mcp_server):
         async with ClientSession(
             read_stream, write_stream, elicitation_callback=elicitation_handler
         ) as session:
+            await session.initialize()
             yield session
 
 

@@ -51,34 +51,32 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
         Dictionary with greeting message or error if elicitation was declined/cancelled
     """
     if not username:
-        # Check if client supports elicitation before using it
-        # According to MCP spec, elicitation is a client capability
-        # We use check_client_capability to verify support
+        # Try to use elicitation - if client supports it, this will work
+        # If not, we'll get an error that we can handle
         try:
-            has_elicitation = ctx.session.check_client_capability(
-                ClientCapabilities(elicitation=ElicitationCapability())
+            result = await ctx.elicit(
+                message="Username is required to generate a personalized greeting",
+                response_type=str,
             )
-        except (AttributeError, TypeError):
-            # If check_client_capability doesn't exist or fails, assume no support
-            has_elicitation = False
-
-        if not has_elicitation:
-            # According to MCP spec, when elicitation is not supported, return a no-op response
-            # rather than throwing an error
-            return {
-                "status": "skipped",
-                "message": (
-                    "Elicitation not supported by client. "
-                    "Username parameter is required when client does not support elicitation."
-                ),
-                "elicitation_supported": False,
-            }
-
-        # Use FastMCP's built-in elicitation
-        result = await ctx.elicit(
-            message="Username is required to generate a personalized greeting",
-            response_type=str,
-        )
+        except Exception as e:
+            # If elicitation fails, check if it's because client doesn't support it
+            error_msg = str(e).lower()
+            # Check for common elicitation not supported errors
+            if any(
+                keyword in error_msg
+                for keyword in ["elicitation", "not supported", "capability", "unsupported"]
+            ):
+                # According to MCP spec, when elicitation is not supported, return a no-op response
+                return {
+                    "status": "skipped",
+                    "message": (
+                        "Elicitation not supported by client. "
+                        "Username parameter is required when client does not support elicitation."
+                    ),
+                    "elicitation_supported": False,
+                }
+            # Re-raise if it's a different error
+            raise
 
         if isinstance(result, AcceptedElicitation):
             username = result.data

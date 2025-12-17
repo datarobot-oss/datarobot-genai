@@ -28,6 +28,7 @@ import json
 import os
 import sys
 import traceback
+from ast import literal_eval
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +92,15 @@ class LLMMCPClient:
                 - save_llm_responses: Whether to save responses (default: True)
         """
         # Parse config string to extract parameters
-        config_dict = eval(config) if isinstance(config, str) else config
+        if isinstance(config, str):
+            # Try JSON first (safer), fall back to literal_eval for Python dict strings
+            try:
+                config_dict = json.loads(config)
+            except json.JSONDecodeError:
+                # Fall back to literal_eval for Python dict literal strings
+                config_dict = literal_eval(config)
+        else:
+            config_dict = config
 
         openai_api_key = config_dict.get("openai_api_key")
         openai_api_base = config_dict.get("openai_api_base")

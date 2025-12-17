@@ -58,7 +58,7 @@ tasks:
           fi
           sleep 1
         done
-    silent: false
+    silent: true 
 
   drmcp-test-otel-server-background:
     desc: "🔨 Running DR MCP Library locally in background with OTEL"
@@ -88,6 +88,7 @@ tasks:
     cmds:
       - rm -rf .coverage .coverage.xml htmlcov
       - echo "🧪 Running all DR MCP Library tests.."
+      - task: install
       - task: drmcp-unit
       - task: drmcp-integration
       - task: drmcp-acceptance

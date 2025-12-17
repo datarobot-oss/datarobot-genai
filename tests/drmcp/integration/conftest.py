@@ -11,15 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import subprocess
-import time
 import uuid
 from collections.abc import Iterator
 from typing import Any
 
 import pytest
-import requests
 
 from tests.drmcp.integration.helper import create_prompt_template
 from tests.drmcp.integration.helper import delete_prompt_template
@@ -144,72 +140,3 @@ def prompt_templates_with_duplicates(
     delete_prompt_template(prompt_template_2["id"])
 
 
-@pytest.fixture(scope="session")
-def http_mcp_server() -> Iterator[str]:
-    """
-    Start an HTTP MCP server for integration tests that need HTTP transport.
-    The server automatically imports integration test tools from ete_test_server.py.
-    Yields the server URL.
-    """
-    port = 8080
-    server_url = f"http://localhost:{port}/mcp/"
-
-    # Check if server is already running
-    try:
-        response = requests.get(f"http://localhost:{port}/", timeout=2)
-        if response.status_code == 200:
-            # Server already running, use it
-            yield server_url
-            return
-    except (requests.exceptions.RequestException, requests.exceptions.Timeout):
-        pass
-
-    # Start server
-    env = os.environ.copy()
-    env["MCP_SERVER_PORT"] = str(port)
-    env["OTEL_ENABLED"] = "false"
-    env["MCP_SERVER_LOG_LEVEL"] = "WARNING"
-    env["APP_LOG_LEVEL"] = "WARNING"
-
-    process = subprocess.Popen(
-        ["uv", "run", "tests/drmcp/acceptance/ete_test_server.py"],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-
-    # Wait for server to be ready
-    max_attempts = 10
-    for i in range(max_attempts):
-        try:
-            response = requests.get(f"http://localhost:{port}/", timeout=1)
-            if response.status_code == 200:
-                break
-        except (requests.exceptions.RequestException, requests.exceptions.Timeout):
-            pass
-
-        # Check if process died
-        if process.poll() is not None:
-            stdout, _ = process.communicate()
-            error_msg = stdout.decode() if stdout else "Unknown error"
-            raise RuntimeError(f"Server process died before starting. Output: {error_msg}")
-
-        if i == max_attempts - 1:
-            process.terminate()
-            process.wait()
-            raise RuntimeError(
-                f"Server failed to start on port {port} within {max_attempts} seconds"
-            )
-
-        time.sleep(1)
-
-    try:
-        yield server_url
-    finally:
-        # Cleanup
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
