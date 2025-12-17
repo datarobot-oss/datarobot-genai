@@ -89,7 +89,8 @@ async def test_run_method(agent):
 
 
 async def test_run_method_with_mcp(agent_with_mcp):
-    # Call the run method with test inputs
+    # You probably need to comment out the disable_env_file conftest fixture to pick up
+    # MCP settings from .env.
     completion_create_params = {
         "model": "test-model",
         "messages": [{"role": "user", "content": "List the projects"}],
