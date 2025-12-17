@@ -95,11 +95,16 @@ class LLMMCPClient:
     ) -> str:
         """Call an MCP tool and return the result as a string."""
         result: CallToolResult = await mcp_session.call_tool(tool_name, parameters)
-        return (
+        content = (
             result.content[0].text
             if result.content and isinstance(result.content[0], TextContent)
             else str(result.content)
         )
+        if result.structuredContent is not None:
+            structured_content = json.dumps(result.structuredContent)
+        else:
+            structured_content = ""
+        return f"Content: {content}\nStructured content: {structured_content}"
 
     async def _process_tool_calls(
         self,

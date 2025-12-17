@@ -35,24 +35,18 @@ async def jira_get_issue(
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
-        return access_token
+        raise access_token
 
     try:
-        client = JiraClient(
-            access_token,
-        )
-        issue = await client.get_jira_issue(issue_key)
+        async with JiraClient(access_token) as client:
+            issue = await client.get_jira_issue(issue_key)
     except Exception as e:
         logger.error(f"Unexpected error getting Jira issue: {e}")
-        return ToolError(
+        raise ToolError(
             f"An unexpected error occurred while getting Jira issue '{issue_key}': {str(e)}"
         )
 
     return ToolResult(
         content=f"Successfully retrieved details for issue '{issue_key}'.",
-        # TODO: Add more fields to the structured content, note fields here are just examples
-        structured_content={
-            "key": issue.get("key", issue_key),
-            "status": issue.get("fields", {}).get("status", {}).get("name", "Unknown"),
-        },
+        structured_content=issue.as_flat_dict(),
     )
