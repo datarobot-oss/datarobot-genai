@@ -14,6 +14,10 @@
 
 import logging
 import os
+from urllib.parse import urlparse
+
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 from typing import Annotated
 
 from fastmcp.exceptions import ToolError
@@ -25,24 +29,58 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"predictive", "data", "write", "upload", "catalog"})
+@dr_mcp_tool(tags={"data", "management", "upload"})
 async def upload_dataset_to_ai_catalog(
-    file_path: Annotated[str, "The path to the dataset file to upload."],
-) -> ToolResult:
-    """Upload a dataset to the DataRobot AI Catalog."""
-    if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
-        raise ToolError(f"File not found: {file_path}")
+    file_path: str | None = None, file_url: str | None = None
+) -> ToolError | ToolResult:
+    """
+    Upload a dataset to the DataRobot AI Catalog / Data Registry.
 
+    Args:
+        file_path: Path to the file to upload.
+        file_url: URL to the file to upload.
+
+    Returns
+    -------
+        A ToolResult of the summary of the upload result or ToolError if an error occurs.
+    """
+
+    def is_valid_url(url: str) -> bool:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+
+    if not file_path and not file_url:
+        return ToolError("Either file_path or file_url must be provided.")
+    if file_path and file_url:
+        return ToolError("Please provide either file_path or file_url, not both.")
+
+    # Get client
     client = get_sdk_client()
-    catalog_item = client.Dataset.create_from_file(file_path)
 
+    # If file path is provided, create dataset from file
+    if file_path:
+        # Does file exist?
+        if not os.path.exists(file_path):
+            logger.error("File not found: %s", file_path)
+            return ToolError(f"File not found: {file_path}")
+        catalog_item = client.Dataset.create_from_file(file_path)
+    elif file_url:
+        # Does URL exist?
+        if not is_valid_url(file_url):
+            logger.error("Invalid file URL: %s", file_url)
+            return ToolError(f"Invalid file URL: {file_url}")
+        catalog_item = client.Dataset.create_from_url(file_url)
+    else:
+        return ToolError("Either file_path or file_url must be provided.")
+
+    # Log and return result
+    logger.info("Successfully uploaded dataset: %s", catalog_item.id)
     return ToolResult(
-        content=f"Successfully uploaded dataset: {catalog_item.id}.",
+        content=f"Successfully uploaded dataset: {catalog_item.id}",
         structured_content={
-            "id": catalog_item.id,
-            "name": catalog_item.name,
-            "status": catalog_item.status,
+            "dataset_id": catalog_item.id,
+            "dataset_version_id": catalog_item.version_id,
+            "dataset_name": catalog_item.name,
         },
     )
 
