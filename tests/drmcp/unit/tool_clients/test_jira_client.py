@@ -18,7 +18,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from datarobot_genai.drmcp.tools.clients.jira import JiraClient, Issue
+from datarobot_genai.drmcp.tools.clients.jira import Issue
+from datarobot_genai.drmcp.tools.clients.jira import JiraClient
 
 
 def make_response(status_code: int, json_data: dict, cloud_id: str) -> httpx.Response:
