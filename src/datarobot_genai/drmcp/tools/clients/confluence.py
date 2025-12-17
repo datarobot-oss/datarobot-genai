@@ -14,19 +14,19 @@
 
 """Async client for interacting with Confluence Cloud REST API.
 
-Note: We use httpx directly instead of the atlassian-python-api SDK
-because the SDK does not support async operations.
+At the moment of creating this client, official Confluence SDK is not supporting async.
 """
 
 import logging
+from http import HTTPStatus
 from typing import Any
 
 import httpx
 from pydantic import BaseModel
 from pydantic import Field
 
-from datarobot_genai.drmcp.tools.clients.atlassian import ATLASSIAN_API_BASE
-from datarobot_genai.drmcp.tools.clients.atlassian import get_atlassian_cloud_id
+from .atlassian import ATLASSIAN_API_BASE
+from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +40,27 @@ class ConfluencePage(BaseModel):
     space_key: str | None = Field(None, description="Space key (if available)")
     body: str = Field(..., description="Page content in storage format (HTML-like)")
 
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the page."""
+        return {
+            "page_id": self.page_id,
+            "title": self.title,
+            "space_id": self.space_id,
+            "space_key": self.space_key,
+            "body": self.body,
+        }
+
 
 class ConfluenceClient:
-    """Async client for Confluence REST API using OAuth access token."""
+    """
+    Client for interacting with Confluence API using OAuth access token.
+
+    At the moment of creating this client, official Confluence SDK is not supporting async.
+    """
 
     EXPAND_FIELDS = "body.storage,space"
 
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str) -> None:
         """
         Initialize Confluence client with access token.
 
@@ -58,13 +72,27 @@ class ConfluenceClient:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Accept": "application/json",
+                "Content-Type": "application/json",
             },
             timeout=30.0,
         )
         self._cloud_id: str | None = None
 
     async def _get_cloud_id(self) -> str:
-        """Get the cloud ID for the authenticated Atlassian Confluence instance."""
+        """
+        Get the cloud ID for the authenticated Atlassian Confluence instance.
+
+        According to Atlassian OAuth 2.0 documentation, API calls should use:
+        https://api.atlassian.com/ex/confluence/{cloudId}/wiki/rest/api/...
+
+        Returns
+        -------
+            Cloud ID string
+
+        Raises
+        ------
+            ValueError: If cloud ID cannot be retrieved
+        """
         if self._cloud_id:
             return self._cloud_id
 
@@ -113,7 +141,7 @@ class ConfluenceClient:
 
         response = await self._client.get(url, params={"expand": self.EXPAND_FIELDS})
 
-        if response.status_code == 404:
+        if response.status_code == HTTPStatus.NOT_FOUND:
             raise ValueError(f"Page with ID '{page_id}' not found")
 
         response.raise_for_status()
@@ -162,10 +190,7 @@ class ConfluenceClient:
         return self
 
     async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: Any,
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
     ) -> None:
         """Async context manager exit."""
         await self._client.aclose()

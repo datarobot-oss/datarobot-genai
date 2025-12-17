@@ -55,18 +55,16 @@ async def confluence_get_page(
         raise access_token
 
     try:
-        client = ConfluenceClient(access_token)
-
-        if page_id_or_title.isdigit():
-            page_response = await client.get_page_by_id(page_id_or_title)
-        else:
-            if not space_key:
-                raise ToolError(
-                    "Argument validation error: "
-                    "'space_key' is required when identifying a page by title."
-                )
-            page_response = await client.get_page_by_title(page_id_or_title, space_key)
-
+        async with ConfluenceClient(access_token) as client:
+            if page_id_or_title.isdigit():
+                page_response = await client.get_page_by_id(page_id_or_title)
+            else:
+                if not space_key:
+                    raise ToolError(
+                        "Argument validation error: "
+                        "'space_key' is required when identifying a page by title."
+                    )
+                page_response = await client.get_page_by_title(page_id_or_title, space_key)
     except ValueError as e:
         logger.error(f"Value error getting Confluence page: {e}")
         raise ToolError(str(e))
@@ -79,5 +77,5 @@ async def confluence_get_page(
 
     return ToolResult(
         content=f"Successfully retrieved page '{page_response.title}'.",
-        structured_content=page_response.model_dump(),
+        structured_content=page_response.as_flat_dict(),
     )
