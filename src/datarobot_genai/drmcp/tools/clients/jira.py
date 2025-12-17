@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -22,11 +23,53 @@ from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
 
+from pydantic import BaseModel
+from pydantic import Field
+
+
+class _IssuePerson(BaseModel):
+    email_address: str = Field(alias="emailAddress")
+
+
+class _IssueStatus(BaseModel):
+    name: str
+
+
+class _IssueFields(BaseModel):
+    summary: str
+    status: _IssueStatus
+    reporter: _IssuePerson
+    assignee: _IssuePerson
+    created: str
+    updated: str
+
+
+class Issue(BaseModel):
+    id: str
+    key: str
+    fields: _IssueFields
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "key": self.key,
+            "summary": self.fields.summary,
+            "reporterEmailAddress": self.fields.reporter.email_address,
+            "assigneeEmailAddress": self.fields.assignee.email_address,
+            "created": self.fields.created,
+            "updated": self.fields.updated,
+            "status": self.fields.status.name,
+        }
+
 
 class JiraClient:
-    """Client for interacting with Jira API using OAuth access token."""
+    """
+    Client for interacting with Jira API using OAuth access token.
 
-    def __init__(self, access_token: str):
+    At the moment of creating this client, official Jira SDK is not supporting async.
+    """
+
+    def __init__(self, access_token: str) -> None:
         """
         Initialize Jira client with access token.
 
@@ -65,16 +108,16 @@ class JiraClient:
         self._cloud_id = await get_atlassian_cloud_id(self._client, service_type="jira")
         return self._cloud_id
 
-    async def get_jira_issue(self, issue_key: str) -> dict[str, Any]:
+    async def get_jira_issue(self, issue_key: str) -> Issue:
         """
         Get a Jira issue by its key.
 
         Args:
-            issue_key: The key (ID) of the Jira issue, e.g., 'PROJ-123'
+            issue_key: The key of the Jira issue, e.g., 'PROJ-123'
 
         Returns
         -------
-            Dictionary containing the issue data
+            Jira issue
 
         Raises
         ------
@@ -83,13 +126,16 @@ class JiraClient:
         cloud_id = await self._get_cloud_id()
         url = f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/issue/{issue_key}"
 
-        response = await self._client.get(url)
-        response.raise_for_status()
-        return response.json()
+        response = await self._client.get(
+            url, params={"fields": "id,key,summary,status,reporter,assignee,created,updated"}
+        )
 
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        await self._client.aclose()
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            raise ValueError(f"{issue_key} not found")
+
+        response.raise_for_status()
+        issue = Issue(**response.json())
+        return issue
 
     async def __aenter__(self) -> "JiraClient":
         """Async context manager entry."""
@@ -99,4 +145,4 @@ class JiraClient:
         self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
     ) -> None:
         """Async context manager exit."""
-        await self.close()
+        await self._client.aclose()
