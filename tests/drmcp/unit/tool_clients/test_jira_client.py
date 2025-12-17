@@ -80,9 +80,7 @@ class TestJiraClient:
                 assert result == Issue(**mock_issue_response)
 
     @pytest.mark.asyncio
-    async def test_get_issue_not_found(
-        self, mock_access_token: str, mock_cloud_id: str
-    ) -> None:
+    async def test_get_issue_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test getting an issue that doesn't exist."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
