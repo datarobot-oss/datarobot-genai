@@ -107,6 +107,11 @@ class JiraClient:
         self._cloud_id = await get_atlassian_cloud_id(self._client, service_type="jira")
         return self._cloud_id
 
+    async def _get_full_url(self, url: str) -> str:
+        """Return URL for Jira API."""
+        cloud_id = await self._get_cloud_id()
+        return f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/{url}"
+
     async def get_jira_issue(self, issue_key: str) -> Issue:
         """
         Get a Jira issue by its key.
@@ -122,9 +127,7 @@ class JiraClient:
         ------
             httpx.HTTPStatusError: If the API request fails
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/issue/{issue_key}"
-
+        url = await self._get_full_url(f"issue/{issue_key}")
         response = await self._client.get(
             url, params={"fields": "id,key,summary,status,reporter,assignee,created,updated"}
         )
@@ -135,6 +138,76 @@ class JiraClient:
         response.raise_for_status()
         issue = Issue(**response.json())
         return issue
+
+    async def get_jira_issue_types(self, project_key: str) -> dict[str, str]:
+        """
+        Get Jira issue types possible for given project.
+
+        Args:
+            project_key: The key of the Jira project, e.g., 'PROJ'
+
+        Returns
+        -------
+            Dictionary where key is the issue type name and value is the issue type ID
+
+        Raises
+        ------
+            httpx.HTTPStatusError: If the API request fails
+        """
+        url = await self._get_full_url(f"issue/createmeta/{project_key}/issuetypes")
+        response = await self._client.get(url)
+
+        response.raise_for_status()
+        jsoned = response.json()
+        issue_types = {
+            issue_type["untranslatedName"]: issue_type["id"]
+            for issue_type in jsoned.get("issueTypes", [])
+        }
+        return issue_types
+
+    async def create_jira_issue(
+        self, project_key: str, summary: str, issue_type_id: str, description: str | None
+    ) -> str:
+        """
+        Create Jira issue.
+
+        Args:
+            project_key: The key of the Jira project, e.g., 'PROJ'
+            summary: Summary of Jira issue (title), e.g., 'Fix bug abc'
+            issue_type_id: ID type of Jira issue, e.g., "1"
+            description: Optional description of Jira issue
+
+        Returns
+        -------
+            Jira issue key
+
+        Raises
+        ------
+            httpx.HTTPStatusError: If the API request fails
+        """
+        url = await self._get_full_url("issue")
+        payload = {
+            "fields": {
+                "project": {"key": project_key},
+                "summary": summary,
+                "issuetype": {"id": issue_type_id},
+            }
+        }
+
+        if description:
+            payload["fields"]["description"] = {
+                "content": [
+                    {"content": [{"text": description, "type": "text"}], "type": "paragraph"}
+                ],
+                "type": "doc",
+                "version": 1,
+            }
+
+        response = await self._client.post(url, json=payload)
+
+        response.raise_for_status()
+        jsoned = response.json()
+        return jsoned["key"]
 
     async def __aenter__(self) -> "JiraClient":
         """Async context manager entry."""
