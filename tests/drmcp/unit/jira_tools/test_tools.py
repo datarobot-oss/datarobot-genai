@@ -18,6 +18,7 @@ import pytest
 
 from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.jira import Issue
+from datarobot_genai.drmcp.tools.jira.tools import jira_create_issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_get_issue
 
 
@@ -64,6 +65,44 @@ def jira_client_get_issue_error_mock() -> Iterator[None]:
         yield
 
 
+@pytest.fixture
+def jira_client_get_issue_types_mock() -> Iterator[dict[str, str]]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_jira_issue_types"
+    ) as jira_client_get_issue_types:
+        issue_types = {"Bug": "1", "Story": "2"}
+        jira_client_get_issue_types.return_value = issue_types
+        yield issue_types
+
+
+@pytest.fixture
+def jira_client_get_issue_types_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_jira_issue_types"
+    ) as jira_client_get_issue_types:
+        jira_client_get_issue_types.side_effect = ValueError("Dummy error")
+        yield
+
+
+@pytest.fixture
+def jira_client_create_issue_mock() -> Iterator[str]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.create_jira_issue"
+    ) as jira_client_create_issue:
+        new_issue_key = "PROJ-123"
+        jira_client_create_issue.return_value = new_issue_key
+        yield new_issue_key
+
+
+@pytest.fixture
+def jira_client_create_issue_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.create_jira_issue"
+    ) as jira_client_get_issue:
+        jira_client_get_issue.side_effect = ValueError("Dummy error")
+        yield
+
+
 class TestJiraGetIssue:
     """Jira get issue tool test."""
 
@@ -72,13 +111,10 @@ class TestJiraGetIssue:
         self, get_atlassian_access_token_mock: None, jira_client_get_issue_mock: Issue
     ) -> None:
         """Jira get issue -- happy path."""
-        # GIVEN
         issue_key = "PROJ-123"
 
-        # WHEN
         tool_result = await jira_get_issue(issue_key=issue_key)
 
-        # THEN
         content, structured_content = tool_result.to_mcp_result()
         assert content[0].text == "Successfully retrieved details for issue 'PROJ-123'."
         assert structured_content == {
@@ -97,9 +133,96 @@ class TestJiraGetIssue:
         self, get_atlassian_access_token_mock: None, jira_client_get_issue_error_mock: None
     ) -> None:
         """Jira get issue -- error in client."""
-        # GIVEN
         issue_key = "PROJ-123"
 
-        # WHEN / THEN
         with pytest.raises(MCPError):
             await jira_get_issue(issue_key=issue_key)
+
+
+class TestJiraCreateIssue:
+    """Jira create issue tool test."""
+
+    @pytest.mark.asyncio
+    async def test_jira_create_issue_happy_path(
+        self,
+        get_atlassian_access_token_mock: None,
+        jira_client_get_issue_types_mock: dict[str, str],
+        jira_client_create_issue_mock: str,
+    ) -> None:
+        """Jira get issue -- happy path."""
+        project_key = "PROJ"
+        summary = "Dummy summary"
+        issue_type = "Bug"
+        description = "Dummy description of bug"
+
+        tool_result = await jira_create_issue(
+            project_key=project_key, summary=summary, issue_type=issue_type, description=description
+        )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert content[0].text == "Successfully created issue 'PROJ-123'."
+        assert structured_content == {
+            "newIssueKey": "PROJ-123",
+            "projectKey": "PROJ",
+        }
+
+    @pytest.mark.asyncio
+    async def test_jira_create_issue_when_not_existing_issue_type(
+        self,
+        get_atlassian_access_token_mock: None,
+        jira_client_get_issue_types_mock: dict[str, str],
+    ) -> None:
+        """Jira create issue -- error in client."""
+        project_key = "PROJ"
+        summary = "Dummy summary"
+        issue_type = "Not existing issue type"  # <- Main change here
+        description = "Dummy description of bug"
+
+        with pytest.raises(MCPError, match="Unexpected issue type"):
+            await jira_create_issue(
+                project_key=project_key,
+                summary=summary,
+                issue_type=issue_type,
+                description=description,
+            )
+
+    @pytest.mark.asyncio
+    async def test_jira_create_issue_when_error_in_client_while_getting_issue_types(
+        self,
+        get_atlassian_access_token_mock: None,
+        jira_client_get_issue_types_error_mock: None,
+    ) -> None:
+        """Jira create issue -- error in client."""
+        project_key = "PROJ"
+        summary = "Dummy summary"
+        issue_type = "Bug"
+        description = "Dummy description of bug"
+
+        with pytest.raises(MCPError):
+            await jira_create_issue(
+                project_key=project_key,
+                summary=summary,
+                issue_type=issue_type,
+                description=description,
+            )
+
+    @pytest.mark.asyncio
+    async def test_jira_create_issue_when_error_in_client_while_creating(
+        self,
+        get_atlassian_access_token_mock: None,
+        jira_client_get_issue_types_mock: dict[str, str],
+        jira_client_create_issue_error_mock: None,
+    ) -> None:
+        """Jira create issue -- error in client."""
+        project_key = "PROJ"
+        summary = "Dummy summary"
+        issue_type = "Bug"
+        description = "Dummy description of bug"
+
+        with pytest.raises(MCPError):
+            await jira_create_issue(
+                project_key=project_key,
+                summary=summary,
+                issue_type=issue_type,
+                description=description,
+            )
