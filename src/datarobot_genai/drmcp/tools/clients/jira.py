@@ -107,10 +107,10 @@ class JiraClient:
         self._cloud_id = await get_atlassian_cloud_id(self._client, service_type="jira")
         return self._cloud_id
 
-    async def _get_full_url(self, url: str) -> str:
+    async def _get_full_url(self, path: str) -> str:
         """Return URL for Jira API."""
         cloud_id = await self._get_cloud_id()
-        return f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/{url}"
+        return f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/{path}"
 
     async def get_jira_issue(self, issue_key: str) -> Issue:
         """
@@ -208,6 +208,31 @@ class JiraClient:
         response.raise_for_status()
         jsoned = response.json()
         return jsoned["key"]
+
+    async def update_jira_issue(self, issue_key: str, fields: dict[str, Any]) -> list[str]:
+        """
+        Update Jira issue.
+
+        Args:
+            issue_key: The key of the Jira issue, e.g., 'PROJ-123'
+            fields: A dictionary of field names and their new values
+                e.g., {'description': 'New content'}
+
+        Returns
+        -------
+            List of updated fields
+
+        Raises
+        ------
+            httpx.HTTPStatusError: If the API request fails
+        """
+        url = await self._get_full_url(f"issue/{issue_key}")
+        payload = {"fields": fields}
+
+        response = await self._client.put(url, json=payload)
+
+        response.raise_for_status()
+        return list(fields.keys())
 
     async def __aenter__(self) -> "JiraClient":
         """Async context manager entry."""

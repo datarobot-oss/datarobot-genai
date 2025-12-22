@@ -14,6 +14,7 @@
 
 import logging
 from typing import Annotated
+from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
@@ -98,4 +99,62 @@ async def jira_create_issue(
     return ToolResult(
         content=f"Successfully created issue '{issue_key}'.",
         structured_content={"newIssueKey": issue_key, "projectKey": project_key},
+    )
+
+
+@dr_mcp_tool(tags={"jira", "update", "edit", "issue"})
+async def jira_update_issue(
+    *,
+    issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."],
+    fields_to_update: Annotated[
+        dict[str, Any],
+        "A dictionary of field names and their new values (e.g., {'summary': 'New content'}).",
+    ],
+) -> ToolResult:
+    """
+    Modify descriptive fields or custom fields on an existing Jira issue using its key.
+
+    Some fields needs very specific schema to allow update.
+    You should follow jira rest api guidance.
+    Good example is description field:
+        "description": {
+            "type": "text",
+            "version": 1,
+            "text": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[HERE YOU PUT REAL DESCRIPTION]"
+                        }
+                    ]
+                }
+            ]
+        }
+    """
+    if not issue_key:
+        raise ToolError("Argument validation error: 'issue_key' cannot be empty.")
+    if not fields_to_update or not isinstance(fields_to_update, dict):
+        raise ToolError(
+            "Argument validation error: 'fields_to_update' must be a non-empty dictionary."
+        )
+
+    access_token = await get_atlassian_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with JiraClient(access_token) as client:
+            updated_fields = await client.update_jira_issue(
+                issue_key=issue_key, fields=fields_to_update
+            )
+    except Exception as e:
+        logger.error(f"Unexpected error while updating Jira issue: {e}")
+        raise ToolError(f"An unexpected error occurred while updating Jira issue: {str(e)}")
+
+    updated_fields_str = ",".join(updated_fields)
+    return ToolResult(
+        content=f"Successfully updated issue '{issue_key}'. Fields modified: {updated_fields_str}.",
+        structured_content={"updatedIssueKey": issue_key, "fields": updated_fields},
     )

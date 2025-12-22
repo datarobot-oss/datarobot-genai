@@ -20,6 +20,7 @@ from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.jira import Issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_create_issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_get_issue
+from datarobot_genai.drmcp.tools.jira.tools import jira_update_issue
 
 
 @pytest.fixture
@@ -100,6 +101,25 @@ def jira_client_create_issue_error_mock() -> Iterator[None]:
         "datarobot_genai.drmcp.tools.clients.jira.JiraClient.create_jira_issue"
     ) as jira_client_get_issue:
         jira_client_get_issue.side_effect = ValueError("Dummy error")
+        yield
+
+
+@pytest.fixture
+def jira_client_update_issue_mock() -> Iterator[list[str]]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.update_jira_issue"
+    ) as jira_client_update_issue:
+        fields_list = ["summary"]
+        jira_client_update_issue.return_value = fields_list
+        yield fields_list
+
+
+@pytest.fixture
+def jira_client_update_issue_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.update_jira_issue"
+    ) as jira_client_update_issue:
+        jira_client_update_issue.side_effect = ValueError("Dummy error")
         yield
 
 
@@ -226,3 +246,37 @@ class TestJiraCreateIssue:
                 issue_type=issue_type,
                 description=description,
             )
+
+
+class TestJiraUpdateIssue:
+    """Jira update issue tool test."""
+
+    @pytest.mark.asyncio
+    async def test_jira_update_issue_happy_path(
+        self, get_atlassian_access_token_mock: None, jira_client_update_issue_mock: list[str]
+    ) -> None:
+        """Jira update issue -- happy path."""
+        issue_key = "PROJ-123"
+        fields_to_update = {"summary": "New dummy summary"}
+
+        tool_result = await jira_update_issue(
+            issue_key=issue_key, fields_to_update=fields_to_update
+        )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert content[0].text == "Successfully updated issue 'PROJ-123'. Fields modified: summary."
+        assert structured_content == {
+            "updatedIssueKey": "PROJ-123",
+            "fields": jira_client_update_issue_mock,
+        }
+
+    @pytest.mark.asyncio
+    async def test_jira_update_issue_when_error_in_client(
+        self, get_atlassian_access_token_mock: None, jira_client_update_issue_error_mock: None
+    ) -> None:
+        """Jira update issue -- error in client."""
+        issue_key = "PROJ-123"
+        fields_to_update = {"summary": "New dummy summary"}
+
+        with pytest.raises(MCPError):
+            await jira_update_issue(issue_key=issue_key, fields_to_update=fields_to_update)
