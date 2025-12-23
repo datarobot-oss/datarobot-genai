@@ -48,6 +48,15 @@ def test_config_defaults() -> None:
         # with FastMCP default.
         assert config.prompt_registration_duplicate_behavior == "warn"
 
+        # Tool enablement defaults
+        assert config.enable_predictive_tools is True
+        assert config.enable_jira_tools is False
+        assert config.enable_confluence_tools is False
+
+        # OAuth provider configuration defaults
+        assert config.is_jira_oauth_provider_configured is False
+        assert config.is_confluence_oauth_provider_configured is False
+
         # Clean up the cached config after the test
         config_module._config = None
 
@@ -90,3 +99,104 @@ class TestDuplicateBehavior:
             # Verify the setting was applied correctly
             assert test_mcp._tool_manager.duplicate_behavior == value
             assert test_mcp._prompt_manager.duplicate_behavior == value
+
+
+class TestToolConfiguration:
+    """Test tool enablement and OAuth configuration."""
+
+    def test_tool_enablement_defaults(self) -> None:
+        """Test that tool enablement defaults are correct."""
+        with patch.dict(os.environ, clear=True):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None)
+
+            assert config.enable_predictive_tools is True
+            assert config.enable_jira_tools is False
+            assert config.enable_confluence_tools is False
+
+            config_module._config = None
+
+    @pytest.mark.parametrize(
+        "tool_name,env_var",
+        [
+            ("enable_predictive_tools", "ENABLE_PREDICTIVE_TOOLS"),
+            ("enable_jira_tools", "ENABLE_JIRA_TOOLS"),
+            ("enable_confluence_tools", "ENABLE_CONFLUENCE_TOOLS"),
+        ],
+    )
+    def test_tool_enablement_via_env_var(self, tool_name: str, env_var: str) -> None:
+        """Test that tool enablement can be set via environment variables."""
+        with patch.dict(os.environ, {env_var: "true"}, clear=False):
+            config = MCPServerConfig()
+            assert getattr(config, tool_name) is True
+
+        with patch.dict(os.environ, {env_var: "false"}, clear=False):
+            config = MCPServerConfig()
+            assert getattr(config, tool_name) is False
+
+    def test_jira_oauth_configured_via_provider_flag(self) -> None:
+        """Test is_jira_oauth_configured when provider flag is set."""
+        with patch.dict(os.environ, {"IS_JIRA_OAUTH_PROVIDER_CONFIGURED": "true"}, clear=False):
+            config = MCPServerConfig()
+            assert config.is_jira_oauth_configured is True
+
+    def test_jira_oauth_configured_via_env_vars(self) -> None:
+        """Test is_jira_oauth_configured when env vars are set."""
+        with patch.dict(
+            os.environ,
+            {"JIRA_CLIENT_ID": "test_id", "JIRA_CLIENT_SECRET": "test_secret"},
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.is_jira_oauth_configured is True
+
+    def test_jira_oauth_not_configured(self) -> None:
+        """Test is_jira_oauth_configured when not configured."""
+        with patch.dict(os.environ, clear=True):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None)
+            assert config.is_jira_oauth_configured is False
+            config_module._config = None
+
+    def test_jira_oauth_partial_env_vars(self) -> None:
+        """Test is_jira_oauth_configured with only one env var set."""
+        with patch.dict(os.environ, {"JIRA_CLIENT_ID": "test_id"}, clear=False):
+            config = MCPServerConfig()
+            assert config.is_jira_oauth_configured is False
+
+    def test_confluence_oauth_configured_via_provider_flag(self) -> None:
+        """Test is_confluence_oauth_configured when provider flag is set."""
+        with patch.dict(
+            os.environ,
+            {"IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED": "true"},
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.is_confluence_oauth_configured is True
+
+    def test_confluence_oauth_configured_via_env_vars(self) -> None:
+        """Test is_confluence_oauth_configured when env vars are set."""
+        with patch.dict(
+            os.environ,
+            {
+                "CONFLUENCE_CLIENT_ID": "test_id",
+                "CONFLUENCE_CLIENT_SECRET": "test_secret",
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.is_confluence_oauth_configured is True
+
+    def test_confluence_oauth_not_configured(self) -> None:
+        """Test is_confluence_oauth_configured when not configured."""
+        with patch.dict(os.environ, clear=True):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None)
+            assert config.is_confluence_oauth_configured is False
+            config_module._config = None
+
+    def test_confluence_oauth_partial_env_vars(self) -> None:
+        """Test is_confluence_oauth_configured with only one env var set."""
+        with patch.dict(os.environ, {"CONFLUENCE_CLIENT_ID": "test_id"}, clear=False):
+            config = MCPServerConfig()
+            assert config.is_confluence_oauth_configured is False

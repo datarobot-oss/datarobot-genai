@@ -40,6 +40,8 @@ from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
+from .tool_config import TOOL_CONFIGS
+from .tool_config import is_tool_enabled
 
 
 def _import_modules_from_dir(
@@ -115,6 +117,9 @@ class DataRobotMCPServer:
         self._mcp = mcp
         self._mcp_transport = transport
 
+        # Configure MCP server capabilities
+        self._configure_mcp_capabilities()
+
         # Initialize telemetry
         initialize_telemetry(mcp)
 
@@ -139,11 +144,12 @@ class DataRobotMCPServer:
 
         # Load static tools modules
         base_dir = os.path.dirname(os.path.dirname(__file__))
-        if self._config.enable_predictive_tools:
-            _import_modules_from_dir(
-                os.path.join(base_dir, "tools", "predictive"),
-                "datarobot_genai.drmcp.tools.predictive",
-            )
+        for tool_type, tool_config in TOOL_CONFIGS.items():
+            if is_tool_enabled(tool_type, self._config):
+                _import_modules_from_dir(
+                    os.path.join(base_dir, "tools", tool_config["directory"]),
+                    tool_config["package_prefix"],
+                )
 
         # Load memory management tools if available
         if self._memory_manager:
@@ -163,6 +169,37 @@ class DataRobotMCPServer:
         if transport == "streamable-http":
             register_routes(self._mcp)
 
+    def _configure_mcp_capabilities(self) -> None:
+        """Configure MCP capabilities that FastMCP doesn't expose directly.
+
+        See: https://github.com/modelcontextprotocol/python-sdk/issues/1126
+        """
+        server = self._mcp._mcp_server
+
+        # Declare prompts_changed capability  (capabilities.prompts.listChanged: true)
+        server.notification_options.prompts_changed = True
+
+        # Declare experimental capabilities ( experimental.dynamic_prompts: true)
+        server.experimental_capabilities = {"dynamic_prompts": {"enabled": True}}
+
+        # Patch to include experimental_capabilities (FastMCP doesn't expose this)
+        original = server.create_initialization_options
+
+        def patched(
+            notification_options: Any = None,
+            experimental_capabilities: dict[str, dict[str, Any]] | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            if experimental_capabilities is None:
+                experimental_capabilities = getattr(server, "experimental_capabilities", None)
+            return original(
+                notification_options=notification_options,
+                experimental_capabilities=experimental_capabilities,
+                **kwargs,
+            )
+
+        server.create_initialization_options = patched
+
     def run(self, show_banner: bool = False) -> None:
         """Run the DataRobot MCP server synchronously."""
         try:
@@ -178,6 +215,9 @@ class DataRobotMCPServer:
             if self._config.mcp_server_register_dynamic_prompts_on_startup:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
+
+            # Execute pre-server start actions
+            asyncio.run(self._lifecycle.pre_server_start(self._mcp))
 
             # List registered tools, prompts, and resources before starting server
             tools = asyncio.run(self._mcp._list_tools_mcp())
@@ -197,9 +237,6 @@ class DataRobotMCPServer:
             self._logger.info(f"Registered resources: {resources_count}")
             for resource in resources:
                 self._logger.info(f" > {resource.name}")
-
-            # Execute pre-server start actions
-            asyncio.run(self._lifecycle.pre_server_start(self._mcp))
 
             # Create event loop for async operations
             loop = asyncio.new_event_loop()

@@ -25,7 +25,6 @@ from datarobot_genai.drmcp.core.clients import _extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import dr
 from datarobot_genai.drmcp.core.clients import extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import get_api_client
-from datarobot_genai.drmcp.core.clients import get_s3_bucket_info
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
 
@@ -41,15 +40,6 @@ def test_get_sdk_client_returns_dr() -> None:
         result = get_sdk_client()
         mock_client.assert_called_once_with(token="token", endpoint="url")
         assert result is dr
-
-
-def test_get_s3_bucket_info() -> None:
-    mock_creds = MagicMock()
-    mock_creds.aws_predictions_s3_bucket = "bucket"
-    mock_creds.aws_predictions_s3_prefix = "prefix"
-    with patch("datarobot_genai.drmcp.core.clients.get_credentials", return_value=mock_creds):
-        result = get_s3_bucket_info()
-        assert result == {"bucket": "bucket", "prefix": "prefix"}
 
 
 class TestGetApiClient:
