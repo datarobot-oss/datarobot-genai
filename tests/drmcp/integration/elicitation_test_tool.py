@@ -21,8 +21,6 @@ It should be imported in tests that need it.
 from fastmcp import Context
 from fastmcp.server.context import AcceptedElicitation
 from fastmcp.server.context import DeclinedElicitation
-from mcp.types import ClientCapabilities
-from mcp.types import ElicitationCapability
 
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
@@ -51,32 +49,11 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
         Dictionary with greeting message or error if elicitation was declined/cancelled
     """
     if not username:
-        # Try to use elicitation - if client supports it, this will work
-        # If not, we'll get an error that we can handle
-        try:
-            result = await ctx.elicit(
-                message="Username is required to generate a personalized greeting",
-                response_type=str,
-            )
-        except Exception as e:
-            # If elicitation fails, check if it's because client doesn't support it
-            error_msg = str(e).lower()
-            # Check for common elicitation not supported errors
-            if any(
-                keyword in error_msg
-                for keyword in ["elicitation", "not supported", "capability", "unsupported"]
-            ):
-                # According to MCP spec, when elicitation is not supported, return a no-op response
-                return {
-                    "status": "skipped",
-                    "message": (
-                        "Elicitation not supported by client. "
-                        "Username parameter is required when client does not support elicitation."
-                    ),
-                    "elicitation_supported": False,
-                }
-            # Re-raise if it's a different error
-            raise
+        # Use elicitation to request username from the client
+        result = await ctx.elicit(
+            message="Username is required to generate a personalized greeting",
+            response_type=str,
+        )
 
         if isinstance(result, AcceptedElicitation):
             username = result.data

@@ -26,9 +26,9 @@ from mcp.types import TextContent
 from mcp.types import Tool
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
-from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
-from openai.types.chat.chat_completion_message_tool_call_function import (
-    ChatCompletionMessageToolCallFunction,
+from openai.types.chat.chat_completion_message_tool_call import (
+    ChatCompletionMessageToolCall,
+    Function as ChatCompletionMessageToolCallFunction,
 )
 
 from datarobot_genai.drmcp.test_utils.test_interactive import LLMMCPClient
