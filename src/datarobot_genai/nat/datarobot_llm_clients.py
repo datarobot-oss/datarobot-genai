@@ -22,6 +22,9 @@ from llama_index.llms.litellm import LiteLLM
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
+from nat.plugins.langchain.llm import (
+    _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
+)
 
 from ..nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
@@ -77,7 +80,8 @@ async def datarobot_llm_gateway_langchain(
     config["base_url"] = config["base_url"] + "/genai/llmgw"
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
-    yield DataRobotChatOpenAI(**config)
+    client = DataRobotChatOpenAI(**config)
+    yield langchain_patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -119,7 +123,8 @@ async def datarobot_llm_deployment_langchain(
     )
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
-    yield DataRobotChatOpenAI(**config)
+    client = DataRobotChatOpenAI(**config)
+    yield langchain_patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -167,7 +172,8 @@ async def datarobot_nim_langchain(
     )
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
-    yield DataRobotChatOpenAI(**config)
+    client = DataRobotChatOpenAI(**config)
+    yield langchain_patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.CREWAI)
@@ -212,7 +218,8 @@ async def datarobot_llm_component_langchain(
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
     config.pop("use_datarobot_llm_gateway")
-    yield DataRobotChatOpenAI(**config)
+    client = DataRobotChatOpenAI(**config)
+    yield langchain_patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
