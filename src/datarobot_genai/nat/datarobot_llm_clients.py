@@ -14,6 +14,7 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
+from typing import TypeVar
 
 from crewai import LLM
 from langchain_openai import ChatOpenAI
@@ -22,14 +23,31 @@ from llama_index.llms.litellm import LiteLLM
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
+from nat.data_models.llm import LLMBaseConfig
+from nat.data_models.retry_mixin import RetryMixin
 from nat.plugins.langchain.llm import (
     _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
 )
+from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 
 from ..nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 from ..nat.datarobot_llm_providers import DataRobotNIMModelConfig
+
+ModelType = TypeVar("ModelType")
+
+
+def _patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> ModelType:
+    if isinstance(llm_config, RetryMixin):
+        client = patch_with_retry(
+            client,
+            retries=llm_config.num_retries,
+            retry_codes=llm_config.retry_on_status_codes,
+            retry_on_messages=llm_config.retry_on_errors,
+        )
+
+    return client
 
 
 class DataRobotChatOpenAI(ChatOpenAI):
@@ -94,7 +112,8 @@ async def datarobot_llm_gateway_crewai(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["base_url"] = config["base_url"].removesuffix("/api/v2")
-    yield LLM(**config)
+    client = LLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -107,7 +126,8 @@ async def datarobot_llm_gateway_llamaindex(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
-    yield DataRobotLiteLLM(**config)
+    client = DataRobotLiteLLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -141,7 +161,8 @@ async def datarobot_llm_deployment_crewai(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
-    yield LLM(**config)
+    client = LLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -158,7 +179,8 @@ async def datarobot_llm_deployment_llamaindex(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
-    yield DataRobotLiteLLM(**config)
+    client = DataRobotLiteLLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
@@ -188,7 +210,8 @@ async def datarobot_nim_crewai(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
-    yield LLM(**config)
+    client = LLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
@@ -203,7 +226,8 @@ async def datarobot_nim_llamaindex(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
-    yield DataRobotLiteLLM(**config)
+    client = DataRobotLiteLLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -236,7 +260,8 @@ async def datarobot_llm_component_crewai(
     else:
         config["api_base"] = config.pop("base_url") + "/chat/completions"
     config.pop("use_datarobot_llm_gateway")
-    yield LLM(**config)
+    client = LLM(**config)
+    yield _patch_llm_based_on_config(client, config)
 
 
 @register_llm_client(
@@ -253,4 +278,5 @@ async def datarobot_llm_component_llamaindex(
     else:
         config["api_base"] = config.pop("base_url") + "/chat/completions"
     config.pop("use_datarobot_llm_gateway")
-    yield DataRobotLiteLLM(**config)
+    client = DataRobotLiteLLM(**config)
+    yield _patch_llm_based_on_config(client, config)
