@@ -24,6 +24,7 @@ dependencies = [
   "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
   "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
   "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
+  "mem0>=0.0.1",
 ]
 
 [project.urls]

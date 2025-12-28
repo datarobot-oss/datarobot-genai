@@ -25,6 +25,8 @@ from typing import Any
 from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
+from mem0.client import Mem0Client
+
 from .models import Scope
 from .store import ResourceStore
 
@@ -38,14 +40,14 @@ class MemoryAPI:
     Uses ResourceStore with scope.type='memory' and lifetime='persistent'.
     """
 
-    def __init__(self, store: ResourceStore) -> None:
+    def __init__(self, client: Mem0Client) -> None:
         """
         Initialize MemoryAPI.
 
         Args:
-            store: ResourceStore instance
+            client: Mem0Client
         """
-        self.store = store
+        self.client = client
 
     async def write(
         self,
@@ -65,19 +67,21 @@ class MemoryAPI:
 
         Returns
         -------
-            Resource ID of the stored memory
+            Mem0 memory ID of the stored entry
         """
         scope = Scope(type="memory", id=scope_id)
-        resource = await self.store.put(
-            scope=scope,
-            kind=kind,
-            data=content,
-            lifetime="persistent",
-            contentType="text/markdown",
-            metadata=metadata or {},
+        meta = metadata.copy() if metadata else {}
+        meta.setdefault("kind", kind)
+        meta.setdefault("scope_id", scope_id)
+
+        memory_id = await self.client.add_memory(
+            user_id=scope_id,
+            text=content,
+            metadata=meta,
         )
 
-        return resource.id
+        return memory_id
+
 
     async def read(self, resource_id: str) -> dict[str, Any] | None:
         """
@@ -90,18 +94,17 @@ class MemoryAPI:
         -------
             Dictionary with resource metadata and content, or None if not found
         """
-        result = await self.store.get(resource_id)
-        if not result:
+        mem = await self.client.get_memory(resource_id)
+        if not mem:
             return None
 
-        resource, data = result
         return {
-            "id": resource.id,
-            "scope_id": resource.scope.id,
-            "kind": resource.kind,
-            "content": data if isinstance(data, str) else data.decode("utf-8") if data else "",
-            "metadata": resource.metadata,
-            "created_at": resource.createdAt.isoformat(),
+            "id": mem.get("id", resource_id),
+            "scope_id": mem.get("user_id") or mem.get("scope_id"),
+            "kind": mem.get("metadata", {}).get("kind"),
+            "content": mem.get("text") or mem.get("content", ""),
+            "metadata": mem.get("metadata", {}),
+            "created_at": mem.get("created_at"),
         }
 
     async def search(
@@ -122,25 +125,26 @@ class MemoryAPI:
         -------
             List of memory entries matching the criteria
         """
-        scope = Scope(type="memory", id=scope_id)
-        resources = await self.store.query(scope=scope, kind=kind, metadata=metadata)
+        meta_filters = metadata.copy() if metadata else {}
+        if kind:
+            meta_filters.setdefault("kind", kind)
 
-        results = []
-        for resource in resources:
-            result = await self.store.get(resource.id)
-            if result:
-                _, data = result
-                results.append(
-                    {
-                        "id": resource.id,
-                        "kind": resource.kind,
-                        "content": (
-                            data if isinstance(data, str) else data.decode("utf-8") if data else ""
-                        ),
-                        "metadata": resource.metadata,
-                        "created_at": resource.createdAt.isoformat(),
-                    }
-                )
+        memories = await self.client.search_memories(
+            user_id=scope_id,
+            metadata=meta_filters or None,
+        )
+
+        results: list[dict[str, Any]] = []
+        for mem in memories:
+            results.append(
+                {
+                    "id": mem.get("id"),
+                    "kind": mem.get("metadata", {}).get("kind"),
+                    "content": mem.get("text") or mem.get("content", ""),
+                    "metadata": mem.get("metadata", {}),
+                    "created_at": mem.get("created_at"),
+                }
+            )
 
         return results
 
@@ -155,16 +159,26 @@ class MemoryAPI:
         -------
             True if deleted, False if not found
         """
-        result = await self.store.get(resource_id)
-        if not result:
-            return False
+        deleted = await self.client.delete_memory(resource_id)
+        return bool(deleted)
 
-        resource, _ = result
-        if resource.scope.type != "memory":
-            return False
+def _get_memory_api() -> MemoryAPI:
+    """
+    Factory for MemoryAPI using Mem0 as backend.
 
-        await self.store.delete(resource_id)
-        return True
+    Reads configuration from environment variables such as:
+    - MEM0_BASE_URL
+    - MEM0_API_KEY
+    """
+    base_url = os.getenv("MEM0_BASE_URL")
+    api_key = os.getenv("MEM0_API_KEY")
+
+    client = Mem0Client(
+        base_url=base_url,
+        api_key=api_key,
+    )
+
+    return MemoryAPI(client)
 
 
 @dr_core_mcp_tool()
@@ -187,7 +201,7 @@ async def memory_write(
     -------
         Resource ID of the stored memory
     """
-    memory_api = MemoryAPI(mcp._resource_manager.store)
+    memory_api = _get_memory_api()
     resource_id = await memory_api.write(scope_id, kind, content, metadata)
     return f"Memory stored with ID: {resource_id}"
 
@@ -204,7 +218,7 @@ async def memory_read(resource_id: str) -> str:
     -------
         JSON string with memory entry data
     """
-    memory_api = MemoryAPI(mcp._resource_manager.store)
+    memory_api = _get_memory_api()
     result = await memory_api.read(resource_id)
     if not result:
         return "Memory not found"
@@ -230,7 +244,7 @@ async def memory_search(
     -------
         JSON string with list of matching memory entries
     """
-    memory_api = MemoryAPI(mcp._resource_manager.store)
+    memory_api = _get_memory_api()
     results = await memory_api.search(scope_id, kind, metadata)
     return json.dumps(results, default=str)
 
@@ -247,7 +261,7 @@ async def memory_delete(resource_id: str) -> str:
     -------
         Success or error message
     """
-    memory_api = MemoryAPI(mcp._resource_manager.store)
+    memory_api = _get_memory_api()
     success = await memory_api.delete(resource_id)
     if success:
         return f"Memory {resource_id} deleted successfully"
