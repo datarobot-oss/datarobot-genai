@@ -68,6 +68,8 @@ def agent_with_mcp(workflow_with_mcp_path, config):
         workflow_path=workflow_with_mcp_path,
         api_key=config.datarobot_api_token,
         api_base=config.datarobot_endpoint,
+        forwarded_headers={"h1": "v1", "h2": "v2"},
+        authorization_context={"c1": "v1", "c2": "v2"},
     )
 
 
