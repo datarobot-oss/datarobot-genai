@@ -42,6 +42,15 @@ def agent(workflow_path):
     return NatAgent(workflow_path=workflow_path)
 
 
+@pytest.fixture
+def agent_with_headers(workflow_path):
+    return NatAgent(
+        workflow_path=workflow_path,
+        forwarded_headers={"h1": "v1"},
+        authorization_context={"c1": "v2"},
+    )
+
+
 @patch.dict(os.environ, {}, clear=True)
 def test_init_with_additional_kwargs(workflow_path):
     """Test initialization with additional keyword arguments."""
@@ -135,3 +144,49 @@ async def test_run_method(agent, workflow_path):
             "prompt_tokens": 2,
             "total_tokens": 4,
         }
+
+
+async def test_mcp_headers(agent_with_headers, workflow_path):
+    # Patch the run_nat_workflow method
+    with patch.object(
+        NatAgent,
+        "run_nat_workflow",
+        return_value=("success", []),
+    ):
+        # Call the run method with test inputs
+        completion_create_params = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Artificial Intelligence"}],
+            "environment_var": True,
+        }
+
+        deployment_id = "abc123def456789012345678"
+        api_base = "https://app.datarobot.com/api/v2"
+        api_key = "test-api-key"
+
+        expected_headers = {
+            "h1": "v1",
+            "Authorization": f"Bearer {api_key}",
+            "X-DataRobot-Authorization-Context": (
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjMSI6InYyIn0"
+                ".5Elh7RxbEZV1JdUZi9duxJwXUkFRdzKhtyXyfTIj4Ms"
+            ),
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_DEPLOYMENT_ID": deployment_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+            },
+            clear=True,
+        ):
+            await agent_with_headers.invoke(completion_create_params)
+
+        # Verify run_nat_workflow was called with the right inputs
+        agent_with_headers.run_nat_workflow.assert_called_once_with(
+            workflow_path,
+            ChatRequest.from_string("Artificial Intelligence"),
+            expected_headers,
+        )
