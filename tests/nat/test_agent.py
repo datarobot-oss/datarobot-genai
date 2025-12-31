@@ -119,6 +119,7 @@ async def test_run_method(agent, workflow_path):
         agent.run_nat_workflow.assert_called_once_with(
             workflow_path,
             ChatRequest.from_string("Artificial Intelligence"),
+            None,
         )
 
         assert result == "success"
