@@ -194,7 +194,7 @@ async def test_mcp_headers(agent_with_headers, workflow_path):
         )
 
 
-async def test_streaming(agent, workflow_path):
+async def test_streaming(agent):
     start_step = IntermediateStep(
         parent_id="some_parent_id",
         function_ancestry=InvocationNode(
@@ -306,3 +306,70 @@ async def test_streaming(agent, workflow_path):
                     "total_tokens": 4,
                 },
             ]
+
+
+async def test_streaming_mcp_headers(agent_with_headers, workflow_path):
+    # Call the run method with test inputs
+    completion_create_params = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Artificial Intelligence"}],
+        "environment_var": True,
+        "stream": True,
+    }
+
+    deployment_id = "abc123def456789012345678"
+    api_base = "https://app.datarobot.com/api/v2"
+    api_key = "test-api-key"
+
+    expected_headers = {
+        "h1": "v1",
+        "Authorization": f"Bearer {api_key}",
+        "X-DataRobot-Authorization-Context": (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjMSI6InYyIn0"
+            ".5Elh7RxbEZV1JdUZi9duxJwXUkFRdzKhtyXyfTIj4Ms"
+        ),
+    }
+
+    with patch.dict(
+        os.environ,
+        {
+            "MCP_DEPLOYMENT_ID": deployment_id,
+            "DATAROBOT_ENDPOINT": api_base,
+            "DATAROBOT_API_TOKEN": api_key,
+        },
+        clear=True,
+    ):
+        with patch(
+            "datarobot_genai.nat.agent.pull_intermediate_structured", new_callable=AsyncMock
+        ):
+            with patch(
+                "datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock
+            ) as mock_load_workflow:
+
+                async def mock_result_stream():
+                    yield "chunk1"
+                    yield "chunk2"
+
+                mock_run = MagicMock()
+                mock_run.return_value.__aenter__.return_value = AsyncMock(
+                    result_stream=mock_result_stream
+                )
+                mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
+                streaming_response_iterator = await agent_with_headers.invoke(
+                    completion_create_params
+                )
+
+                result_list = []
+                async for (
+                    result,
+                    _,
+                    _,
+                ) in streaming_response_iterator:
+                    result_list.append(result)
+
+                mock_load_workflow.assert_called_once_with(
+                    workflow_path,
+                    headers=expected_headers,
+                )
+
+                assert result_list == ["chunk1", "chunk2", ""]
