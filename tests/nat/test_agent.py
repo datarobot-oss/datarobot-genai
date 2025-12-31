@@ -195,7 +195,6 @@ async def test_mcp_headers(agent_with_headers, workflow_path):
 
 
 async def test_streaming(agent, workflow_path):
-    # Patch the run_nat_workflow method
     start_step = IntermediateStep(
         parent_id="some_parent_id",
         function_ancestry=InvocationNode(
@@ -260,10 +259,10 @@ async def test_streaming(agent, workflow_path):
                 yield "chunk2"
 
             mock_run = MagicMock()
-            mock_run.return_value.__aenter__.return_value = MagicMock(
+            mock_run.return_value.__aenter__.return_value = AsyncMock(
                 result_stream=mock_result_stream
             )
-            mock_load_workflow.return_value.__aenter__.return_value = MagicMock(run=mock_run)
+            mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
             streaming_response_iterator = await agent.invoke(completion_create_params)
 
             result_list = []
