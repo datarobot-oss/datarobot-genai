@@ -179,7 +179,7 @@ class NatAgent(BaseAgent[None]):
             async def stream_generator() -> AsyncGenerator[
                 tuple[str, MultiTurnSample | None, UsageMetrics], None
             ]:
-                usage_metrics: UsageMetrics = {
+                default_usage_metrics: UsageMetrics = {
                     "completion_tokens": 0,
                     "prompt_tokens": 0,
                     "total_tokens": 0,
@@ -196,7 +196,7 @@ class NatAgent(BaseAgent[None]):
                             yield (
                                 result_text,
                                 None,
-                                usage_metrics,
+                                default_usage_metrics,
                             )
 
                         steps = await intermediate_future
@@ -205,6 +205,11 @@ class NatAgent(BaseAgent[None]):
                             for step in steps
                             if step.event_type == IntermediateStepType.LLM_END
                         ]
+                        usage_metrics: UsageMetrics = {
+                            "completion_tokens": 0,
+                            "prompt_tokens": 0,
+                            "total_tokens": 0,
+                        }
                         for step in llm_end_steps:
                             if step.usage_info:
                                 token_usage = step.usage_info.token_usage
