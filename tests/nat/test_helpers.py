@@ -19,6 +19,7 @@ import pytest
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
 from datarobot_genai.nat.helpers import add_headers_to_datarobot_mcp_auth
 from datarobot_genai.nat.helpers import load_config
+from datarobot_genai.nat.helpers import load_workflow
 
 
 @pytest.mark.parametrize(
@@ -82,3 +83,13 @@ def test_load_config(config_yaml, headers, should_have_headers):
         assert dr_auth_config.headers == headers
     else:
         assert not dr_auth_config.headers
+
+
+async def test_load_workflow():
+    with patch("datarobot_genai.nat.helpers.WorkflowBuilder"):
+        with patch("datarobot_genai.nat.helpers.load_config") as mock_load_config:
+            path = "some_path"
+            headers = {"h1": "v1"}
+            async with load_workflow(path, headers=headers) as workflow:
+                assert workflow
+                mock_load_config.assert_called_once_with("some_path", headers=headers)
