@@ -113,6 +113,7 @@ async def jira_update_issue(
 ) -> ToolResult:
     """
     Modify descriptive fields or custom fields on an existing Jira issue using its key.
+    If you want to update issue status you should use `jira_transition_issue` tool instead.
 
     Some fields needs very specific schema to allow update.
     You should follow jira rest api guidance.
@@ -157,4 +158,52 @@ async def jira_update_issue(
     return ToolResult(
         content=f"Successfully updated issue '{issue_key}'. Fields modified: {updated_fields_str}.",
         structured_content={"updatedIssueKey": issue_key, "fields": updated_fields},
+    )
+
+
+@dr_mcp_tool(tags={"jira", "update", "transition", "issue"})
+async def jira_transition_issue(
+    *,
+    issue_key: Annotated[str, "The key (ID) of the Jira issue to transition, e.g. 'PROJ-123'."],
+    transition_name: Annotated[
+        str, "The exact name of the target status/transition (e.g., 'In Progress')."
+    ],
+) -> ToolResult:
+    """
+    Move a Jira issue through its defined workflow to a new status.
+    This leverages Jira's workflow engine directly.
+    """
+    if not all([issue_key, transition_name]):
+        raise ToolError("Argument validation error: issue_key and transition name/ID are required.")
+
+    access_token = await get_atlassian_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    async with JiraClient(access_token) as client:
+        available_transitions = await client.get_available_jira_transitions(issue_key=issue_key)
+
+        try:
+            transition_id = available_transitions[transition_name]
+        except KeyError:
+            available_transitions_str = ",".join(available_transitions)
+            raise ToolError(
+                f"Unexpected transition name `{transition_name}`. "
+                f"Possible values are {available_transitions_str}."
+            )
+
+    try:
+        async with JiraClient(access_token) as client:
+            await client.transition_jira_issue(issue_key=issue_key, transition_id=transition_id)
+    except Exception as e:
+        logger.error(f"Unexpected error while transitioning Jira issue: {e}")
+        raise ToolError(f"An unexpected error occurred while transitioning Jira issue: {str(e)}")
+
+    return ToolResult(
+        content=f"Successfully transitioned issue '{issue_key}' to status '{transition_name}'.",
+        structured_content={
+            "transitionedIssueKey": issue_key,
+            "newStatusName": transition_name,
+            "newStatusId": transition_id,
+        },
     )

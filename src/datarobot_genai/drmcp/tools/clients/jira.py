@@ -234,6 +234,54 @@ class JiraClient:
         response.raise_for_status()
         return list(fields.keys())
 
+    async def get_available_jira_transitions(self, issue_key: str) -> dict[str, str]:
+        """
+        Get Available Jira Transitions.
+
+        Args:
+            issue_key: The key of the Jira issue, e.g., 'PROJ-123'
+
+        Returns
+        -------
+            Dictionary where key is the transition name and value is the transition ID
+
+        Raises
+        ------
+            httpx.HTTPStatusError: If the API request fails
+        """
+        url = await self._get_full_url(f"issue/{issue_key}/transitions")
+        response = await self._client.get(url)
+        response.raise_for_status()
+        jsoned = response.json()
+        transitions = {
+            transition["name"]: transition["id"] for transition in jsoned.get("transitions", [])
+        }
+        return transitions
+
+    async def transition_jira_issue(self, issue_key: str, transition_id: str) -> None:
+        """
+        Transition Jira issue.
+
+        Args:
+            issue_key: The key of the Jira issue, e.g., 'PROJ-123'
+            transition_id: Id of target transitionm e.g. '123'.
+                Can be obtained from `get_available_jira_transitions`.
+
+        Returns
+        -------
+            Nothing
+
+        Raises
+        ------
+            httpx.HTTPStatusError: If the API request fails
+        """
+        url = await self._get_full_url(f"issue/{issue_key}")
+        payload = {"transition": {"id": transition_id}}
+
+        response = await self._client.post(url, json=payload)
+
+        response.raise_for_status()
+
     async def __aenter__(self) -> "JiraClient":
         """Async context manager entry."""
         return self
