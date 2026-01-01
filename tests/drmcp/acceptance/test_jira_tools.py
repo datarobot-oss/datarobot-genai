@@ -44,6 +44,11 @@ def jira_updated_ticket_name() -> str:
 
 
 @pytest.fixture(scope="session")
+def jira_updated_ticket_status() -> str:
+    return "Closed"
+
+
+@pytest.fixture(scope="session")
 def expectations_for_jira_get_issue_success(jira_issue_key: str) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
@@ -99,6 +104,25 @@ def expectations_for_jira_update_issue_success(
             ),
         ],
         llm_response_content_contains_expectations=["Successfully updated issue"],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_jira_transition_issue_success(
+    jira_issue_key: str, jira_updated_ticket_status: str
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="jira_transition_issue",
+                parameters={
+                    "issue_key": jira_issue_key,
+                    "transition_name": jira_updated_ticket_status,
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=["Successfully transitioned issue"],
     )
 
 
@@ -183,6 +207,36 @@ class TestJiraToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_jira_update_issue_success,
+                openai_llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(
+        reason="Need to implement delete also to not 'spam' production jira with dummy tickets."
+    )
+    @pytest.mark.parametrize(
+        "prompt_template",
+        ["Please change status for ticket `{jira_issue_key}` to `{new_ticket_status}`.`"],
+    )
+    async def test_jira_issue_transition_success(
+        self,
+        openai_llm_client: Any,
+        expectations_for_jira_transition_issue_success: ETETestExpectations,
+        jira_issue_key: str,
+        jira_updated_ticket_status: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            jira_issue_key=jira_issue_key, new_ticket_status=jira_updated_ticket_status
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_jira_issue_transition_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_jira_transition_issue_success,
                 openai_llm_client,
                 session,
                 test_name,
