@@ -22,7 +22,7 @@ from datarobot_genai.drmcp.tools.clients.jira import Issue
 from datarobot_genai.drmcp.tools.clients.jira import JiraClient
 
 
-def make_response(status_code: int, json_data: dict, cloud_id: str) -> httpx.Response:
+def make_response(status_code: int, json_data: dict | None, cloud_id: str) -> httpx.Response:
     """Create a mock httpx.Response with a request attached."""
     request = httpx.Request("GET", f"https://api.atlassian.com/ex/jira/{cloud_id}")
     return httpx.Response(status_code, json=json_data, request=request)
@@ -167,3 +167,24 @@ class TestJiraClient:
                 )
 
                 assert result == "PROJ-123"
+
+    @pytest.mark.asyncio
+    async def test_update_issue_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
+        """Test successfully updating an issue."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with JiraClient(mock_access_token) as client:
+
+                async def mock_put(url: str, json: dict) -> httpx.Response:
+                    return make_response(204, None, mock_cloud_id)
+
+                client._client.put = mock_put
+
+                result = await client.update_jira_issue(
+                    issue_key="PROJ-123", fields={"summary": "Dummy summary"}
+                )
+
+                assert result == ["summary"]
