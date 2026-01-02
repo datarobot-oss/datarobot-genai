@@ -40,7 +40,7 @@ class MemoryAPI:
     Uses ResourceStore with scope.type='memory' and lifetime='persistent'.
     """
 
-    def __init__(self, client: Mem0Client) -> None:
+    def __init__(self, client: MemoryClient) -> None:
         """
         Initialize MemoryAPI.
 
