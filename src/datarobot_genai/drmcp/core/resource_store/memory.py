@@ -25,7 +25,7 @@ from typing import Any
 from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
-from mem0.client import Mem0Client
+from mem0 import MemoryClient
 
 from .models import Scope
 from .store import ResourceStore
