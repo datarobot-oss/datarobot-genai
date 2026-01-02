@@ -21,7 +21,6 @@ from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepType
-from nat.runtime.loader import load_workflow
 from nat.utils.type_utils import StrPath
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
@@ -34,6 +33,8 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import is_streaming
+from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.nat.helpers import load_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -166,17 +167,24 @@ class NatAgent(BaseAgent[None]):
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)
 
+        mcp_config = MCPConfig(
+            authorization_context=self.authorization_context,
+            forwarded_headers=self.forwarded_headers,
+        )
+        server_config = mcp_config.server_config
+        headers = server_config["headers"] if server_config else None
+
         if is_streaming(completion_create_params):
 
             async def stream_generator() -> AsyncGenerator[
                 tuple[str, MultiTurnSample | None, UsageMetrics], None
             ]:
-                usage_metrics: UsageMetrics = {
+                default_usage_metrics: UsageMetrics = {
                     "completion_tokens": 0,
                     "prompt_tokens": 0,
                     "total_tokens": 0,
                 }
-                async with load_workflow(self.workflow_path) as workflow:
+                async with load_workflow(self.workflow_path, headers=headers) as workflow:
                     async with workflow.run(chat_request) as runner:
                         intermediate_future = pull_intermediate_structured()
                         async for result in runner.result_stream():
@@ -188,7 +196,7 @@ class NatAgent(BaseAgent[None]):
                             yield (
                                 result_text,
                                 None,
-                                usage_metrics,
+                                default_usage_metrics,
                             )
 
                         steps = await intermediate_future
@@ -197,6 +205,11 @@ class NatAgent(BaseAgent[None]):
                             for step in steps
                             if step.event_type == IntermediateStepType.LLM_END
                         ]
+                        usage_metrics: UsageMetrics = {
+                            "completion_tokens": 0,
+                            "prompt_tokens": 0,
+                            "total_tokens": 0,
+                        }
                         for step in llm_end_steps:
                             if step.usage_info:
                                 token_usage = step.usage_info.token_usage
@@ -210,7 +223,7 @@ class NatAgent(BaseAgent[None]):
             return stream_generator()
 
         # Create and invoke the NAT (Nemo Agent Toolkit) Agentic Workflow with the inputs
-        result, steps = await self.run_nat_workflow(self.workflow_path, chat_request)
+        result, steps = await self.run_nat_workflow(self.workflow_path, chat_request, headers)
 
         llm_end_steps = [step for step in steps if step.event_type == IntermediateStepType.LLM_END]
         usage_metrics: UsageMetrics = {
@@ -234,7 +247,7 @@ class NatAgent(BaseAgent[None]):
         return result_text, pipeline_interactions, usage_metrics
 
     async def run_nat_workflow(
-        self, workflow_path: StrPath, chat_request: ChatRequest
+        self, workflow_path: StrPath, chat_request: ChatRequest, headers: dict[str, str] | None
     ) -> tuple[ChatResponse | str, list[IntermediateStep]]:
         """Run the NAT workflow with the provided config file and input string.
 
@@ -247,7 +260,7 @@ class NatAgent(BaseAgent[None]):
             ChatResponse | str: The result from the NAT workflow
             list[IntermediateStep]: The list of intermediate steps
         """
-        async with load_workflow(workflow_path) as workflow:
+        async with load_workflow(workflow_path, headers=headers) as workflow:
             async with workflow.run(chat_request) as runner:
                 intermediate_future = pull_intermediate_structured()
                 runner_outputs = await runner.result()

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.2.9"
+version = "0.2.14"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -40,6 +40,8 @@ datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 
 [project.optional-dependencies]
 crewai = [
+  "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
+  "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
   "crewai>=1.1.0",
   "crewai-tools[mcp]>=0.69.0,<0.77.0",
   "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
