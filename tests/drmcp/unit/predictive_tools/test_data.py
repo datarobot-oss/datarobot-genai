@@ -82,7 +82,7 @@ async def test_list_ai_catalog_items_success() -> None:
         mock_ds2.name = "ds2"
         mock_client.Dataset.list.return_value = [mock_ds1, mock_ds2]
         mock_get_client.return_value = mock_client
-        
+
         result = await data.list_ai_catalog_items()
         # Access text from TextContent object
         content_text = result.content[0].text
@@ -102,7 +102,7 @@ async def test_list_ai_catalog_items_empty() -> None:
         mock_client = MagicMock()
         mock_client.Dataset.list.return_value = []
         mock_get_client.return_value = mock_client
-        
+
         result = await data.list_ai_catalog_items()
         # Access text from TextContent object
         assert "No AI Catalog items found." in result.content[0].text
@@ -115,7 +115,7 @@ async def test_list_ai_catalog_items_error() -> None:
         mock_client = MagicMock()
         mock_client.Dataset.list.side_effect = Exception("fail")
         mock_get_client.return_value = mock_client
-        
+
         with pytest.raises(MCPError) as exc_info:
             await data.list_ai_catalog_items()
         assert "Failed to list AI Catalog items" in str(exc_info.value)
