@@ -40,14 +40,16 @@ class MemoryAPI:
     Uses ResourceStore with scope.type='memory' and lifetime='persistent'.
     """
 
-    def __init__(self, client: MemoryClient) -> None:
+    def __init__(self, client: MemoryClient, store: ResourceStore) -> None:
         """
         Initialize MemoryAPI.
 
         Args:
             client: Mem0Client
+            store: ResourceStore for MCP integration
         """
         self.client = client
+        self.store = store
 
     async def write(
         self,
@@ -80,7 +82,13 @@ class MemoryAPI:
             metadata=meta,
         )
 
-        return memory_id
+        resource_id = await self.store.create(
+            scope=scope,
+            kind=kind,
+            content=content,
+            metadata=meta,
+        )
+        return resource_id
 
 
     async def read(self, resource_id: str) -> dict[str, Any] | None:
@@ -94,18 +102,15 @@ class MemoryAPI:
         -------
             Dictionary with resource metadata and content, or None if not found
         """
-        mem = await self.client.get_memory(resource_id)
-        if not mem:
+        resource = await self.store.read(resource_id)
+        if not resource:
             return None
 
-        return {
-            "id": mem.get("id", resource_id),
-            "scope_id": mem.get("user_id") or mem.get("scope_id"),
-            "kind": mem.get("metadata", {}).get("kind"),
-            "content": mem.get("text") or mem.get("content", ""),
-            "metadata": mem.get("metadata", {}),
-            "created_at": mem.get("created_at"),
-        }
+        mem = await self.client.get_memory(resource_id)
+        if mem:
+            return resource["mem0_metadata"] = mem.get("metadata", {})
+
+        return resource
 
     async def search(
         self,
@@ -129,22 +134,14 @@ class MemoryAPI:
         if kind:
             meta_filters.setdefault("kind", kind)
 
-        memories = await self.client.search_memories(
-            user_id=scope_id,
-            metadata=meta_filters or None,
-        )
+        resources = await self.store.search(scope_id=scope_id, kind=kind, metadata=meta_filters)
 
         results: list[dict[str, Any]] = []
-        for mem in memories:
-            results.append(
-                {
-                    "id": mem.get("id"),
-                    "kind": mem.get("metadata", {}).get("kind"),
-                    "content": mem.get("text") or mem.get("content", ""),
-                    "metadata": mem.get("metadata", {}),
-                    "created_at": mem.get("created_at"),
-                }
-            )
+        for resource in resources:
+            mem = await self.client.get_memory(resource["id"])
+            if mem:
+                resource["mem0_metadata"] = mem.get("metadata", {})
+            results.append(resource)
 
         return results
 
@@ -159,8 +156,10 @@ class MemoryAPI:
         -------
             True if deleted, False if not found
         """
-        deleted = await self.client.delete_memory(resource_id)
-        return bool(deleted)
+        mem_deleted = await self.client.delete_memory(resource_id)
+        resource_deleted = await self.store.delete(resource_id)
+
+        return mem_deleted and resource_deleted
 
 def _get_memory_api() -> MemoryAPI:
     """
@@ -173,12 +172,13 @@ def _get_memory_api() -> MemoryAPI:
     base_url = os.getenv("MEM0_BASE_URL")
     api_key = os.getenv("MEM0_API_KEY")
 
-    client = Mem0Client(
+    client = MemoryClient(
         base_url=base_url,
         api_key=api_key,
     )
 
-    return MemoryAPI(client)
+    store = ResourceStore()
+    return MemoryAPI(client, store)
 
 
 @dr_core_mcp_tool()
