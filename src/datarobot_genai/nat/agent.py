@@ -19,7 +19,7 @@ from typing import Any
 
 from ag_ui.core import Event
 from ag_ui.core import EventType
-from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from nat.builder.context import Context
@@ -194,9 +194,11 @@ def convert_intermediate_step_to_event(
                 delta = str(step.data.content)
             elif hasattr(step.data, "delta") and step.data.delta:
                 delta = str(step.data.delta)
+            elif hasattr(step.data, "chunk") and step.data.chunk:
+                delta = str(step.data.chunk)
         # Emit event even if delta is empty to signal token arrival
-        return TextMessageContentEvent(
-            type=EventType.TEXT_MESSAGE_CONTENT,
+        return TextMessageChunkEvent(
+            type=EventType.TEXT_MESSAGE_CHUNK,
             message_id=msg_id,
             delta=delta,
         )
