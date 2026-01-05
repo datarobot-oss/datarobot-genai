@@ -17,6 +17,7 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.drmcp.core.exceptions import MCPError
+from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_get_page
 
@@ -67,7 +68,7 @@ def confluence_client_get_page_error_mock() -> Iterator[None]:
     with patch(
         "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
-        mock.side_effect = ValueError("Page not found")
+        mock.side_effect = ConfluenceError("Page not found", status_code=404)
         yield
 
 
