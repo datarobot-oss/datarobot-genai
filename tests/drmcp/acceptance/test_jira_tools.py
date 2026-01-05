@@ -24,6 +24,11 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 
 @pytest.fixture(scope="session")
+def search_no_of_results() -> int:
+    return 1
+
+
+@pytest.fixture(scope="session")
 def project_key() -> str:
     return "MODEL"
 
@@ -46,6 +51,28 @@ def jira_updated_ticket_name() -> str:
 @pytest.fixture(scope="session")
 def jira_updated_ticket_status() -> str:
     return "Closed"
+
+
+@pytest.fixture(scope="session")
+def expectations_for_jira_search_issues_success(
+    project_key: str, search_no_of_results: int
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="jira_search_issues",
+                parameters={
+                    "jql_query": f"project = {project_key} AND summary ~ 'get issue tool'",
+                    "max_results": search_no_of_results,
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            f"Successfully executed JQL query and retrieved {search_no_of_results} issue(s).",
+            "[Jira] Get Issue Tool",
+        ],
+    )
 
 
 @pytest.fixture(scope="session")
@@ -129,6 +156,39 @@ def expectations_for_jira_transition_issue_success(
 @pytest.mark.asyncio
 class TestJiraToolsE2E(ToolBaseE2E):
     """End-to-end tests for jira tools."""
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            "Please search jira tickets from {project_key} project "
+            "and with summary like '{summary_like}'. "
+            "Give {number_of_results} of results."
+        ],
+    )
+    async def test_jira_issue_search_success(
+        self,
+        openai_llm_client: Any,
+        expectations_for_jira_search_issues_success: ETETestExpectations,
+        project_key: str,
+        search_no_of_results: int,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            project_key=project_key,
+            summary_like="get issue tool",
+            number_of_results=search_no_of_results,
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_jira_issue_search_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_jira_search_issues_success,
+                openai_llm_client,
+                session,
+                test_name,
+            )
 
     @pytest.mark.parametrize(
         "prompt_template",

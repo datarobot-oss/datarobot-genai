@@ -26,6 +26,41 @@ from datarobot_genai.drmcp.tools.clients.jira import JiraClient
 logger = logging.getLogger(__name__)
 
 
+@dr_mcp_tool(tags={"jira", "search", "issues"})
+async def jira_search_issues(
+    *,
+    jql_query: Annotated[
+        str, "The JQL (Jira Query Language) string used to filter and search for issues."
+    ],
+    max_results: Annotated[int, "Maximum number of issues to return. Default is 50."] = 50,
+) -> ToolResult:
+    """
+    Search for Jira issues using a powerful JQL query string,
+    leveraging server-side filtering for efficiency (Push-Down).
+
+    Refer to JQL documentation for advanced query construction:
+    JQL functions: https://support.atlassian.com/jira-service-management-cloud/docs/jql-functions/
+    JQL fields: https://support.atlassian.com/jira-service-management-cloud/docs/jql-fields/
+    JQL keywords: https://support.atlassian.com/jira-service-management-cloud/docs/use-advanced-search-with-jira-query-language-jql/
+    JQL operators: https://support.atlassian.com/jira-service-management-cloud/docs/jql-operators/
+    """
+    if not jql_query:
+        raise ToolError("Argument validation error: 'jql_query' cannot be empty.")
+
+    access_token = await get_atlassian_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    async with JiraClient(access_token) as client:
+        issues = await client.search_jira_issues(jql_query=jql_query, max_results=max_results)
+
+    n = len(issues)
+    return ToolResult(
+        content=f"Successfully executed JQL query and retrieved {n} issue(s).",
+        structured_content={"data": [issue.as_flat_dict() for issue in issues], "count": n},
+    )
+
+
 @dr_mcp_tool(tags={"jira", "read", "get", "issue"})
 async def jira_get_issue(
     *, issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."]
