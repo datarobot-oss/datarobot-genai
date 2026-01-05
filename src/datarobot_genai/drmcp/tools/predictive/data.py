@@ -25,7 +25,7 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"data", "write", "upload", "catalog"})
+@dr_mcp_tool(tags={"predictive", "data", "write", "upload", "catalog"})
 async def upload_dataset_to_ai_catalog(
     file_path: Annotated[str, "The path to the dataset file to upload."],
 ) -> ToolResult:
@@ -34,15 +34,11 @@ async def upload_dataset_to_ai_catalog(
         logger.error(f"File not found: {file_path}")
         raise ToolError(f"File not found: {file_path}")
 
-    try:
-        client = get_sdk_client()
-        catalog_item = client.Dataset.create_from_file(file_path)
-    except Exception as e:
-        logger.error(f"Failed to upload dataset: {e}")
-        raise ToolError(f"Failed to upload dataset: {e}")
+    client = get_sdk_client()
+    catalog_item = client.Dataset.create_from_file(file_path)
 
     return ToolResult(
-        content=f"Successfully uploaded dataset: {catalog_item.id}",
+        content=f"Successfully uploaded dataset: {catalog_item.id}.",
         structured_content={
             "id": catalog_item.id,
             "name": catalog_item.name,
@@ -51,15 +47,11 @@ async def upload_dataset_to_ai_catalog(
     )
 
 
-@dr_mcp_tool(tags={"data", "read", "list", "catalog"})
+@dr_mcp_tool(tags={"predictive", "data", "read", "list", "catalog"})
 async def list_ai_catalog_items() -> ToolResult:
     """List all AI Catalog items (datasets) for the authenticated user."""
-    try:
-        client = get_sdk_client()
-        datasets = client.Dataset.list()
-    except Exception:
-        logger.error("Failed to list AI Catalog items")
-        raise ToolError("Failed to list AI Catalog items")
+    client = get_sdk_client()
+    datasets = client.Dataset.list()
 
     if not datasets:
         logger.info("No AI Catalog items found")
@@ -68,9 +60,8 @@ async def list_ai_catalog_items() -> ToolResult:
             structured_content={"datasets": []},
         )
 
-    result = "\n".join(f"{ds.id}: {ds.name}" for ds in datasets)
     return ToolResult(
-        content=result,
+        content=f"Found {len(datasets)} AI Catalog items.",
         structured_content={
             "datasets": [{"id": ds.id, "name": ds.name} for ds in datasets],
             "count": len(datasets),

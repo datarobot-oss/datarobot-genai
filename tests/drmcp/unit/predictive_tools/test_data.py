@@ -65,9 +65,9 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
         mock_client.Dataset.create_from_file.side_effect = Exception("fail")
         mock_get_client.return_value = mock_client
 
-        with pytest.raises(MCPError) as exc_info:
+        with pytest.raises(Exception) as exc_info:
             await data.upload_dataset_to_ai_catalog("somefile.csv")
-        assert "Failed to upload dataset: fail" in str(exc_info.value)
+        assert "fail" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -86,8 +86,7 @@ async def test_list_ai_catalog_items_success() -> None:
         result = await data.list_ai_catalog_items()
         # Access text from TextContent object
         content_text = result.content[0].text
-        assert "1: ds1" in content_text
-        assert "2: ds2" in content_text
+        assert "Found 2 AI Catalog items." in content_text
         assert result.structured_content["count"] == 2
         assert len(result.structured_content["datasets"]) == 2
         assert result.structured_content["datasets"][0]["id"] == "1"
@@ -116,6 +115,6 @@ async def test_list_ai_catalog_items_error() -> None:
         mock_client.Dataset.list.side_effect = Exception("fail")
         mock_get_client.return_value = mock_client
 
-        with pytest.raises(MCPError) as exc_info:
+        with pytest.raises(Exception) as exc_info:
             await data.list_ai_catalog_items()
-        assert "Failed to list AI Catalog items" in str(exc_info.value)
+        assert "fail" in str(exc_info.value)
