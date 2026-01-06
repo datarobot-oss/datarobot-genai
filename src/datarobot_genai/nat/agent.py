@@ -223,41 +223,66 @@ class NatAgent(BaseAgent[None]):
                     "prompt_tokens": 0,
                     "total_tokens": 0,
                 }
+                steps: list[IntermediateStep] = []
+                step_queue: asyncio.Queue[IntermediateStep | None] = asyncio.Queue()
+
+                async def process_intermediate_steps() -> None:
+                    intermediate_stream = stream_intermediate_steps()
+                    try:
+                        async for step in intermediate_stream:
+                            steps.append(step)
+                            if step:
+                                await step_queue.put(step)
+                    finally:
+                        await step_queue.put(None)
+
                 async with load_workflow(self.workflow_path, headers=headers) as workflow:
                     async with workflow.run(chat_request) as runner:
-                        intermediate_future = pull_intermediate_structured()
-                        async for result in runner.result_stream():
-                            if isinstance(result, ChatResponse):
-                                result_text = result.choices[0].message.content
-                            else:
-                                result_text = str(result)
+                        intermediate_task = asyncio.create_task(process_intermediate_steps())
+                        async for _ in runner.result_stream():
+                            while True:
+                                try:
+                                    step = step_queue.get_nowait()
+                                    if step is None:
+                                        break
+                                    if step.data.chunk:
+                                        yield step.data.chunk, None, default_usage_metrics
+                                    elif step.data.output:
+                                        yield step.data.output, None, default_usage_metrics
+                                except asyncio.QueueEmpty:
+                                    break
 
-                            yield (
-                                result_text,
-                                None,
-                                default_usage_metrics,
-                            )
+                await intermediate_task
 
-                        steps = await intermediate_future
-                        llm_end_steps = [
-                            step
-                            for step in steps
-                            if step.event_type == IntermediateStepType.LLM_END
-                        ]
-                        usage_metrics: UsageMetrics = {
-                            "completion_tokens": 0,
-                            "prompt_tokens": 0,
-                            "total_tokens": 0,
-                        }
-                        for step in llm_end_steps:
-                            if step.usage_info:
-                                token_usage = step.usage_info.token_usage
-                                usage_metrics["total_tokens"] += token_usage.total_tokens
-                                usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
-                                usage_metrics["completion_tokens"] += token_usage.completion_tokens
+                while True:
+                    try:
+                        step = step_queue.get_nowait()
+                        if step is None:
+                            break
+                        if step.data.chunk:
+                            yield step.data.chunk, None, default_usage_metrics
+                        elif step.data.output:
+                            yield step.data.output, None, default_usage_metrics
+                    except asyncio.QueueEmpty:
+                        break
 
-                        pipeline_interactions = create_pipeline_interactions_from_steps(steps)
-                        yield "", pipeline_interactions, usage_metrics
+                llm_end_steps = [
+                    step for step in steps if step.event_type == IntermediateStepType.LLM_END
+                ]
+                usage_metrics: UsageMetrics = {
+                    "completion_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0,
+                }
+                for step in llm_end_steps:
+                    if step.usage_info:
+                        token_usage = step.usage_info.token_usage
+                        usage_metrics["total_tokens"] += token_usage.total_tokens
+                        usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
+                        usage_metrics["completion_tokens"] += token_usage.completion_tokens
+
+                pipeline_interactions = create_pipeline_interactions_from_steps(steps)
+                yield "", pipeline_interactions, usage_metrics
 
             return stream_generator()
 
