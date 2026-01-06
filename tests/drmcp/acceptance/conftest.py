@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_openai_llm_client_config
+from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
 
 
 @pytest.fixture(scope="session")
