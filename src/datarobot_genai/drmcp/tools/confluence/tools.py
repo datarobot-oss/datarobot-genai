@@ -138,3 +138,51 @@ async def confluence_create_page(
         content=f"New page '{title}' created successfully in space '{space_key}'.",
         structured_content={"new_page_id": page_response.page_id, "title": page_response.title},
     )
+
+
+@dr_mcp_tool(tags={"confluence", "write", "add", "comment"})
+async def confluence_add_comment(
+    *,
+    page_id: Annotated[str, "The numeric ID of the page where the comment will be added."],
+    comment_body: Annotated[str, "The text content of the comment."],
+) -> ToolResult:
+    """Add a new comment to a specified Confluence page for collaboration.
+
+    Use this tool to add comments to Confluence pages to facilitate collaboration
+    and discussion. Comments are added at the page level.
+
+    Usage:
+        - Add comment: page_id="856391684", comment_body="Great work on this documentation!"
+    """
+    if not page_id:
+        raise ToolError("Argument validation error: 'page_id' cannot be empty.")
+
+    if not comment_body:
+        raise ToolError("Argument validation error: 'comment_body' cannot be empty.")
+
+    access_token = await get_atlassian_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with ConfluenceClient(access_token) as client:
+            comment_response = await client.add_comment(
+                page_id=page_id,
+                comment_body=comment_body,
+            )
+    except ConfluenceError as e:
+        logger.error(f"Confluence error adding comment: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error adding comment to Confluence page: {e}")
+        raise ToolError(
+            f"An unexpected error occurred while adding comment to page '{page_id}': {str(e)}"
+        )
+
+    return ToolResult(
+        content=f"Comment added successfully to page ID {page_id}.",
+        structured_content={
+            "comment_id": comment_response.comment_id,
+            "page_id": page_id,
+        },
+    )
