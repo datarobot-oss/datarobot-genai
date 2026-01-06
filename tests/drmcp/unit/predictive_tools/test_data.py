@@ -103,7 +103,7 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     ):
         result = await data.upload_dataset_to_ai_catalog()
         assert isinstance(result, ToolError)
-        assert str(result) == "Either file_path or file_url must be provided"
+        assert str(result) == "Either file_path or file_url must be provided."
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
             file_path="somefile.csv", file_url="https://example.com/somefile.csv"
         )
         assert isinstance(result, ToolError)
-        assert str(result) == "Please provide either file_path or file_url, not both"
+        assert str(result) == "Please provide either file_path or file_url, not both."
 
 
 @pytest.mark.asyncio
