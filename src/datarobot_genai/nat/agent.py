@@ -114,6 +114,45 @@ def pull_intermediate_structured() -> asyncio.Future[list[IntermediateStep]]:
     return future
 
 
+async def stream_intermediate_steps() -> AsyncGenerator[IntermediateStep, None]:
+    """
+    Stream intermediate steps as they arrive from the NAT workflow.
+    Uses an async queue to bridge the callback-based subscription to an async generator.
+    """
+    queue: asyncio.Queue[IntermediateStep | Exception | None] = asyncio.Queue()
+    context = Context.get()
+    completed = False
+
+    def on_next_cb(item: IntermediateStep) -> None:
+        if not completed:
+            queue.put_nowait(item)
+
+    def on_error_cb(exc: Exception) -> None:
+        logger.error("Hit on_error in stream_intermediate_steps: %s", exc)
+        if not completed:
+            queue.put_nowait(exc)
+
+    def on_complete_cb() -> None:
+        logger.debug("Completed reading intermediate steps stream")
+        nonlocal completed
+        completed = True
+        queue.put_nowait(None)  # Sentinel to signal completion
+
+    # Subscribe with our callbacks.
+    context.intermediate_step_manager.subscribe(
+        on_next=on_next_cb, on_error=on_error_cb, on_complete=on_complete_cb
+    )
+
+    # Yield steps as they arrive
+    while True:
+        item = await queue.get()
+        if item is None:  # Sentinel indicating completion
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+
 class NatAgent(BaseAgent[None]):
     def __init__(
         self,
