@@ -330,7 +330,8 @@ class NatAgent(BaseAgent[None]):
                                             # Stream completed, but continue processing results
                                             result_stream_done = True
                                             break
-                                        yield (event, None, usage_metrics)
+                                        if hasattr(event, "delta"):
+                                            yield (event.delta, None, usage_metrics)
                                     except asyncio.QueueEmpty:
                                         break
 
