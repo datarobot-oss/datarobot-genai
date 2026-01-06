@@ -186,3 +186,69 @@ async def confluence_add_comment(
             "page_id": page_id,
         },
     )
+
+
+@dr_mcp_tool(tags={"confluence", "search", "content"})
+async def confluence_search(
+    *,
+    cql_query: Annotated[
+        str,
+        "The CQL (Confluence Query Language) string used to filter content, "
+        "e.g., 'type=page and space=DOC'.",
+    ],
+    max_results: Annotated[int, "Maximum number of content items to return. Default is 10."] = 10,
+    include_body: Annotated[
+        bool,
+        "If True, fetch full page body content for each result (slower, "
+        "makes additional API calls). Default is False, which returns only excerpts.",
+    ] = False,
+) -> ToolResult:
+    """
+    Search Confluence pages and content efficiently using a CQL query string.
+    This pushes the search logic to the Confluence API (Push-Down).
+
+    Refer to Confluence documentation for advanced searching using CQL:
+    https://developer.atlassian.com/cloud/confluence/advanced-searching-using-cql/
+    """
+    if not cql_query:
+        raise ToolError("Argument validation error: 'cql_query' cannot be empty.")
+
+    if max_results < 1 or max_results > 100:
+        raise ToolError("Argument validation error: 'max_results' must be between 1 and 100.")
+
+    access_token = await get_atlassian_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with ConfluenceClient(access_token) as client:
+            results = await client.search_confluence_content(
+                cql_query=cql_query, max_results=max_results
+            )
+
+            # If include_body is True, fetch full content for each page
+            if include_body and results:
+                data = []
+                for result in results:
+                    flat = result.as_flat_dict()
+                    try:
+                        page = await client.get_page_by_id(result.id)
+                        flat["body"] = page.body
+                    except ConfluenceError:
+                        flat["body"] = None  # Keep excerpt if page fetch fails
+                    data.append(flat)
+            else:
+                data = [result.as_flat_dict() for result in results]
+
+    except ConfluenceError as e:
+        logger.error(f"Confluence error searching content: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error searching Confluence content: {e}")
+        raise ToolError(f"An unexpected error occurred while searching Confluence: {str(e)}")
+
+    n = len(results)
+    return ToolResult(
+        content=f"Successfully executed CQL query and retrieved {n} result(s).",
+        structured_content={"data": data, "count": n},
+    )
