@@ -83,6 +83,30 @@ class TestJiraClient:
         return {"id": "625846", "key": "PROJ-123"}
 
     @pytest.mark.asyncio
+    async def test_search_issues_success(
+        self, mock_access_token: str, mock_cloud_id: str, mock_issue_response: dict
+    ) -> None:
+        """Test successfully searching issues."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with JiraClient(mock_access_token) as client:
+
+                async def mock_post(url: str, json: dict | None = None) -> httpx.Response:
+                    return make_response(200, {"issues": [mock_issue_response]}, mock_cloud_id)
+
+                client._client.post = mock_post
+
+                result = await client.search_jira_issues(
+                    jql_query="issuetype = Story AND project = PROJ AND summary ~ Dummy",
+                    max_results=50,
+                )
+
+                assert result == [Issue(**mock_issue_response)]
+
+    @pytest.mark.asyncio
     async def test_get_issue_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_response: dict
     ) -> None:

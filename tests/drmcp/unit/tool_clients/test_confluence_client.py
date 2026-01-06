@@ -19,6 +19,7 @@ import httpx
 import pytest
 
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceClient
+from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
 
@@ -412,4 +413,174 @@ class TestConfluenceClient:
             "space_id": "67890",
             "space_key": "TEST",
             "body": "<p>Content</p>",
+        }
+
+    @pytest.mark.asyncio
+    async def test_add_comment_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
+        """Test successful comment addition."""
+        mock_comment_response = {
+            "id": "98765",
+            "type": "comment",
+            "body": {"storage": {"value": "<p>Test comment</p>"}},
+        }
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+                captured_kwargs: dict = {}
+
+                async def mock_post(_url: str, **kwargs: dict) -> httpx.Response:
+                    captured_kwargs.update(kwargs)
+                    return make_response(200, mock_comment_response, mock_cloud_id, "POST")
+
+                client._client.post = mock_post
+
+                result = await client.add_comment(
+                    page_id="12345",
+                    comment_body="<p>Test comment</p>",
+                )
+
+                assert result.comment_id == "98765"
+                assert result.page_id == "12345"
+                assert result.body == "<p>Test comment</p>"
+                # Verify request payload structure
+                assert captured_kwargs["json"]["type"] == "comment"
+                assert captured_kwargs["json"]["container"] == {"id": "12345", "type": "page"}
+                assert captured_kwargs["json"]["body"]["storage"]["value"] == "<p>Test comment</p>"
+                assert captured_kwargs["json"]["body"]["storage"]["representation"] == "storage"
+
+    @pytest.mark.asyncio
+    async def test_add_comment_page_not_found(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test comment addition when page doesn't exist."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_post(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        404,
+                        {"message": "Content not found"},
+                        mock_cloud_id,
+                        "POST",
+                    )
+
+                client._client.post = mock_post
+
+                with pytest.raises(
+                    ConfluenceError, match="Page with ID '99999' not found"
+                ) as exc_info:
+                    await client.add_comment(
+                        page_id="99999",
+                        comment_body="<p>Test comment</p>",
+                    )
+                assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_add_comment_permission_denied(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test comment addition when user lacks permissions."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_post(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        403,
+                        {"message": "User does not have permission"},
+                        mock_cloud_id,
+                        "POST",
+                    )
+
+                client._client.post = mock_post
+
+                with pytest.raises(ConfluenceError, match="Permission denied") as exc_info:
+                    await client.add_comment(
+                        page_id="12345",
+                        comment_body="<p>Test comment</p>",
+                    )
+                assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_add_comment_invalid_content(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test comment addition with invalid storage format content."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_post(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        400,
+                        {"message": "Invalid storage format: unclosed tag"},
+                        mock_cloud_id,
+                        "POST",
+                    )
+
+                client._client.post = mock_post
+
+                with pytest.raises(ConfluenceError, match="Invalid request") as exc_info:
+                    await client.add_comment(
+                        page_id="12345",
+                        comment_body="<p>Unclosed tag",
+                    )
+                assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_add_comment_rate_limited(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test comment addition when rate limited."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_post(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        429,
+                        {"message": "Rate limit exceeded"},
+                        mock_cloud_id,
+                        "POST",
+                    )
+
+                client._client.post = mock_post
+
+                with pytest.raises(ConfluenceError, match="Rate limit exceeded") as exc_info:
+                    await client.add_comment(
+                        page_id="12345",
+                        comment_body="<p>Test comment</p>",
+                    )
+                assert exc_info.value.status_code == 429
+
+    def test_confluence_comment_as_flat_dict(self) -> None:
+        """Test ConfluenceComment.as_flat_dict method."""
+        comment = ConfluenceComment(
+            comment_id="98765",
+            page_id="12345",
+            body="<p>Test comment</p>",
+        )
+
+        result = comment.as_flat_dict()
+
+        assert result == {
+            "comment_id": "98765",
+            "page_id": "12345",
+            "body": "<p>Test comment</p>",
         }

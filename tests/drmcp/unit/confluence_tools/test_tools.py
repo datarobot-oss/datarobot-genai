@@ -17,8 +17,10 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.drmcp.core.exceptions import MCPError
+from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
+from datarobot_genai.drmcp.tools.confluence.tools import confluence_add_comment
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_get_page
 
 
@@ -146,3 +148,86 @@ class TestConfluenceGetPage:
 
         with pytest.raises(MCPError, match="cannot be empty"):
             await confluence_get_page(page_id_or_title=page_id)
+
+
+@pytest.fixture
+def confluence_client_add_comment_mock() -> Iterator[ConfluenceComment]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.add_comment"
+    ) as mock:
+        comment = ConfluenceComment(
+            comment_id="98765",
+            page_id="12345",
+            body="<p>Test comment</p>",
+        )
+        mock.return_value = comment
+        yield comment
+
+
+@pytest.fixture
+def confluence_client_add_comment_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.add_comment"
+    ) as mock:
+        mock.side_effect = ConfluenceError("Page not found", status_code=404)
+        yield
+
+
+class TestConfluenceAddComment:
+    """Confluence add comment tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_confluence_add_comment_happy_path(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_add_comment_mock: ConfluenceComment,
+    ) -> None:
+        """Confluence add comment -- happy path."""
+        page_id = "12345"
+        comment_body = "<p>Test comment</p>"
+
+        tool_result = await confluence_add_comment(page_id=page_id, comment_body=comment_body)
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert content[0].text == "Comment added successfully to page ID 12345."
+        assert structured_content == {
+            "comment_id": "98765",
+            "page_id": "12345",
+        }
+
+    @pytest.mark.asyncio
+    async def test_confluence_add_comment_empty_page_id(
+        self,
+        get_atlassian_access_token_mock: None,
+    ) -> None:
+        """Confluence add comment with empty page_id -- should raise error."""
+        page_id = ""
+        comment_body = "<p>Test comment</p>"
+
+        with pytest.raises(MCPError, match="page_id.*cannot be empty"):
+            await confluence_add_comment(page_id=page_id, comment_body=comment_body)
+
+    @pytest.mark.asyncio
+    async def test_confluence_add_comment_empty_comment_body(
+        self,
+        get_atlassian_access_token_mock: None,
+    ) -> None:
+        """Confluence add comment with empty comment_body -- should raise error."""
+        page_id = "12345"
+        comment_body = ""
+
+        with pytest.raises(MCPError, match="comment_body.*cannot be empty"):
+            await confluence_add_comment(page_id=page_id, comment_body=comment_body)
+
+    @pytest.mark.asyncio
+    async def test_confluence_add_comment_when_error_in_client(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_add_comment_error_mock: None,
+    ) -> None:
+        """Confluence add comment -- error in client."""
+        page_id = "12345"
+        comment_body = "<p>Test comment</p>"
+
+        with pytest.raises(MCPError, match="Page not found"):
+            await confluence_add_comment(page_id=page_id, comment_body=comment_body)

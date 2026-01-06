@@ -59,6 +59,22 @@ class ConfluencePage(BaseModel):
         }
 
 
+class ConfluenceComment(BaseModel):
+    """Pydantic model for Confluence comment."""
+
+    comment_id: str = Field(..., description="The unique comment ID")
+    page_id: str = Field(..., description="The page ID where the comment was added")
+    body: str = Field(..., description="Comment content in storage format")
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the comment."""
+        return {
+            "comment_id": self.comment_id,
+            "page_id": self.page_id,
+            "body": self.body,
+        }
+
+
 class ConfluenceClient:
     """
     Client for interacting with Confluence API using OAuth access token.
@@ -293,6 +309,78 @@ class ConfluenceClient:
         response.raise_for_status()
 
         return self._parse_response(response.json())
+
+    def _parse_comment_response(self, data: dict, page_id: str) -> ConfluenceComment:
+        """Parse API response into ConfluenceComment."""
+        body_content = ""
+        body = data.get("body", {})
+        if isinstance(body, dict):
+            storage = body.get("storage", {})
+            if isinstance(storage, dict):
+                body_content = storage.get("value", "")
+
+        return ConfluenceComment(
+            comment_id=str(data.get("id", "")),
+            page_id=page_id,
+            body=body_content,
+        )
+
+    async def add_comment(self, page_id: str, comment_body: str) -> ConfluenceComment:
+        """
+        Add a comment to a Confluence page.
+
+        Args:
+            page_id: The numeric page ID where the comment will be added
+            comment_body: The text content of the comment
+
+        Returns
+        -------
+            ConfluenceComment with the created comment data
+
+        Raises
+        ------
+            ConfluenceError: If page not found, permission denied, or invalid content
+            httpx.HTTPStatusError: If the API request fails with unexpected status
+        """
+        cloud_id = await self._get_cloud_id()
+        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content"
+
+        payload: dict[str, Any] = {
+            "type": "comment",
+            "container": {"id": page_id, "type": "page"},
+            "body": {
+                "storage": {
+                    "value": comment_body,
+                    "representation": "storage",
+                }
+            },
+        }
+
+        response = await self._client.post(url, json=payload)
+
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(
+                f"Page with ID '{page_id}' not found: {error_msg}",
+                status_code=404,
+            )
+
+        if response.status_code == HTTPStatus.FORBIDDEN:
+            raise ConfluenceError(
+                f"Permission denied: you don't have access to add comments to page '{page_id}'",
+                status_code=403,
+            )
+
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(f"Invalid request: {error_msg}", status_code=400)
+
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            raise ConfluenceError("Rate limit exceeded. Please try again later.", status_code=429)
+
+        response.raise_for_status()
+
+        return self._parse_comment_response(response.json(), page_id)
 
     async def __aenter__(self) -> "ConfluenceClient":
         """Async context manager entry."""
