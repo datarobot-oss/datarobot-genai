@@ -245,10 +245,19 @@ class NatAgent(BaseAgent[None]):
                                     step = step_queue.get_nowait()
                                     if step is None:
                                         break
-                                    if step.data.chunk:
-                                        yield step.data.chunk, None, default_usage_metrics
-                                    elif step.data.output:
-                                        yield step.data.output, None, default_usage_metrics
+                                    if step.data:
+                                        output = None
+                                        if step.data.chunk:
+                                            output = step.data.chunk
+                                            yield step.data.chunk, None, default_usage_metrics
+                                        elif step.data.output:
+                                            output = step.data.output
+                                        if output:
+                                            if isinstance(output, list):
+                                                output = output[0]
+                                            if isinstance(output, ChatResponse):
+                                                output = output.choices[0].message.content
+                                            yield output, None, default_usage_metrics
                                 except asyncio.QueueEmpty:
                                     break
 
@@ -259,10 +268,19 @@ class NatAgent(BaseAgent[None]):
                         step = step_queue.get_nowait()
                         if step is None:
                             break
-                        if step.data.chunk:
-                            yield step.data.chunk, None, default_usage_metrics
-                        elif step.data.output:
-                            yield step.data.output, None, default_usage_metrics
+                        if step.data:
+                            output = None
+                            if step.data.chunk:
+                                output = step.data.chunk
+                                yield step.data.chunk, None, default_usage_metrics
+                            elif step.data.output:
+                                output = step.data.output
+                            if output:
+                                if isinstance(output, list):
+                                    output = output[0]
+                                if isinstance(output, ChatResponse):
+                                    output = output.choices[0].message.content
+                                yield output, None, default_usage_metrics
                     except asyncio.QueueEmpty:
                         break
 
