@@ -31,6 +31,14 @@ from .atlassian import get_atlassian_cloud_id
 logger = logging.getLogger(__name__)
 
 
+class ConfluenceError(Exception):
+    """Exception for Confluence API errors."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class ConfluencePage(BaseModel):
     """Pydantic model for Confluence page."""
 
@@ -47,6 +55,22 @@ class ConfluencePage(BaseModel):
             "title": self.title,
             "space_id": self.space_id,
             "space_key": self.space_key,
+            "body": self.body,
+        }
+
+
+class ConfluenceComment(BaseModel):
+    """Pydantic model for Confluence comment."""
+
+    comment_id: str = Field(..., description="The unique comment ID")
+    page_id: str = Field(..., description="The page ID where the comment was added")
+    body: str = Field(..., description="Comment content in storage format")
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the comment."""
+        return {
+            "comment_id": self.comment_id,
+            "page_id": self.page_id,
             "body": self.body,
         }
 
@@ -133,7 +157,7 @@ class ConfluenceClient:
 
         Raises
         ------
-            ValueError: If page is not found
+            ConfluenceError: If page is not found
             httpx.HTTPStatusError: If the API request fails
         """
         cloud_id = await self._get_cloud_id()
@@ -142,7 +166,7 @@ class ConfluenceClient:
         response = await self._client.get(url, params={"expand": self.EXPAND_FIELDS})
 
         if response.status_code == HTTPStatus.NOT_FOUND:
-            raise ValueError(f"Page with ID '{page_id}' not found")
+            raise ConfluenceError(f"Page with ID '{page_id}' not found", status_code=404)
 
         response.raise_for_status()
         return self._parse_response(response.json())
@@ -161,7 +185,7 @@ class ConfluenceClient:
 
         Raises
         ------
-            ValueError: If the page is not found
+            ConfluenceError: If the page is not found
             httpx.HTTPStatusError: If the API request fails
         """
         cloud_id = await self._get_cloud_id()
@@ -181,9 +205,182 @@ class ConfluenceClient:
         results = data.get("results", [])
 
         if not results:
-            raise ValueError(f"Page with title '{title}' not found in space '{space_key}'")
+            raise ConfluenceError(
+                f"Page with title '{title}' not found in space '{space_key}'", status_code=404
+            )
 
         return self._parse_response(results[0])
+
+    def _extract_error_message(self, response: httpx.Response) -> str:
+        """Extract error message from Confluence API error response."""
+        try:
+            error_data = response.json()
+            # Confluence API returns errors in different formats
+            if "message" in error_data:
+                return error_data["message"]
+            if "errorMessages" in error_data and error_data["errorMessages"]:
+                return "; ".join(error_data["errorMessages"])
+            if "errors" in error_data:
+                errors = error_data["errors"]
+                if isinstance(errors, list):
+                    return "; ".join(str(e) for e in errors)
+                if isinstance(errors, dict):
+                    return "; ".join(f"{k}: {v}" for k, v in errors.items())
+        except Exception:
+            pass
+        return response.text or "Unknown error"
+
+    async def create_page(
+        self,
+        space_key: str,
+        title: str,
+        body_content: str,
+        parent_id: int | None = None,
+    ) -> ConfluencePage:
+        """
+        Create a new Confluence page in a specified space.
+
+        Args:
+            space_key: The key of the Confluence space where the page should live
+            title: The title of the new page
+            body_content: The content in Confluence Storage Format (XML) or raw text
+            parent_id: Optional ID of the parent page for creating a child page
+
+        Returns
+        -------
+            ConfluencePage with the created page data
+
+        Raises
+        ------
+            ConfluenceError: If space not found, parent page not found, duplicate title,
+                            permission denied, or invalid content
+            httpx.HTTPStatusError: If the API request fails with unexpected status
+        """
+        cloud_id = await self._get_cloud_id()
+        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content"
+
+        payload: dict[str, Any] = {
+            "type": "page",
+            "title": title,
+            "space": {"key": space_key},
+            "body": {
+                "storage": {
+                    "value": body_content,
+                    "representation": "storage",
+                }
+            },
+        }
+
+        if parent_id is not None:
+            payload["ancestors"] = [{"id": parent_id}]
+
+        response = await self._client.post(url, json=payload)
+
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            error_msg = self._extract_error_message(response)
+            if parent_id is not None and "ancestor" in error_msg.lower():
+                raise ConfluenceError(
+                    f"Parent page with ID '{parent_id}' not found", status_code=404
+                )
+            raise ConfluenceError(
+                f"Space '{space_key}' not found or resource unavailable: {error_msg}",
+                status_code=404,
+            )
+
+        if response.status_code == HTTPStatus.CONFLICT:
+            raise ConfluenceError(
+                f"A page with title '{title}' already exists in space '{space_key}'",
+                status_code=409,
+            )
+
+        if response.status_code == HTTPStatus.FORBIDDEN:
+            raise ConfluenceError(
+                f"Permission denied: you don't have access to create pages in space '{space_key}'",
+                status_code=403,
+            )
+
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(f"Invalid request: {error_msg}", status_code=400)
+
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            raise ConfluenceError("Rate limit exceeded. Please try again later.", status_code=429)
+
+        response.raise_for_status()
+
+        return self._parse_response(response.json())
+
+    def _parse_comment_response(self, data: dict, page_id: str) -> ConfluenceComment:
+        """Parse API response into ConfluenceComment."""
+        body_content = ""
+        body = data.get("body", {})
+        if isinstance(body, dict):
+            storage = body.get("storage", {})
+            if isinstance(storage, dict):
+                body_content = storage.get("value", "")
+
+        return ConfluenceComment(
+            comment_id=str(data.get("id", "")),
+            page_id=page_id,
+            body=body_content,
+        )
+
+    async def add_comment(self, page_id: str, comment_body: str) -> ConfluenceComment:
+        """
+        Add a comment to a Confluence page.
+
+        Args:
+            page_id: The numeric page ID where the comment will be added
+            comment_body: The text content of the comment
+
+        Returns
+        -------
+            ConfluenceComment with the created comment data
+
+        Raises
+        ------
+            ConfluenceError: If page not found, permission denied, or invalid content
+            httpx.HTTPStatusError: If the API request fails with unexpected status
+        """
+        cloud_id = await self._get_cloud_id()
+        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content"
+
+        payload: dict[str, Any] = {
+            "type": "comment",
+            "container": {"id": page_id, "type": "page"},
+            "body": {
+                "storage": {
+                    "value": comment_body,
+                    "representation": "storage",
+                }
+            },
+        }
+
+        response = await self._client.post(url, json=payload)
+
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(
+                f"Page with ID '{page_id}' not found: {error_msg}",
+                status_code=404,
+            )
+
+        if response.status_code == HTTPStatus.FORBIDDEN:
+            raise ConfluenceError(
+                f"Permission denied: you don't have access to add comments to page '{page_id}'",
+                status_code=403,
+            )
+
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(f"Invalid request: {error_msg}", status_code=400)
+
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            raise ConfluenceError("Rate limit exceeded. Please try again later.", status_code=429)
+
+        response.raise_for_status()
+
+        return self._parse_comment_response(response.json(), page_id)
 
     async def __aenter__(self) -> "ConfluenceClient":
         """Async context manager entry."""

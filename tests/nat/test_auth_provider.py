@@ -15,6 +15,8 @@ from nat.authentication.api_key.api_key_auth_provider import APIKeyAuthProvider
 from nat.builder.workflow_builder import WorkflowBuilder
 
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
+from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProvider
+from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
 
 
 async def test_datarobot_auth_provider():
@@ -23,3 +25,11 @@ async def test_datarobot_auth_provider():
         await builder.add_auth_provider("datarobot_api_key", config)
         auth_provider = await builder.get_auth_provider("datarobot_api_key")
         assert isinstance(auth_provider, APIKeyAuthProvider)
+
+
+async def test_datarobot_mcp_auth_provider():
+    config = DataRobotMCPAuthProviderConfig()
+    async with WorkflowBuilder() as builder:
+        await builder.add_auth_provider("datarobot_mcp_auth", config)
+        auth_provider = await builder.get_auth_provider("datarobot_mcp_auth")
+        assert isinstance(auth_provider, DataRobotMCPAuthProvider)
