@@ -14,7 +14,6 @@
 
 """Unit tests for test_utils/utils.py module."""
 
-import json
 from unittest.mock import mock_open
 from unittest.mock import patch
 

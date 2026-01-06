@@ -117,6 +117,4 @@ async def test_client_handles_form_schema():
         result = await session.call_tool("get_user_greeting", {})
 
         # Should succeed
-        assert not result.isError, (
-            f"Tool should succeed with form schema. Got: {result.content}"
-        )
+        assert not result.isError, f"Tool should succeed with form schema. Got: {result.content}"

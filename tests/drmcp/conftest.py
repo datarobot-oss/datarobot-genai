@@ -542,5 +542,3 @@ def get_prompt_template_duplicated_name_mock(
         ),
     ):
         yield
-
-

@@ -138,5 +138,3 @@ def prompt_templates_with_duplicates(
     # Cleanup
     delete_prompt_template(prompt_template_1["id"])
     delete_prompt_template(prompt_template_2["id"])
-
-

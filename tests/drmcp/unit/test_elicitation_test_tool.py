@@ -25,10 +25,10 @@ from fastmcp.server.context import CancelledElicitation
 from fastmcp.server.context import DeclinedElicitation
 from fastmcp.tools.tool import FunctionTool
 
+from datarobot_genai.drmcp.core.mcp_instance import mcp
+
 # Import the tool module to register the tool
 from tests.drmcp.integration import elicitation_test_tool  # noqa: F401
-
-from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
 class TestGetUserGreeting:
