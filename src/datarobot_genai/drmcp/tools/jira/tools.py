@@ -35,8 +35,7 @@ async def jira_search_issues(
     max_results: Annotated[int, "Maximum number of issues to return. Default is 50."] = 50,
 ) -> ToolResult:
     """
-    Search for Jira issues using a powerful JQL query string,
-    leveraging server-side filtering for efficiency (Push-Down).
+    Search for Jira issues using a powerful JQL query string.
 
     Refer to JQL documentation for advanced query construction:
     JQL functions: https://support.atlassian.com/jira-service-management-cloud/docs/jql-functions/

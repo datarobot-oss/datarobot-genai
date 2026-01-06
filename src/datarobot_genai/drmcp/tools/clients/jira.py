@@ -25,7 +25,7 @@ from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_JIRA_ISSUE_FIELDS = {
+RESPONSE_JIRA_ISSUE_FIELDS = {
     "id",
     "key",
     "summary",
@@ -35,7 +35,7 @@ SUPPORTED_JIRA_ISSUE_FIELDS = {
     "created",
     "updated",
 }
-SUPPORTED_JIRA_ISSUE_FIELDS_STR = ",".join(SUPPORTED_JIRA_ISSUE_FIELDS)
+RESPONSE_JIRA_ISSUE_FIELDS_STR = ",".join(RESPONSE_JIRA_ISSUE_FIELDS)
 
 
 class _IssuePerson(BaseModel):
@@ -145,7 +145,7 @@ class JiraClient:
             url,
             json={
                 "jql": jql_query,
-                "fields": list(SUPPORTED_JIRA_ISSUE_FIELDS),
+                "fields": list(RESPONSE_JIRA_ISSUE_FIELDS),
                 "maxResults": max_results,
             },
         )
@@ -171,7 +171,7 @@ class JiraClient:
             httpx.HTTPStatusError: If the API request fails
         """
         url = await self._get_full_url(f"issue/{issue_key}")
-        response = await self._client.get(url, params={"fields": SUPPORTED_JIRA_ISSUE_FIELDS_STR})
+        response = await self._client.get(url, params={"fields": RESPONSE_JIRA_ISSUE_FIELDS_STR})
 
         if response.status_code == HTTPStatus.NOT_FOUND:
             raise ValueError(f"{issue_key} not found")
