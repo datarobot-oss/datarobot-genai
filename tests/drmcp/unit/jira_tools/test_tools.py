@@ -20,6 +20,7 @@ from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.jira import Issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_create_issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_get_issue
+from datarobot_genai.drmcp.tools.jira.tools import jira_search_issues
 from datarobot_genai.drmcp.tools.jira.tools import jira_transition_issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_update_issue
 
@@ -30,6 +31,42 @@ def get_atlassian_access_token_mock() -> Iterator[None]:
         "datarobot_genai.drmcp.tools.jira.tools.get_atlassian_access_token",
         return_value="token",
     ):
+        yield
+
+
+@pytest.fixture
+def jira_client_search_issues_mock() -> Iterator[list[Issue]]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.search_jira_issues"
+    ) as jira_client_search_issues:
+        issues = [
+            Issue(
+                **{
+                    "id": "123",
+                    "key": "PROJ-123",
+                    "fields": {
+                        "summary": "Dummy summary",
+                        "status": {
+                            "name": "In Progress",
+                        },
+                        "updated": "2025-12-15T07:47:19.176-0500",
+                        "created": "2025-12-11T09:01:58.944-0500",
+                        "reporter": {"emailAddress": "dummy@reporter.com"},
+                        "assignee": {"emailAddress": "dummy@assignee.com"},
+                    },
+                }
+            )
+        ]
+        jira_client_search_issues.return_value = issues
+        yield issues
+
+
+@pytest.fixture
+def jira_client_search_issues_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.search_jira_issues"
+    ) as jira_client_search_issue:
+        jira_client_search_issue.side_effect = ValueError("Dummy error")
         yield
 
 
@@ -156,6 +193,47 @@ def jira_client_transition_issue_error_mock() -> Iterator[None]:
     ) as jira_client_transition_issue:
         jira_client_transition_issue.side_effect = ValueError("Dummy error")
         yield
+
+
+class TestJiraSearchIssues:
+    """Jira search issues tool test."""
+
+    @pytest.mark.asyncio
+    async def test_jira_search_issues_happy_path(
+        self, get_atlassian_access_token_mock: None, jira_client_search_issues_mock: list[Issue]
+    ) -> None:
+        """Jira search issues -- happy path."""
+        jql_query = "issuetype = Story AND project = PROJ AND summary ~ Dummy"
+
+        tool_result = await jira_search_issues(jql_query=jql_query)
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert content[0].text == "Successfully executed JQL query and retrieved 1 issue(s)."
+        assert structured_content == {
+            "data": [
+                {
+                    "id": "123",
+                    "key": "PROJ-123",
+                    "status": "In Progress",
+                    "summary": "Dummy summary",
+                    "created": "2025-12-11T09:01:58.944-0500",
+                    "updated": "2025-12-15T07:47:19.176-0500",
+                    "assigneeEmailAddress": "dummy@assignee.com",
+                    "reporterEmailAddress": "dummy@reporter.com",
+                }
+            ],
+            "count": 1,
+        }
+
+    @pytest.mark.asyncio
+    async def test_jira_search_issues_when_error_in_client(
+        self, get_atlassian_access_token_mock: None, jira_client_search_issues_error_mock: None
+    ) -> None:
+        """Jira search issues -- error in client."""
+        jql_query = "issuetype = Story AND project = PROJ AND summary ~ Dummy"
+
+        with pytest.raises(MCPError):
+            await jira_search_issues(jql_query=jql_query)
 
 
 class TestJiraGetIssue:

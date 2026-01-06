@@ -25,6 +25,18 @@ from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
 
+RESPONSE_JIRA_ISSUE_FIELDS = {
+    "id",
+    "key",
+    "summary",
+    "status",
+    "reporter",
+    "assignee",
+    "created",
+    "updated",
+}
+RESPONSE_JIRA_ISSUE_FIELDS_STR = ",".join(RESPONSE_JIRA_ISSUE_FIELDS)
+
 
 class _IssuePerson(BaseModel):
     email_address: str = Field(alias="emailAddress")
@@ -112,6 +124,37 @@ class JiraClient:
         cloud_id = await self._get_cloud_id()
         return f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/{path}"
 
+    async def search_jira_issues(self, jql_query: str, max_results: int) -> list[Issue]:
+        """
+        Search Jira issues using JQL (Jira Query Language).
+
+        Args:
+            jql_query: JQL Query
+            max_results: Maximum number of issues to return
+
+        Returns
+        -------
+            List of Jira issues
+
+        Raises
+        ------
+            httpx.HTTPStatusError: If the API request fails
+        """
+        url = await self._get_full_url("search/jql")
+        response = await self._client.post(
+            url,
+            json={
+                "jql": jql_query,
+                "fields": list(RESPONSE_JIRA_ISSUE_FIELDS),
+                "maxResults": max_results,
+            },
+        )
+
+        response.raise_for_status()
+        raw_issues = response.json().get("issues", [])
+        issues = [Issue(**issue) for issue in raw_issues]
+        return issues
+
     async def get_jira_issue(self, issue_key: str) -> Issue:
         """
         Get a Jira issue by its key.
@@ -128,9 +171,7 @@ class JiraClient:
             httpx.HTTPStatusError: If the API request fails
         """
         url = await self._get_full_url(f"issue/{issue_key}")
-        response = await self._client.get(
-            url, params={"fields": "id,key,summary,status,reporter,assignee,created,updated"}
-        )
+        response = await self._client.get(url, params={"fields": RESPONSE_JIRA_ISSUE_FIELDS_STR})
 
         if response.status_code == HTTPStatus.NOT_FOUND:
             raise ValueError(f"{issue_key} not found")
