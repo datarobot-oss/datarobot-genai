@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
-    from .test_interactive import LLMResponse
+    from .openai_llm_mcp_client import LLMResponse
 
 from dotenv import load_dotenv
 

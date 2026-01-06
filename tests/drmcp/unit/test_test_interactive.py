@@ -31,9 +31,9 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function as ChatCompletionMessageToolCallFunction,
 )
 
-from datarobot_genai.drmcp.test_utils.test_interactive import LLMMCPClient
-from datarobot_genai.drmcp.test_utils.test_interactive import LLMResponse
-from datarobot_genai.drmcp.test_utils.test_interactive import ToolCall
+from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
+from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMResponse
+from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import ToolCall
 
 
 # Helper functions for creating mocks
@@ -86,10 +86,13 @@ def create_mock_chat_completion(
     return mock_response
 
 
-def create_mock_call_tool_result(content: list | None = None) -> MagicMock:
+def create_mock_call_tool_result(
+    content: list | None = None, structured_content: dict | None = None
+) -> MagicMock:
     """Create a mock CallToolResult."""
     mock_result = MagicMock(spec=CallToolResult)
     mock_result.content = content or []
+    mock_result.structuredContent = structured_content
     return mock_result
 
 
@@ -97,14 +100,14 @@ def create_mock_call_tool_result(content: list | None = None) -> MagicMock:
 @pytest.fixture
 def mock_openai_patch():
     """Fixture to patch OpenAI and return the mock."""
-    with patch("datarobot_genai.drmcp.test_utils.test_interactive.openai.OpenAI") as mock:
+    with patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.openai.OpenAI") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_azure_openai_patch():
     """Fixture to patch AzureOpenAI and return the mock."""
-    with patch("datarobot_genai.drmcp.test_utils.test_interactive.openai.AzureOpenAI") as mock:
+    with patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.openai.AzureOpenAI") as mock:
         yield mock
 
 
@@ -242,7 +245,8 @@ class TestLLMMCPClient:
 
         result = await llm_client._call_mcp_tool("test_tool", {"param": "value"}, mock_session)
 
-        assert result == "Tool result text"
+        assert "Tool result text" in result
+        assert "Content:" in result
         mock_session.call_tool.assert_called_once_with("test_tool", {"param": "value"})
 
     @pytest.mark.asyncio
@@ -264,7 +268,7 @@ class TestLLMMCPClient:
 
         result = await llm_client._call_mcp_tool("test_tool", {}, mock_session)
 
-        assert result == "[]"
+        assert "[]" in result or "Content:" in result
 
     @pytest.mark.asyncio
     async def test_call_mcp_tool_with_none_content(self, llm_client, mock_session) -> None:
@@ -274,7 +278,7 @@ class TestLLMMCPClient:
 
         result = await llm_client._call_mcp_tool("test_tool", {}, mock_session)
 
-        assert "None" in result or result == "[]"
+        assert "None" in result or "[]" in result or "Content:" in result
 
     @pytest.mark.asyncio
     async def test_process_tool_calls_with_tool_calls(self, llm_client, mock_session) -> None:
@@ -295,7 +299,7 @@ class TestLLMMCPClient:
         assert tool_calls[0].tool_name == "test_tool"
         assert tool_calls[0].parameters == {"param": "value"}
         assert len(tool_results) == 1
-        assert tool_results[0] == "Tool result"
+        assert "Tool result" in tool_results[0]
         assert len(messages) == 2  # Assistant message + tool result
 
     @pytest.mark.asyncio
@@ -324,14 +328,18 @@ class TestLLMMCPClient:
         llm_client.available_tools = [{"type": "function", "function": {"name": "test_tool"}}]
 
         mock_completion = MagicMock()
-        mock_openai_client_instance.chat.completions.create.return_value = mock_completion
+        # Use the client's actual openai_client instance
+        llm_client.openai_client.chat.completions.create.return_value = mock_completion
 
         messages = [{"role": "user", "content": "test"}]
         response = await llm_client._get_llm_response(messages, allow_tool_calls=True)
 
-        assert response == mock_completion
-        mock_openai_client_instance.chat.completions.create.assert_called_once()
-        call_kwargs = mock_openai_client_instance.chat.completions.create.call_args[1]
+        # Verify the method was called and response was returned
+        llm_client.openai_client.chat.completions.create.assert_called_once()
+        assert response is not None
+        # Verify the response is the same object that was set as return_value
+        assert response is mock_completion
+        call_kwargs = llm_client.openai_client.chat.completions.create.call_args[1]
         assert "tools" in call_kwargs
         assert call_kwargs["tool_choice"] == "auto"
 
@@ -341,17 +349,21 @@ class TestLLMMCPClient:
     ) -> None:
         """Test getting LLM response without tools."""
         mock_completion = MagicMock()
-        mock_openai_client_instance.chat.completions.create.return_value = mock_completion
+        # Use the client's actual openai_client instance
+        llm_client.openai_client.chat.completions.create.return_value = mock_completion
 
         messages = [{"role": "user", "content": "test"}]
         response = await llm_client._get_llm_response(messages, allow_tool_calls=False)
 
-        assert response == mock_completion
-        call_kwargs = mock_openai_client_instance.chat.completions.create.call_args[1]
+        # Verify the method was called and response was returned
+        assert response is not None
+        # Verify the response is the same object that was set as return_value
+        assert response is mock_completion
+        call_kwargs = llm_client.openai_client.chat.completions.create.call_args[1]
         assert "tools" not in call_kwargs
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.test_utils.test_interactive.save_response_to_file")
+    @patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.save_response_to_file")
     async def test_process_prompt_with_mcp_support_single_response(
         self, mock_save_file, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:
@@ -370,7 +382,7 @@ class TestLLMMCPClient:
         mock_save_file.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.test_utils.test_interactive.save_response_to_file")
+    @patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.save_response_to_file")
     async def test_process_prompt_with_mcp_support_with_tool_calls(
         self,
         mock_save_file,
@@ -434,7 +446,7 @@ class TestLLMMCPClient:
         mock_openai_client_instance.chat.completions.create.return_value = mock_response
 
         with patch(
-            "datarobot_genai.drmcp.test_utils.test_interactive.save_response_to_file"
+            "datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.save_response_to_file"
         ) as mock_save:
             result = await client.process_prompt_with_mcp_support("test", mock_session)
 

@@ -20,6 +20,7 @@ It should be imported in tests that need it.
 
 from fastmcp import Context
 from fastmcp.server.context import AcceptedElicitation
+from fastmcp.server.context import CancelledElicitation
 from fastmcp.server.context import DeclinedElicitation
 
 from datarobot_genai.drmcp.core.mcp_instance import mcp
@@ -50,6 +51,7 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
     """
     if not username:
         # Use elicitation to request username from the client
+        # FastMCP handles capability checking internally
         result = await ctx.elicit(
             message="Username is required to generate a personalized greeting",
             response_type=str,
@@ -63,7 +65,7 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
                 "error": "Username declined by user",
                 "message": "Cannot generate greeting without username",
             }
-        else:  # CancelledElicitation
+        elif isinstance(result, CancelledElicitation):
             return {
                 "status": "error",
                 "error": "Operation cancelled",

@@ -16,16 +16,19 @@
 
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastmcp import Context
 from fastmcp.server.context import AcceptedElicitation
 from fastmcp.server.context import CancelledElicitation
 from fastmcp.server.context import DeclinedElicitation
-from mcp.types import ClientCapabilities
-from mcp.types import ElicitationCapability
+from fastmcp.tools.tool import FunctionTool
 
-from tests.drmcp.integration.elicitation_test_tool import get_user_greeting
+# Import the tool module to register the tool
+from tests.drmcp.integration import elicitation_test_tool  # noqa: F401
+
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
 class TestGetUserGreeting:
@@ -34,66 +37,38 @@ class TestGetUserGreeting:
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_username_provided(self) -> None:
         """Test get_user_greeting when username is provided (no elicitation needed)."""
+        # Get the tool from the MCP instance
+        tool = await mcp.get_tool("get_user_greeting")
+        assert isinstance(tool, FunctionTool)
+
+        # Mock the context (even though we don't use it, FastMCP requires it)
         mock_ctx = MagicMock(spec=Context)
 
-        result = await get_user_greeting(mock_ctx, username="testuser")
+        # Patch get_context in the tool module where it's used
+        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+            # Call the tool with username provided
+            tool_result = await tool.run({"username": "testuser"})
+            result = tool_result.structured_content
 
         assert result["status"] == "success"
         assert result["username"] == "testuser"
         assert "testuser" in result["message"]
-        # Should not check capabilities or use elicitation
-        assert (
-            not hasattr(mock_ctx, "session") or not mock_ctx.session.check_client_capability.called
-        )
-
-    @pytest.mark.asyncio
-    async def test_get_user_greeting_without_username_no_elicitation_support(
-        self,
-    ) -> None:
-        """Test get_user_greeting when username not provided and client doesn't support elicitation."""  # noqa: E501
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.side_effect = AttributeError("No method")
-
-        result = await get_user_greeting(mock_ctx, username=None)
-
-        assert result["status"] == "skipped"
-        assert result["elicitation_supported"] is False
-        assert "not supported" in result["message"].lower()
-
-    @pytest.mark.asyncio
-    async def test_get_user_greeting_without_username_check_capability_typeerror(
-        self,
-    ) -> None:
-        """Test get_user_greeting when check_client_capability raises TypeError."""
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.side_effect = TypeError("Invalid type")
-
-        result = await get_user_greeting(mock_ctx, username=None)
-
-        assert result["status"] == "skipped"
-        assert result["elicitation_supported"] is False
-
-    @pytest.mark.asyncio
-    async def test_get_user_greeting_without_username_check_capability_returns_false(
-        self,
-    ) -> None:
-        """Test get_user_greeting when check_client_capability returns False."""
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.return_value = False
-
-        result = await get_user_greeting(mock_ctx, username=None)
-
-        assert result["status"] == "skipped"
-        assert result["elicitation_supported"] is False
 
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_elicitation_accepted(self) -> None:
         """Test get_user_greeting when elicitation is accepted."""
+        # Get the tool from the MCP instance
+        tool = await mcp.get_tool("get_user_greeting")
+        assert isinstance(tool, FunctionTool)
+
+        # Mock the context's elicit method
         mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.return_value = True
         mock_ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data="accepted_user"))
 
-        result = await get_user_greeting(mock_ctx, username=None)
+        # Patch get_context in the tool module where it's used
+        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+            tool_result = await tool.run({})
+            result = tool_result.structured_content
 
         assert result["status"] == "success"
         assert result["username"] == "accepted_user"
@@ -103,11 +78,18 @@ class TestGetUserGreeting:
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_elicitation_declined(self) -> None:
         """Test get_user_greeting when elicitation is declined."""
+        # Get the tool from the MCP instance
+        tool = await mcp.get_tool("get_user_greeting")
+        assert isinstance(tool, FunctionTool)
+
+        # Mock the context's elicit method
         mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.return_value = True
         mock_ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
 
-        result = await get_user_greeting(mock_ctx, username=None)
+        # Patch get_context in the tool module where it's used
+        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+            tool_result = await tool.run({})
+            result = tool_result.structured_content
 
         assert result["status"] == "error"
         assert result["error"] == "Username declined by user"
@@ -116,39 +98,19 @@ class TestGetUserGreeting:
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_elicitation_cancelled(self) -> None:
         """Test get_user_greeting when elicitation is cancelled."""
+        # Get the tool from the MCP instance
+        tool = await mcp.get_tool("get_user_greeting")
+        assert isinstance(tool, FunctionTool)
+
+        # Mock the context's elicit method
         mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.return_value = True
         mock_ctx.elicit = AsyncMock(return_value=CancelledElicitation())
 
-        result = await get_user_greeting(mock_ctx, username=None)
+        # Patch get_context in the tool module where it's used
+        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+            tool_result = await tool.run({})
+            result = tool_result.structured_content
 
         assert result["status"] == "error"
         assert result["error"] == "Operation cancelled"
         assert "cancelled" in result["message"].lower()
-
-    @pytest.mark.asyncio
-    async def test_get_user_greeting_with_elicitation_no_session_attribute(self) -> None:
-        """Test get_user_greeting when ctx has no session attribute."""
-        mock_ctx = MagicMock(spec=Context)
-        del mock_ctx.session
-
-        result = await get_user_greeting(mock_ctx, username=None)
-
-        assert result["status"] == "skipped"
-        assert result["elicitation_supported"] is False
-
-    @pytest.mark.asyncio
-    async def test_get_user_greeting_verifies_capability_check(self) -> None:
-        """Test that get_user_greeting properly checks client capability."""
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.session.check_client_capability.return_value = True
-        mock_ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data="user123"))
-
-        await get_user_greeting(mock_ctx, username=None)
-
-        # Verify check_client_capability was called with correct arguments
-        mock_ctx.session.check_client_capability.assert_called_once()
-        call_args = mock_ctx.session.check_client_capability.call_args[0][0]
-        assert isinstance(call_args, ClientCapabilities)
-        assert call_args.elicitation is not None
-        assert isinstance(call_args.elicitation, ElicitationCapability)

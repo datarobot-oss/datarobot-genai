@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .test_interactive import LLMResponse
+from .openai_llm_mcp_client import LLMResponse
 
 
 class ToolCallTestExpectations(BaseModel):

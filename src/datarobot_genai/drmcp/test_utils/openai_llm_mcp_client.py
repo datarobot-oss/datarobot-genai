@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+from ast import literal_eval
 from typing import Any
 
 import openai
@@ -44,12 +45,39 @@ class LLMResponse:
 
 
 class LLMMCPClient:
-    """Client for interacting with LLMs via MCP."""
+    """
+    Client for interacting with LLMs via MCP.
 
-    def __init__(self, config: str):
-        """Initialize the LLM MCP client."""
+    Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
+    Tools using FastMCP's built-in elicitation will work automatically.
+    """
+
+    def __init__(
+        self,
+        config: str,
+    ):
+        """
+        Initialize the LLM MCP client.
+
+        Args:
+            config: Configuration string or dict with:
+                - openai_api_key: OpenAI API key
+                - openai_api_base: Optional Azure OpenAI endpoint
+                - openai_api_deployment_id: Optional Azure deployment ID
+                - openai_api_version: Optional Azure API version
+                - model: Model name (default: "gpt-3.5-turbo")
+                - save_llm_responses: Whether to save responses (default: True)
+        """
         # Parse config string to extract parameters
-        config_dict = eval(config) if isinstance(config, str) else config
+        if isinstance(config, str):
+            # Try JSON first (safer), fall back to literal_eval for Python dict strings
+            try:
+                config_dict = json.loads(config)
+            except json.JSONDecodeError:
+                # Fall back to literal_eval for Python dict literal strings
+                config_dict = literal_eval(config)
+        else:
+            config_dict = config
 
         openai_api_key = config_dict.get("openai_api_key")
         openai_api_base = config_dict.get("openai_api_base")
@@ -93,7 +121,21 @@ class LLMMCPClient:
     async def _call_mcp_tool(
         self, tool_name: str, parameters: dict[str, Any], mcp_session: ClientSession
     ) -> str:
-        """Call an MCP tool and return the result as a string."""
+        """
+        Call an MCP tool and return the result as a string.
+
+        Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
+        Tools using FastMCP's built-in elicitation will work automatically.
+
+        Args:
+            tool_name: Name of the tool to call
+            parameters: Parameters to pass to the tool
+            mcp_session: MCP client session
+
+        Returns
+        -------
+            Result text from the tool call
+        """
         result: CallToolResult = await mcp_session.call_tool(tool_name, parameters)
         content = (
             result.content[0].text
@@ -177,7 +219,26 @@ class LLMMCPClient:
     async def process_prompt_with_mcp_support(
         self, prompt: str, mcp_session: ClientSession, output_file_name: str = ""
     ) -> LLMResponse:
-        """Process a prompt with MCP tool support."""
+        """
+        Process a prompt with MCP tool support and elicitation handling.
+
+        This method:
+        1. Adds MCP tools to available tools
+        2. Sends prompt to LLM
+        3. Processes tool calls
+        4. Continues until LLM provides final response
+
+        Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
+
+        Args:
+            prompt: User prompt
+            mcp_session: MCP client session
+            output_file_name: Optional file name to save response
+
+        Returns
+        -------
+            LLMResponse with content, tool calls, and tool results
+        """
         # Add MCP tools to available tools
         await self._add_mcp_tool_to_available_tools(mcp_session)
 
@@ -191,8 +252,10 @@ class LLMMCPClient:
                 "content": (
                     "You are a helpful AI assistant that can use tools to help users. "
                     "If you need more information to provide a complete response, you can make "
-                    "multiple tool calls. When dealing with file paths, use them as raw paths "
-                    "without converting to file:// URLs."
+                    "multiple tool calls or ask the user for more info, but prefer tool calls "
+                    "when possible. "
+                    "When dealing with file paths, use them as raw paths without converting "
+                    "to file:// URLs."
                 ),
             },
             {"role": "user", "content": prompt},
