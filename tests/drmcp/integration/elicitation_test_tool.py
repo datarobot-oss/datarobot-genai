@@ -51,25 +51,35 @@ async def get_user_greeting(ctx: Context, username: str | None = None) -> dict:
     """
     if not username:
         # Use elicitation to request username from the client
-        # FastMCP handles capability checking internally
-        result = await ctx.elicit(
-            message="Username is required to generate a personalized greeting",
-            response_type=str,
-        )
+        try:
+            result = await ctx.elicit(
+                message="Username is required to generate a personalized greeting",
+                response_type=str,
+            )
 
-        if isinstance(result, AcceptedElicitation):
-            username = result.data
-        elif isinstance(result, DeclinedElicitation):
+            if isinstance(result, AcceptedElicitation):
+                username = result.data
+            elif isinstance(result, DeclinedElicitation):
+                return {
+                    "status": "error",
+                    "error": "Username declined by user",
+                    "message": "Cannot generate greeting without username",
+                }
+            elif isinstance(result, CancelledElicitation):
+                return {
+                    "status": "error",
+                    "error": "Operation cancelled",
+                    "message": "Greeting request was cancelled",
+                }
+        except Exception:
+            # Elicitation not supported by client - return graceful skip
             return {
-                "status": "error",
-                "error": "Username declined by user",
-                "message": "Cannot generate greeting without username",
-            }
-        elif isinstance(result, CancelledElicitation):
-            return {
-                "status": "error",
-                "error": "Operation cancelled",
-                "message": "Greeting request was cancelled",
+                "status": "skipped",
+                "message": (
+                    "Elicitation not supported by client. "
+                    "Username parameter is required when client does not support elicitation."
+                ),
+                "elicitation_supported": False,
             }
 
     return {

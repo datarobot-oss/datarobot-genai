@@ -42,9 +42,8 @@ tasks:
           lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
         fi
       - |
-        OTEL_ATTRIBUTES='{"environment":"test","service.instance.id":"ete-tests"}' \
-        OTEL_COLLECTOR_BASE_URL=http://localhost:4318 \
-        OTEL_ENTITY_ID=deployment-68924b8b51102f055bef861c \
+        OTEL_ENABLED=false \
+        OTEL_SDK_DISABLED=true \
         MCP_SERVER_PORT={{.PORT}} task drmcp-ete-test-server &
       - |
         for i in {1..30}; do
@@ -103,9 +102,15 @@ tasks:
 
   drmcp-integration:
     desc: "Run DR MCP Library integration tests"
+    vars:
+      PORT: 8652
     cmds:
+      - task: drmcp-test-dev-server-background
+      - defer: |
+          echo "Stopping DR MCP Library MCP Server"
+          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
       - echo "Running DR MCP Library integration tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
+      - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp/ DR_MCP_SERVER_HTTP_URL=http://localhost:{{.PORT}}/ uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
     silent: true
 
   drmcp-acceptance:

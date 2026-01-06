@@ -29,48 +29,10 @@ so we test that the server respects whether the client provides an elicitation c
 """
 
 import pytest
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import ElicitRequestParams
 from mcp.types import ElicitResult
 
-from datarobot_genai.drmcp import get_headers
-
-# Import test tool to register it
-from . import elicitation_test_tool  # noqa: F401
-
-
-@pytest.fixture
-async def mcp_session(http_mcp_server):
-    """Fixture to create an MCP session."""
-    async with streamablehttp_client(url=http_mcp_server, headers=get_headers()) as (
-        read_stream,
-        write_stream,
-        _,
-    ):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            yield session
-
-
-@pytest.fixture
-async def mcp_session_with_elicitation(http_mcp_server):
-    """Fixture to create an MCP session with elicitation callback."""
-
-    async def elicitation_handler(context, params: ElicitRequestParams) -> ElicitResult:
-        """Decline all elicitation requests."""
-        return ElicitResult(action="decline")
-
-    async with streamablehttp_client(url=http_mcp_server, headers=get_headers()) as (
-        read_stream,
-        write_stream,
-        _,
-    ):
-        async with ClientSession(
-            read_stream, write_stream, elicitation_callback=elicitation_handler
-        ) as session:
-            await session.initialize()
-            yield session
+from datarobot_genai.drmcp import integration_test_mcp_session
 
 
 @pytest.mark.asyncio
@@ -83,8 +45,6 @@ async def mcp_session_with_elicitation(http_mcp_server):
     ],
 )
 async def test_elicitation_capability_negotiation(
-    mcp_session,
-    mcp_session_with_elicitation,
     has_elicitation_callback,
     should_allow_elicitation,
 ):
@@ -97,65 +57,71 @@ async def test_elicitation_capability_negotiation(
     3. Server can send elicitation if client provides callback
     4. Server MUST NOT send elicitation if client doesn't provide callback
     """
-    # Use session with or without elicitation callback
-    session = mcp_session_with_elicitation if has_elicitation_callback else mcp_session
 
-    init_result = await session.initialize()
+    async def elicitation_handler(context, params: ElicitRequestParams) -> ElicitResult:
+        """Decline all elicitation requests."""
+        return ElicitResult(action="decline")
 
-    # Verify server MUST return capabilities
-    assert init_result is not None, "Server MUST return initialize result"
-    assert init_result.capabilities is not None, (
-        "Server MUST return capabilities according to MCP specification"
-    )
+    callback = elicitation_handler if has_elicitation_callback else None
 
-    # Verify server does NOT announce elicitation (it's a client capability)
-    capabilities_dict = init_result.capabilities.model_dump(exclude_none=True)
-    assert "elicitation" not in capabilities_dict, (
-        f"Server should NOT announce elicitation capability. Got: {capabilities_dict}"
-    )
+    async with integration_test_mcp_session(elicitation_callback=callback) as session:
+        # Get the init result stored by integration_test_mcp_session
+        init_result = session._init_result  # type: ignore[attr-defined]
 
-    # Verify the test tool is available
-    tools_result = await session.list_tools()
-    tool_names = [tool.name for tool in tools_result.tools]
-    assert "get_user_greeting" in tool_names, "Test tool should be available"
+        # Verify server MUST return capabilities
+        assert init_result is not None, "Server MUST return initialize result"
+        assert init_result.capabilities is not None, (
+            "Server MUST return capabilities according to MCP specification"
+        )
 
-    # Call the tool without username - it will try to use elicitation
-    result = await session.call_tool("get_user_greeting", {})
+        # Verify server does NOT announce elicitation (it's a client capability)
+        capabilities_dict = init_result.capabilities.model_dump(exclude_none=True)
+        assert "elicitation" not in capabilities_dict, (
+            f"Server should NOT announce elicitation capability. Got: {capabilities_dict}"
+        )
 
-    if should_allow_elicitation:
-        # Client supports elicitation - server CAN send elicitation request
-        # Tool should not fail with capability error (may wait for user response)
-        if result.isError:
-            error_text = (
+        # Verify the test tool is available
+        tools_result = await session.list_tools()
+        tool_names = [tool.name for tool in tools_result.tools]
+        assert "get_user_greeting" in tool_names, "Test tool should be available"
+
+        # Call the tool without username - it will try to use elicitation
+        result = await session.call_tool("get_user_greeting", {})
+
+        if should_allow_elicitation:
+            # Client supports elicitation - server CAN send elicitation request
+            # Tool should not fail with capability error (may wait for user response)
+            if result.isError:
+                error_text = (
+                    result.content[0].text
+                    if result.content and hasattr(result.content[0], "text")
+                    else str(result.content)
+                )
+                # Should not be a capability/elicitation support error
+                assert not (
+                    "capability" in error_text.lower()
+                    and (
+                        "not supported" in error_text.lower()
+                        or "does not support" in error_text.lower()
+                    )
+                ), (
+                    f"Tool should not fail with capability error when client supports "
+                    f"elicitation. Got: {error_text}"
+                )
+        else:
+            # Client doesn't support elicitation - server MUST NOT send elicitation
+            # According to MCP spec, tool should return a non-error response (no-op)
+            # indicating that elicitation is not supported
+            assert not result.isError, (
+                "Tool call should NOT fail when client doesn't support elicitation. "
+                "According to MCP spec, it should return a no-op response."
+            )
+            result_text = (
                 result.content[0].text
                 if result.content and hasattr(result.content[0], "text")
                 else str(result.content)
             )
-            # Should not be a capability/elicitation support error
-            assert not (
-                "capability" in error_text.lower()
-                and (
-                    "not supported" in error_text.lower()
-                    or "does not support" in error_text.lower()
-                )
-            ), (
-                f"Tool should not fail with capability error when client supports elicitation. "
-                f"Got: {error_text}"
+            # Verify the response indicates elicitation is not supported
+            assert "elicitation" in result_text.lower() or "skipped" in result_text.lower(), (
+                f"Response should mention elicitation or be marked as skipped. Got: {result_text}"
             )
-    else:
-        # Client doesn't support elicitation - server MUST NOT send elicitation
-        # According to MCP spec, tool should return a non-error response (no-op)
-        # indicating that elicitation is not supported
-        assert not result.isError, (
-            "Tool call should NOT fail when client doesn't support elicitation. "
-            "According to MCP spec, it should return a no-op response."
-        )
-        result_text = (
-            result.content[0].text
-            if result.content and hasattr(result.content[0], "text")
-            else str(result.content)
-        )
-        # Verify the response indicates elicitation is not supported
-        assert "elicitation" in result_text.lower() or "skipped" in result_text.lower(), (
-            f"Response should mention elicitation or be marked as skipped. Got: {result_text}"
-        )

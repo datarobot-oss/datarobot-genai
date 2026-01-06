@@ -31,9 +31,9 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function as ChatCompletionMessageToolCallFunction,
 )
 
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMResponse
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import ToolCall
+from datarobot_genai.drmcp.test_utils.test_interactive import LLMMCPClient
+from datarobot_genai.drmcp.test_utils.test_interactive import LLMResponse
+from datarobot_genai.drmcp.test_utils.test_interactive import ToolCall
 
 
 # Helper functions for creating mocks
@@ -321,9 +321,7 @@ class TestLLMMCPClient:
         assert len(messages) == 2
 
     @pytest.mark.asyncio
-    async def test_get_llm_response_with_tools(
-        self, llm_client, mock_openai_client_instance
-    ) -> None:
+    async def test_get_llm_response_with_tools(self, llm_client) -> None:
         """Test getting LLM response with tools enabled."""
         llm_client.available_tools = [{"type": "function", "function": {"name": "test_tool"}}]
 
@@ -344,9 +342,7 @@ class TestLLMMCPClient:
         assert call_kwargs["tool_choice"] == "auto"
 
     @pytest.mark.asyncio
-    async def test_get_llm_response_without_tools(
-        self, llm_client, mock_openai_client_instance
-    ) -> None:
+    async def test_get_llm_response_without_tools(self, llm_client) -> None:
         """Test getting LLM response without tools."""
         mock_completion = MagicMock()
         # Use the client's actual openai_client instance
