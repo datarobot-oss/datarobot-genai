@@ -206,6 +206,8 @@ source = ["datarobot_genai"]
 omit = [
     "*/__init__.py",
     "*/test_utils/*",
+    # nat requires Python >=3.11, can't be imported on 3.10 for coverage
+    "*/nat/*",
 ]
 
 [tool.coverage.report]
