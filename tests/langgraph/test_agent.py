@@ -27,9 +27,9 @@ from langchain_core.messages import HumanMessage
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph.message import MessagesState
-from langgraph.graph.state import Command
-from langgraph.graph.state import StateGraph
+from langgraph.graph import MessagesState
+from langgraph.graph import StateGraph
+from langgraph.types import Command
 
 from datarobot_genai.core.chat.responses import CustomModelChatResponse
 from datarobot_genai.core.chat.responses import to_custom_model_chat_response
