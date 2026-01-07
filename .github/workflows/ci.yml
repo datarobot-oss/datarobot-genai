@@ -51,7 +51,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          uv sync --extra crewai --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra drmcp --dev
 
       - name: Lint (ruff format/check)
         run: |
@@ -164,7 +164,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          uv sync --extra crewai --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra drmcp --dev
 
       - name: Run all tests
         run: |
@@ -230,7 +230,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          uv sync --extra crewai --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra drmcp --dev
 
   version-check:
     runs-on: ubuntu-latest
