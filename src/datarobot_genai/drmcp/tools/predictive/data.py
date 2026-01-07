@@ -18,10 +18,6 @@ from urllib.parse import urlparse
 
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
-from typing import Annotated
-
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
@@ -57,7 +53,7 @@ async def upload_dataset_to_ai_catalog(
     # Get client
     client = get_sdk_client()
 
-    # If file path is provided, create dataset from file
+    # If file path is provided, create dataset from file.
     if file_path:
         # Does file exist?
         if not os.path.exists(file_path):
