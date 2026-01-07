@@ -164,7 +164,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --extra crewai --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra drmcp --dev
+          uv sync --all-extras --dev
 
       - name: Run all tests
         run: |
