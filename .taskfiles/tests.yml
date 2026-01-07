@@ -15,7 +15,7 @@ tasks:
             NAT_IGNORED_TESTS=tests/nat/integration
             COV_FAIL_UNDER=80
           fi
-          uv run pytest --junitxml=test_results/test-results.xml \
+          uv run pytest --import-mode=importlib --junitxml=test_results/test-results.xml \
             --cov=datarobot_genai --cov-branch --cov-fail-under=${COV_FAIL_UNDER} --no-cov-on-fail \
             -vv -s tests \
             --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
