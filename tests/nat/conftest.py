@@ -19,4 +19,3 @@ try:
     import nat.data_models  # noqa: F401
 except ImportError:
     collect_ignore_glob = ["*.py", "**/*.py"]
-
