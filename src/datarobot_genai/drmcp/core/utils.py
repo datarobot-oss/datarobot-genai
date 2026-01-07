@@ -14,6 +14,7 @@
 import base64
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 import boto3
 from fastmcp.resources import HttpResource
@@ -129,3 +130,9 @@ def format_response_as_tool_result(data: bytes, content_type: str, charset: str)
         }
 
     return ToolResult(structured_content=payload)
+
+
+def is_valid_url(url: str) -> bool:
+    """Check if a URL is valid."""
+    result = urlparse(url)
+    return all([result.scheme, result.netloc])
