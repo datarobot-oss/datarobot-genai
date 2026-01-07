@@ -14,6 +14,10 @@
 
 import logging
 import os
+from typing import Annotated
+
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
@@ -21,44 +25,48 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"data", "management", "upload"})
-async def upload_dataset_to_ai_catalog(file_path: str) -> str:
-    """
-    Upload a dataset to the DataRobot AI Catalog.
-
-    Args:
-        file_path: Path to the file to upload.
-
-    Returns
-    -------
-        A string summary of the upload result.
-    """
-    client = get_sdk_client()
+@dr_mcp_tool(tags={"predictive", "data", "write", "upload", "catalog"})
+async def upload_dataset_to_ai_catalog(
+    file_path: Annotated[str, "The path to the dataset file to upload."],
+) -> ToolResult:
+    """Upload a dataset to the DataRobot AI Catalog."""
     if not os.path.exists(file_path):
         logger.error(f"File not found: {file_path}")
-        return f"File not found: {file_path}"
+        raise ToolError(f"File not found: {file_path}")
+
+    client = get_sdk_client()
     catalog_item = client.Dataset.create_from_file(file_path)
-    logger.info(f"Successfully uploaded dataset: {catalog_item.id}")
-    return f"AI Catalog ID: {catalog_item.id}"
+
+    return ToolResult(
+        content=f"Successfully uploaded dataset: {catalog_item.id}.",
+        structured_content={
+            "id": catalog_item.id,
+            "name": catalog_item.name,
+            "status": catalog_item.status,
+        },
+    )
 
 
-@dr_mcp_tool(tags={"data", "management", "list"})
-async def list_ai_catalog_items() -> str:
-    """
-    List all AI Catalog items (datasets) for the authenticated user.
-
-    Returns
-    -------
-        A string summary of the AI Catalog items with their IDs and names.
-    """
+@dr_mcp_tool(tags={"predictive", "data", "read", "list", "catalog"})
+async def list_ai_catalog_items() -> ToolResult:
+    """List all AI Catalog items (datasets) for the authenticated user."""
     client = get_sdk_client()
     datasets = client.Dataset.list()
+
     if not datasets:
         logger.info("No AI Catalog items found")
-        return "No AI Catalog items found."
-    result = "\n".join(f"{ds.id}: {ds.name}" for ds in datasets)
-    logger.info(f"Found {len(datasets)} AI Catalog items")
-    return result
+        return ToolResult(
+            content="No AI Catalog items found.",
+            structured_content={"datasets": []},
+        )
+
+    return ToolResult(
+        content=f"Found {len(datasets)} AI Catalog items.",
+        structured_content={
+            "datasets": [{"id": ds.id, "name": ds.name} for ds in datasets],
+            "count": len(datasets),
+        },
+    )
 
 
 # from fastmcp import Context
