@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.2.17"
+version = "0.2.18"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -205,6 +205,9 @@ asyncio_mode = "auto"
 source = ["datarobot_genai"]
 omit = [
     "*/__init__.py",
+    "*/test_utils/*",
+    # nat requires Python >=3.11, can't be imported on 3.10 for coverage
+    "*/nat/*",
 ]
 
 [tool.coverage.report]

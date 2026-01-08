@@ -92,10 +92,6 @@ class TestDuplicateBehavior:
 
             test_mcp = TaggedFastMCP(
                 name=config.mcp_server_name,
-                port=config.mcp_server_port,
-                log_level=config.mcp_server_log_level,
-                host=config.mcp_server_host,
-                stateless_http=True,
                 on_duplicate_tools=config.tool_registration_duplicate_behavior,
                 on_duplicate_prompts=config.prompt_registration_duplicate_behavior,
             )
