@@ -45,13 +45,13 @@ jobs:
           path: |
             .venv
             ~/.cache/uv
-          key: uv-v2-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-v2-${{ runner.os }}-${{ matrix.python-version }}-
+            uv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
         run: |
-          uv sync --extra crewai --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra drmcp --dev
+          uv sync --all-extras --dev
 
       - name: Lint (ruff format/check)
         run: |
@@ -100,9 +100,9 @@ jobs:
           path: |
             .venv
             ~/.cache/uv
-          key: uv-v2-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-v2-${{ runner.os }}-${{ matrix.python-version }}-
+            uv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
         run: |
@@ -158,9 +158,9 @@ jobs:
           path: |
             .venv
             ~/.cache/uv
-          key: uv-v2-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-v2-${{ runner.os }}-${{ matrix.python-version }}-
+            uv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
         run: |
@@ -224,13 +224,13 @@ jobs:
           path: |
             .venv
             ~/.cache/uv
-          key: uv-v2-${{ runner.os }}-3.12-${{ hashFiles('uv.lock') }}
+          key: uv-${{ runner.os }}-3.12-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-v2-${{ runner.os }}-3.12-
+            uv-${{ runner.os }}-3.12-
 
       - name: Install dependencies
         run: |
-          uv sync --extra crewai --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra drmcp --dev
+          uv sync --all-extras --dev
 
   version-check:
     runs-on: ubuntu-latest
