@@ -16,8 +16,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive import data
 
 
@@ -32,16 +33,88 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
         mock_catalog_item.id = "12345"
         mock_catalog_item.name = "test_dataset"
         mock_catalog_item.status = "completed"
+        mock_catalog_item.version_id = None
+        mock_catalog_item.name = "somefile.csv"
         mock_client.Dataset.create_from_file.return_value = mock_catalog_item
         mock_get_client.return_value = mock_client
 
         result = await data.upload_dataset_to_ai_catalog("somefile.csv")
         mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
-        # Access text from TextContent object
-        assert "Successfully uploaded dataset: 12345" in result.content[0].text
-        assert result.structured_content["id"] == "12345"
-        assert result.structured_content["name"] == "test_dataset"
-        assert result.structured_content["status"] == "completed"
+        assert isinstance(result, ToolResult)
+        assert result.content[0].text == "Successfully uploaded dataset: 12345"
+        assert result.structured_content == {
+            "dataset_id": "12345",
+            "dataset_version_id": None,
+            "dataset_name": "somefile.csv",
+        }
+
+
+@pytest.mark.asyncio
+async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+    ):
+        mock_client = MagicMock()
+        mock_catalog_item = MagicMock()
+        mock_catalog_item.id = "12345"
+        mock_catalog_item.version_id = None
+        mock_catalog_item.name = "somefile.csv"
+        mock_client.Dataset.create_from_url.return_value = mock_catalog_item
+        mock_get_client.return_value = mock_client
+
+        result = await data.upload_dataset_to_ai_catalog(
+            file_url="https://example.com/somefile.csv"
+        )
+        mock_client.Dataset.create_from_url.assert_called_once_with(
+            "https://example.com/somefile.csv"
+        )
+        assert isinstance(result, ToolResult)
+        assert result.content[0].text == "Successfully uploaded dataset: 12345"
+        assert result.structured_content == {
+            "dataset_id": "12345",
+            "dataset_version_id": None,
+            "dataset_name": "somefile.csv",
+        }
+
+
+@pytest.mark.asyncio
+async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+    ):
+        mock_client = MagicMock()
+        mock_catalog_item = MagicMock()
+        mock_catalog_item.id = "12345"
+        mock_catalog_item.version_id = None
+        mock_catalog_item.name = "somefile.csv"
+        mock_client.Dataset.create_from_url.return_value = mock_catalog_item
+        mock_get_client.return_value = mock_client
+
+        result = await data.upload_dataset_to_ai_catalog(file_url="https:notavalidurl/somefile.csv")
+        assert isinstance(result, ToolError)
+        assert str(result) == "Invalid file URL: https:notavalidurl/somefile.csv"
+
+
+@pytest.mark.asyncio
+async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
+    ):
+        result = await data.upload_dataset_to_ai_catalog()
+        assert isinstance(result, ToolError)
+        assert str(result) == "Either file_path or file_url must be provided."
+
+
+@pytest.mark.asyncio
+async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> None:
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
+    ):
+        result = await data.upload_dataset_to_ai_catalog(
+            file_path="somefile.csv", file_url="https://example.com/somefile.csv"
+        )
+        assert isinstance(result, ToolError)
+        assert str(result) == "Please provide either file_path or file_url, not both."
 
 
 @pytest.mark.asyncio
@@ -50,9 +123,9 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
         patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=False),
     ):
-        with pytest.raises(MCPError) as exc_info:
-            await data.upload_dataset_to_ai_catalog("nofile.csv")
-        assert "File not found: nofile.csv" in str(exc_info.value)
+        result = await data.upload_dataset_to_ai_catalog("nofile.csv")
+        assert isinstance(result, ToolError)
+        assert str(result) == "File not found: nofile.csv"
 
 
 @pytest.mark.asyncio
