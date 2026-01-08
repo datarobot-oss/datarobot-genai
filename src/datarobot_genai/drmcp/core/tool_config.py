@@ -29,6 +29,7 @@ class ToolType(str, Enum):
     PREDICTIVE = "predictive"
     JIRA = "jira"
     CONFLUENCE = "confluence"
+    GDRIVE = "gdrive"
 
 
 class ToolConfig(TypedDict):
@@ -63,6 +64,13 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="confluence",
         package_prefix="datarobot_genai.drmcp.tools.confluence",
         config_field_name="enable_confluence_tools",
+    ),
+    ToolType.GDRIVE: ToolConfig(
+        name="gdrive",
+        oauth_check=lambda config: config.is_gdrive_oauth_configured,
+        directory="gdrive",
+        package_prefix="datarobot_genai.drmcp.tools.gdrive",
+        config_field_name="enable_gdrive_tools",
     ),
 }
 
