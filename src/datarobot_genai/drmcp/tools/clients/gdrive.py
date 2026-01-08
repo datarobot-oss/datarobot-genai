@@ -17,7 +17,6 @@
 import logging
 from typing import Annotated
 from typing import Any
-from typing import Self
 
 import httpx
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
@@ -94,7 +93,7 @@ class GoogleDriveFile(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any]) -> Self:
+    def from_api_response(cls, data: dict[str, Any]) -> "GoogleDriveFile":
         """Create a GoogleDriveFile from API response data."""
         return cls(
             id=data.get("id", "Unknown"),
@@ -238,7 +237,7 @@ class GoogleDriveClient:
             logger.debug(f"Auto-formatted query '{query}' to '{formatted_query}'")
         return formatted_query
 
-    async def __aenter__(self) -> Self:
+    async def __aenter__(self) -> "GoogleDriveClient":
         """Async context manager entry."""
         return self
 
