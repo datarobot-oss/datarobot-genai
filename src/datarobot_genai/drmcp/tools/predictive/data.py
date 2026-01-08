@@ -47,9 +47,9 @@ async def upload_dataset_to_ai_catalog(
             logger.error("File not found: %s", file_path)
             return ToolError(f"File not found: {file_path}")
         catalog_item = client.Dataset.create_from_file(file_path)
-    elif file_url:
+    else:
         # Does URL exist?
-        if not is_valid_url(file_url):
+        if file_url is None or not is_valid_url(file_url):
             logger.error("Invalid file URL: %s", file_url)
             return ToolError(f"Invalid file URL: {file_url}")
         catalog_item = client.Dataset.create_from_url(file_url)
