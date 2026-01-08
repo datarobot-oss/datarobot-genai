@@ -21,22 +21,16 @@ This server works standalone (base tools only) or detects and loads
 user modules if they exist in the project structure.
 """
 
-import sys
 from pathlib import Path
 from typing import Any
 
 from datarobot_genai.drmcp import create_mcp_server
 
-# Add the tests directory to the path so we can import test tools
-tests_dir = Path(__file__).resolve().parent.parent.parent.parent.parent / "tests"
-if str(tests_dir) not in sys.path:
-    sys.path.insert(0, str(tests_dir))
-
 # Import elicitation test tool to register it with the MCP server
 try:
-    from drmcp.integration import elicitation_test_tool  # noqa: F401
+    from datarobot_genai.drmcp.test_utils import elicitation_test_tool  # noqa: F401
 except ImportError:
-    # Tests directory not available (e.g., running in production)
+    # Test utils not available (e.g., running in production)
     pass
 
 # Import user components (will be used conditionally)

@@ -186,9 +186,6 @@ fixable = [
     "I001",   # isort import order within functions
     "PLC0415",# pylint import-outside-toplevel for controlled local imports
 ]
-"tests/**/*.py" = [
-    "INP001", # implicit-namespace-package: test directories don't need __init__.py
-]
 
 [tool.ruff.lint.isort]
 force-single-line = true
