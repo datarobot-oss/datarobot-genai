@@ -79,7 +79,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(
-            folder_id="0B8sNeWRxvhpmN19oaGNmdnp2bzQ", number_of_results=list_files_no_of_results
+            folder_id=gdrive_folder_id, number_of_results=list_files_no_of_results
         )
 
         async with ete_test_mcp_session() as session:
