@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive import data
 
 
@@ -24,37 +25,49 @@ from datarobot_genai.drmcp.tools.predictive import data
 async def test_upload_dataset_to_ai_catalog_success() -> None:
     with (
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
-        patch("os.path.exists", return_value=True),
+        patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
         mock_catalog_item.id = "12345"
+        mock_catalog_item.name = "test_dataset"
+        mock_catalog_item.status = "completed"
         mock_client.Dataset.create_from_file.return_value = mock_catalog_item
         mock_get_client.return_value = mock_client
 
         result = await data.upload_dataset_to_ai_catalog("somefile.csv")
         mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
-        assert "AI Catalog ID: 12345" in result
+        # Access text from TextContent object
+        assert "Successfully uploaded dataset: 12345" in result.content[0].text
+        assert result.structured_content["id"] == "12345"
+        assert result.structured_content["name"] == "test_dataset"
+        assert result.structured_content["status"] == "completed"
 
 
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
     with (
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
-        patch("os.path.exists", return_value=False),
+        patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=False),
     ):
-        result = await data.upload_dataset_to_ai_catalog("nofile.csv")
-        assert "File not found: nofile.csv" in result
+        with pytest.raises(MCPError) as exc_info:
+            await data.upload_dataset_to_ai_catalog("nofile.csv")
+        assert "File not found: nofile.csv" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_error() -> None:
-    with patch(
-        "datarobot_genai.drmcp.tools.predictive.data.get_sdk_client", side_effect=Exception("fail")
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+        patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=True),
     ):
+        mock_client = MagicMock()
+        mock_client.Dataset.create_from_file.side_effect = Exception("fail")
+        mock_get_client.return_value = mock_client
+
         with pytest.raises(Exception) as exc_info:
             await data.upload_dataset_to_ai_catalog("somefile.csv")
-        assert "Error in upload_dataset_to_ai_catalog: Exception: fail" == str(exc_info.value)
+        assert "fail" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -69,9 +82,17 @@ async def test_list_ai_catalog_items_success() -> None:
         mock_ds2.name = "ds2"
         mock_client.Dataset.list.return_value = [mock_ds1, mock_ds2]
         mock_get_client.return_value = mock_client
+
         result = await data.list_ai_catalog_items()
-        assert "1: ds1" in result
-        assert "2: ds2" in result
+        # Access text from TextContent object
+        content_text = result.content[0].text
+        assert "Found 2 AI Catalog items." in content_text
+        assert result.structured_content["count"] == 2
+        assert len(result.structured_content["datasets"]) == 2
+        assert result.structured_content["datasets"][0]["id"] == "1"
+        assert result.structured_content["datasets"][0]["name"] == "ds1"
+        assert result.structured_content["datasets"][1]["id"] == "2"
+        assert result.structured_content["datasets"][1]["name"] == "ds2"
 
 
 @pytest.mark.asyncio
@@ -80,15 +101,20 @@ async def test_list_ai_catalog_items_empty() -> None:
         mock_client = MagicMock()
         mock_client.Dataset.list.return_value = []
         mock_get_client.return_value = mock_client
+
         result = await data.list_ai_catalog_items()
-        assert "No AI Catalog items found." in result
+        # Access text from TextContent object
+        assert "No AI Catalog items found." in result.content[0].text
+        assert result.structured_content["datasets"] == []
 
 
 @pytest.mark.asyncio
 async def test_list_ai_catalog_items_error() -> None:
-    with patch(
-        "datarobot_genai.drmcp.tools.predictive.data.get_sdk_client", side_effect=Exception("fail")
-    ):
+    with patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.Dataset.list.side_effect = Exception("fail")
+        mock_get_client.return_value = mock_client
+
         with pytest.raises(Exception) as exc_info:
             await data.list_ai_catalog_items()
-        assert "Error in list_ai_catalog_items: Exception: fail" == str(exc_info.value)
+        assert "fail" in str(exc_info.value)
