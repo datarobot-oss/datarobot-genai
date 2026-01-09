@@ -252,3 +252,70 @@ async def confluence_search(
         content=f"Successfully executed CQL query and retrieved {n} result(s).",
         structured_content={"data": data, "count": n},
     )
+
+
+@dr_mcp_tool(tags={"confluence", "write", "update", "page"})
+async def confluence_update_page(
+    *,
+    page_id: Annotated[str, "The ID of the Confluence page to update."],
+    new_body_content: Annotated[
+        str,
+        "The full updated content of the page in Confluence Storage Format (XML) or raw text.",
+    ],
+    version_number: Annotated[
+        int,
+        "The current version number of the page, required to prevent update conflicts. "
+        "Get this from the confluence_get_page tool.",
+    ],
+) -> ToolResult:
+    """Update the content of an existing Confluence page.
+
+    Requires the current version number to ensure atomic updates.
+    Use this tool to update the body content of an existing Confluence page.
+    The version_number is required for optimistic locking - it prevents overwriting
+    changes made by others since you last fetched the page.
+
+    Usage:
+        page_id="856391684", new_body_content="<p>New content</p>", version_number=5
+
+    Important: Always fetch the page first using confluence_get_page to get the
+    current version number before updating.
+    """
+    if not page_id:
+        raise ToolError("Argument validation error: 'page_id' cannot be empty.")
+
+    if not new_body_content:
+        raise ToolError("Argument validation error: 'new_body_content' cannot be empty.")
+
+    if version_number < 1:
+        raise ToolError(
+            "Argument validation error: 'version_number' must be a positive integer (>= 1)."
+        )
+
+    access_token = await get_atlassian_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with ConfluenceClient(access_token) as client:
+            page_response = await client.update_page(
+                page_id=page_id,
+                new_body_content=new_body_content,
+                version_number=version_number,
+            )
+    except ConfluenceError as e:
+        logger.error(f"Confluence error updating page: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error updating Confluence page: {e}")
+        raise ToolError(
+            f"An unexpected error occurred while updating Confluence page '{page_id}': {str(e)}"
+        )
+
+    return ToolResult(
+        content=f"Page ID {page_id} updated successfully to version {page_response.version}.",
+        structured_content={
+            "updated_page_id": page_response.page_id,
+            "new_version": page_response.version,
+        },
+    )

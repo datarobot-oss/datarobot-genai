@@ -50,6 +50,7 @@ class ConfluencePage(BaseModel):
     space_id: str = Field(..., description="Space ID where the page resides")
     space_key: str | None = Field(None, description="Space key (if available)")
     body: str = Field(..., description="Page content in storage format (HTML-like)")
+    version: int = Field(..., description="Current version number of the page")
 
     def as_flat_dict(self) -> dict[str, Any]:
         """Return a flat dictionary representation of the page."""
@@ -59,6 +60,7 @@ class ConfluencePage(BaseModel):
             "space_id": self.space_id,
             "space_key": self.space_key,
             "body": self.body,
+            "version": self.version,
         }
 
 
@@ -111,7 +113,7 @@ class ConfluenceClient:
     At the moment of creating this client, official Confluence SDK is not supporting async.
     """
 
-    EXPAND_FIELDS = "body.storage,space"
+    EXPAND_FIELDS = "body.storage,space,version"
 
     def __init__(self, access_token: str) -> None:
         """
@@ -164,6 +166,8 @@ class ConfluenceClient:
         space = data.get("space", {})
         space_key = space.get("key") if isinstance(space, dict) else None
         space_id = space.get("id", "") if isinstance(space, dict) else data.get("spaceId", "")
+        version_data = data.get("version", {})
+        version_number = version_data.get("number", 1) if isinstance(version_data, dict) else 1
 
         return ConfluencePage(
             page_id=str(data.get("id", "")),
@@ -171,6 +175,7 @@ class ConfluenceClient:
             space_id=str(space_id),
             space_key=space_key,
             body=body_content,
+            version=version_number,
         )
 
     async def get_page_by_id(self, page_id: str) -> ConfluencePage:
@@ -337,6 +342,93 @@ class ConfluenceClient:
 
         response.raise_for_status()
 
+        return self._parse_response(response.json())
+
+    async def update_page(
+        self,
+        page_id: str,
+        new_body_content: str,
+        version_number: int,
+    ) -> ConfluencePage:
+        """
+        Update the content of an existing Confluence page.
+
+        Args:
+            page_id: The ID of the page to update
+            new_body_content: The new content in Confluence Storage Format (XML) or raw text
+            version_number: The current version number of the page (for optimistic locking).
+                           The update will increment this by 1.
+
+        Returns
+        -------
+            ConfluencePage with the updated page data including the new version number
+
+        Raises
+        ------
+            ConfluenceError: If page not found (404), version conflict (409),
+                            permission denied (403), invalid content (400),
+                            or rate limited (429)
+            httpx.HTTPStatusError: If the API request fails with unexpected status
+        """
+        cloud_id = await self._get_cloud_id()
+        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content/{page_id}"
+
+        try:
+            current_page = await self.get_page_by_id(page_id)
+            title_to_use = current_page.title
+        except ConfluenceError as e:
+            if e.status_code == 404:
+                raise ConfluenceError(
+                    f"Page with ID '{page_id}' not found: cannot fetch existing title",
+                    status_code=404,
+                )
+            raise
+
+        payload: dict[str, Any] = {
+            "type": "page",
+            "title": title_to_use,
+            "body": {
+                "storage": {
+                    "value": new_body_content,
+                    "representation": "storage",
+                }
+            },
+            "version": {
+                "number": version_number + 1,
+            },
+        }
+
+        response = await self._client.put(url, json=payload)
+
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(
+                f"Page with ID '{page_id}' not found: {error_msg}",
+                status_code=404,
+            )
+
+        if response.status_code == HTTPStatus.CONFLICT:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(
+                f"Version conflict: the page has been modified since version {version_number}. "
+                f"Please fetch the latest version and retry. Details: {error_msg}",
+                status_code=409,
+            )
+
+        if response.status_code == HTTPStatus.FORBIDDEN:
+            raise ConfluenceError(
+                f"Permission denied: you don't have access to update page '{page_id}'",
+                status_code=403,
+            )
+
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(f"Invalid request: {error_msg}", status_code=400)
+
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            raise ConfluenceError("Rate limit exceeded. Please try again later.", status_code=429)
+
+        response.raise_for_status()
         return self._parse_response(response.json())
 
     def _parse_comment_response(self, data: dict, page_id: str) -> ConfluenceComment:
