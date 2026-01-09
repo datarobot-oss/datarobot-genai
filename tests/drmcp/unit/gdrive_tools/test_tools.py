@@ -75,7 +75,7 @@ class TestGdriveListFiles:
         gdrive_client_list_files_with_next_page_mock: PaginatedResult,
     ) -> None:
         """Gdrive list files -- happy path."""
-        tool_result = await google_drive_list_files()
+        tool_result = await google_drive_list_files(fields=["id", "name"])
 
         content, structured_content = tool_result.to_mcp_result()
         assert (
@@ -96,7 +96,7 @@ class TestGdriveListFiles:
         gdrive_client_list_files_without_next_page_mock: PaginatedResult,
     ) -> None:
         """Gdrive list files -- happy path."""
-        tool_result = await google_drive_list_files()
+        tool_result = await google_drive_list_files(fields=["id", "name"])
 
         content, structured_content = tool_result.to_mcp_result()
         assert content[0].text == "Successfully listed 2 files. There're no more pages."

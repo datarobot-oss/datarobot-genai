@@ -43,7 +43,8 @@ def expectations_for_gdrive_list_files_success(
             ToolCallTestExpectations(
                 name="google_drive_list_files",
                 parameters={
-                    "query": f"'{gdrive_folder_id}' in parents",
+                    "folder_id": gdrive_folder_id,
+                    "query": "mimeType='application/pdf'",
                     "limit": list_files_no_of_results,
                     "page_size": list_files_no_of_results,
                 },
@@ -66,7 +67,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     @pytest.mark.parametrize(
         "prompt_template",
         [
-            "Please list google drive files from folder '{folder_id}'. "
+            "Please list all pdf files from google drive folder '{folder_id}'. "
             "Return {number_of_results} files."
         ],
     )

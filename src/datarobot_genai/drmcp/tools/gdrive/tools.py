@@ -23,6 +23,8 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.gdrive import LIMIT
 from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
+from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS
+from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS_STR
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveClient
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveError
 from datarobot_genai.drmcp.tools.clients.gdrive import get_gdrive_access_token
@@ -30,8 +32,8 @@ from datarobot_genai.drmcp.tools.clients.gdrive import get_gdrive_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"google", "gdrive", "list", "files"})
-async def google_drive_list_files(
+@dr_mcp_tool(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
+async def gdrive_find_contents(
     *,
     page_size: Annotated[
         int, f"Maximum number of files to return per page (max {MAX_PAGE_SIZE})."
@@ -43,9 +45,24 @@ async def google_drive_list_files(
     query: Annotated[
         str | None, "Optional filter to narrow results (e.g., 'trashed = false')."
     ] = None,
+    folder_id: Annotated[
+        str | None,
+        "The ID of a specific folder to list or search within. "
+        "If omitted, searches the entire Drive.",
+    ] = None,
+    recursive: Annotated[
+        bool,
+        "If True, searches all subfolders. "
+        "If False and folder_id is provided, only lists immediate children.",
+    ] = False,
+    fields: Annotated[
+        list[str] | None,
+        "Optional list of metadata fields to include. Ex. id, name, mimeType. "
+        f"Default = {SUPPORTED_FIELDS_STR}",
+    ] = None,
 ) -> ToolResult | ToolError:
     """
-    List files in the user's Google Drive with pagination and filtering support.
+    Search or list files in the user's Google Drive with pagination and filtering support.
     Use this tool to discover file names and IDs for use with other tools.
 
     Limit must be bigger than or equal to page size and it must be multiplication of page size.
@@ -61,7 +78,12 @@ async def google_drive_list_files(
     try:
         async with GoogleDriveClient(access_token) as client:
             data = await client.list_files(
-                page_size=page_size, page_token=page_token, query=query, limit=limit
+                page_size=page_size,
+                page_token=page_token,
+                query=query,
+                limit=limit,
+                folder_id=folder_id,
+                recursive=recursive,
             )
     except GoogleDriveError as e:
         logger.error(f"Google Drive error listing files: {e}")
@@ -70,6 +92,7 @@ async def google_drive_list_files(
         logger.error(f"Unexpected error listing Google Drive files: {e}")
         raise ToolError(f"An unexpected error occurred while listing Google Drive files: {str(e)}")
 
+    fields = set(fields).intersection(SUPPORTED_FIELDS) if fields else SUPPORTED_FIELDS
     number_of_files = len(data.files)
     next_page_info = (
         f"Next page token needed to fetch more data: {data.next_page_token}"
@@ -79,9 +102,7 @@ async def google_drive_list_files(
     return ToolResult(
         content=f"Successfully listed {number_of_files} files. {next_page_info}",
         structured_content={
-            "files": [
-                file.model_dump(by_alias=True, include={"id", "name"}) for file in data.files
-            ],
+            "files": [file.model_dump(by_alias=True, include=fields) for file in data.files],
             "count": number_of_files,
             "nextPageToken": data.next_page_token,
         },
