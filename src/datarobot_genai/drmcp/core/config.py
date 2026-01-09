@@ -245,6 +245,30 @@ class MCPServerConfig(BaseSettings):
             os.getenv("CONFLUENCE_CLIENT_ID") and os.getenv("CONFLUENCE_CLIENT_SECRET")
         )
 
+    # Gdrive tools
+    enable_gdrive_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_GDRIVE_TOOLS",
+            "ENABLE_GDRIVE_TOOLS",
+        ),
+        description="Enable/disable GDrive tools",
+    )
+    is_gdrive_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_GDRIVE_OAUTH_PROVIDER_CONFIGURED",
+            "IS_GDRIVE_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether GDrive OAuth provider is configured for GDrive integration",
+    )
+
+    @property
+    def is_gdrive_oauth_configured(self) -> bool:
+        return self.is_gdrive_oauth_provider_configured or bool(
+            os.getenv("GDRIVE_CLIENT_ID") and os.getenv("GDRIVE_CLIENT_SECRET")
+        )
+
     @field_validator(
         "otel_attributes",
         mode="before",

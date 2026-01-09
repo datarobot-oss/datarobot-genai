@@ -15,6 +15,7 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import aiohttp
 from aiohttp import ClientSession as HttpClientSession
@@ -78,6 +79,7 @@ def get_headers() -> dict[str, str]:
 @asynccontextmanager
 async def ete_test_mcp_session(
     additional_headers: dict[str, str] | None = None,
+    elicitation_callback: Any | None = None,
 ) -> AsyncGenerator[ClientSession, None]:
     """Create an MCP session for each test.
 
@@ -85,6 +87,10 @@ async def ete_test_mcp_session(
     ----------
     additional_headers : dict[str, str], optional
         Additional headers to include in the MCP session (e.g., auth headers for testing).
+    elicitation_callback : callable, optional
+        Callback function to handle elicitation requests from the server.
+        The callback should have signature:
+        async def callback(context, params: ElicitRequestParams) -> ElicitResult
     """
     try:
         headers = get_headers()
@@ -96,7 +102,9 @@ async def ete_test_mcp_session(
             write_stream,
             _,
         ):
-            async with ClientSession(read_stream, write_stream) as session:
+            async with ClientSession(
+                read_stream, write_stream, elicitation_callback=elicitation_callback
+            ) as session:
                 await asyncio.wait_for(session.initialize(), timeout=5)
                 yield session
     except asyncio.TimeoutError:

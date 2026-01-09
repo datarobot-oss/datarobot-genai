@@ -116,28 +116,30 @@ class ToolBaseE2E:
                     f"Should have called {test_expectations.tool_calls_expected[i].name} tool, but "
                     f"got: {tool_call.tool_name}"
                 )
-            assert tool_call.parameters == test_expectations.tool_calls_expected[i].parameters, (
-                f"Should have called {tool_call.tool_name} tool with the correct parameters, but "
-                f"got: {tool_call.parameters}"
-            )
-            if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
-                expected_result = test_expectations.tool_calls_expected[i].result
-                if isinstance(expected_result, str):
-                    assert expected_result in response.tool_results[i], (
-                        f"Should have called {tool_call.tool_name} tool with the correct result, "
-                        f"but got: {response.tool_results[i]}"
-                    )
-                else:
-                    actual_result = json.loads(response.tool_results[i])
-                    assert _check_dict_has_keys(expected_result, actual_result), (
-                        f"Should have called {tool_call.tool_name} tool with the correct result "
-                        f"structure, but got: {response.tool_results[i]}"
-                    )
-            else:
-                assert len(response.tool_results[i]) > 0, (
-                    f"Should have called {tool_call.tool_name} tool with non-empty result, but "
-                    f"got: {response.tool_results[i]}"
+                assert (
+                    tool_call.parameters == test_expectations.tool_calls_expected[i].parameters
+                ), (
+                    f"Should have called {tool_call.tool_name} tool with the correct parameters, "
+                    f"but got: {tool_call.parameters}"
                 )
+                if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
+                    expected_result = test_expectations.tool_calls_expected[i].result
+                    if isinstance(expected_result, str):
+                        assert expected_result in response.tool_results[i], (
+                            f"Should have called {tool_call.tool_name} tool with the correct "
+                            f"result, but got: {response.tool_results[i]}"
+                        )
+                    else:
+                        actual_result = json.loads(response.tool_results[i])
+                        assert _check_dict_has_keys(expected_result, actual_result), (
+                            f"Should have called {tool_call.tool_name} tool with the correct "
+                            f"result structure, but got: {response.tool_results[i]}"
+                        )
+                else:
+                    assert len(response.tool_results[i]) > 0, (
+                        f"Should have called {tool_call.tool_name} tool with non-empty result, but "
+                        f"got: {response.tool_results[i]}"
+                    )
 
         # Verify LLM provided comprehensive response
         assert len(response.content) > 100, "LLM should provide detailed response"

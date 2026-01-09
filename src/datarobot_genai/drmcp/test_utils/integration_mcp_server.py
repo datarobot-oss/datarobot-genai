@@ -26,6 +26,13 @@ from typing import Any
 
 from datarobot_genai.drmcp import create_mcp_server
 
+# Import elicitation test tool to register it with the MCP server
+try:
+    from datarobot_genai.drmcp.test_utils import elicitation_test_tool  # noqa: F401
+except ImportError:
+    # Test utils not available (e.g., running in production)
+    pass
+
 # Import user components (will be used conditionally)
 try:
     from app.core.server_lifecycle import ServerLifecycle  # type: ignore  # noqa: F401

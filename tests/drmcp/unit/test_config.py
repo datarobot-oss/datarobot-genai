@@ -92,10 +92,6 @@ class TestDuplicateBehavior:
 
             test_mcp = TaggedFastMCP(
                 name=config.mcp_server_name,
-                port=config.mcp_server_port,
-                log_level=config.mcp_server_log_level,
-                host=config.mcp_server_host,
-                stateless_http=True,
                 on_duplicate_tools=config.tool_registration_duplicate_behavior,
                 on_duplicate_prompts=config.prompt_registration_duplicate_behavior,
             )
@@ -126,6 +122,7 @@ class TestToolConfiguration:
             ("enable_predictive_tools", "ENABLE_PREDICTIVE_TOOLS"),
             ("enable_jira_tools", "ENABLE_JIRA_TOOLS"),
             ("enable_confluence_tools", "ENABLE_CONFLUENCE_TOOLS"),
+            ("enable_gdrive_tools", "ENABLE_GDRIVE_TOOLS"),
         ],
     )
     def test_tool_enablement_via_env_var(self, tool_name: str, env_var: str) -> None:
@@ -204,3 +201,33 @@ class TestToolConfiguration:
         with patch.dict(os.environ, {"CONFLUENCE_CLIENT_ID": "test_id"}, clear=False):
             config = MCPServerConfig()
             assert config.is_confluence_oauth_configured is False
+
+    def test_gdrive_oauth_configured_via_provider_flag(self) -> None:
+        """Test is_gdrive_oauth_configured when provider flag is set."""
+        with patch.dict(os.environ, {"IS_GDRIVE_OAUTH_PROVIDER_CONFIGURED": "true"}, clear=False):
+            config = MCPServerConfig()
+            assert config.is_gdrive_oauth_configured is True
+
+    def test_gdrive_oauth_configured_via_env_vars(self) -> None:
+        """Test is_gdrive_oauth_configured when env vars are set."""
+        with patch.dict(
+            os.environ,
+            {"GDRIVE_CLIENT_ID": "test_id", "GDRIVE_CLIENT_SECRET": "test_secret"},
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.is_gdrive_oauth_configured is True
+
+    def test_gdrive_oauth_not_configured(self) -> None:
+        """Test is_gdrive_oauth_configured when not configured."""
+        with patch.dict(os.environ, clear=True):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None)
+            assert config.is_gdrive_oauth_configured is False
+            config_module._config = None
+
+    def test_gdrive_oauth_partial_env_vars(self) -> None:
+        """Test is_gdrive_oauth_configured with only one env var set."""
+        with patch.dict(os.environ, {"GDRIVE_CLIENT_ID": "test_id"}, clear=False):
+            config = MCPServerConfig()
+            assert config.is_gdrive_oauth_configured is False

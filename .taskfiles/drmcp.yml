@@ -1,3 +1,5 @@
+# https://taskfile.dev
+
 version: '3'
 
 env:
@@ -40,9 +42,8 @@ tasks:
           lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
         fi
       - |
-        OTEL_ATTRIBUTES='{"environment":"test","service.instance.id":"ete-tests"}' \
-        OTEL_COLLECTOR_BASE_URL=http://localhost:4318 \
-        OTEL_ENTITY_ID=deployment-68924b8b51102f055bef861c \
+        OTEL_ENABLED=false \
+        OTEL_SDK_DISABLED=true \
         MCP_SERVER_PORT={{.PORT}} task drmcp-ete-test-server &
       - |
         for i in {1..30}; do
@@ -56,15 +57,28 @@ tasks:
           fi
           sleep 1
         done
-    silent: true
+    silent: true 
 
   drmcp-test-otel-server-background:
     desc: "🔨 Running DR MCP Library locally in background with OTEL"
     cmds:
-      - echo "🔨 Starting DR MCP Library development server with OTEL"
-      - >-
-        docker run -d --name jaeger -p 16686:16686 -p 4318:4318 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:1.54
-        || docker start jaeger || true
+      - echo "🔨 Ensuring Jaeger (OTEL) is running"
+      - |
+        if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+          echo "Docker isn't running, skipping OTEL startup"
+          exit 0
+        fi
+        if docker ps -q --filter name=jaeger --filter status=running | grep -q .; then
+          echo "Jaeger already running, using existing container"
+          exit 0
+        fi
+        if docker ps -aq --filter name=jaeger | grep -q .; then
+          echo "Starting existing Jaeger container"
+          docker start jaeger >/dev/null 2>&1 || true
+        else
+          echo "Launching new Jaeger container"
+          docker run -d --name jaeger -p 16686:16686 -p 4318:4318 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:1.54 >/dev/null 2>&1 || true
+        fi
     silent: true
 
   drmcp-test:
@@ -83,15 +97,20 @@ tasks:
     cmds:
       - rm -rf .coverage .coverage.xml htmlcov
       - echo "Running DR MCP Library unit tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/unit/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml
-        --cov-report=html --cov-report=term-missing -s -vv
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/unit/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml --cov-report=html --cov-report=term-missing -s -vv
     silent: true
 
   drmcp-integration:
     desc: "Run DR MCP Library integration tests"
+    vars:
+      PORT: 8652
     cmds:
+      - task: drmcp-test-dev-server-background
+      - defer: |
+          echo "Stopping DR MCP Library MCP Server"
+          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
       - echo "Running DR MCP Library integration tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
+      - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp/ DR_MCP_SERVER_HTTP_URL=http://localhost:{{.PORT}}/ uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
     silent: true
 
   drmcp-acceptance:
@@ -109,3 +128,29 @@ tasks:
       - echo "Running DR MCP Library acceptance tests"
       - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp DR_MCP_SERVER_HTTP_URL=http://localhost:{{.PORT}}/ uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
     silent: true
+
+  drmcp-test-interactive:
+    desc: "🧪 Run interactive MCP client test"
+    vars:
+      PORT: 8652
+    cmds:
+      - defer: |
+          echo "Stopping MCP Server"
+          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+          echo "Stopping Jaeger"
+          docker stop jaeger || true
+      - echo "🧪 Starting interactive MCP client test"
+      - |
+        if [ -z "$DR_MCP_SERVER_URL" ]; then
+          echo "DR_MCP_SERVER_URL is not set, setting it to http://localhost:{{.PORT}}/mcp/"
+          export DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp/
+        fi
+        if [ "$DR_MCP_SERVER_URL" = "http://localhost:{{.PORT}}/mcp/" ]; then
+          echo "DR_MCP_SERVER_URL is set to default, starting server in background"
+          task drmcp-test-otel-server-background || true
+          task drmcp-test-dev-server-background
+        fi
+        echo ""
+        uv run python -m datarobot_genai.drmcp.test_utils.test_interactive
+    silent: true
+
