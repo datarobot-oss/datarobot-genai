@@ -92,7 +92,7 @@ async def gdrive_find_contents(
         logger.error(f"Unexpected error listing Google Drive files: {e}")
         raise ToolError(f"An unexpected error occurred while listing Google Drive files: {str(e)}")
 
-    fields = set(fields).intersection(SUPPORTED_FIELDS) if fields else SUPPORTED_FIELDS
+    filtered_fields = set(fields).intersection(SUPPORTED_FIELDS) if fields else SUPPORTED_FIELDS
     number_of_files = len(data.files)
     next_page_info = (
         f"Next page token needed to fetch more data: {data.next_page_token}"
@@ -102,7 +102,9 @@ async def gdrive_find_contents(
     return ToolResult(
         content=f"Successfully listed {number_of_files} files. {next_page_info}",
         structured_content={
-            "files": [file.model_dump(by_alias=True, include=fields) for file in data.files],
+            "files": [
+                file.model_dump(by_alias=True, include=filtered_fields) for file in data.files
+            ],
             "count": number_of_files,
             "nextPageToken": data.next_page_token,
         },
