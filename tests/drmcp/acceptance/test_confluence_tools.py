@@ -26,12 +26,12 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 @pytest.fixture(scope="session")
 def confluence_page_id() -> str:
-    return "856391684"
+    return "7169507349"
 
 
 @pytest.fixture(scope="session")
 def confluence_page_title() -> str:
-    return "All check status"
+    return "MCP Acceptance Test Page"
 
 
 @pytest.fixture(scope="session")
@@ -52,8 +52,7 @@ def expectations_for_confluence_get_page_by_id_success(
             ),
         ],
         llm_response_content_contains_expectations=[
-            "All check status",
-            "0-all-check-status",
+            "MCP Acceptance Test Page",
         ],
     )
 
@@ -75,8 +74,7 @@ def expectations_for_confluence_get_page_by_title_success(
             ),
         ],
         llm_response_content_contains_expectations=[
-            "All check status",
-            "0-all-check-status",
+            "MCP Acceptance Test Page",
         ],
     )
 
@@ -85,18 +83,13 @@ def expectations_for_confluence_get_page_by_title_success(
 class TestConfluenceToolsE2E(ToolBaseE2E):
     """End-to-end tests for confluence tools."""
 
-    @pytest.mark.parametrize(
-        "prompt_template",
-        ["Please retrieve the Confluence page with ID `{page_id}`."],
-    )
     async def test_confluence_get_page_by_id_success(
         self,
         openai_llm_client: Any,
         expectations_for_confluence_get_page_by_id_success: ETETestExpectations,
         confluence_page_id: str,
-        prompt_template: str,
     ) -> None:
-        prompt = prompt_template.format(page_id=confluence_page_id)
+        prompt = f"Please retrieve the Confluence page with ID `{confluence_page_id}`."
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
@@ -109,21 +102,16 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    @pytest.mark.parametrize(
-        "prompt_template",
-        ["Please retrieve the Confluence page titled `{page_title}` from space `{space_key}`."],
-    )
     async def test_confluence_get_page_by_title_success(
         self,
         openai_llm_client: Any,
         expectations_for_confluence_get_page_by_title_success: ETETestExpectations,
         confluence_page_title: str,
         confluence_space_key: str,
-        prompt_template: str,
     ) -> None:
-        prompt = prompt_template.format(
-            page_title=confluence_page_title,
-            space_key=confluence_space_key,
+        prompt = (
+            f"Please retrieve the Confluence page titled `{confluence_page_title}` "
+            f"from space `{confluence_space_key}`."
         )
 
         async with ete_test_mcp_session() as session:
@@ -134,6 +122,43 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_confluence_get_page_by_title_success,
+                openai_llm_client,
+                session,
+                test_name,
+            )
+
+    async def test_confluence_search_success(
+        self,
+        openai_llm_client: Any,
+    ) -> None:
+        """Test searching Confluence content with CQL query."""
+        cql_query = 'type=page AND title ~ "MCP Acceptance"'
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="confluence_search",
+                    parameters={
+                        "cql_query": cql_query,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=[
+                "MCP Acceptance Test Page",
+            ],
+        )
+
+        prompt = (
+            f"Search Confluence for pages with title containing 'MCP Acceptance' "
+            f"using CQL query `{cql_query}`."
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_confluence_search_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
                 openai_llm_client,
                 session,
                 test_name,
@@ -234,37 +259,43 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    @pytest.mark.skip(reason="Requires Confluence test user setup - run manually")
-    async def test_confluence_search_success(
+    @pytest.mark.skip(reason="Skipped by default to avoid modifying real Confluence data")
+    async def test_confluence_update_page_success(
         self,
         openai_llm_client: Any,
-        confluence_space_key: str,
+        confluence_page_id: str,
     ) -> None:
-        """Test searching Confluence content with CQL query."""
-        cql_query = f"type=page AND space={confluence_space_key}"
+        """Test updating a Confluence page -- requires real page ID."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="confluence_search",
+                    name="confluence_get_page",
                     parameters={
-                        "cql_query": cql_query,
+                        "page_id_or_title": confluence_page_id,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+                ToolCallTestExpectations(
+                    name="confluence_update_page",
+                    parameters={
+                        "page_id": confluence_page_id,
                     },
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
             ],
             llm_response_content_contains_expectations=[
-                "All check status",
+                "updated",
             ],
         )
 
         prompt = (
-            f"Search Confluence for pages in space {confluence_space_key} "
-            f"using CQL query `{cql_query}`."
+            f"First get Confluence page {confluence_page_id} to find its current version, "
+            f"then update the page with new content '<p>Updated by E2E test</p>'."
         )
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_confluence_search_success"
+            test_name = frame.f_code.co_name if frame else "test_confluence_update_page_success"
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
