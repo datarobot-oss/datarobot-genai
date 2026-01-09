@@ -29,7 +29,10 @@ from datarobot_genai.drmcp.core.auth import get_access_token
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FIELDS = "nextPageToken,files(id,name,size,mimeType,webViewLink,createdTime,modifiedTime)"
+SUPPORTED_FIELDS = {"id", "name", "size", "mimeType", "webViewLink", "createdTime", "modifiedTime"}
+SUPPORTED_FIELDS_STR = ",".join(SUPPORTED_FIELDS)
+DEFAULT_FIELDS = f"nextPageToken,files({SUPPORTED_FIELDS_STR})"
+GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 DEFAULT_ORDER = "modifiedTime desc"
 MAX_PAGE_SIZE = 100
 LIMIT = 500
@@ -129,6 +132,8 @@ class GoogleDriveClient:
         limit: int,
         page_token: str | None = None,
         query: str | None = None,
+        folder_id: str | None = None,
+        recursive: bool = False,
     ) -> PaginatedResult:
         """
         List files from Google Drive.
@@ -143,6 +148,10 @@ class GoogleDriveClient:
                 If not provided it'll list all authorized user files.
                 If the query doesn't contain operators (contains, =, etc.), it will be treated as
                 a name search: "name contains '{query}'".
+            folder_id: The ID of a specific folder to list or search within.
+                If omitted, searches the entire Drive.
+            recursive: If True, searches all subfolders.
+                If False and folder_id is provided, only lists immediate children.
 
         Returns
         -------
@@ -159,26 +168,85 @@ class GoogleDriveClient:
 
         page_size = min(page_size, MAX_PAGE_SIZE)
         limit = min(limit, LIMIT)
+        formatted_query = self._build_query(query, folder_id)
+
+        if not recursive or not folder_id:
+            files, next_token = await self._fetch_paginated(
+                page_size=page_size,
+                limit=limit,
+                page_token=page_token,
+                query=formatted_query,
+            )
+            return PaginatedResult(files=files, next_page_token=next_token)
+
+        files = await self._fetch_recursive(
+            root_folder_id=folder_id,
+            base_query=query,
+            page_size=page_size,
+            limit=limit,
+        )
+
+        return PaginatedResult(files=files, next_page_token=page_token)
+
+    async def _fetch_paginated(
+        self,
+        page_size: int,
+        limit: int,
+        page_token: str | None,
+        query: str | None,
+    ) -> tuple[list[GoogleDriveFile], str | None]:
         fetched = 0
-
-        formatted_query = self._get_formatted_query(query)
-
         files: list[GoogleDriveFile] = []
+        next_page_token = page_token
 
         while fetched < limit:
             data = await self._list_files(
                 page_size=page_size,
-                page_token=page_token,
-                query=formatted_query,
+                page_token=next_page_token,
+                query=query,
             )
+
             files.extend(data.files)
             fetched += len(data.files)
-            page_token = data.next_page_token
+            next_page_token = data.next_page_token
 
-            if not page_token:
+            if not next_page_token:
                 break
 
-        return PaginatedResult(files=files, next_page_token=page_token)
+        return files, next_page_token
+
+    async def _fetch_recursive(
+        self,
+        root_folder_id: str,
+        base_query: str | None,
+        page_size: int,
+        limit: int,
+    ) -> list[GoogleDriveFile]:
+        collected: list[GoogleDriveFile] = []
+        folders_to_visit: list[str] = [root_folder_id]
+
+        while folders_to_visit and len(collected) < limit:
+            current_folder = folders_to_visit.pop(0)
+
+            query = self._build_query(base_query, current_folder)
+
+            files, _ = await self._fetch_paginated(
+                page_size=page_size,
+                limit=limit - len(collected),
+                page_token=None,
+                query=query,
+            )
+
+            for file in files:
+                collected.append(file)
+
+                if file.mime_type == GOOGLE_DRIVE_FOLDER_MIME:
+                    folders_to_visit.append(file.id)
+
+                if len(collected) >= limit:
+                    break
+
+        return collected
 
     async def _list_files(
         self,
@@ -206,6 +274,45 @@ class GoogleDriveClient:
         ]
         next_page_token = data.get("nextPageToken")
         return PaginatedResult(files=files, next_page_token=next_page_token)
+
+    def _build_query(self, query: str | None, folder_id: str | None) -> str | None:
+        """Build Google Drive API query.
+
+        Args:
+            query: Optional search query string (e.g., "name contains 'report'"").
+                If the query doesn't contain operators (contains, =, etc.), it will be treated as
+                a name search: "name contains '{query}'".
+            folder_id: Optional folder id.
+                If provided it'll narrow query to search/list only in given folder.
+
+        Returns
+        -------
+            Correctly builded query (if provided)
+        """
+        base_query = self._get_formatted_query(query)
+
+        if base_query:
+            # Case #1 -- Some query provided and contains in parents (gdrive "folder id")
+            if "in parents" in base_query and folder_id:
+                logger.debug(
+                    "In-parents (parent folder) already used in query. "
+                    "Omiting folder_id argument. "
+                    f"Query: {base_query} | FolderId: {folder_id}"
+                )
+                return base_query
+            # Case #2 -- Some query provided without "in parents" and folder id provided.
+            elif folder_id:
+                return f"{base_query} and '{folder_id}' in parents"
+            # Case #3 -- Query provided without "in parents" and no folder id.
+            else:
+                return base_query
+
+        # Case #4 -- Base query is null but folder id provided
+        if folder_id:
+            return f"'{folder_id}' in parents"
+
+        # Case #5 -- Neither query not folder provided
+        return None
 
     @staticmethod
     def _get_formatted_query(query: str | None) -> str | None:
