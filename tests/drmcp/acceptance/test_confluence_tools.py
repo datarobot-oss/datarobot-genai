@@ -233,3 +233,42 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
                 session,
                 test_name,
             )
+
+    @pytest.mark.skip(reason="Requires Confluence test user setup - run manually")
+    async def test_confluence_search_success(
+        self,
+        openai_llm_client: Any,
+        confluence_space_key: str,
+    ) -> None:
+        """Test searching Confluence content with CQL query."""
+        cql_query = f"type=page AND space={confluence_space_key}"
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="confluence_search",
+                    parameters={
+                        "cql_query": cql_query,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=[
+                "All check status",
+            ],
+        )
+
+        prompt = (
+            f"Search Confluence for pages in space {confluence_space_key} "
+            f"using CQL query `{cql_query}`."
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_confluence_search_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                openai_llm_client,
+                session,
+                test_name,
+            )

@@ -22,6 +22,7 @@ from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceClient
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
+from datarobot_genai.drmcp.tools.clients.confluence import ContentSearchResult
 
 
 def make_response(
@@ -584,3 +585,191 @@ class TestConfluenceClient:
             "page_id": "12345",
             "body": "<p>Test comment</p>",
         }
+
+    @pytest.fixture
+    def mock_search_response(self) -> dict:
+        """Mock Confluence REST API search response (matches actual API structure)."""
+        return {
+            "results": [
+                {
+                    "lastModified": "2025-01-06T10:00:00.000Z",
+                    "excerpt": "This is the excerpt for the first page",
+                    "content": {
+                        "id": "12345",
+                        "title": "Test Page",
+                        "type": "page",
+                        "space": {
+                            "key": "TEST",
+                            "name": "Test Space",
+                        },
+                        "_links": {
+                            "base": "https://example.atlassian.net/wiki",
+                            "webui": "/spaces/TEST/pages/12345",
+                        },
+                    },
+                },
+                {
+                    "lastModified": "2025-01-05T09:00:00.000Z",
+                    "excerpt": "This is the excerpt for the second page",
+                    "content": {
+                        "id": "67890",
+                        "title": "Another Page",
+                        "type": "page",
+                        "space": {
+                            "key": "TEST",
+                            "name": "Test Space",
+                        },
+                        "_links": {
+                            "base": "https://example.atlassian.net/wiki",
+                            "webui": "/spaces/TEST/pages/67890",
+                        },
+                    },
+                },
+            ]
+        }
+
+    @pytest.mark.asyncio
+    async def test_search_confluence_content_success(
+        self, mock_access_token: str, mock_cloud_id: str, mock_search_response: dict
+    ) -> None:
+        """Test successfully searching Confluence content."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(200, mock_search_response, mock_cloud_id)
+
+                client._client.get = mock_get
+
+                results = await client.search_confluence_content(
+                    cql_query="type=page AND space=TEST", max_results=10
+                )
+
+                assert len(results) == 2
+                assert results[0].id == "12345"
+                assert results[0].title == "Test Page"
+                assert results[0].type == "page"
+                assert results[0].space_key == "TEST"
+                assert results[0].space_name == "Test Space"
+                assert results[0].excerpt == "This is the excerpt for the first page"
+                assert results[0].last_modified == "2025-01-06T10:00:00.000Z"
+                assert (
+                    results[0].url == "https://example.atlassian.net/wiki/spaces/TEST/pages/12345"
+                )
+                assert results[1].id == "67890"
+                assert results[1].title == "Another Page"
+
+    @pytest.mark.asyncio
+    async def test_search_confluence_content_empty_results(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test searching Confluence content with no results."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(200, {"results": []}, mock_cloud_id)
+
+                client._client.get = mock_get
+
+                results = await client.search_confluence_content(
+                    cql_query="type=page AND space=NONEXISTENT", max_results=10
+                )
+
+                assert results == []
+
+    def test_content_search_result_as_flat_dict(self) -> None:
+        """Test ContentSearchResult.as_flat_dict method."""
+        result = ContentSearchResult(
+            id="12345",
+            title="Test Page",
+            type="page",
+            space_key="TEST",
+            space_name="Test Space",
+            excerpt="<p>Content</p>",
+            last_modified="2025-01-06T10:00:00.000Z",
+            url="https://example.atlassian.net/wiki/spaces/TEST/pages/12345",
+        )
+
+        flat = result.as_flat_dict()
+
+        assert flat == {
+            "id": "12345",
+            "title": "Test Page",
+            "type": "page",
+            "spaceKey": "TEST",
+            "spaceName": "Test Space",
+            "excerpt": "<p>Content</p>",
+            "lastModified": "2025-01-06T10:00:00.000Z",
+            "url": "https://example.atlassian.net/wiki/spaces/TEST/pages/12345",
+        }
+
+    @pytest.mark.asyncio
+    async def test_search_confluence_content_invalid_cql(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test search with invalid CQL query raises ConfluenceError."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(400, {"message": "Invalid CQL"}, mock_cloud_id)
+
+                client._client.get = mock_get
+
+                with pytest.raises(ConfluenceError, match="Invalid CQL query"):
+                    await client.search_confluence_content(
+                        cql_query="invalid cql syntax !!!", max_results=10
+                    )
+
+    @pytest.mark.asyncio
+    async def test_search_confluence_content_rate_limited(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test search when rate limited raises ConfluenceError."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(429, {"message": "Rate limit exceeded"}, mock_cloud_id)
+
+                client._client.get = mock_get
+
+                with pytest.raises(ConfluenceError, match="Rate limit exceeded"):
+                    await client.search_confluence_content(cql_query="type=page", max_results=10)
+
+    @pytest.mark.asyncio
+    async def test_search_confluence_content_forbidden(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test search when forbidden raises ConfluenceError."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(403, {"message": "Forbidden"}, mock_cloud_id)
+
+                client._client.get = mock_get
+
+                with pytest.raises(ConfluenceError, match="Permission denied"):
+                    await client.search_confluence_content(cql_query="type=page", max_results=10)
