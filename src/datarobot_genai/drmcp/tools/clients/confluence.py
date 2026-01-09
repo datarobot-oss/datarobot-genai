@@ -30,6 +30,9 @@ from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
 
+# Search expand fields for CQL search - content.space gives us space.key directly
+SEARCH_EXPAND_FIELDS = "content.space"
+
 
 class ConfluenceError(Exception):
     """Exception for Confluence API errors."""
@@ -72,6 +75,32 @@ class ConfluenceComment(BaseModel):
             "comment_id": self.comment_id,
             "page_id": self.page_id,
             "body": self.body,
+        }
+
+
+class ContentSearchResult(BaseModel):
+    """Pydantic model for Confluence search result item."""
+
+    id: str
+    title: str
+    type: str
+    space_key: str = ""
+    space_name: str = ""
+    excerpt: str = ""
+    last_modified: str | None = None
+    url: str = ""
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the search result."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "type": self.type,
+            "spaceKey": self.space_key,
+            "spaceName": self.space_name,
+            "excerpt": self.excerpt,
+            "lastModified": self.last_modified,
+            "url": self.url,
         }
 
 
@@ -381,6 +410,76 @@ class ConfluenceClient:
         response.raise_for_status()
 
         return self._parse_comment_response(response.json(), page_id)
+
+    async def search_confluence_content(
+        self, cql_query: str, max_results: int
+    ) -> list[ContentSearchResult]:
+        """
+        Search Confluence content using CQL (Confluence Query Language).
+
+        Args:
+            cql_query: CQL Query
+            max_results: Maximum number of results to return
+
+        Returns
+        -------
+            List of Confluence content search results
+
+        Raises
+        ------
+            ConfluenceError: If the API request fails (400, 403, 429)
+        """
+        cloud_id = await self._get_cloud_id()
+        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/search"
+
+        response = await self._client.get(
+            url,
+            params={
+                "cql": cql_query,
+                "limit": max_results,
+                "expand": SEARCH_EXPAND_FIELDS,
+            },
+        )
+
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            error_msg = self._extract_error_message(response)
+            raise ConfluenceError(f"Invalid CQL query: {error_msg}", status_code=400)
+
+        if response.status_code == HTTPStatus.FORBIDDEN:
+            raise ConfluenceError(
+                "Permission denied: you don't have access to search this content",
+                status_code=403,
+            )
+
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            raise ConfluenceError("Rate limit exceeded. Please try again later.", status_code=429)
+
+        response.raise_for_status()
+        raw_results = response.json().get("results", [])
+        results = [ContentSearchResult(**self._parse_search_item(item)) for item in raw_results]
+        return results
+
+    def _parse_search_item(self, item: dict) -> dict:
+        """Parse raw search API response item into model-compatible dict."""
+        content = item.get("content", item)
+        links = content.get("_links", {})
+        base_url = links.get("base", "")
+        webui = links.get("webui", "")
+        url = f"{base_url}{webui}" if base_url and webui else webui
+
+        # Get space from content.space (requires expand=content.space)
+        content_space = content.get("space", {})
+
+        return {
+            "id": str(content.get("id", "")),
+            "title": content.get("title", ""),
+            "type": content.get("type", "page"),
+            "space_key": content_space.get("key", ""),
+            "space_name": content_space.get("name", ""),
+            "excerpt": item.get("excerpt", ""),
+            "last_modified": item.get("lastModified"),
+            "url": url,
+        }
 
     async def __aenter__(self) -> "ConfluenceClient":
         """Async context manager entry."""

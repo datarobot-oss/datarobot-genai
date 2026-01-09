@@ -20,8 +20,10 @@ from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
+from datarobot_genai.drmcp.tools.clients.confluence import ContentSearchResult
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_add_comment
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_get_page
+from datarobot_genai.drmcp.tools.confluence.tools import confluence_search
 
 
 @pytest.fixture
@@ -231,3 +233,176 @@ class TestConfluenceAddComment:
 
         with pytest.raises(MCPError, match="Page not found"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
+
+
+@pytest.fixture
+def confluence_client_search_mock() -> Iterator[list[ContentSearchResult]]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.search_confluence_content"
+    ) as confluence_client_search:
+        results = [
+            ContentSearchResult(
+                id="12345",
+                title="Test Page",
+                type="page",
+                space_key="TEST",
+                space_name="Test Space",
+                excerpt="<p>Content</p>",
+                last_modified="2025-01-06T10:00:00.000Z",
+                url="https://example.atlassian.net/wiki/spaces/TEST/pages/12345",
+            ),
+            ContentSearchResult(
+                id="67890",
+                title="Another Page",
+                type="page",
+                space_key="TEST",
+                space_name="Test Space",
+                excerpt="<p>More content</p>",
+                last_modified="2025-01-05T09:00:00.000Z",
+                url="https://example.atlassian.net/wiki/spaces/TEST/pages/67890",
+            ),
+        ]
+        confluence_client_search.return_value = results
+        yield results
+
+
+@pytest.fixture
+def confluence_client_search_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.search_confluence_content"
+    ) as confluence_client_search:
+        confluence_client_search.side_effect = ConfluenceError("Search failed", status_code=500)
+        yield
+
+
+class TestConfluenceSearch:
+    """Confluence search tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_happy_path(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_search_mock: list[ContentSearchResult],
+    ) -> None:
+        """Confluence search -- happy path."""
+        cql_query = "type=page AND space=TEST"
+
+        tool_result = await confluence_search(cql_query=cql_query)
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert content[0].text == "Successfully executed CQL query and retrieved 2 result(s)."
+        assert structured_content == {
+            "data": [
+                {
+                    "id": "12345",
+                    "title": "Test Page",
+                    "type": "page",
+                    "spaceKey": "TEST",
+                    "spaceName": "Test Space",
+                    "excerpt": "<p>Content</p>",
+                    "lastModified": "2025-01-06T10:00:00.000Z",
+                    "url": "https://example.atlassian.net/wiki/spaces/TEST/pages/12345",
+                },
+                {
+                    "id": "67890",
+                    "title": "Another Page",
+                    "type": "page",
+                    "spaceKey": "TEST",
+                    "spaceName": "Test Space",
+                    "excerpt": "<p>More content</p>",
+                    "lastModified": "2025-01-05T09:00:00.000Z",
+                    "url": "https://example.atlassian.net/wiki/spaces/TEST/pages/67890",
+                },
+            ],
+            "count": 2,
+        }
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_when_error_in_client(
+        self, get_atlassian_access_token_mock: None, confluence_client_search_error_mock: None
+    ) -> None:
+        """Confluence search -- error in client."""
+        cql_query = "type=page AND space=TEST"
+
+        with pytest.raises(MCPError, match="Search failed"):
+            await confluence_search(cql_query=cql_query)
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_empty_query(
+        self, get_atlassian_access_token_mock: None
+    ) -> None:
+        """Confluence search -- empty query validation."""
+        with pytest.raises(MCPError, match="cannot be empty"):
+            await confluence_search(cql_query="")
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_max_results_too_low(
+        self, get_atlassian_access_token_mock: None
+    ) -> None:
+        """Confluence search -- max_results below 1 should raise error."""
+        with pytest.raises(MCPError, match="max_results.*must be between 1 and 100"):
+            await confluence_search(cql_query="type=page", max_results=0)
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_max_results_too_high(
+        self, get_atlassian_access_token_mock: None
+    ) -> None:
+        """Confluence search -- max_results above 100 should raise error."""
+        with pytest.raises(MCPError, match="max_results.*must be between 1 and 100"):
+            await confluence_search(cql_query="type=page", max_results=101)
+
+
+@pytest.fixture
+def confluence_client_get_page_mock() -> Iterator[ConfluencePage]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.get_page_by_id"
+    ) as mock:
+        page = ConfluencePage(
+            page_id="12345",
+            title="Test Page",
+            space_id="67890",
+            space_key="TEST",
+            body="<p>Full body content from page fetch</p>",
+        )
+        mock.return_value = page
+        yield page
+
+
+class TestConfluenceSearchIncludeBody:
+    """Confluence search with include_body parameter tests."""
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_with_include_body(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_search_mock: list[ContentSearchResult],
+        confluence_client_get_page_mock: ConfluencePage,
+    ) -> None:
+        """Confluence search with include_body=True fetches full page content."""
+        cql_query = "type=page AND space=TEST"
+
+        tool_result = await confluence_search(cql_query=cql_query, include_body=True)
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert content[0].text == "Successfully executed CQL query and retrieved 2 result(s)."
+        # Verify body field is added with full content
+        assert structured_content["data"][0]["body"] == "<p>Full body content from page fetch</p>"
+        # excerpt should still be there
+        assert structured_content["data"][0]["excerpt"] == "<p>Content</p>"
+
+    @pytest.mark.asyncio
+    async def test_confluence_search_without_include_body(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_search_mock: list[ContentSearchResult],
+    ) -> None:
+        """Confluence search without include_body does not have body field."""
+        cql_query = "type=page AND space=TEST"
+
+        tool_result = await confluence_search(cql_query=cql_query, include_body=False)
+
+        content, structured_content = tool_result.to_mcp_result()
+        # body field should NOT be present when include_body=False
+        assert "body" not in structured_content["data"][0]
+        # excerpt should be there
+        assert structured_content["data"][0]["excerpt"] == "<p>Content</p>"
