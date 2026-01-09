@@ -18,7 +18,7 @@ import pytest
 
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFile
 from datarobot_genai.drmcp.tools.clients.gdrive import PaginatedResult
-from datarobot_genai.drmcp.tools.gdrive.tools import google_drive_list_files
+from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_find_contents
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ class TestGdriveListFiles:
     """Gdrive list files tool test."""
 
     @pytest.mark.asyncio
-    async def test_gdrive_list_files_when_next_page_available_happy_path(
+    async def test_gdrive_find_contents_when_next_page_available_happy_path(
         self,
         get_gdrive_access_token_mock: None,
         gdrive_files: list[GoogleDriveFile],
@@ -75,7 +75,7 @@ class TestGdriveListFiles:
         gdrive_client_list_files_with_next_page_mock: PaginatedResult,
     ) -> None:
         """Gdrive list files -- happy path."""
-        tool_result = await google_drive_list_files(fields=["id", "name"])
+        tool_result = await gdrive_find_contents(fields=["id", "name"])
 
         content, structured_content = tool_result.to_mcp_result()
         assert (
@@ -89,14 +89,14 @@ class TestGdriveListFiles:
         }
 
     @pytest.mark.asyncio
-    async def test_gdrive_list_files_when_no_more_pages_happy_path(
+    async def test_gdrive_find_contents_when_no_more_pages_happy_path(
         self,
         get_gdrive_access_token_mock: None,
         gdrive_files: list[GoogleDriveFile],
         gdrive_client_list_files_without_next_page_mock: PaginatedResult,
     ) -> None:
         """Gdrive list files -- happy path."""
-        tool_result = await google_drive_list_files(fields=["id", "name"])
+        tool_result = await gdrive_find_contents(fields=["id", "name"])
 
         content, structured_content = tool_result.to_mcp_result()
         assert content[0].text == "Successfully listed 2 files. There're no more pages."
