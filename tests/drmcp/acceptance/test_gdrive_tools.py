@@ -41,7 +41,7 @@ def expectations_for_gdrive_list_files_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="google_drive_list_files",
+                name="gdrive_find_contents",
                 parameters={
                     "folder_id": gdrive_folder_id,
                     "query": "mimeType='application/pdf'",
@@ -71,7 +71,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             "Return {number_of_results} files."
         ],
     )
-    async def test_gdrive_list_files_success(
+    async def test_gdrive_find_contents_success(
         self,
         openai_llm_client: Any,
         expectations_for_gdrive_list_files_success: ETETestExpectations,
@@ -85,7 +85,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_gdrive_list_files_success"
+            test_name = frame.f_code.co_name if frame else "test_gdrive_find_contents_success"
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_list_files_success,
