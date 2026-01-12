@@ -24,6 +24,7 @@ from datarobot_genai.drmcp.tools.clients.confluence import ContentSearchResult
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_add_comment
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_get_page
 from datarobot_genai.drmcp.tools.confluence.tools import confluence_search
+from datarobot_genai.drmcp.tools.confluence.tools import confluence_update_page
 
 
 @pytest.fixture
@@ -46,6 +47,7 @@ def confluence_client_get_page_by_id_mock() -> Iterator[ConfluencePage]:
             space_id="67890",
             space_key="TEST",
             body="<p>Test content</p>",
+            version=1,
         )
         mock.return_value = page
         yield page
@@ -62,6 +64,7 @@ def confluence_client_get_page_by_title_mock() -> Iterator[ConfluencePage]:
             space_id="67890",
             space_key="TEST",
             body="<p>Test content</p>",
+            version=1,
         )
         mock.return_value = page
         yield page
@@ -98,6 +101,7 @@ class TestConfluenceGetPage:
             "space_id": "67890",
             "space_key": "TEST",
             "body": "<p>Test content</p>",
+            "version": 1,
         }
 
     @pytest.mark.asyncio
@@ -363,6 +367,7 @@ def confluence_client_get_page_mock() -> Iterator[ConfluencePage]:
             space_id="67890",
             space_key="TEST",
             body="<p>Full body content from page fetch</p>",
+            version=1,
         )
         mock.return_value = page
         yield page
@@ -406,3 +411,134 @@ class TestConfluenceSearchIncludeBody:
         assert "body" not in structured_content["data"][0]
         # excerpt should be there
         assert structured_content["data"][0]["excerpt"] == "<p>Content</p>"
+
+
+@pytest.fixture
+def confluence_client_update_page_mock(
+    get_atlassian_access_token_mock: None,
+) -> Iterator[ConfluencePage]:
+    """Mock ConfluenceClient.update_page method."""
+    mock_page = ConfluencePage(
+        page_id="12345",
+        title="Updated Page",
+        space_id="67890",
+        space_key="TEST",
+        body="<p>Updated content</p>",
+        version=6,
+    )
+    with patch(
+        "datarobot_genai.drmcp.tools.confluence.tools.ConfluenceClient.update_page",
+        return_value=mock_page,
+    ):
+        yield mock_page
+
+
+@pytest.fixture
+def confluence_client_update_page_error_mock(
+    get_atlassian_access_token_mock: None,
+) -> Iterator[None]:
+    """Mock ConfluenceClient.update_page method to raise ConfluenceError."""
+    with patch(
+        "datarobot_genai.drmcp.tools.confluence.tools.ConfluenceClient.update_page",
+        side_effect=ConfluenceError("Page not found", status_code=404),
+    ):
+        yield
+
+
+class TestConfluenceUpdatePage:
+    """Confluence update page tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_confluence_update_page_happy_path(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_update_page_mock: ConfluencePage,
+    ) -> None:
+        """Confluence update page -- happy path."""
+        page_id = "12345"
+        new_body_content = "<p>Updated content</p>"
+        version_number = 5
+
+        tool_result = await confluence_update_page(
+            page_id=page_id,
+            new_body_content=new_body_content,
+            version_number=version_number,
+        )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "12345" in content[0].text
+        assert "updated successfully" in content[0].text
+        assert "version 6" in content[0].text
+        assert structured_content == {
+            "updated_page_id": "12345",
+            "new_version": 6,
+        }
+
+    @pytest.mark.asyncio
+    async def test_confluence_update_page_empty_page_id(
+        self,
+        get_atlassian_access_token_mock: None,
+    ) -> None:
+        """Confluence update page with empty page_id -- should raise error."""
+        page_id = ""
+        new_body_content = "<p>Updated content</p>"
+        version_number = 5
+
+        with pytest.raises(MCPError, match="page_id.*cannot be empty"):
+            await confluence_update_page(
+                page_id=page_id,
+                new_body_content=new_body_content,
+                version_number=version_number,
+            )
+
+    @pytest.mark.asyncio
+    async def test_confluence_update_page_empty_body(
+        self,
+        get_atlassian_access_token_mock: None,
+    ) -> None:
+        """Confluence update page with empty body -- should raise error."""
+        page_id = "12345"
+        new_body_content = ""
+        version_number = 5
+
+        with pytest.raises(MCPError, match="new_body_content.*cannot be empty"):
+            await confluence_update_page(
+                page_id=page_id,
+                new_body_content=new_body_content,
+                version_number=version_number,
+            )
+
+    @pytest.mark.asyncio
+    async def test_confluence_update_page_invalid_version(
+        self,
+        get_atlassian_access_token_mock: None,
+    ) -> None:
+        """Confluence update page with invalid version -- should raise error."""
+        page_id = "12345"
+        new_body_content = "<p>Updated content</p>"
+        version_number = 0
+
+        with pytest.raises(MCPError, match="version_number.*must be a positive integer"):
+            await confluence_update_page(
+                page_id=page_id,
+                new_body_content=new_body_content,
+                version_number=version_number,
+            )
+
+    @pytest.mark.asyncio
+    async def test_confluence_update_page_when_error_in_client(
+        self,
+        get_atlassian_access_token_mock: None,
+        confluence_client_update_page_error_mock: None,
+    ) -> None:
+        """Confluence update page -- error in client."""
+        page_id = "12345"
+        new_body_content = "<p>Updated content</p>"
+        version_number = 5
+
+        with pytest.raises(MCPError, match="Page not found"):
+            await confluence_update_page(
+                page_id=page_id,
+                new_body_content=new_body_content,
+                version_number=version_number,
+            )

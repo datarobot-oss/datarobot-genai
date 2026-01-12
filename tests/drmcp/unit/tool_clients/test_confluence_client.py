@@ -404,6 +404,7 @@ class TestConfluenceClient:
             space_id="67890",
             space_key="TEST",
             body="<p>Content</p>",
+            version=1,
         )
 
         result = page.as_flat_dict()
@@ -414,6 +415,7 @@ class TestConfluenceClient:
             "space_id": "67890",
             "space_key": "TEST",
             "body": "<p>Content</p>",
+            "version": 1,
         }
 
     @pytest.mark.asyncio
@@ -773,3 +775,175 @@ class TestConfluenceClient:
 
                 with pytest.raises(ConfluenceError, match="Permission denied"):
                     await client.search_confluence_content(cql_query="type=page", max_results=10)
+
+    @pytest.mark.asyncio
+    async def test_update_page_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
+        """Test successful page update."""
+        mock_get_response = {
+            "id": "12345",
+            "title": "Test Page",
+            "space": {"id": "67890", "key": "TEST"},
+            "body": {"storage": {"value": "<p>Old content</p>"}},
+            "version": {"number": 5},
+        }
+        mock_update_response = {
+            "id": "12345",
+            "title": "Test Page",
+            "space": {"id": "67890", "key": "TEST"},
+            "body": {"storage": {"value": "<p>Updated content</p>"}},
+            "version": {"number": 6},
+        }
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+                captured_kwargs: dict = {}
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(200, mock_get_response, mock_cloud_id)
+
+                async def mock_put(_url: str, **kwargs: dict) -> httpx.Response:
+                    captured_kwargs.update(kwargs)
+                    return make_response(200, mock_update_response, mock_cloud_id, "PUT")
+
+                client._client.get = mock_get
+                client._client.put = mock_put
+
+                result = await client.update_page(
+                    page_id="12345",
+                    new_body_content="<p>Updated content</p>",
+                    version_number=5,
+                )
+
+                assert result.page_id == "12345"
+                assert result.title == "Test Page"
+                assert result.version == 6
+                assert result.body == "<p>Updated content</p>"
+                # Verify payload structure
+                assert captured_kwargs["json"]["version"]["number"] == 6
+                assert captured_kwargs["json"]["title"] == "Test Page"
+                assert (
+                    captured_kwargs["json"]["body"]["storage"]["value"] == "<p>Updated content</p>"
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_page_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
+        """Test page update when page doesn't exist (404 during title fetch)."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        404,
+                        {"message": "Content not found"},
+                        mock_cloud_id,
+                    )
+
+                client._client.get = mock_get
+
+                with pytest.raises(
+                    ConfluenceError,
+                    match="Page with ID '99999' not found.*cannot fetch existing title",
+                ) as exc_info:
+                    await client.update_page(
+                        page_id="99999",
+                        new_body_content="<p>Updated content</p>",
+                        version_number=5,
+                    )
+                assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_page_version_conflict(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """Test page update with version conflict."""
+        mock_get_response = {
+            "id": "12345",
+            "title": "Test Page",
+            "space": {"id": "67890", "key": "TEST"},
+            "body": {"storage": {"value": "<p>Old content</p>"}},
+            "version": {"number": 5},
+        }
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(200, mock_get_response, mock_cloud_id)
+
+                async def mock_put(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        409,
+                        {"message": "Version must be incremented on update"},
+                        mock_cloud_id,
+                        "PUT",
+                    )
+
+                client._client.get = mock_get
+                client._client.put = mock_put
+
+                with pytest.raises(ConfluenceError, match="Version conflict") as exc_info:
+                    await client.update_page(
+                        page_id="12345",
+                        new_body_content="<p>Updated content</p>",
+                        version_number=3,
+                    )
+                assert exc_info.value.status_code == 409
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("status_code", "error_match"),
+        [
+            (403, "Permission denied"),
+            (400, "Invalid request"),
+            (429, "Rate limit exceeded"),
+        ],
+    )
+    async def test_update_page_http_errors(
+        self, mock_access_token: str, mock_cloud_id: str, status_code: int, error_match: str
+    ) -> None:
+        """Test page update HTTP error handling."""
+        mock_get_response = {
+            "id": "12345",
+            "title": "Test Page",
+            "space": {"id": "67890", "key": "TEST"},
+            "body": {"storage": {"value": "<p>Old content</p>"}},
+            "version": {"number": 5},
+        }
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with ConfluenceClient(mock_access_token) as client:
+
+                async def mock_get(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(200, mock_get_response, mock_cloud_id)
+
+                async def mock_put(_url: str, **_kwargs: dict) -> httpx.Response:
+                    return make_response(
+                        status_code,
+                        {"message": "Error message"},
+                        mock_cloud_id,
+                        "PUT",
+                    )
+
+                client._client.get = mock_get
+                client._client.put = mock_put
+
+                with pytest.raises(ConfluenceError, match=error_match) as exc_info:
+                    await client.update_page(
+                        page_id="12345",
+                        new_body_content="<p>Updated content</p>",
+                        version_number=5,
+                    )
+                assert exc_info.value.status_code == status_code
