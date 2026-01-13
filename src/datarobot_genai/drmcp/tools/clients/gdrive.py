@@ -14,6 +14,7 @@
 
 """Google Drive API Client and utilities for OAuth."""
 
+import io
 import logging
 from typing import Annotated
 from typing import Any
@@ -24,6 +25,7 @@ from fastmcp.exceptions import ToolError
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
+from pypdf import PdfReader
 
 from datarobot_genai.drmcp.core.auth import get_access_token
 
@@ -36,6 +38,23 @@ GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 DEFAULT_ORDER = "modifiedTime desc"
 MAX_PAGE_SIZE = 100
 LIMIT = 500
+
+GOOGLE_WORKSPACE_EXPORT_MIMES: dict[str, str] = {
+    "application/vnd.google-apps.document": "text/markdown",
+    "application/vnd.google-apps.spreadsheet": "text/csv",
+    "application/vnd.google-apps.presentation": "text/plain",
+}
+
+BINARY_MIME_PREFIXES = (
+    "image/",
+    "audio/",
+    "video/",
+    "application/zip",
+    "application/octet-stream",
+    "application/vnd.google-apps.drawing",
+)
+
+PDF_MIME_TYPE = "application/pdf"
 
 
 async def get_gdrive_access_token() -> str | ToolError:
@@ -114,6 +133,35 @@ class PaginatedResult(BaseModel):
 
     files: list[GoogleDriveFile]
     next_page_token: str | None = None
+
+
+class GoogleDriveFileContent(BaseModel):
+    """Content retrieved from a Google Drive file."""
+
+    id: str
+    name: str
+    mime_type: str
+    content: str
+    original_mime_type: str
+    was_exported: bool = False
+    size: int | None = None
+    web_view_link: str | None = None
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the file content."""
+        result: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "mimeType": self.mime_type,
+            "content": self.content,
+            "originalMimeType": self.original_mime_type,
+            "wasExported": self.was_exported,
+        }
+        if self.size is not None:
+            result["size"] = self.size
+        if self.web_view_link is not None:
+            result["webViewLink"] = self.web_view_link
+        return result
 
 
 class GoogleDriveClient:
@@ -343,6 +391,213 @@ class GoogleDriveClient:
             formatted_query = f"name contains '{escaped_query}'"
             logger.debug(f"Auto-formatted query '{query}' to '{formatted_query}'")
         return formatted_query
+
+    @staticmethod
+    def _is_binary_mime_type(mime_type: str) -> bool:
+        """Check if MIME type indicates binary content that's not useful for LLM consumption.
+
+        Args:
+            mime_type: The MIME type to check.
+
+        Returns
+        -------
+            True if the MIME type is considered binary, False otherwise.
+        """
+        return any(mime_type.startswith(prefix) for prefix in BINARY_MIME_PREFIXES)
+
+    async def get_file_metadata(self, file_id: str) -> GoogleDriveFile:
+        """Get file metadata from Google Drive.
+
+        Args:
+            file_id: The ID of the file to get metadata for.
+
+        Returns
+        -------
+            GoogleDriveFile with file metadata.
+
+        Raises
+        ------
+            GoogleDriveError: If the file is not found or access is denied.
+        """
+        params = {"fields": SUPPORTED_FIELDS_STR}
+        response = await self._client.get(f"/{file_id}", params=params)
+
+        if response.status_code == 404:
+            raise GoogleDriveError(f"File with ID '{file_id}' not found.")
+        if response.status_code == 403:
+            raise GoogleDriveError(f"Permission denied: you don't have access to file '{file_id}'.")
+        if response.status_code == 429:
+            raise GoogleDriveError("Rate limit exceeded. Please try again later.")
+
+        response.raise_for_status()
+        return GoogleDriveFile.from_api_response(response.json())
+
+    async def _export_workspace_file(self, file_id: str, export_mime_type: str) -> str:
+        """Export a Google Workspace file to the specified format.
+
+        Args:
+            file_id: The ID of the Google Workspace file.
+            export_mime_type: The MIME type to export to (e.g., 'text/markdown').
+
+        Returns
+        -------
+            The exported content as a string.
+
+        Raises
+        ------
+            GoogleDriveError: If export fails.
+        """
+        response = await self._client.get(
+            f"/{file_id}/export",
+            params={"mimeType": export_mime_type},
+        )
+
+        if response.status_code == 404:
+            raise GoogleDriveError(f"File with ID '{file_id}' not found.")
+        if response.status_code == 403:
+            raise GoogleDriveError(
+                f"Permission denied: you don't have access to export file '{file_id}'."
+            )
+        if response.status_code == 400:
+            raise GoogleDriveError(
+                f"Cannot export file '{file_id}' to format '{export_mime_type}'. "
+                "The file may not support this export format."
+            )
+        if response.status_code == 429:
+            raise GoogleDriveError("Rate limit exceeded. Please try again later.")
+
+        response.raise_for_status()
+        return response.text
+
+    async def _download_file(self, file_id: str) -> str:
+        """Download a regular file's content from Google Drive as text."""
+        content = await self._download_file_bytes(file_id)
+        return content.decode("utf-8")
+
+    async def _download_file_bytes(self, file_id: str) -> bytes:
+        """Download a file's content as bytes from Google Drive.
+
+        Args:
+            file_id: The ID of the file to download.
+
+        Returns
+        -------
+            The file content as bytes.
+
+        Raises
+        ------
+            GoogleDriveError: If download fails.
+        """
+        response = await self._client.get(
+            f"/{file_id}",
+            params={"alt": "media"},
+        )
+
+        if response.status_code == 404:
+            raise GoogleDriveError(f"File with ID '{file_id}' not found.")
+        if response.status_code == 403:
+            raise GoogleDriveError(
+                f"Permission denied: you don't have access to download file '{file_id}'."
+            )
+        if response.status_code == 429:
+            raise GoogleDriveError("Rate limit exceeded. Please try again later.")
+
+        response.raise_for_status()
+        return response.content
+
+    def _extract_text_from_pdf(self, pdf_bytes: bytes) -> str:
+        """Extract text from PDF bytes using pypdf.
+
+        Args:
+            pdf_bytes: The PDF file content as bytes.
+
+        Returns
+        -------
+            Extracted text from the PDF.
+
+        Raises
+        ------
+            GoogleDriveError: If PDF text extraction fails.
+        """
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            text_parts = []
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+            return "\n\n".join(text_parts)
+        except Exception as e:
+            raise GoogleDriveError(f"Failed to extract text from PDF: {e}")
+
+    async def read_file_content(
+        self, file_id: str, target_format: str | None = None
+    ) -> GoogleDriveFileContent:
+        """Read the content of a file from Google Drive.
+
+        Google Workspace files (Docs, Sheets, Slides) are automatically exported to
+        LLM-readable formats:
+        - Google Docs -> Markdown (text/markdown)
+        - Google Sheets -> CSV (text/csv)
+        - Google Slides -> Plain text (text/plain)
+        - PDF files -> Extracted text (text/plain)
+
+        Regular text files are downloaded directly.
+        Binary files (images, videos, etc.) will raise an error.
+
+        Args:
+            file_id: The ID of the file to read.
+            target_format: Optional MIME type to export Google Workspace files to.
+                If not specified, uses sensible defaults. Has no effect on non-Workspace files.
+
+        Returns
+        -------
+            GoogleDriveFileContent with the file content and metadata.
+
+        Raises
+        ------
+            GoogleDriveError: If the file cannot be read (not found, permission denied,
+                             binary file, etc.).
+        """
+        file_metadata = await self.get_file_metadata(file_id)
+        original_mime_type = file_metadata.mime_type
+
+        if self._is_binary_mime_type(original_mime_type):
+            raise GoogleDriveError(
+                f"Binary files are not supported for reading. "
+                f"File '{file_metadata.name}' has MIME type '{original_mime_type}'."
+            )
+
+        if original_mime_type == GOOGLE_DRIVE_FOLDER_MIME:
+            raise GoogleDriveError(
+                f"Cannot read content of a folder. '{file_metadata.name}' is a folder, not a file."
+            )
+
+        was_exported = False
+        if original_mime_type in GOOGLE_WORKSPACE_EXPORT_MIMES:
+            export_mime = target_format or GOOGLE_WORKSPACE_EXPORT_MIMES[original_mime_type]
+            content = await self._export_workspace_file(file_id, export_mime)
+            result_mime_type = export_mime
+            was_exported = True
+        elif original_mime_type == PDF_MIME_TYPE:
+            pdf_bytes = await self._download_file_bytes(file_id)
+            content = self._extract_text_from_pdf(pdf_bytes)
+            result_mime_type = "text/plain"
+            was_exported = True
+        else:
+            content = await self._download_file(file_id)
+            result_mime_type = original_mime_type
+
+        return GoogleDriveFileContent(
+            id=file_metadata.id,
+            name=file_metadata.name,
+            mime_type=result_mime_type,
+            content=content,
+            original_mime_type=original_mime_type,
+            was_exported=was_exported,
+            size=file_metadata.size,
+            web_view_link=file_metadata.web_view_link,
+        )
 
     async def __aenter__(self) -> "GoogleDriveClient":
         """Async context manager entry."""
