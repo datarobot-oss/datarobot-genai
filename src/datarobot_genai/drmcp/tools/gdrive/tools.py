@@ -109,3 +109,69 @@ async def gdrive_find_contents(
             "nextPageToken": data.next_page_token,
         },
     )
+
+
+@dr_mcp_tool(tags={"google", "gdrive", "read", "content", "file", "download"})
+async def gdrive_read_content(
+    *,
+    file_id: Annotated[str, "The ID of the file to read."],
+    target_format: Annotated[
+        str | None,
+        "The preferred output format for Google Workspace files "
+        "(e.g., 'text/markdown' for Docs, 'text/csv' for Sheets). "
+        "If not specified, uses sensible defaults. Has no effect on regular files.",
+    ] = None,
+) -> ToolResult | ToolError:
+    """
+    Retrieve the content of a specific file by its ID. Google Workspace files are
+    automatically exported to LLM-readable formats (Push-Down).
+
+    Usage:
+        - Basic: gdrive_read_content(file_id="1ABC123def456")
+        - Custom format: gdrive_read_content(file_id="1ABC...", target_format="text/plain")
+        - First use gdrive_find_contents to discover file IDs
+
+    Supported conversions (defaults):
+        - Google Docs -> Markdown (text/markdown)
+        - Google Sheets -> CSV (text/csv)
+        - Google Slides -> Plain text (text/plain)
+        - PDF files -> Extracted text (text/plain)
+        - Other text files -> Downloaded as-is
+
+    Note: Binary files (images, videos, etc.) are not supported and will return an error.
+    Large Google Workspace files (>10MB) may fail to export due to API limits.
+
+    Refer to Google Drive export formats documentation:
+    https://developers.google.com/workspace/drive/api/guides/ref-export-formats
+    """
+    if not file_id or not file_id.strip():
+        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+
+    access_token = await get_gdrive_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with GoogleDriveClient(access_token) as client:
+            file_content = await client.read_file_content(file_id, target_format)
+    except GoogleDriveError as e:
+        logger.error(f"Google Drive error reading file content: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error reading Google Drive file content: {e}")
+        raise ToolError(
+            f"An unexpected error occurred while reading Google Drive file content: {str(e)}"
+        )
+
+    # Provide helpful context about the conversion
+    export_info = ""
+    if file_content.was_exported:
+        export_info = f" (exported from {file_content.original_mime_type})"
+
+    return ToolResult(
+        content=(
+            f"Successfully retrieved content of '{file_content.name}' "
+            f"({file_content.mime_type}){export_info}."
+        ),
+        structured_content=file_content.as_flat_dict(),
+    )
