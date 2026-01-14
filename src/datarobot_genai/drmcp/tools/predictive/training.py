@@ -58,6 +58,7 @@ class DatasetInsight:
 
 @dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
 async def analyze_dataset(
+    *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
 ) -> ToolError | ToolResult:
     """Analyze a dataset to understand its structure and potential use cases."""
@@ -110,6 +111,7 @@ async def analyze_dataset(
 
 @dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "usecase"})
 async def suggest_use_cases(
+    *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
 ) -> ToolError | ToolResult:
     """Analyze a dataset and suggest potential machine learning use cases."""
@@ -140,6 +142,7 @@ async def suggest_use_cases(
 
 @dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "eda"})
 async def get_exploratory_insights(
+    *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
     target_col: Annotated[str, "Optional target column to focus EDA insights on"] | None = None,
 ) -> ToolError | ToolResult:
@@ -222,8 +225,6 @@ async def get_exploratory_insights(
                 eda_insights["feature_correlations"] = dict(
                     sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
                 )
-
-    eda_insights["ui_panel"] = ["eda"]
 
     return ToolResult(
         content=json.dumps(eda_insights, indent=2),
@@ -441,6 +442,7 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
 
 @dr_mcp_tool(tags={"predictive", "training", "write", "autopilot", "model"})
 async def start_autopilot(
+    *,
     target: Annotated[str, "Name of the target column for modeling"] | None = None,
     project_id: Annotated[
         str, "Optional, the ID of the DataRobot project or a new project if no id is provided"
@@ -506,7 +508,6 @@ async def start_autopilot(
             "target": target,
             "mode": mode,
             "status": project.get_status(),
-            "ui_panel": ["eda", "model-training", "leaderboard"],
             "use_case_id": project.use_case_id,
         }
 
@@ -531,6 +532,7 @@ async def start_autopilot(
 
 @dr_mcp_tool(tags={"prediction", "training", "read", "model", "evaluation"})
 async def get_model_roc_curve(
+    *,
     project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
     model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
     source: Annotated[
@@ -581,8 +583,8 @@ async def get_model_roc_curve(
         }
 
         return ToolResult(
-            content=json.dumps({"data": roc_data, "ui_panel": ["roc-curve"]}, indent=2),
-            structured_content={"data": roc_data, "ui_panel": ["roc-curve"]},
+            content=json.dumps({"data": roc_data}, indent=2),
+            structured_content={"data": roc_data},
         )
     except Exception as e:
         return ToolError(f"Failed to get ROC curve: {str(e)}")
@@ -590,6 +592,7 @@ async def get_model_roc_curve(
 
 @dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
 async def get_model_feature_impact(
+    *,
     project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
     model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
 ) -> ToolError | ToolResult:
@@ -607,8 +610,8 @@ async def get_model_feature_impact(
     feature_impact = model.get_or_request_feature_impact()
 
     return ToolResult(
-        content=json.dumps({"data": feature_impact, "ui_panel": ["feature-impact"]}, indent=2),
-        structured_content={"data": feature_impact, "ui_panel": ["feature-impact"]},
+        content=json.dumps({"data": feature_impact}, indent=2),
+        structured_content={"data": feature_impact},
     )
 
 
@@ -652,6 +655,6 @@ async def get_model_lift_chart(
     }
 
     return ToolResult(
-        content=json.dumps({"data": lift_chart_data, "ui_panel": ["lift-chart"]}, indent=2),
-        structured_content={"data": lift_chart_data, "ui_panel": ["lift-chart"]},
+        content=json.dumps({"data": lift_chart_data}, indent=2),
+        structured_content={"data": lift_chart_data},
     )
