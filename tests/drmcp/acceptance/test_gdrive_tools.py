@@ -35,6 +35,11 @@ def gdrive_folder_id() -> str:
 
 
 @pytest.fixture(scope="session")
+def gdrive_pdf_file_id() -> str:
+    return "0B8sNeWRxvhpmc3hDaE1SWV9LTkk"
+
+
+@pytest.fixture(scope="session")
 def expectations_for_gdrive_list_files_success(
     gdrive_folder_id: str, list_files_no_of_results: int
 ) -> ETETestExpectations:
@@ -56,6 +61,26 @@ def expectations_for_gdrive_list_files_success(
             "wiechowski - interlingua.pdf",
             "dyplomword2007pdf.pdf",
             "openoffice math.pdf",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_gdrive_read_content_success(
+    gdrive_pdf_file_id: str,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="gdrive_read_content",
+                parameters={
+                    "file_id": gdrive_pdf_file_id,
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "OpenOffice",
         ],
     )
 
@@ -89,6 +114,33 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_list_files_success,
+                openai_llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            "Please read the content of the Google Drive file with ID '{file_id}' "
+            "and tell me what the document is about."
+        ],
+    )
+    async def test_gdrive_read_content_success(
+        self,
+        openai_llm_client: Any,
+        expectations_for_gdrive_read_content_success: ETETestExpectations,
+        gdrive_pdf_file_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(file_id=gdrive_pdf_file_id)
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_gdrive_read_content_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_gdrive_read_content_success,
                 openai_llm_client,
                 session,
                 test_name,
