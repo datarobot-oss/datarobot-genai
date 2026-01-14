@@ -45,14 +45,14 @@ async def test_tagged_tool_decorator() -> None:
     def test_function() -> str:
         return "test"
 
-    # Get the tool from the manager
-    tools = await mcp._tool_manager.get_tools()
+    # Get the tool as exposed via MCP (includes meta)
+    tools = await mcp._list_tools_mcp()
     assert len(tools) == 1
 
-    tool = list(tools.values())[0]
-    assert tool.annotations is not None
-    assert hasattr(tool.annotations, "tags")
-    assert tool.annotations.tags == ["example", "test"]
+    tool = list(tools)[0]
+    assert hasattr(tool, "meta")
+    assert tool.meta is not None
+    assert tool.meta.get("_fastmcp", {}).get("tags") == ["example", "test"]
 
 
 @pytest.mark.asyncio
@@ -275,7 +275,7 @@ async def test_list_all_tags_tool() -> None:
 
     # The tool should be registered globally, so it should be found
     assert get_tags_tool is not None
-    assert hasattr(get_tags_tool.annotations, "tags")
+    assert hasattr(get_tags_tool, "meta")
 
 
 def test_get_all_available_tags_tool() -> None:
@@ -409,14 +409,12 @@ async def test_list_tools_by_tags_no_tags() -> None:
         mock_tool1 = Mock()
         mock_tool1.name = "test_tool_1"
         mock_tool1.description = "Test tool 1"
-        mock_tool1.annotations = Mock()
-        mock_tool1.annotations.extra = {"tags": ["data", "read"]}
+        mock_tool1.meta = {"_fastmcp": {"tags": ["data", "read"]}}
 
         mock_tool2 = Mock()
         mock_tool2.name = "test_tool_2"
         mock_tool2.description = "Test tool 2"
-        mock_tool2.annotations = Mock()
-        mock_tool2.annotations.extra = {"tags": ["model", "train"]}
+        mock_tool2.meta = {"_fastmcp": {"tags": ["model", "train"]}}
 
         mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
@@ -440,14 +438,12 @@ async def test_list_tools_by_tags_with_tags_or() -> None:
         mock_tool1 = Mock()
         mock_tool1.name = "data_tool"
         mock_tool1.description = "Data tool"
-        mock_tool1.annotations = Mock()
-        mock_tool1.annotations.extra = {"tags": ["data", "read"]}
+        mock_tool1.meta = {"_fastmcp": {"tags": ["data", "read"]}}
 
         mock_tool2 = Mock()
         mock_tool2.name = "model_tool"
         mock_tool2.description = "Model tool"
-        mock_tool2.annotations = Mock()
-        mock_tool2.annotations.extra = {"tags": ["model", "train"]}
+        mock_tool2.meta = {"_fastmcp": {"tags": ["model", "train"]}}
 
         mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
@@ -469,14 +465,12 @@ async def test_list_tools_by_tags_with_tags_and() -> None:
         mock_tool1 = Mock()
         mock_tool1.name = "data_model_tool"
         mock_tool1.description = "Data model tool"
-        mock_tool1.annotations = Mock()
-        mock_tool1.annotations.extra = {"tags": ["data", "model"]}
+        mock_tool1.meta = {"_fastmcp": {"tags": ["data", "model"]}}
 
         mock_tool2 = Mock()
         mock_tool2.name = "data_only_tool"
         mock_tool2.description = "Data only tool"
-        mock_tool2.annotations = Mock()
-        mock_tool2.annotations.extra = {"tags": ["data"]}
+        mock_tool2.meta = {"_fastmcp": {"tags": ["data"]}}
 
         mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1])
 
@@ -533,8 +527,7 @@ async def test_get_tool_info_by_name_found() -> None:
         mock_tool = Mock()
         mock_tool.name = "test_tool"
         mock_tool.description = "Test tool description"
-        mock_tool.annotations = Mock()
-        mock_tool.annotations.extra = {"tags": ["data", "read"]}
+        mock_tool.meta = {"_fastmcp": {"tags": ["data", "read"]}}
 
         # Mock input schema
         mock_schema = Mock()
@@ -581,8 +574,7 @@ async def test_get_tool_info_by_name_no_tags() -> None:
         mock_tool = Mock()
         mock_tool.name = "no_tags_tool"
         mock_tool.description = "Tool without tags"
-        mock_tool.annotations = Mock()
-        mock_tool.annotations.extra = {}
+        mock_tool.meta = {"_fastmcp": {"tags": []}}
         mock_tool.inputSchema = None
 
         mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
@@ -606,7 +598,7 @@ async def test_get_tool_info_by_name_no_annotations() -> None:
         mock_tool = Mock()
         mock_tool.name = "no_annotations_tool"
         mock_tool.description = "Tool without annotations"
-        mock_tool.annotations = None
+        mock_tool.meta = None
         mock_tool.inputSchema = None
 
         mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
@@ -629,8 +621,7 @@ async def test_get_tool_info_by_name_no_extra() -> None:
         mock_tool = Mock()
         mock_tool.name = "no_extra_tool"
         mock_tool.description = "Tool without extra"
-        mock_tool.annotations = Mock()
-        mock_tool.annotations.extra = None
+        mock_tool.meta = None
         mock_tool.inputSchema = None
 
         mock_mcp.list_tools = AsyncMock(return_value=[mock_tool])
@@ -653,8 +644,7 @@ async def test_get_tool_info_by_name_no_schema_properties() -> None:
         mock_tool = Mock()
         mock_tool.name = "no_schema_props_tool"
         mock_tool.description = "Tool without schema properties"
-        mock_tool.annotations = Mock()
-        mock_tool.annotations.extra = {"tags": ["test"]}
+        mock_tool.meta = {"_fastmcp": {"tags": ["test"]}}
 
         mock_schema = Mock()
         mock_schema.properties = None
@@ -698,32 +688,28 @@ async def test_list_tools_by_tags_complex_scenario() -> None:
         tool1 = Mock()
         tool1.name = "read_data"
         tool1.description = "Read data from file"
-        tool1.annotations = Mock()
-        tool1.annotations.extra = {"tags": ["data", "read"]}
+        tool1.meta = {"_fastmcp": {"tags": ["data", "read"]}}
         tools.append(tool1)
 
         # Tool with data and write tags
         tool2 = Mock()
         tool2.name = "write_data"
         tool2.description = "Write data to file"
-        tool2.annotations = Mock()
-        tool2.annotations.extra = {"tags": ["data", "write"]}
+        tool2.meta = {"_fastmcp": {"tags": ["data", "write"]}}
         tools.append(tool2)
 
         # Tool with model and train tags
         tool3 = Mock()
         tool3.name = "train_model"
         tool3.description = "Train a model"
-        tool3.annotations = Mock()
-        tool3.annotations.extra = {"tags": ["model", "train"]}
+        tool3.meta = {"_fastmcp": {"tags": ["model", "train"]}}
         tools.append(tool3)
 
         # Tool with data, model, and predict tags
         tool4 = Mock()
         tool4.name = "predict_data"
         tool4.description = "Make predictions"
-        tool4.annotations = Mock()
-        tool4.annotations.extra = {"tags": ["data", "model", "predict"]}
+        tool4.meta = {"_fastmcp": {"tags": ["data", "model", "predict"]}}
         tools.append(tool4)
 
         mock_mcp.list_tools = AsyncMock(return_value=tools)

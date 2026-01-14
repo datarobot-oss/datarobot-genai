@@ -16,6 +16,7 @@ import logging
 
 from .mcp_instance import dr_core_mcp_tool
 from .mcp_instance import mcp
+from .tool_filter import get_tool_tags
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,7 @@ async def list_tools_by_tags(tags: list[str] | None = None, match_all: bool = Fa
     result.append("")
 
     for i, tool in enumerate(tools, 1):
-        tool_tags = []
-        if tool.annotations and hasattr(tool.annotations, "extra") and tool.annotations.extra:
-            tool_tags = tool.annotations.extra.get("tags", [])
+        tool_tags = get_tool_tags(tool)
 
         result.append(f"{i}. {tool.name}")
         result.append(f"   Description: {tool.description}")
@@ -103,9 +102,7 @@ async def get_tool_info_by_name(tool_name: str) -> str:
             result.append(f"Description: {tool.description}")
 
             # Get tags
-            tool_tags = []
-            if tool.annotations and hasattr(tool.annotations, "extra") and tool.annotations.extra:
-                tool_tags = tool.annotations.extra.get("tags", [])
+            tool_tags = get_tool_tags(tool)
 
             if tool_tags:
                 result.append(f"Tags: {', '.join(tool_tags)}")
