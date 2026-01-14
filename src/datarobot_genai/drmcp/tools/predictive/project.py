@@ -14,6 +14,10 @@
 
 import json
 import logging
+from typing import Annotated
+
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
@@ -21,35 +25,39 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"project", "management", "list"})
-async def list_projects() -> str:
-    """
-    List all DataRobot projects for the authenticated user.
-
-    Returns
-    -------
-        A string summary of the user's DataRobot projects.
-    """
+@dr_mcp_tool(tags={"predictive", "project", "read", "management", "list"})
+async def list_projects() -> ToolResult:
+    """List all DataRobot projects for the authenticated user."""
     client = get_sdk_client()
     projects = client.Project.list()
-    if not projects:
-        return "No projects found."
-    return "\n".join(f"{p.id}: {p.project_name}" for p in projects)
+    projects = {p.id: p.project_name for p in projects}
+
+    return ToolResult(
+        content=(
+            json.dumps(projects, indent=2)
+            if projects
+            else json.dumps({"message": "No projects found."}, indent=2)
+        ),
+        structured_content=projects,
+    )
 
 
-@dr_mcp_tool(tags={"project", "data", "info"})
-async def get_project_dataset_by_name(project_id: str, dataset_name: str) -> str:
+@dr_mcp_tool(tags={"predictive", "project", "read", "data", "info"})
+async def get_project_dataset_by_name(
+    *,
+    project_id: Annotated[str, "The ID of the DataRobot project."] | None = None,
+    dataset_name: Annotated[str, "The name of the dataset to find (e.g., 'training', 'holdout')."]
+    | None = None,
+) -> ToolError | ToolResult:
+    """Get a dataset ID by name for a given project.
+
+    The dataset ID and the dataset type (source or prediction) as a string, or an error message.
     """
-    Get a dataset ID by name for a given project.
+    if not project_id:
+        return ToolError("Project ID is required.")
+    if not dataset_name:
+        return ToolError("Dataset name is required.")
 
-    Args:
-        project_id: The ID of the DataRobot project.
-        dataset_name: The name of the dataset to find (e.g., 'training', 'holdout').
-
-    Returns
-    -------
-        The dataset ID and the dataset type (source or prediction) as a string, or an error message.
-    """
     client = get_sdk_client()
     project = client.Project.get(project_id)
     all_datasets = []
@@ -61,12 +69,22 @@ async def get_project_dataset_by_name(project_id: str, dataset_name: str) -> str
         all_datasets.extend([{"type": "prediction", "dataset": ds} for ds in prediction_datasets])
     for ds in all_datasets:
         if dataset_name.lower() in ds["dataset"].name.lower():
-            return json.dumps(
-                {
+            return ToolResult(
+                content=(
+                    json.dumps(
+                        {
+                            "dataset_id": ds["dataset"].id,
+                            "dataset_type": ds["type"],
+                        },
+                        indent=2,
+                    )
+                ),
+                structured_content={
                     "dataset_id": ds["dataset"].id,
                     "dataset_type": ds["type"],
-                    "ui_panel": ["dataset"],
                 },
-                indent=2,
             )
-    return f"Dataset with name containing '{dataset_name}' not found in project {project_id}."
+    return ToolResult(
+        content=f"Dataset with name containing '{dataset_name}' not found in project {project_id}.",
+        structured_content={},
+    )
