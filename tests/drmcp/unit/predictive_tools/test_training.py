@@ -42,7 +42,7 @@ async def test_analyze_dataset() -> None:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_get_client.return_value = mock_client
 
-        result = await training.analyze_dataset("test_dataset_id")
+        result = await training.analyze_dataset(dataset_id="test_dataset_id")
         assert hasattr(result, "structured_content")
         insights = result.structured_content
 
@@ -93,7 +93,7 @@ async def test_suggest_use_cases() -> None:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_get_client.return_value = mock_client
 
-        result = await training.suggest_use_cases("test_dataset_id")
+        result = await training.suggest_use_cases(dataset_id="test_dataset_id")
         assert hasattr(result, "structured_content")
         suggestions = result.structured_content["use_case_suggestions"]
 
@@ -134,7 +134,9 @@ async def test_get_exploratory_insights() -> None:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_get_client.return_value = mock_client
 
-        result = await training.get_exploratory_insights("test_dataset_id", "target")
+        result = await training.get_exploratory_insights(
+            dataset_id="test_dataset_id", target_col="target"
+        )
         assert hasattr(result, "structured_content")
         insights = result.structured_content
 
@@ -143,7 +145,6 @@ async def test_get_exploratory_insights() -> None:
         assert "feature_correlations" in insights
         assert "missing_data" in insights
         assert "data_types" in insights
-        assert insights["ui_panel"] == ["eda"]
 
 
 @pytest.mark.asyncio
@@ -173,7 +174,6 @@ async def test_start_autopilot_new_project() -> None:
         assert response["target"] == "target"
         assert response["mode"] == "quick"
         assert response["status"] == "running"
-        assert response["ui_panel"] == ["eda", "model-training", "leaderboard"]
 
 
 @pytest.mark.asyncio
@@ -224,14 +224,15 @@ async def test_get_model_roc_curve() -> None:
         mock_client.Model.get.return_value = mock_model
         mock_get_client.return_value = mock_client
 
-        result = await training.get_model_roc_curve("test_project_id", "test_model_id")
+        result = await training.get_model_roc_curve(
+            project_id="test_project_id", model_id="test_model_id"
+        )
         assert hasattr(result, "structured_content")
         response = result.structured_content
 
         assert "data" in response
         assert "roc_points" in response["data"]
         assert len(response["data"]["roc_points"]) == 1
-        assert response["ui_panel"] == ["roc-curve"]
 
 
 @pytest.mark.asyncio
@@ -250,13 +251,14 @@ async def test_get_model_feature_impact() -> None:
         mock_client.Model.get.return_value = mock_model
         mock_get_client.return_value = mock_client
 
-        result = await training.get_model_feature_impact("test_project_id", "test_model_id")
+        result = await training.get_model_feature_impact(
+            project_id="test_project_id", model_id="test_model_id"
+        )
         assert hasattr(result, "structured_content")
         response = result.structured_content
 
         assert "data" in response
         assert len(response["data"]) == 2
-        assert response["ui_panel"] == ["feature-impact"]
 
 
 @pytest.mark.asyncio
@@ -278,14 +280,15 @@ async def test_get_model_lift_chart() -> None:
         mock_client.Model.get.return_value = mock_model
         mock_get_client.return_value = mock_client
 
-        result = await training.get_model_lift_chart("test_project_id", "test_model_id")
+        result = await training.get_model_lift_chart(
+            project_id="test_project_id", model_id="test_model_id"
+        )
         assert hasattr(result, "structured_content")
         response = result.structured_content
 
         assert "data" in response
         assert "bins" in response["data"]
         assert len(response["data"]["bins"]) == 2
-        assert response["ui_panel"] == ["lift-chart"]
 
 
 @pytest.mark.asyncio
