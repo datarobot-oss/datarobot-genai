@@ -84,10 +84,11 @@ class TestMCPRegisterToolsIntegration:
         tools = await mcp.list_tools()
         assert any(tool.name == "tagged_tool" for tool in tools)
 
-        # Verify tool is registered with correct tags
+        # Verify tool annotations
         registered_tool = next(tool for tool in tools if tool.name == "tagged_tool")
         assert registered_tool.annotations is not None
-        assert set(registered_tool.annotations.tags) == test_tags
+        annotations_dict = registered_tool.annotations.model_dump()
+        assert annotations_dict.get("tags") == test_tags
 
     async def test_dr_mcp_tool_with_enabled_false(self) -> None:
         """Test that dr_mcp_tool with enabled=False excludes tool from registration."""
