@@ -16,14 +16,12 @@ import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
-from typing import overload
 
 from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
 from fastmcp.server.dependencies import get_context
-from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
 from mcp.types import AnyFunction
 from mcp.types import Tool as MCPTool
