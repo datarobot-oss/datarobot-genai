@@ -15,6 +15,7 @@
 import httpx
 import pytest
 
+from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_WORKSPACE_EXPORT_MIMES
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveClient
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveError
@@ -23,10 +24,13 @@ from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFileContent
 
 
 def make_response(
-    status_code: int, json_data: dict | None = None, text: str | None = None
+    status_code: int,
+    json_data: dict | None = None,
+    text: str | None = None,
+    method: str = "GET",
 ) -> httpx.Response:
     """Create a mock httpx.Response with a request attached."""
-    request = httpx.Request("GET", "https://www.googleapis.com/drive/v3/files")
+    request = httpx.Request(method, "https://www.googleapis.com/drive/v3/files")
     if json_data is not None:
         return httpx.Response(status_code, json=json_data, request=request)
     return httpx.Response(status_code, text=text or "", request=request)
@@ -435,3 +439,261 @@ class TestIsBinaryMimeType:
         """Test that Google Workspace types are not detected as binary."""
         for mime_type in GOOGLE_WORKSPACE_EXPORT_MIMES.keys():
             assert GoogleDriveClient._is_binary_mime_type(mime_type) is False
+
+
+class TestCreateFile:
+    """Test GoogleDriveClient.create_file method."""
+
+    @pytest.fixture
+    def mock_access_token(self) -> str:
+        """Mock access token."""
+        return "test_access_token_123"
+
+    @pytest.fixture
+    def mock_created_file_response(self) -> dict:
+        """Mock response for a created file."""
+        return {
+            "id": "new_file_123",
+            "name": "My New File.txt",
+            "mimeType": "text/plain",
+            "webViewLink": "https://drive.google.com/file/d/new_file_123/view",
+            "createdTime": "2025-01-14T12:00:00.000Z",
+            "modifiedTime": "2025-01-14T12:00:00.000Z",
+        }
+
+    @pytest.fixture
+    def mock_created_google_doc_response(self) -> dict:
+        """Mock response for a created Google Doc."""
+        return {
+            "id": "new_doc_123",
+            "name": "My New Document",
+            "mimeType": "application/vnd.google-apps.document",
+            "webViewLink": "https://docs.google.com/document/d/new_doc_123/edit",
+            "createdTime": "2025-01-14T12:00:00.000Z",
+            "modifiedTime": "2025-01-14T12:00:00.000Z",
+        }
+
+    @pytest.fixture
+    def mock_created_folder_response(self) -> dict:
+        """Mock response for a created folder."""
+        return {
+            "id": "new_folder_123",
+            "name": "My New Folder",
+            "mimeType": GOOGLE_DRIVE_FOLDER_MIME,
+            "webViewLink": "https://drive.google.com/drive/folders/new_folder_123",
+            "createdTime": "2025-01-14T12:00:00.000Z",
+            "modifiedTime": "2025-01-14T12:00:00.000Z",
+        }
+
+    @pytest.mark.asyncio
+    async def test_create_file_metadata_only(
+        self, mock_access_token: str, mock_created_file_response: dict
+    ) -> None:
+        """Test creating a file without content (metadata only)."""
+        async with GoogleDriveClient(mock_access_token) as client:
+            post_called = False
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                nonlocal post_called
+                post_called = True
+                assert url == "/"
+                assert json is not None
+                assert json["name"] == "My New File.txt"
+                assert json["mimeType"] == "text/plain"
+                assert "parents" not in json
+                return make_response(200, mock_created_file_response, method="POST")
+
+            client._client.post = mock_post
+
+            result = await client.create_file(name="My New File.txt", mime_type="text/plain")
+
+            assert post_called
+            assert isinstance(result, GoogleDriveFile)
+            assert result.id == "new_file_123"
+            assert result.name == "My New File.txt"
+            assert result.mime_type == "text/plain"
+
+    @pytest.mark.asyncio
+    async def test_create_file_with_parent(
+        self, mock_access_token: str, mock_created_file_response: dict
+    ) -> None:
+        """Test creating a file in a specific parent folder."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                assert json is not None
+                assert json["parents"] == ["parent_folder_id"]
+                return make_response(200, mock_created_file_response, method="POST")
+
+            client._client.post = mock_post
+
+            result = await client.create_file(
+                name="My New File.txt", mime_type="text/plain", parent_id="parent_folder_id"
+            )
+
+            assert result.id == "new_file_123"
+
+    @pytest.mark.asyncio
+    async def test_create_file_with_content(
+        self, mock_access_token: str, mock_created_file_response: dict
+    ) -> None:
+        """Test creating a file with initial content (multipart upload)."""
+        async with GoogleDriveClient(mock_access_token) as client:
+            post_url = None
+
+            async def mock_post(
+                url: str,
+                json: dict | None = None,
+                params: dict | None = None,
+                content: bytes | None = None,
+                headers: dict | None = None,
+                **kwargs,
+            ) -> httpx.Response:
+                nonlocal post_url
+                post_url = url
+                # Verify multipart upload endpoint
+                assert url == "https://www.googleapis.com/upload/drive/v3/files"
+                assert params is not None
+                assert params.get("uploadType") == "multipart"
+                assert content is not None
+                assert headers is not None
+                assert "multipart/related" in headers.get("Content-Type", "")
+                # Verify content contains our text
+                assert b"Hello, World!" in content
+                return make_response(200, mock_created_file_response, method="POST")
+
+            client._client.post = mock_post
+
+            result = await client.create_file(
+                name="My New File.txt", mime_type="text/plain", initial_content="Hello, World!"
+            )
+
+            assert post_url == "https://www.googleapis.com/upload/drive/v3/files"
+            assert result.id == "new_file_123"
+
+    @pytest.mark.asyncio
+    async def test_create_google_doc_with_content(
+        self, mock_access_token: str, mock_created_google_doc_response: dict
+    ) -> None:
+        """Test creating a Google Doc with content (auto-conversion)."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str,
+                json: dict | None = None,
+                params: dict | None = None,
+                content: bytes | None = None,
+                headers: dict | None = None,
+                **kwargs,
+            ) -> httpx.Response:
+                # Should use multipart upload
+                assert url == "https://www.googleapis.com/upload/drive/v3/files"
+                assert content is not None
+                # Content should be text/plain for Google Doc conversion
+                assert b"text/plain" in content
+                assert b"# My Report" in content
+                return make_response(200, mock_created_google_doc_response, method="POST")
+
+            client._client.post = mock_post
+
+            result = await client.create_file(
+                name="My New Document",
+                mime_type="application/vnd.google-apps.document",
+                initial_content="# My Report\n\nThis is the content.",
+            )
+
+            assert result.id == "new_doc_123"
+            assert result.mime_type == "application/vnd.google-apps.document"
+
+    @pytest.mark.asyncio
+    async def test_create_folder(
+        self, mock_access_token: str, mock_created_folder_response: dict
+    ) -> None:
+        """Test creating a folder (ignores initial_content)."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                # Should use metadata-only endpoint even if content is provided
+                assert url == "/"
+                assert json is not None
+                assert json["mimeType"] == GOOGLE_DRIVE_FOLDER_MIME
+                return make_response(200, mock_created_folder_response, method="POST")
+
+            client._client.post = mock_post
+
+            result = await client.create_file(
+                name="My New Folder",
+                mime_type=GOOGLE_DRIVE_FOLDER_MIME,
+                initial_content="This should be ignored",
+            )
+
+            assert result.id == "new_folder_123"
+            assert result.mime_type == GOOGLE_DRIVE_FOLDER_MIME
+
+    @pytest.mark.asyncio
+    async def test_create_file_parent_not_found(self, mock_access_token: str) -> None:
+        """Test error when parent folder doesn't exist."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                return make_response(404, method="POST")
+
+            client._client.post = mock_post
+
+            with pytest.raises(GoogleDriveError, match="Parent folder.*not found"):
+                await client.create_file(
+                    name="file.txt", mime_type="text/plain", parent_id="nonexistent_folder"
+                )
+
+    @pytest.mark.asyncio
+    async def test_create_file_permission_denied(self, mock_access_token: str) -> None:
+        """Test error when permission is denied."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                return make_response(403, method="POST")
+
+            client._client.post = mock_post
+
+            with pytest.raises(GoogleDriveError, match="Permission denied"):
+                await client.create_file(name="file.txt", mime_type="text/plain")
+
+    @pytest.mark.asyncio
+    async def test_create_file_bad_request(self, mock_access_token: str) -> None:
+        """Test error for invalid parameters."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                return make_response(400, method="POST")
+
+            client._client.post = mock_post
+
+            with pytest.raises(GoogleDriveError, match="Bad request"):
+                await client.create_file(name="file.txt", mime_type="invalid/mime-type")
+
+    @pytest.mark.asyncio
+    async def test_create_file_rate_limited(self, mock_access_token: str) -> None:
+        """Test error when rate limited."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_post(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                return make_response(429, method="POST")
+
+            client._client.post = mock_post
+
+            with pytest.raises(GoogleDriveError, match="Rate limit exceeded"):
+                await client.create_file(name="file.txt", mime_type="text/plain")

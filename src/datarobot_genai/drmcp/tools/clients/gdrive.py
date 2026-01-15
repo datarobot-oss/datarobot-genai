@@ -15,7 +15,9 @@
 """Google Drive API Client and utilities for OAuth."""
 
 import io
+import json
 import logging
+import uuid
 from typing import Annotated
 from typing import Any
 
@@ -43,6 +45,12 @@ GOOGLE_WORKSPACE_EXPORT_MIMES: dict[str, str] = {
     "application/vnd.google-apps.document": "text/markdown",
     "application/vnd.google-apps.spreadsheet": "text/csv",
     "application/vnd.google-apps.presentation": "text/plain",
+}
+
+# MIME type mappings for content conversion during upload to Google Workspace formats
+UPLOAD_CONTENT_TYPES: dict[str, str] = {
+    "application/vnd.google-apps.document": "text/plain",
+    "application/vnd.google-apps.spreadsheet": "text/csv",
 }
 
 BINARY_MIME_PREFIXES = (
@@ -597,6 +605,125 @@ class GoogleDriveClient:
             was_exported=was_exported,
             size=file_metadata.size,
             web_view_link=file_metadata.web_view_link,
+        )
+
+    async def create_file(
+        self,
+        name: str,
+        mime_type: str,
+        parent_id: str | None = None,
+        initial_content: str | None = None,
+    ) -> GoogleDriveFile:
+        """Create a new file or folder in Google Drive.
+
+        Creates a new file with the specified name and MIME type. Optionally places
+        it in a specific folder and populates it with initial content.
+
+        For Google Workspace files (Docs, Sheets), the Drive API automatically
+        converts plain text content to the appropriate format.
+
+        Args:
+            name: The name for the new file or folder.
+            mime_type: The MIME type of the file (e.g., 'text/plain',
+                'application/vnd.google-apps.document',
+                'application/vnd.google-apps.folder').
+            parent_id: Optional ID of the parent folder. If not specified,
+                the file is created in the root of the user's Drive.
+            initial_content: Optional text content to populate the file.
+                Ignored for folders.
+
+        Returns
+        -------
+            GoogleDriveFile with the created file's metadata.
+
+        Raises
+        ------
+            GoogleDriveError: If file creation fails (permission denied,
+                parent not found, rate limited, etc.).
+        """
+        metadata: dict[str, Any] = {
+            "name": name,
+            "mimeType": mime_type,
+        }
+        if parent_id:
+            metadata["parents"] = [parent_id]
+
+        if mime_type == GOOGLE_DRIVE_FOLDER_MIME or not initial_content:
+            response = await self._client.post(
+                "/",
+                json=metadata,
+                params={"fields": SUPPORTED_FIELDS_STR, "supportsAllDrives": "true"},
+            )
+        else:
+            response = await self._create_file_with_content(
+                metadata=metadata,
+                content=initial_content,
+                target_mime_type=mime_type,
+            )
+
+        if response.status_code == 404:
+            raise GoogleDriveError(
+                f"Parent folder with ID '{parent_id}' not found."
+                if parent_id
+                else "Resource not found."
+            )
+        if response.status_code == 403:
+            raise GoogleDriveError(
+                "Permission denied: you don't have permission to create files in this location."
+            )
+        if response.status_code == 400:
+            raise GoogleDriveError(
+                f"Bad request: invalid parameters for file creation. "
+                f"Check that the MIME type '{mime_type}' is valid."
+            )
+        if response.status_code == 429:
+            raise GoogleDriveError("Rate limit exceeded. Please try again later.")
+
+        response.raise_for_status()
+        return GoogleDriveFile.from_api_response(response.json())
+
+    async def _create_file_with_content(
+        self,
+        metadata: dict[str, Any],
+        content: str,
+        target_mime_type: str,
+    ) -> httpx.Response:
+        """Create a file with content using multipart upload.
+
+        Args:
+            metadata: File metadata dictionary.
+            content: Text content for the file.
+            target_mime_type: The target MIME type for the file.
+
+        Returns
+        -------
+            The HTTP response from the upload.
+        """
+        content_type = UPLOAD_CONTENT_TYPES.get(target_mime_type, "text/plain")
+        boundary = f"===gdrive_boundary_{uuid.uuid4().hex}==="
+        body_parts = [
+            f"--{boundary}",
+            "Content-Type: application/json; charset=UTF-8",
+            "",
+            json.dumps(metadata),
+            f"--{boundary}",
+            f"Content-Type: {content_type}",
+            "",
+            content,
+            f"--{boundary}--",
+        ]
+        body = "\r\n".join(body_parts)
+
+        upload_url = "https://www.googleapis.com/upload/drive/v3/files"
+        return await self._client.post(
+            upload_url,
+            content=body.encode("utf-8"),
+            params={
+                "uploadType": "multipart",
+                "fields": SUPPORTED_FIELDS_STR,
+                "supportsAllDrives": "true",
+            },
+            headers={"Content-Type": f"multipart/related; boundary={boundary}"},
         )
 
     async def __aenter__(self) -> "GoogleDriveClient":

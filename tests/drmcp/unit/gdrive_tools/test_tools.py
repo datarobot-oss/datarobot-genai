@@ -17,10 +17,12 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.drmcp.core.exceptions import MCPError
+from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveError
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFile
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFileContent
 from datarobot_genai.drmcp.tools.clients.gdrive import PaginatedResult
+from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_find_contents
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_read_content
 
@@ -259,3 +261,157 @@ class TestGdriveReadContent:
             )
             with pytest.raises(MCPError, match="Binary files are not supported"):
                 await gdrive_read_content(file_id="img123")
+
+
+class TestGdriveCreateFile:
+    """Gdrive create file tool tests."""
+
+    @pytest.fixture
+    def created_file(self) -> GoogleDriveFile:
+        return GoogleDriveFile(
+            id="new_file_123",
+            name="My New File.txt",
+            mime_type="text/plain",
+            web_view_link="https://drive.google.com/file/d/new_file_123/view",
+        )
+
+    @pytest.fixture
+    def created_google_doc(self) -> GoogleDriveFile:
+        return GoogleDriveFile(
+            id="new_doc_123",
+            name="My New Document",
+            mime_type="application/vnd.google-apps.document",
+            web_view_link="https://docs.google.com/document/d/new_doc_123/edit",
+        )
+
+    @pytest.fixture
+    def created_folder(self) -> GoogleDriveFile:
+        return GoogleDriveFile(
+            id="new_folder_123",
+            name="My New Folder",
+            mime_type=GOOGLE_DRIVE_FOLDER_MIME,
+            web_view_link="https://drive.google.com/drive/folders/new_folder_123",
+        )
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_file_happy_path(
+        self,
+        get_gdrive_access_token_mock: None,
+        created_file: GoogleDriveFile,
+    ) -> None:
+        """Gdrive create file -- happy path."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
+        ) as mock:
+            mock.return_value = created_file
+            tool_result = await gdrive_create_file(name="My New File.txt", mime_type="text/plain")
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "Successfully created file 'My New File.txt'" in content[0].text
+        assert structured_content["id"] == "new_file_123"
+        assert structured_content["name"] == "My New File.txt"
+        assert structured_content["mimeType"] == "text/plain"
+        assert (
+            structured_content["webViewLink"] == "https://drive.google.com/file/d/new_file_123/view"
+        )
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_file_with_content(
+        self,
+        get_gdrive_access_token_mock: None,
+        created_file: GoogleDriveFile,
+    ) -> None:
+        """Gdrive create file -- with initial content."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
+        ) as mock:
+            mock.return_value = created_file
+            tool_result = await gdrive_create_file(
+                name="My New File.txt", mime_type="text/plain", initial_content="Hello, World!"
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "with initial content" in content[0].text
+        assert structured_content["id"] == "new_file_123"
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_google_doc(
+        self,
+        get_gdrive_access_token_mock: None,
+        created_google_doc: GoogleDriveFile,
+    ) -> None:
+        """Gdrive create file -- Google Doc with content."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
+        ) as mock:
+            mock.return_value = created_google_doc
+            tool_result = await gdrive_create_file(
+                name="My New Document",
+                mime_type="application/vnd.google-apps.document",
+                initial_content="# My Report\n\nContent here.",
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "Successfully created file 'My New Document'" in content[0].text
+        assert structured_content["mimeType"] == "application/vnd.google-apps.document"
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_folder(
+        self,
+        get_gdrive_access_token_mock: None,
+        created_folder: GoogleDriveFile,
+    ) -> None:
+        """Gdrive create file -- folder creation."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
+        ) as mock:
+            mock.return_value = created_folder
+            tool_result = await gdrive_create_file(
+                name="My New Folder", mime_type=GOOGLE_DRIVE_FOLDER_MIME
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "Successfully created folder 'My New Folder'" in content[0].text
+        assert structured_content["mimeType"] == GOOGLE_DRIVE_FOLDER_MIME
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_file_empty_name(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive create file -- empty name raises error."""
+        with pytest.raises(MCPError, match="name.*cannot be empty"):
+            await gdrive_create_file(name="", mime_type="text/plain")
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_file_whitespace_name(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive create file -- whitespace name raises error."""
+        with pytest.raises(MCPError, match="name.*cannot be empty"):
+            await gdrive_create_file(name="   ", mime_type="text/plain")
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_file_empty_mime_type(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive create file -- empty mime_type raises error."""
+        with pytest.raises(MCPError, match="mime_type.*cannot be empty"):
+            await gdrive_create_file(name="file.txt", mime_type="")
+
+    @pytest.mark.asyncio
+    async def test_gdrive_create_file_error_handling(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive create file -- GoogleDriveError is propagated."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
+        ) as mock:
+            mock.side_effect = GoogleDriveError("Parent folder not found.")
+            with pytest.raises(MCPError, match="Parent folder not found"):
+                await gdrive_create_file(
+                    name="file.txt", mime_type="text/plain", parent_id="nonexistent"
+                )
