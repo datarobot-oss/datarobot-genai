@@ -31,9 +31,6 @@ from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_man
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
-from .mcp_server_tools import get_all_available_tags  # noqa # pylint: disable=unused-import
-from .mcp_server_tools import get_tool_info_by_name  # noqa # pylint: disable=unused-import
-from .mcp_server_tools import list_tools_by_tags  # noqa # pylint: disable=unused-import
 from .memory_management.manager import MemoryManager
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
