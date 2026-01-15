@@ -29,8 +29,12 @@ async def test_list_projects_success() -> None:
         mock_client.Project.list.return_value = [mock_proj1, mock_proj2]
         mock_get_client.return_value = mock_client
         result = await project.list_projects()
-        assert "1: proj1" in result
-        assert "2: proj2" in result
+        assert hasattr(result, "structured_content")
+        projects_dict = result.structured_content
+        assert "1" in projects_dict
+        assert projects_dict["1"] == "proj1"
+        assert "2" in projects_dict
+        assert projects_dict["2"] == "proj2"
 
 
 @pytest.mark.asyncio
@@ -40,7 +44,9 @@ async def test_list_projects_empty() -> None:
         mock_client.Project.list.return_value = []
         mock_get_client.return_value = mock_client
         result = await project.list_projects()
-        assert "No projects found." in result
+        assert hasattr(result, "content")
+        # content is a list of TextContent objects, get the text from the first one
+        assert "No projects found." in result.content[0].text
 
 
 @pytest.mark.asyncio
@@ -63,11 +69,15 @@ async def test_get_project_dataset_by_name_success() -> None:
         mock_ds1.name = "training_data"
         mock_ds1.id = "dsid"
         mock_project.get_datasets.return_value = [mock_ds1]
+        mock_project.get_dataset.return_value = None
         mock_client.Project.get.return_value = mock_project
         mock_get_client.return_value = mock_client
-        result = await project.get_project_dataset_by_name("pid", "training")
+        result = await project.get_project_dataset_by_name(
+            project_id="pid", dataset_name="training"
+        )
         mock_client.Project.get.assert_called_once_with("pid")
-        assert "dsid" in result
+        assert hasattr(result, "structured_content")
+        assert result.structured_content["dataset_id"] == "dsid"
 
 
 @pytest.mark.asyncio
@@ -76,10 +86,18 @@ async def test_get_project_dataset_by_name_not_found() -> None:
         mock_client = MagicMock()
         mock_project = MagicMock()
         mock_project.get_datasets.return_value = []
+        mock_project.get_dataset.return_value = None
         mock_client.Project.get.return_value = mock_project
         mock_get_client.return_value = mock_client
-        result = await project.get_project_dataset_by_name("pid", "training")
-        assert "Dataset with name containing 'training' not found in project pid." in result
+        result = await project.get_project_dataset_by_name(
+            project_id="pid", dataset_name="training"
+        )
+        assert hasattr(result, "content")
+        # content is a list of TextContent objects, get the text from the first one
+        assert (
+            "Dataset with name containing 'training' not found in project pid."
+            in result.content[0].text
+        )
 
 
 @pytest.mark.asyncio
@@ -89,5 +107,5 @@ async def test_get_project_dataset_by_name_error() -> None:
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await project.get_project_dataset_by_name("pid", "training")
+            await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
         assert "Error in get_project_dataset_by_name: Exception: fail" == str(exc_info.value)
