@@ -16,17 +16,13 @@ import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
-from typing import overload
 
 from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
 from fastmcp.server.dependencies import get_context
-from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
-from fastmcp.utilities.types import NotSet
-from fastmcp.utilities.types import NotSetT
 from mcp.types import AnyFunction
 from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
@@ -119,86 +115,6 @@ class TaggedFastMCP(FastMCP):
                 "No active MCP context for notification. "
                 "In stateless mode, clients will see changes on next request."
             )
-
-    @overload
-    def tool(
-        self,
-        name_or_fn: AnyFunction,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-    ) -> FunctionTool: ...
-
-    @overload
-    def tool(
-        self,
-        name_or_fn: str | None = None,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-    ) -> Callable[[AnyFunction], FunctionTool]: ...
-
-    def tool(
-        self,
-        name_or_fn: str | Callable[..., Any] | None = None,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-        **kwargs: Any,
-    ) -> Callable[[AnyFunction], FunctionTool] | FunctionTool:
-        """
-        Extend tool decorator that supports tags and other annotations, while remaining
-        signature-compatible with FastMCP.tool to avoid recursion issues with partials.
-        """
-        if isinstance(annotations, dict):
-            annotations = ToolAnnotations(**annotations)
-
-        # Ensure tags are available both via native fastmcp `tags` and inside annotations
-        if tags is not None:
-            tags_ = sorted(tags)
-            if annotations is None:
-                annotations = ToolAnnotations()  # type: ignore[call-arg]
-                annotations.tags = tags_  # type: ignore[attr-defined, union-attr]
-            else:
-                # At this point, annotations is ToolAnnotations (not dict)
-                assert isinstance(annotations, ToolAnnotations)
-                annotations.tags = tags_  # type: ignore[attr-defined]
-
-        return super().tool(
-            name_or_fn,
-            name=name,
-            title=title,
-            description=description,
-            tags=tags,
-            output_schema=output_schema
-            if output_schema is not None
-            else kwargs.get("output_schema"),
-            annotations=annotations,
-            exclude_args=exclude_args,
-            meta=meta,
-            enabled=enabled,
-        )
 
     async def list_tools(
         self, tags: list[str] | None = None, match_all: bool = False
@@ -488,11 +404,10 @@ async def register_tools(
     # Apply dr_mcp_extras to the memory-aware function
     wrapped_fn = dr_mcp_extras()(memory_aware_fn)
 
-    # Create annotations with tags, deployment_id if provided
-    annotations = ToolAnnotations()  # type: ignore[call-arg]
-    if tags is not None:
-        annotations.tags = tags  # type: ignore[attr-defined]
+    # Create annotations only when additional metadata is required
+    annotations: ToolAnnotations | None = None  # type: ignore[assignment]
     if deployment_id is not None:
+        annotations = ToolAnnotations()  # type: ignore[call-arg]
         annotations.deployment_id = deployment_id  # type: ignore[attr-defined]
 
     tool = Tool.from_function(
