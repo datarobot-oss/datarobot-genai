@@ -139,8 +139,8 @@ async def test_register_tools_with_tags(mock_mcp: MagicMock) -> None:
     mock_mcp.add_tool.assert_called_once()
     registered_tool = mock_mcp.add_tool.call_args[0][0]
     assert registered_tool.name == "test_tool"
+    # Tags are passed to Tool.from_function and exposed via meta._fastmcp.tags by FastMCP
     assert registered_tool.tags == test_tags
-    assert registered_tool.annotations.tags == test_tags
 
 
 @pytest.mark.asyncio
