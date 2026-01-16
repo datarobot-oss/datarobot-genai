@@ -12,57 +12,83 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import logging
 from datetime import timedelta
+from typing import TYPE_CHECKING
 from typing import Literal
 
-import httpx
-from nat.authentication.interfaces import AuthProviderBase
-from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client_base import AuthAdapter
-from nat.plugins.mcp.client_base import MCPSSEClient
-from nat.plugins.mcp.client_base import MCPStdioClient
 from nat.plugins.mcp.client_base import MCPStreamableHTTPClient
 from nat.plugins.mcp.client_config import MCPServerConfig
 from nat.plugins.mcp.client_impl import MCPClientConfig
-from nat.plugins.mcp.client_impl import MCPFunctionGroup
-from nat.plugins.mcp.client_impl import mcp_apply_tool_alias_and_description
-from nat.plugins.mcp.client_impl import mcp_session_tool_function
 from pydantic import Field
 from pydantic import HttpUrl
 
-from datarobot_genai.core.mcp.common import MCPConfig
+if TYPE_CHECKING:
+    import httpx
+    from nat.authentication.interfaces import AuthProviderBase
+    from nat.builder.builder import Builder
+    from nat.plugins.mcp.client_impl import MCPFunctionGroup
 
 logger = logging.getLogger(__name__)
 
-config = MCPConfig().server_config
+
+def _default_transport() -> Literal["streamable-http", "sse", "stdio"]:
+    from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
+
+    server_config = MCPConfig().server_config
+    return server_config["transport"] if server_config else "stdio"
+
+
+def _default_url() -> HttpUrl | None:
+    from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
+
+    server_config = MCPConfig().server_config
+    return server_config["url"] if server_config else None
+
+
+def _default_auth_provider() -> str | AuthenticationRef | None:
+    from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
+
+    server_config = MCPConfig().server_config
+    return "datarobot_mcp_auth" if server_config else None
+
+
+def _default_command() -> str | None:
+    from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
+
+    server_config = MCPConfig().server_config
+    return None if server_config else "docker"
 
 
 class DataRobotMCPServerConfig(MCPServerConfig):
     transport: Literal["streamable-http", "sse", "stdio"] = Field(
-        default=config["transport"] if config else "stdio",
+        default_factory=_default_transport,
         description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
     url: HttpUrl | None = Field(
-        default=config["url"] if config else None,
+        default_factory=_default_url,
         description="URL of the MCP server (for sse or streamable-http transport)",
     )
     # Authentication configuration
     auth_provider: str | AuthenticationRef | None = Field(
-        default="datarobot_mcp_auth" if config else None,
+        default_factory=_default_auth_provider,
         description="Reference to authentication provider",
     )
     command: str | None = Field(
-        default=None if config else "docker",
+        default_factory=_default_command,
         description="Command to run for stdio transport (e.g. 'python' or 'docker')",
     )
 
 
 class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  # type: ignore[call-arg]
     server: DataRobotMCPServerConfig = Field(
-        default=DataRobotMCPServerConfig(), description="DataRobot MCP Server configuration"
+        default_factory=DataRobotMCPServerConfig,
+        description="DataRobot MCP Server configuration",
     )
 
 
@@ -128,6 +154,12 @@ async def datarobot_mcp_client_function_group(
     Returns:
         The function group
     """
+    from nat.plugins.mcp.client_base import MCPSSEClient  # noqa: PLC0415
+    from nat.plugins.mcp.client_base import MCPStdioClient  # noqa: PLC0415
+    from nat.plugins.mcp.client_impl import MCPFunctionGroup  # noqa: PLC0415
+    from nat.plugins.mcp.client_impl import mcp_apply_tool_alias_and_description  # noqa: PLC0415
+    from nat.plugins.mcp.client_impl import mcp_session_tool_function  # noqa: PLC0415
+
     # Resolve auth provider if specified
     auth_provider = None
     if config.server.auth_provider:
