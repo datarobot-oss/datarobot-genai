@@ -14,9 +14,12 @@
 
 import json
 import logging
+from typing import Annotated
 from typing import Any
 
 from datarobot.models.model import Model
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
@@ -50,33 +53,25 @@ class ModelEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-@dr_mcp_tool(tags={"model", "management", "info"})
-async def get_best_model(project_id: str, metric: str | None = None) -> str:
-    """
-    Get the best model for a DataRobot project, optionally by a specific metric.
+@dr_mcp_tool(tags={"predictive", "model", "read", "management", "info"})
+async def get_best_model(
+    *,
+    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
+    metric: Annotated[str, "The metric to use for best model selection (e.g., 'AUC', 'LogLoss')"]
+    | None = None,
+) -> ToolError | ToolResult:
+    """Get the best model for a DataRobot project, optionally by a specific metric."""
+    if not project_id:
+        return ToolError("Project ID must be provided")
 
-    Args:
-        project_id: The ID of the DataRobot project.
-        metric: (Optional) The metric to use for best model selection (e.g., 'AUC', 'LogLoss').
-
-    Returns
-    -------
-        A formatted string describing the best model.
-
-    Raises
-    ------
-        Exception: If project not found or no models exist in the project.
-    """
     client = get_sdk_client()
     project = client.Project.get(project_id)
     if not project:
-        logger.error(f"Project with ID {project_id} not found")
-        raise Exception(f"Project with ID {project_id} not found.")
+        return ToolError(f"Project with ID {project_id} not found.")
 
     leaderboard = project.get_models()
     if not leaderboard:
-        logger.info(f"No models found for project {project_id}")
-        raise Exception("No models found for this project.")
+        return ToolError("No models found for this project.")
 
     if metric:
         reverse_sort = metric.upper() in [
@@ -98,40 +93,66 @@ async def get_best_model(project_id: str, metric: str | None = None) -> str:
     best_model = leaderboard[0]
     logger.info(f"Found best model {best_model.id} for project {project_id}")
 
-    # Format the response as a human-readable string
     metric_info = ""
+    metric_value = None
+
     if metric and best_model.metrics and metric in best_model.metrics:
         metric_value = best_model.metrics[metric].get("validation")
         if metric_value is not None:
             metric_info = f" with {metric}: {metric_value:.2f}"
 
-    return f"Best model: {best_model.model_type}{metric_info}"
+    best_model_dict = {
+        "id": best_model.id,
+        "model_type": best_model.model_type,
+        "metric": metric,
+        "metric_value": metric_value,
+    }
+
+    return ToolResult(
+        content=f"Best model: {best_model.model_type}{metric_info}",
+        structured_content={
+            "project_id": project_id,
+            "best_model": best_model_dict,
+        },
+    )
 
 
-@dr_mcp_tool(tags={"model", "prediction", "scoring"})
-async def score_dataset_with_model(project_id: str, model_id: str, dataset_url: str) -> str:
-    """
-    Score a dataset using a specific DataRobot model.
+@dr_mcp_tool(tags={"predictive", "model", "read", "scoring", "dataset"})
+async def score_dataset_with_model(
+    *,
+    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
+    model_id: Annotated[str, "The DataRobot model ID"] | None = None,
+    dataset_url: Annotated[str, "The dataset URL"] | None = None,
+) -> ToolError | ToolResult:
+    """Score a dataset using a specific DataRobot model."""
+    if not project_id:
+        return ToolError("Project ID must be provided")
+    if not model_id:
+        return ToolError("Model ID must be provided")
+    if not dataset_url:
+        return ToolError("Dataset URL must be provided")
 
-    Args:
-        project_id: The ID of the DataRobot project.
-        model_id: The ID of the DataRobot model to use for scoring.
-        dataset_url: The URL to the dataset to score (must be accessible to DataRobot).
-
-    Returns
-    -------
-        A string summary of the scoring job or a meaningful error message.
-    """
     client = get_sdk_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project, model_id)
     job = model.score(dataset_url)
-    logger.info(f"Started scoring job {job.id} for model {model_id}")
-    return f"Scoring job started: {job.id}"
+
+    return ToolResult(
+        content=f"Scoring job started: {job.id}",
+        structured_content={
+            "scoring_job_id": job.id,
+            "project_id": project_id,
+            "model_id": model_id,
+            "dataset_url": dataset_url,
+        },
+    )
 
 
-@dr_mcp_tool(tags={"model", "management", "list"})
-async def list_models(project_id: str) -> str:
+@dr_mcp_tool(tags={"predictive", "model", "read", "management", "list"})
+async def list_models(
+    *,
+    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
+) -> ToolError | ToolResult:
     """
     List all models in a project.
 
@@ -142,7 +163,20 @@ async def list_models(project_id: str) -> str:
     -------
         A string summary of the models in the project.
     """
+    if not project_id:
+        return ToolError("Project ID must be provided")
+
     client = get_sdk_client()
     project = client.Project.get(project_id)
     models = project.get_models()
-    return json.dumps(models, indent=2, cls=ModelEncoder)
+
+    return ToolResult(
+        content=(
+            f"Found {len(models)} models in project {project_id}, here are the details:\n"
+            f"{json.dumps(models, indent=2, cls=ModelEncoder)}"
+        ),
+        structured_content={
+            "project_id": project_id,
+            "models": [model_to_dict(model) for model in models],
+        },
+    )
