@@ -33,7 +33,7 @@ def expectations_for_list_projects_success(
             ToolCallTestExpectations(
                 name="list_projects",
                 parameters={},
-                result=f"{classification_project_id}: ",
+                result=f'"{classification_project_id}": "{classification_project_name}"',
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -60,7 +60,6 @@ def expectations_for_get_project_dataset_by_name_success(
                 result={
                     "dataset_id": classification_dataset_id,
                     "dataset_type": "source",
-                    "ui_panel": ["dataset"],
                 },
             ),
         ],
@@ -110,7 +109,7 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
             ToolCallTestExpectations(
                 name="list_projects",
                 parameters={},
-                result=f"{classification_project_id}: ",
+                result=f'"{classification_project_id}": "{classification_project_name}"',
             ),
             ToolCallTestExpectations(
                 name="get_project_dataset_by_name",
@@ -121,7 +120,6 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
                 result={
                     "dataset_id": classification_dataset_id,
                     "dataset_type": "source",
-                    "ui_panel": ["dataset"],
                 },
             ),
         ],

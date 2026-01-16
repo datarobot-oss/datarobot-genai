@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 from typing import Any
 
 import pytest
@@ -85,6 +86,7 @@ def expectations_for_gdrive_read_content_success(
     )
 
 
+@pytest.mark.skipif(not os.getenv("ENABLE_GDRIVE_TOOLS"), reason="Gdrive tools are not enabled")
 @pytest.mark.asyncio
 class TestGdriveToolsE2E(ToolBaseE2E):
     """End-to-end tests for gdrive tools."""

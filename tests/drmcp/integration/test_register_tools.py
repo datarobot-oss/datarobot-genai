@@ -63,7 +63,7 @@ class TestMCPRegisterToolsIntegration:
         assert json.loads(cast(TextContent, tool_result.content[0]).text) == tool_output
 
     async def test_register_tools_with_tags(self) -> None:
-        """Test tool registration with tags and annotations."""
+        """Test tool registration with tags."""
 
         # Define a tool with tags
         async def tagged_tool(ctx: Context[ServerSession, dict[str, Any]]) -> str:
@@ -84,11 +84,14 @@ class TestMCPRegisterToolsIntegration:
         tools = await mcp.list_tools()
         assert any(tool.name == "tagged_tool" for tool in tools)
 
-        # Verify tool annotations
+        # Verify tool tags
         registered_tool = next(tool for tool in tools if tool.name == "tagged_tool")
-        assert registered_tool.annotations is not None
-        annotations_dict = registered_tool.annotations.model_dump()
-        assert annotations_dict.get("tags") == test_tags
+        # Tags are stored in meta._fastmcp.tags by FastMCP
+        assert registered_tool.meta is not None
+        fastmcp_meta = registered_tool.meta.get("_fastmcp", {})
+        meta_tags = fastmcp_meta.get("tags", [])
+        # Convert to set for comparison since order may differ
+        assert set(meta_tags) == test_tags
 
     async def test_dr_mcp_tool_with_enabled_false(self) -> None:
         """Test that dr_mcp_tool with enabled=False excludes tool from registration."""

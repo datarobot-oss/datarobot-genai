@@ -617,6 +617,7 @@ async def get_model_feature_impact(
 
 @dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
 async def get_model_lift_chart(
+    *,
     project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
     model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
     source: Annotated[

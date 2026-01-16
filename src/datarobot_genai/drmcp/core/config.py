@@ -31,6 +31,124 @@ from .constants import DEFAULT_DATAROBOT_ENDPOINT
 from .constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
 
+class MCPToolConfig(BaseSettings):
+    """Tool configuration for MCP server."""
+
+    enable_predictive_tools: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PREDICTIVE_TOOLS",
+            "ENABLE_PREDICTIVE_TOOLS",
+        ),
+        description="Enable/disable predictive tools",
+    )
+
+    enable_jira_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_JIRA_TOOLS",
+            "ENABLE_JIRA_TOOLS",
+        ),
+        description="Enable/disable Jira tools",
+    )
+
+    enable_confluence_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CONFLUENCE_TOOLS",
+            "ENABLE_CONFLUENCE_TOOLS",
+        ),
+        description="Enable/disable Confluence tools",
+    )
+
+    enable_gdrive_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_GDRIVE_TOOLS",
+            "ENABLE_GDRIVE_TOOLS",
+        ),
+        description="Enable/disable GDrive tools",
+    )
+
+    enable_microsoft_graph_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_MICROSOFT_GRAPH_TOOLS",
+            "ENABLE_MICROSOFT_GRAPH_TOOLS",
+        ),
+        description="Enable/disable Sharepoint tools",
+    )
+
+    is_atlassian_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED",
+            "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Atlassian OAuth provider is configured for Atlassian integration",
+    )
+
+    @property
+    def is_atlassian_oauth_configured(self) -> bool:
+        """Check if Atlassian OAuth is configured via provider flag or environment variables."""
+        return self.is_atlassian_oauth_provider_configured or bool(
+            os.getenv("ATLASSIAN_CLIENT_ID") and os.getenv("ATLASSIAN_CLIENT_SECRET")
+        )
+
+    is_google_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED",
+            "IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Google OAuth provider is configured for Google integration",
+    )
+
+    @property
+    def is_google_oauth_configured(self) -> bool:
+        return self.is_google_oauth_provider_configured or bool(
+            os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET")
+        )
+
+    is_microsoft_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED",
+            "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Microsoft OAuth provider is configured for Microsoft integration",
+    )
+
+    @property
+    def is_microsoft_oauth_configured(self) -> bool:
+        return self.is_microsoft_oauth_provider_configured or bool(
+            os.getenv("MICROSOFT_CLIENT_ID") and os.getenv("MICROSOFT_CLIENT_SECRET")
+        )
+
+    @field_validator(
+        "enable_predictive_tools",
+        "enable_jira_tools",
+        "enable_confluence_tools",
+        "enable_gdrive_tools",
+        "enable_microsoft_graph_tools",
+        "is_atlassian_oauth_provider_configured",
+        "is_google_oauth_provider_configured",
+        "is_microsoft_oauth_provider_configured",
+        mode="before",
+    )
+    @classmethod
+    def validate_runtime_params(cls, v: Any) -> Any:
+        """Validate runtime parameters."""
+        return extract_datarobot_runtime_param_payload(v)
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
 class MCPServerConfig(BaseSettings):
     """MCP Server configuration using pydantic settings."""
 
@@ -188,86 +306,11 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable memory management",
     )
-    enable_predictive_tools: bool = Field(
-        default=True,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PREDICTIVE_TOOLS",
-            "ENABLE_PREDICTIVE_TOOLS",
-        ),
-        description="Enable/disable predictive tools",
-    )
 
-    # Jira tools
-    enable_jira_tools: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_JIRA_TOOLS",
-            "ENABLE_JIRA_TOOLS",
-        ),
-        description="Enable/disable Jira tools",
+    tool_config: MCPToolConfig = Field(
+        default_factory=MCPToolConfig,
+        description="Tool configuration",
     )
-    is_jira_oauth_provider_configured: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_JIRA_OAUTH_PROVIDER_CONFIGURED",
-            "IS_JIRA_OAUTH_PROVIDER_CONFIGURED",
-        ),
-        description="Whether Jira OAuth provider is configured for Jira integration",
-    )
-
-    @property
-    def is_jira_oauth_configured(self) -> bool:
-        return self.is_jira_oauth_provider_configured or bool(
-            os.getenv("JIRA_CLIENT_ID") and os.getenv("JIRA_CLIENT_SECRET")
-        )
-
-    # Confluence tools
-    enable_confluence_tools: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CONFLUENCE_TOOLS",
-            "ENABLE_CONFLUENCE_TOOLS",
-        ),
-        description="Enable/disable Confluence tools",
-    )
-    is_confluence_oauth_provider_configured: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED",
-            "IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED",
-        ),
-        description="Whether Confluence OAuth provider is configured for Confluence integration",
-    )
-
-    @property
-    def is_confluence_oauth_configured(self) -> bool:
-        return self.is_confluence_oauth_provider_configured or bool(
-            os.getenv("CONFLUENCE_CLIENT_ID") and os.getenv("CONFLUENCE_CLIENT_SECRET")
-        )
-
-    # Gdrive tools
-    enable_gdrive_tools: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_GDRIVE_TOOLS",
-            "ENABLE_GDRIVE_TOOLS",
-        ),
-        description="Enable/disable GDrive tools",
-    )
-    is_gdrive_oauth_provider_configured: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_GDRIVE_OAUTH_PROVIDER_CONFIGURED",
-            "IS_GDRIVE_OAUTH_PROVIDER_CONFIGURED",
-        ),
-        description="Whether GDrive OAuth provider is configured for GDrive integration",
-    )
-
-    @property
-    def is_gdrive_oauth_configured(self) -> bool:
-        return self.is_gdrive_oauth_provider_configured or bool(
-            os.getenv("GDRIVE_CLIENT_ID") and os.getenv("GDRIVE_CLIENT_SECRET")
-        )
 
     @field_validator(
         "otel_attributes",
@@ -291,11 +334,6 @@ class MCPServerConfig(BaseSettings):
         "mcp_server_register_dynamic_tools_on_startup",
         "tool_registration_duplicate_behavior",
         "mcp_server_register_dynamic_prompts_on_startup",
-        "enable_predictive_tools",
-        "enable_jira_tools",
-        "is_jira_oauth_provider_configured",
-        "enable_confluence_tools",
-        "is_confluence_oauth_provider_configured",
         mode="before",
     )
     @classmethod
