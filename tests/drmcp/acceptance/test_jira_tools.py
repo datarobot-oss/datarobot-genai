@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 from typing import Any
 
 import pytest
@@ -153,6 +154,7 @@ def expectations_for_jira_transition_issue_success(
     )
 
 
+@pytest.mark.skipif(not os.getenv("ENABLE_JIRA_TOOLS"), reason="Jira tools are not enabled")
 @pytest.mark.asyncio
 class TestJiraToolsE2E(ToolBaseE2E):
     """End-to-end tests for jira tools."""

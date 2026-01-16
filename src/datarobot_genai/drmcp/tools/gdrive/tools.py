@@ -21,6 +21,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drmcp.tools.clients.gdrive import LIMIT
 from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
 from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS
@@ -60,7 +61,7 @@ async def gdrive_find_contents(
         "Optional list of metadata fields to include. Ex. id, name, mimeType. "
         f"Default = {SUPPORTED_FIELDS_STR}",
     ] = None,
-) -> ToolResult | ToolError:
+) -> ToolResult:
     """
     Search or list files in the user's Google Drive with pagination and filtering support.
     Use this tool to discover file names and IDs for use with other tools.
@@ -121,7 +122,7 @@ async def gdrive_read_content(
         "(e.g., 'text/markdown' for Docs, 'text/csv' for Sheets). "
         "If not specified, uses sensible defaults. Has no effect on regular files.",
     ] = None,
-) -> ToolResult | ToolError:
+) -> ToolResult:
     """
     Retrieve the content of a specific file by its ID. Google Workspace files are
     automatically exported to LLM-readable formats (Push-Down).
@@ -174,4 +175,96 @@ async def gdrive_read_content(
             f"({file_content.mime_type}){export_info}."
         ),
         structured_content=file_content.as_flat_dict(),
+    )
+
+
+@dr_mcp_tool(tags={"google", "gdrive", "create", "write", "file", "folder"}, enabled=False)
+async def gdrive_create_file(
+    *,
+    name: Annotated[str, "The name for the new file or folder."],
+    mime_type: Annotated[
+        str,
+        "The MIME type of the file (e.g., 'text/plain', "
+        "'application/vnd.google-apps.document', 'application/vnd.google-apps.folder').",
+    ],
+    parent_id: Annotated[
+        str | None, "The ID of the parent folder where the file should be created."
+    ] = None,
+    initial_content: Annotated[
+        str | None, "Text content to populate the new file, if applicable."
+    ] = None,
+) -> ToolResult:
+    """
+    Create a new file or folder in Google Drive.
+
+    This tool is essential for an AI agent to generate new output (like reports or
+    documentation) directly into the Drive structure.
+
+    Usage:
+        - Create empty file: gdrive_create_file(name="report.txt", mime_type="text/plain")
+        - Create Google Doc: gdrive_create_file(
+            name="My Report",
+            mime_type="application/vnd.google-apps.document",
+            initial_content="# Report Title"
+          )
+        - Create folder: gdrive_create_file(
+            name="Reports",
+            mime_type="application/vnd.google-apps.folder"
+          )
+        - Create in subfolder: gdrive_create_file(
+            name="file.txt",
+            mime_type="text/plain",
+            parent_id="folder_id_here",
+            initial_content="File content"
+          )
+
+    Supported MIME types:
+        - text/plain: Plain text file
+        - application/vnd.google-apps.document: Google Doc (content auto-converted)
+        - application/vnd.google-apps.spreadsheet: Google Sheet (CSV content works best)
+        - application/vnd.google-apps.folder: Folder (initial_content is ignored)
+
+    Note: For Google Workspace files, the Drive API automatically converts plain text
+    content to the appropriate format.
+    """
+    if not name or not name.strip():
+        raise ToolError("Argument validation error: 'name' cannot be empty.")
+
+    if not mime_type or not mime_type.strip():
+        raise ToolError("Argument validation error: 'mime_type' cannot be empty.")
+
+    access_token = await get_gdrive_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with GoogleDriveClient(access_token) as client:
+            created_file = await client.create_file(
+                name=name,
+                mime_type=mime_type,
+                parent_id=parent_id,
+                initial_content=initial_content,
+            )
+    except GoogleDriveError as e:
+        logger.error(f"Google Drive error creating file: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error creating Google Drive file: {e}")
+        raise ToolError(f"An unexpected error occurred while creating Google Drive file: {str(e)}")
+
+    # Build response message
+    file_type = "folder" if mime_type == GOOGLE_DRIVE_FOLDER_MIME else "file"
+    content_info = ""
+    if initial_content and mime_type != GOOGLE_DRIVE_FOLDER_MIME:
+        content_info = " with initial content"
+
+    return ToolResult(
+        content=f"Successfully created {file_type} '{created_file.name}'{content_info}.",
+        structured_content={
+            "id": created_file.id,
+            "name": created_file.name,
+            "mimeType": created_file.mime_type,
+            "webViewLink": created_file.web_view_link,
+            "createdTime": created_file.created_time,
+        },
     )

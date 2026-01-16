@@ -41,7 +41,7 @@ def filter_tools_by_tags(
     filtered_tools = []
 
     for tool in tools:
-        tool_tags = getattr(tool.annotations, "tags", []) if tool.annotations else []
+        tool_tags = get_tool_tags(tool)
 
         if not tool_tags:
             continue
@@ -68,9 +68,18 @@ def get_tool_tags(tool: Tool | MCPTool) -> list[str]:
     -------
         List of tags for the tool
     """
+    # Primary: native FastMCP meta location
+    if hasattr(tool, "meta") and getattr(tool, "meta"):
+        fastmcp_meta = tool.meta.get("_fastmcp", {})
+        meta_tags = fastmcp_meta.get("tags", [])
+        if isinstance(meta_tags, list):
+            return meta_tags
+
+    # Fallback: annotations.tags (for compatibility during transition)
     if tool.annotations and hasattr(tool.annotations, "tags"):
         tags = getattr(tool.annotations, "tags", [])
         return tags if isinstance(tags, list) else []
+
     return []
 
 

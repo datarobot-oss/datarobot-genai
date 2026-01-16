@@ -38,7 +38,7 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
         mock_client.Dataset.create_from_file.return_value = mock_catalog_item
         mock_get_client.return_value = mock_client
 
-        result = await data.upload_dataset_to_ai_catalog("somefile.csv")
+        result = await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
         mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
         assert isinstance(result, ToolResult)
         assert result.content[0].text == "Successfully uploaded dataset: 12345"
@@ -123,7 +123,7 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
         patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=False),
     ):
-        result = await data.upload_dataset_to_ai_catalog("nofile.csv")
+        result = await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
         assert isinstance(result, ToolError)
         assert str(result) == "File not found: nofile.csv"
 
@@ -139,7 +139,7 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
         mock_get_client.return_value = mock_client
 
         with pytest.raises(Exception) as exc_info:
-            await data.upload_dataset_to_ai_catalog("somefile.csv")
+            await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
         assert "fail" in str(exc_info.value)
 
 
@@ -159,13 +159,11 @@ async def test_list_ai_catalog_items_success() -> None:
         result = await data.list_ai_catalog_items()
         # Access text from TextContent object
         content_text = result.content[0].text
-        assert "Found 2 AI Catalog items." in content_text
+        assert "Found 2 AI Catalog items" in content_text
         assert result.structured_content["count"] == 2
-        assert len(result.structured_content["datasets"]) == 2
-        assert result.structured_content["datasets"][0]["id"] == "1"
-        assert result.structured_content["datasets"][0]["name"] == "ds1"
-        assert result.structured_content["datasets"][1]["id"] == "2"
-        assert result.structured_content["datasets"][1]["name"] == "ds2"
+        # datasets is now a dict mapping id to name
+        assert result.structured_content["datasets"]["1"] == "ds1"
+        assert result.structured_content["datasets"]["2"] == "ds2"
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,479 @@
+# Copyright 2026 DataRobot, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Microsoft Graph API Client for searching SharePoint and OneDrive content."""
+
+import logging
+from typing import Any
+
+import httpx
+from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
+from fastmcp.exceptions import ToolError
+from pydantic import BaseModel
+from pydantic import Field
+
+from datarobot_genai.drmcp.core.auth import get_access_token
+
+logger = logging.getLogger(__name__)
+
+GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
+MAX_SEARCH_RESULTS = 250
+
+
+async def get_microsoft_graph_access_token() -> str | ToolError:
+    """
+    Get Microsoft Graph OAuth access token with error handling.
+
+    Returns
+    -------
+        Access token string on success, ToolError on failure
+
+    Example:
+        ```python
+        token = await get_microsoft_graph_access_token()
+        if isinstance(token, ToolError):
+            # Handle error
+            return token
+        # Use token
+        ```
+    """
+    try:
+        access_token = await get_access_token("microsoft")
+        if not access_token:
+            logger.warning("Empty access token received")
+            return ToolError("Received empty access token. Please complete the OAuth flow.")
+        return access_token
+    except OAuthServiceClientErr as e:
+        logger.error(f"OAuth client error: {e}", exc_info=True)
+        return ToolError(
+            "Could not obtain access token for Microsoft. Make sure the OAuth "
+            "permission was granted for the application to act on your behalf."
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Unexpected error obtaining access token: {error_msg}", exc_info=True)
+        return ToolError("An unexpected error occurred while obtaining access token for Microsoft.")
+
+
+class MicrosoftGraphError(Exception):
+    """Exception for Microsoft Graph API errors."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class MicrosoftGraphItem(BaseModel):
+    """Represents an item (file or folder) from Microsoft Graph (SharePoint/OneDrive)."""
+
+    id: str
+    name: str
+    web_url: str | None = Field(None, alias="webUrl")
+    size: int | None = None
+    created_datetime: str | None = Field(None, alias="createdDateTime")
+    last_modified_datetime: str | None = Field(None, alias="lastModifiedDateTime")
+    is_folder: bool = False
+    mime_type: str | None = Field(None, alias="mimeType")
+    drive_id: str | None = Field(None, alias="driveId")
+    parent_folder_id: str | None = Field(None, alias="parentFolderId")
+
+    model_config = {"populate_by_name": True}
+
+    @classmethod
+    def from_api_response(cls, data: dict[str, Any]) -> "MicrosoftGraphItem":
+        """Create a MicrosoftGraphItem from Microsoft Graph API response data."""
+        parent_ref = data.get("parentReference", {})
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", "Unknown"),
+            web_url=data.get("webUrl"),
+            size=data.get("size"),
+            created_datetime=data.get("createdDateTime"),
+            last_modified_datetime=data.get("lastModifiedDateTime"),
+            is_folder="folder" in data,
+            mime_type=data.get("file", {}).get("mimeType") if "file" in data else None,
+            drive_id=parent_ref.get("driveId"),
+            parent_folder_id=parent_ref.get("id"),
+        )
+
+
+class MicrosoftGraphClient:
+    """Client for interacting with Microsoft Graph API to search SharePoint and OneDrive content."""
+
+    def __init__(self, access_token: str, site_url: str | None = None):
+        """
+        Initialize Microsoft Graph client with access token.
+
+        Args:
+            access_token: OAuth access token for Microsoft Graph API
+            site_url: Optional SharePoint site URL (e.g., https://tenant.sharepoint.com/sites/sitename)
+                     If not provided, searches across all accessible sites and OneDrive
+        """
+        self.access_token = access_token
+        self.site_url = site_url
+        self._client = httpx.AsyncClient(
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+        self._site_id: str | None = None
+
+    async def _get_site_id(self) -> str:
+        """Get the SharePoint site ID from the site URL or return root site ID."""
+        if self._site_id:
+            return self._site_id
+
+        # If no site_url provided, use root site
+        if not self.site_url:
+            # Get root site ID
+            graph_url = f"{GRAPH_API_BASE}/sites/root"
+            try:
+                response = await self._client.get(graph_url)
+                response.raise_for_status()
+                data = response.json()
+                self._site_id = data.get("id", "")
+                return self._site_id
+            except httpx.HTTPStatusError as e:
+                raise self._handle_http_error(e, "Failed to get root site ID") from e
+
+        # Extract site path from URL
+        # Format: https://{tenant}.sharepoint.com/sites/{site-name}
+        # or: https://{tenant}.sharepoint.com/sites/{site-name}/...
+        url_parts = self.site_url.replace("https://", "").split("/")
+        if len(url_parts) < 3:
+            raise MicrosoftGraphError(f"Invalid SharePoint site URL: {self.site_url}")
+
+        hostname = url_parts[0]  # tenant.sharepoint.com
+        site_path = "/".join(url_parts[1:])  # sites/site-name/...
+
+        # Use Microsoft Graph API to get site ID
+        graph_url = f"{GRAPH_API_BASE}/sites/{hostname}:/{site_path}"
+        try:
+            response = await self._client.get(graph_url)
+            response.raise_for_status()
+            data = response.json()
+            self._site_id = data.get("id", "")
+            return self._site_id
+        except httpx.HTTPStatusError as e:
+            raise self._handle_http_error(
+                e, f"Failed to get site ID from URL: {self.site_url}"
+            ) from e
+
+    def _handle_http_error(
+        self, error: httpx.HTTPStatusError, base_message: str
+    ) -> MicrosoftGraphError:
+        """Handle HTTP errors and return appropriate MicrosoftGraphError with user-friendly messages."""  # noqa: E501
+        error_msg = base_message
+
+        if error.response.status_code == 403:
+            error_msg += (
+                ": Insufficient permissions. Requires Sites.Read.All or Sites.Search.All "
+                "permission."
+            )
+        elif error.response.status_code == 400:
+            try:
+                error_data = error.response.json()
+                api_message = error_data.get("error", {}).get("message", "Invalid request")
+                error_msg += f": {api_message}"
+            except Exception:
+                error_msg += ": Invalid request parameters."
+        else:
+            error_msg += f": HTTP {error.response.status_code}"
+
+        return MicrosoftGraphError(error_msg)
+
+    async def search_content(
+        self,
+        search_query: str,
+        site_id: str | None = None,
+        from_offset: int = 0,
+        size: int = 250,
+        entity_types: list[str] | None = None,
+        filters: list[str] | None = None,
+        include_hidden_content: bool = False,
+        region: str | None = None,
+    ) -> list[MicrosoftGraphItem]:
+        """
+        Search for content using Microsoft Graph API search.
+
+        This tool utilizes Microsoft Graph's search engine to locate items across
+        SharePoint sites, OneDrive, and other Microsoft 365 services. When a site
+        is specified, it searches within that site. Otherwise, it searches across
+        all accessible SharePoint sites and OneDrive.
+
+        Args:
+            search_query: The search string to find files, folders, or list items
+            site_id: Optional site ID to scope the search. If not provided and site_url
+                    is set, will use that site. If neither is provided, searches across
+                    all accessible sites.
+            from_offset: The zero-based index of the first result to return (default: 0).
+                        Use this for pagination - increment by the size value to get the next page.
+            size: Maximum number of results to return in this request (default: 250, max: 250).
+                  The LLM should control pagination by making multiple calls with different
+                  'from' values (e.g., from=0 size=250, then from=250 size=250, etc.).
+            entity_types: Optional list of entity types to search. Valid values:
+                         "driveItem", "listItem", "site", "list", "drive".
+                         Default: ["driveItem", "listItem"]
+            filters: Optional list of filter expressions (KQL syntax) to refine search results
+            include_hidden_content: Whether to include hidden content in search results.
+                                  Only works with delegated permissions, not application
+                                  permissions.
+            region: Optional region code for application permissions (e.g., "NAM", "EUR", "APC")
+
+        Returns
+        -------
+            List of MicrosoftGraphItem objects matching the search query
+
+        Raises
+        ------
+            MicrosoftGraphError: If the search fails
+            httpx.HTTPStatusError: If the API request fails
+        """
+        if not search_query:
+            raise MicrosoftGraphError("Search query cannot be empty")
+
+        # Validate and limit size parameter
+        size = min(max(1, size), MAX_SEARCH_RESULTS)  # Between 1 and 250
+        from_offset = max(0, from_offset)  # Must be non-negative
+
+        # Determine which site to search
+        # If site_id is provided, use it directly; otherwise resolve from site_url if set
+        if site_id:
+            target_site_id = site_id
+        elif self.site_url:
+            target_site_id = await self._get_site_id()
+        else:
+            target_site_id = None
+
+        # Use unified Microsoft Search API for both site-specific and organization-wide search
+        # Reference: https://learn.microsoft.com/en-us/graph/api/search-query
+        graph_url = f"{GRAPH_API_BASE}/search/query"
+
+        # Default entity types: driveItem and listItem
+        if entity_types is None:
+            entity_types = ["driveItem", "listItem"]
+
+        # Validate entity types
+        valid_entity_types = ["driveItem", "listItem", "site", "list", "drive"]
+        entity_types = [et for et in entity_types if et in valid_entity_types]
+        if not entity_types:
+            entity_types = ["driveItem", "listItem"]  # Fallback to default
+
+        # Build search request payload
+        # Reference: https://learn.microsoft.com/en-us/graph/search-concept-files
+        query_parts = []
+
+        # If searching within a specific site, add scoping using KQL syntax first
+        if target_site_id:
+            # Get site details to construct proper scoping query
+            try:
+                site_info_url = f"{GRAPH_API_BASE}/sites/{target_site_id}"
+                site_response = await self._client.get(site_info_url)
+                site_response.raise_for_status()
+                site_data = site_response.json()
+                site_web_url = site_data.get("webUrl", "")
+
+                # Use KQL to scope search to the specific site
+                # Format: path:"{site-url}"
+                if site_web_url:
+                    query_parts.append(f'path:"{site_web_url}"')
+            except httpx.HTTPStatusError as e:
+                raise self._handle_http_error(e, "Failed to get site details for scoping") from e
+            except Exception as e:
+                logger.warning(
+                    f"Could not get site details for scoping, using un-scoped search: {e}"
+                )
+                # Fall back to un-scoped search if site details can't be retrieved
+
+        # Add the main search query
+        query_parts.append(search_query)
+
+        # Add filters if provided (using AND operator for proper KQL syntax)
+        if filters:
+            # Join filters with AND operator for proper KQL syntax
+            filter_string = " AND ".join(filters)
+            query_parts.append(filter_string)
+
+        # Combine all query parts with spaces
+        query_string = " ".join(query_parts)
+
+        # Build request payload with from and size parameters
+        request_payload = {
+            "entityTypes": entity_types,
+            "query": {
+                "queryString": query_string,
+            },
+            "from": from_offset,
+            "size": size,
+        }
+
+        # Add includeHiddenContent (only works with delegated permissions)
+        if include_hidden_content:
+            request_payload["includeHiddenContent"] = True
+
+        # Add region for application permissions
+        if region:
+            request_payload["region"] = region
+
+        payload = {"requests": [request_payload]}
+
+        try:
+            response = await self._client.post(graph_url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPStatusError as e:
+            raise self._handle_http_error(e, "Failed to search SharePoint content") from e
+
+        # Parse the Microsoft Search API response format
+        # Reference: https://learn.microsoft.com/en-us/graph/search-concept-files
+        results = []
+        for request_result in data.get("value", []):
+            hits_containers = request_result.get("hitsContainers", [])
+            for container in hits_containers:
+                hits = container.get("hits", [])
+                for hit in hits:
+                    resource = hit.get("resource", {})
+                    if not resource:
+                        continue
+
+                    odata_type = resource.get("@odata.type", "")
+                    transformed_resource = self._transform_search_resource(resource, odata_type)
+                    # transformed_resource always returns a dict, so we can process it directly
+                    results.append(MicrosoftGraphItem.from_api_response(transformed_resource))
+
+        return results
+
+    def _transform_search_resource(
+        self, resource: dict[str, Any], odata_type: str
+    ) -> dict[str, Any]:
+        """Transform a search API resource to MicrosoftGraphItem-compatible format."""
+        # Preserve original values from resource if they exist, otherwise use defaults
+        # This ensures we don't lose data that might be present in the original response
+        base_resource = {
+            "id": resource.get("id", ""),
+            "webUrl": resource.get("webUrl"),
+            "createdDateTime": resource.get("createdDateTime"),
+            "lastModifiedDateTime": resource.get("lastModifiedDateTime"),
+            "size": resource.get("size"),
+            "folder": resource.get("folder", {}),
+            "file": resource.get("file", {}),
+        }
+
+        parent_ref = resource.get("parentReference", {})
+
+        if odata_type == "#microsoft.graph.listItem":
+            fields = resource.get("fields", {})
+            base_resource.update(
+                {
+                    "name": fields.get("Title") or resource.get("name", "Unknown"),
+                    "parentReference": {
+                        "driveId": parent_ref.get("driveId"),
+                        "id": parent_ref.get("id"),
+                    },
+                }
+            )
+        elif odata_type == "#microsoft.graph.site":
+            base_resource.update(
+                {
+                    "name": resource.get("displayName") or resource.get("name", "Unknown"),
+                    "parentReference": {},
+                }
+            )
+        elif odata_type == "#microsoft.graph.list":
+            base_resource.update(
+                {
+                    "name": resource.get("displayName") or resource.get("name", "Unknown"),
+                    "parentReference": {
+                        "siteId": parent_ref.get("siteId"),
+                    },
+                }
+            )
+        elif odata_type == "#microsoft.graph.drive":
+            base_resource.update(
+                {
+                    "name": resource.get("name", "Unknown"),
+                    "parentReference": {
+                        "siteId": parent_ref.get("siteId"),
+                    },
+                }
+            )
+        else:
+            # Standard driveItem - use resource as-is
+            return resource
+
+        return base_resource
+
+    async def __aenter__(self) -> "MicrosoftGraphClient":
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+    ) -> None:
+        """Async context manager exit."""
+        await self._client.aclose()
+
+
+def validate_site_url(site_url: str) -> str | None:
+    """Validate SharePoint site URL and return user-friendly error message if invalid.
+
+    Args:
+        site_url: The SharePoint site URL to validate
+
+    Returns
+    -------
+        None if valid, or a user-friendly error message if invalid
+    """
+    if not site_url:
+        return (
+            "SharePoint site URL is required. "
+            "Please provide a valid SharePoint site URL (e.g., https://yourtenant.sharepoint.com/sites/yoursite)."
+        )
+
+    site_url = site_url.strip()
+
+    if not site_url.startswith("https://"):
+        return (
+            f"Invalid SharePoint site URL: '{site_url}'. "
+            "The URL must start with 'https://'. "
+            "Example: https://yourtenant.sharepoint.com/sites/yoursite"
+        )
+
+    if "sharepoint.com" not in site_url.lower():
+        return (
+            f"Invalid SharePoint site URL: '{site_url}'. "
+            "The URL must be a SharePoint site URL containing 'sharepoint.com'. "
+            "Example: https://yourtenant.sharepoint.com/sites/yoursite"
+        )
+
+    # Check basic URL structure
+    url_parts = site_url.replace("https://", "").split("/")
+    if len(url_parts) < 1 or not url_parts[0]:
+        return (
+            f"Invalid SharePoint site URL format: '{site_url}'. "
+            "The URL must include a domain name. "
+            "Example: https://yourtenant.sharepoint.com/sites/yoursite"
+        )
+
+    # Check if it looks like a valid SharePoint site URL
+    domain = url_parts[0]
+    if not domain.endswith("sharepoint.com"):
+        return (
+            f"Invalid SharePoint site URL: '{site_url}'. "
+            "The domain must end with 'sharepoint.com'. "
+            "Example: https://yourtenant.sharepoint.com/sites/yoursite"
+        )
+
+    return None

@@ -18,8 +18,11 @@ import json
 import logging
 from dataclasses import asdict
 from dataclasses import dataclass
+from typing import Annotated
 
 import pandas as pd
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
@@ -53,22 +56,15 @@ class DatasetInsight:
     missing_data_summary: dict[str, float]
 
 
-@dr_mcp_tool(tags={"training", "analysis", "dataset"})
-async def analyze_dataset(dataset_id: str) -> str:
-    """
-    Analyze a dataset to understand its structure and potential use cases.
+@dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
+async def analyze_dataset(
+    *,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
+) -> ToolError | ToolResult:
+    """Analyze a dataset to understand its structure and potential use cases."""
+    if not dataset_id:
+        return ToolError("Dataset ID must be provided")
 
-    Args:
-        dataset_id: The ID of the DataRobot dataset to analyze
-
-    Returns
-    -------
-        JSON string containing dataset insights including:
-        - Basic statistics (rows, columns)
-        - Column types (numerical, categorical, datetime, text)
-        - Potential target columns
-        - Missing data summary
-    """
     client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
     df = dataset.get_as_dataframe()
@@ -105,27 +101,23 @@ async def analyze_dataset(dataset_id: str) -> str:
         potential_targets=potential_targets,
         missing_data_summary=missing_data,
     )
+    insights_dict = asdict(insights)
 
-    return json.dumps(asdict(insights), indent=2)
+    return ToolResult(
+        content=json.dumps(insights_dict, indent=2),
+        structured_content=insights_dict,
+    )
 
 
-@dr_mcp_tool(tags={"training", "analysis", "usecase"})
-async def suggest_use_cases(dataset_id: str) -> str:
-    """
-    Analyze a dataset and suggest potential machine learning use cases.
+@dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "usecase"})
+async def suggest_use_cases(
+    *,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
+) -> ToolError | ToolResult:
+    """Analyze a dataset and suggest potential machine learning use cases."""
+    if not dataset_id:
+        return ToolError("Dataset ID must be provided")
 
-    Args:
-        dataset_id: The ID of the DataRobot dataset to analyze
-
-    Returns
-    -------
-        JSON string containing suggested use cases with:
-        - Use case name and description
-        - Suggested target column
-        - Problem type
-        - Confidence score
-        - Reasoning for the suggestion
-    """
     client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
     df = dataset.get_as_dataframe()
@@ -141,27 +133,23 @@ async def suggest_use_cases(dataset_id: str) -> str:
 
     # Sort by confidence score
     suggestions.sort(key=lambda x: x["confidence"], reverse=True)
-    return json.dumps(suggestions, indent=2)
+
+    return ToolResult(
+        content=json.dumps(suggestions, indent=2),
+        structured_content={"use_case_suggestions": suggestions},
+    )
 
 
-@dr_mcp_tool(tags={"training", "analysis", "eda"})
-async def get_exploratory_insights(dataset_id: str, target_col: str | None = None) -> str:
-    """
-    Generate exploratory data insights for a dataset.
+@dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "eda"})
+async def get_exploratory_insights(
+    *,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
+    target_col: Annotated[str, "Optional target column to focus EDA insights on"] | None = None,
+) -> ToolError | ToolResult:
+    """Generate exploratory data insights for a dataset."""
+    if not dataset_id:
+        return ToolError("Dataset ID must be provided")
 
-    Args:
-        dataset_id: The ID of the DataRobot dataset to analyze
-        target_col: Optional target column to focus EDA insights on
-
-    Returns
-    -------
-        JSON string containing EDA insights including:
-        - Dataset summary statistics
-        - Target variable analysis (if specified)
-        - Feature correlations with target
-        - Missing data analysis
-        - Data type distribution
-    """
     client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
     df = dataset.get_as_dataframe()
@@ -238,8 +226,10 @@ async def get_exploratory_insights(dataset_id: str, target_col: str | None = Non
                     sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
                 )
 
-    eda_insights["ui_panel"] = ["eda"]
-    return json.dumps(eda_insights, indent=2)
+    return ToolResult(
+        content=json.dumps(eda_insights, indent=2),
+        structured_content=eda_insights,
+    )
 
 
 def _identify_potential_targets(
@@ -450,47 +440,50 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
     return suggestions
 
 
-@dr_mcp_tool(tags={"training", "autopilot", "model"})
+@dr_mcp_tool(tags={"predictive", "training", "write", "autopilot", "model"})
 async def start_autopilot(
-    target: str,
-    project_id: str | None = None,
-    mode: str | None = "quick",
-    dataset_url: str | None = None,
-    dataset_id: str | None = None,
-    project_name: str | None = "MCP Project",
-    use_case_id: str | None = None,
-) -> str:
-    """
-    Start automated model training (Autopilot) for a project.
-
-    Args:
-        target: Name of the target column for modeling.
-        project_id: Optional, the ID of the DataRobot project or a new project if no id is provided.
-        mode: Optional, Autopilot mode ('quick', 'comprehensive', or 'manual')
-        dataset_url: Optional, The URL to the dataset to upload (optional if dataset_id is provided)
-            for a new project.
-        dataset_id: Optional, The ID of an existing dataset in AI Catalog (optional if dataset_url
-            is provided) for a new project.
-        project_name: Optional, name for the project if no id is provided, creates a new project.
-        use_case_id: Optional, ID of the use case to associate this project with (required for
-            next-gen platform).
-
-    Returns
-    -------
-        JSON string containing:
-        - project_id: Project ID
-        - target: Target column name
-        - mode: Selected Autopilot mode
-        - status: Current project status
-        - ui_panel: List of recommended UI panels for visualization
-    """
+    *,
+    target: Annotated[str, "Name of the target column for modeling"] | None = None,
+    project_id: Annotated[
+        str, "Optional, the ID of the DataRobot project or a new project if no id is provided"
+    ]
+    | None = None,
+    mode: Annotated[str, "Optional, Autopilot mode ('quick', 'comprehensive', or 'manual')"]
+    | None = "quick",
+    dataset_url: Annotated[
+        str,
+        """
+        Optional, The URL to the dataset to upload
+        (optional if dataset_id is provided) for a new project.
+        """,
+    ]
+    | None = None,
+    dataset_id: Annotated[
+        str,
+        """
+        Optional, The ID of an existing dataset in AI Catalog
+        (optional if dataset_url is provided) for a new project.
+        """,
+    ]
+    | None = None,
+    project_name: Annotated[
+        str, "Optional, name for the project if no id is provided, creates a new project"
+    ]
+    | None = "MCP Project",
+    use_case_id: Annotated[
+        str,
+        "Optional, ID of the use case to associate this project (required for next-gen platform)",
+    ]
+    | None = None,
+) -> ToolError | ToolResult:
+    """Start automated model training (Autopilot) for a project."""
     client = get_sdk_client()
 
     if not project_id:
         if not dataset_url and not dataset_id:
-            return "Error: Either dataset_url or dataset_id must be provided"
+            return ToolError("Either dataset_url or dataset_id must be provided")
         if dataset_url and dataset_id:
-            return "Error: Please provide either dataset_url or dataset_id, not both"
+            return ToolError("Please provide either dataset_url or dataset_id, not both")
 
         if dataset_url:
             dataset = client.Dataset.create_from_url(dataset_url)
@@ -504,7 +497,7 @@ async def start_autopilot(
         project = client.Project.get(project_id)
 
     if not target:
-        return "Error: Target variable must be specified"
+        return ToolError("Target variable must be specified")
 
     try:
         # Start modeling
@@ -515,40 +508,48 @@ async def start_autopilot(
             "target": target,
             "mode": mode,
             "status": project.get_status(),
-            "ui_panel": ["eda", "model-training", "leaderboard"],
             "use_case_id": project.use_case_id,
         }
 
-        return json.dumps(result, indent=2)
+        return ToolResult(
+            content=json.dumps(result, indent=2),
+            structured_content=result,
+        )
+
     except Exception as e:
-        return json.dumps(
-            {
-                "error": f"Failed to start Autopilot: {str(e)}",
-                "project_id": project.id,
-                "target": target,
-                "mode": mode,
-            },
-            indent=2,
+        return ToolError(
+            content=json.dumps(
+                {
+                    "error": f"Failed to start Autopilot: {str(e)}",
+                    "project_id": project.id if project else None,
+                    "target": target,
+                    "mode": mode,
+                },
+                indent=2,
+            )
         )
 
 
-@dr_mcp_tool(tags={"training", "model", "evaluation"})
-async def get_model_roc_curve(project_id: str, model_id: str, source: str = "validation") -> str:
-    """
-    Get detailed ROC curve for a specific model.
+@dr_mcp_tool(tags={"prediction", "training", "read", "model", "evaluation"})
+async def get_model_roc_curve(
+    *,
+    project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
+    model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
+    source: Annotated[
+        str,
+        """
+        The source of the data to use for the ROC curve
+        ('validation' or 'holdout' or 'crossValidation')
+        """,
+    ]
+    | str = "validation",
+) -> ToolError | ToolResult:
+    """Get detailed ROC curve for a specific model."""
+    if not project_id:
+        return ToolError("Project ID must be provided")
+    if not model_id:
+        return ToolError("Model ID must be provided")
 
-    Args:
-        project_id: The ID of the DataRobot project
-        model_id: The ID of the model to analyze
-        source: The source of the data to use for the ROC curve ('validation' or 'holdout' or
-            'crossValidation')
-
-    Returns
-    -------
-        JSON string containing:
-        - roc_curve: ROC curve data
-        - ui_panel: List of recommended UI panels for visualization
-    """
     client = get_sdk_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
@@ -581,26 +582,26 @@ async def get_model_roc_curve(project_id: str, model_id: str, source: str = "val
             "source": source,
         }
 
-        return json.dumps({"data": roc_data, "ui_panel": ["roc-curve"]}, indent=2)
+        return ToolResult(
+            content=json.dumps({"data": roc_data}, indent=2),
+            structured_content={"data": roc_data},
+        )
     except Exception as e:
-        return json.dumps({"error": f"Failed to get ROC curve: {str(e)}"}, indent=2)
+        return ToolError(f"Failed to get ROC curve: {str(e)}")
 
 
-@dr_mcp_tool(tags={"training", "model", "evaluation"})
-async def get_model_feature_impact(project_id: str, model_id: str) -> str:
-    """
-    Get detailed feature impact for a specific model.
+@dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
+async def get_model_feature_impact(
+    *,
+    project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
+    model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
+) -> ToolError | ToolResult:
+    """Get detailed feature impact for a specific model."""
+    if not project_id:
+        return ToolError("Project ID must be provided")
+    if not model_id:
+        return ToolError("Model ID must be provided")
 
-    Args:
-        project_id: The ID of the DataRobot project
-        model_id: The ID of the model to analyze
-
-    Returns
-    -------
-        JSON string containing:
-        - feature_impact: Feature importance scores
-        - ui_panel: List of recommended UI panels for visualization
-    """
     client = get_sdk_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
@@ -608,26 +609,32 @@ async def get_model_feature_impact(project_id: str, model_id: str) -> str:
     model.request_feature_impact()
     feature_impact = model.get_or_request_feature_impact()
 
-    return json.dumps({"data": feature_impact, "ui_panel": ["feature-impact"]}, indent=2)
+    return ToolResult(
+        content=json.dumps({"data": feature_impact}, indent=2),
+        structured_content={"data": feature_impact},
+    )
 
 
-@dr_mcp_tool(tags={"training", "model", "evaluation"})
-async def get_model_lift_chart(project_id: str, model_id: str, source: str = "validation") -> str:
-    """
-    Get detailed lift chart for a specific model.
+@dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
+async def get_model_lift_chart(
+    *,
+    project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
+    model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
+    source: Annotated[
+        str,
+        """
+        The source of the data to use for the lift chart
+        ('validation' or 'holdout' or 'crossValidation')
+        """,
+    ]
+    | str = "validation",
+) -> ToolError | ToolResult:
+    """Get detailed lift chart for a specific model."""
+    if not project_id:
+        return ToolError("Project ID must be provided")
+    if not model_id:
+        return ToolError("Model ID must be provided")
 
-    Args:
-        project_id: The ID of the DataRobot project
-        model_id: The ID of the model to analyze
-        source: The source of the data to use for the lift chart ('validation' or 'holdout' or
-            'crossValidation')
-
-    Returns
-    -------
-        JSON string containing:
-        - lift_chart: Lift chart data
-        - ui_panel: List of recommended UI panels for visualization
-    """
     client = get_sdk_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
@@ -648,4 +655,7 @@ async def get_model_lift_chart(project_id: str, model_id: str, source: str = "va
         "target_class": lift_chart.target_class,
     }
 
-    return json.dumps({"data": lift_chart_data, "ui_panel": ["lift-chart"]}, indent=2)
+    return ToolResult(
+        content=json.dumps({"data": lift_chart_data}, indent=2),
+        structured_content={"data": lift_chart_data},
+    )

@@ -35,12 +35,7 @@ tasks:
       PORT: 8652
     cmds:
       - echo "🔨 Starting DR MCP Library development server"
-      - echo "MCP Server running on port {{.PORT}}"
-      - |
-        if lsof -i :{{.PORT}} > /dev/null 2>&1; then
-          echo "Killing existing process on port {{.PORT}}"
-          lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
-        fi
+      - lsof -i :{{.PORT}} > /dev/null 2>&1 && echo "Killing existing process on port {{.PORT}}" && lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
       - |
         OTEL_ENABLED=false \
         OTEL_SDK_DISABLED=true \

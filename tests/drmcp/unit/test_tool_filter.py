@@ -46,9 +46,10 @@ class TestToolFilterAdditional:
         """Test that tools without annotations are skipped."""
         tool1 = Mock()
         tool1.annotations = None
+        tool1.meta = None
         tool2 = Mock()
-        tool2.annotations = Mock()
-        tool2.annotations.tags = ["tag1"]
+        tool2.annotations = None
+        tool2.meta = {"_fastmcp": {"tags": ["tag1"]}}
         tools = [tool1, tool2]
 
         result = filter_tools_by_tags(tools, tags=["tag1"])
@@ -57,11 +58,9 @@ class TestToolFilterAdditional:
     def test_filter_tools_by_tags_tool_without_tags_skipped(self):
         """Test that tools without tags are skipped."""
         tool1 = Mock()
-        tool1.annotations = Mock()
-        tool1.annotations.tags = []
+        tool1.meta = {"_fastmcp": {"tags": []}}
         tool2 = Mock()
-        tool2.annotations = Mock()
-        tool2.annotations.tags = ["tag1"]
+        tool2.meta = {"_fastmcp": {"tags": ["tag1"]}}
         tools = [tool1, tool2]
 
         result = filter_tools_by_tags(tools, tags=["tag1"])
@@ -70,12 +69,9 @@ class TestToolFilterAdditional:
     def test_filter_tools_by_tags_tool_without_tags_attribute_skipped(self):
         """Test that tools without tags attribute are skipped."""
         tool1 = Mock()
-        tool1.annotations = Mock()
-        # No tags attribute - getattr will return empty list
-        tool1.annotations.tags = []  # Explicitly set empty list
+        tool1.meta = {}
         tool2 = Mock()
-        tool2.annotations = Mock()
-        tool2.annotations.tags = ["tag1"]
+        tool2.meta = {"_fastmcp": {"tags": ["tag1"]}}
         tools = [tool1, tool2]
 
         result = filter_tools_by_tags(tools, tags=["tag1"])
@@ -84,7 +80,7 @@ class TestToolFilterAdditional:
     def test_get_tool_tags_no_annotations_returns_empty_list(self):
         """Test that get_tool_tags with no annotations returns empty list."""
         tool = Mock()
-        tool.annotations = None
+        tool.meta = None
 
         result = get_tool_tags(tool)
         assert result == []
@@ -92,8 +88,7 @@ class TestToolFilterAdditional:
     def test_get_tool_tags_no_tags_attribute_returns_empty_list(self):
         """Test that get_tool_tags with no tags attribute returns empty list."""
         tool = Mock()
-        tool.annotations = Mock()
-        # No tags attribute
+        tool.meta = {}
 
         result = get_tool_tags(tool)
         assert result == []
@@ -101,8 +96,7 @@ class TestToolFilterAdditional:
     def test_get_tool_tags_tags_not_list_returns_empty_list(self):
         """Test that get_tool_tags with tags not being a list returns empty list."""
         tool = Mock()
-        tool.annotations = Mock()
-        tool.annotations.tags = "not_a_list"
+        tool.meta = {"_fastmcp": {"tags": "not_a_list"}}
 
         result = get_tool_tags(tool)
         assert result == []
@@ -110,8 +104,7 @@ class TestToolFilterAdditional:
     def test_get_tool_tags_valid_tags_returns_tags(self):
         """Test that get_tool_tags with valid tags returns the tags."""
         tool = Mock()
-        tool.annotations = Mock()
-        tool.annotations.tags = ["tag1", "tag2"]
+        tool.meta = {"_fastmcp": {"tags": ["tag1", "tag2"]}}
 
         result = get_tool_tags(tool)
         assert result == ["tag1", "tag2"]
@@ -124,10 +117,9 @@ class TestToolFilterAdditional:
     def test_list_all_tags_no_tags_returns_empty_list(self):
         """Test that list_all_tags with tools having no tags returns empty list."""
         tool1 = Mock()
-        tool1.annotations = None
+        tool1.meta = None
         tool2 = Mock()
-        tool2.annotations = Mock()
-        tool2.annotations.tags = []
+        tool2.meta = {"_fastmcp": {"tags": []}}
         tools = [tool1, tool2]
 
         result = list_all_tags(tools)
@@ -136,11 +128,9 @@ class TestToolFilterAdditional:
     def test_list_all_tags_returns_sorted_unique_tags(self):
         """Test that list_all_tags returns sorted unique tags."""
         tool1 = Mock()
-        tool1.annotations = Mock()
-        tool1.annotations.tags = ["tag2", "tag1"]
+        tool1.meta = {"_fastmcp": {"tags": ["tag2", "tag1"]}}
         tool2 = Mock()
-        tool2.annotations = Mock()
-        tool2.annotations.tags = ["tag1", "tag3"]
+        tool2.meta = {"_fastmcp": {"tags": ["tag1", "tag3"]}}
         tools = [tool1, tool2]
 
         result = list_all_tags(tools)

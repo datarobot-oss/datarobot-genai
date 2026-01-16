@@ -21,6 +21,7 @@ from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
 from mcp.types import TextContent
 
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.mcp_instance import register_tools
 
@@ -62,7 +63,7 @@ class TestMCPRegisterToolsIntegration:
         assert json.loads(cast(TextContent, tool_result.content[0]).text) == tool_output
 
     async def test_register_tools_with_tags(self) -> None:
-        """Test tool registration with tags and annotations."""
+        """Test tool registration with tags."""
 
         # Define a tool with tags
         async def tagged_tool(ctx: Context[ServerSession, dict[str, Any]]) -> str:
@@ -83,8 +84,40 @@ class TestMCPRegisterToolsIntegration:
         tools = await mcp.list_tools()
         assert any(tool.name == "tagged_tool" for tool in tools)
 
-        # Verify tool annotations
+        # Verify tool tags
         registered_tool = next(tool for tool in tools if tool.name == "tagged_tool")
-        assert registered_tool.annotations is not None
-        annotations_dict = registered_tool.annotations.model_dump()
-        assert annotations_dict.get("tags") == test_tags
+        # Tags are stored in meta._fastmcp.tags by FastMCP
+        assert registered_tool.meta is not None
+        fastmcp_meta = registered_tool.meta.get("_fastmcp", {})
+        meta_tags = fastmcp_meta.get("tags", [])
+        # Convert to set for comparison since order may differ
+        assert set(meta_tags) == test_tags
+
+    async def test_dr_mcp_tool_with_enabled_false(self) -> None:
+        """Test that dr_mcp_tool with enabled=False excludes tool from registration."""
+
+        # Define a tool with enabled=False using the decorator
+        @dr_mcp_tool(tags={"test", "disabled"}, enabled=False)
+        async def disabled_tool() -> str:
+            return "should_not_be_callable"
+
+        # Verify tool is NOT registered (enabled=False should exclude it)
+        tools = await mcp.list_tools()
+        assert all(tool.name != "disabled_tool" for tool in tools)
+
+    async def test_dr_mcp_tool_with_custom_meta(self) -> None:
+        """Test that dr_mcp_tool can pass custom meta to FastMCP."""
+        custom_meta = {"custom_key": "custom_value", "version": "1.0"}
+
+        @dr_mcp_tool(tags={"test", "meta"}, meta=custom_meta)
+        async def tool_with_meta() -> str:
+            return "meta_response"
+
+        # Verify tool is registered with custom meta
+        tools = await mcp.list_tools()
+        registered_tool = next((t for t in tools if t.name == "tool_with_meta"), None)
+        assert registered_tool is not None
+        assert registered_tool.meta is not None
+        # Custom meta should be merged with _fastmcp meta
+        assert registered_tool.meta.get("custom_key") == "custom_value"
+        assert registered_tool.meta.get("version") == "1.0"

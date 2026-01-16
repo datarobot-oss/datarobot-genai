@@ -16,20 +16,18 @@ import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
-from typing import overload
+from typing import TypedDict
 
 from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
 from fastmcp.server.dependencies import get_context
-from fastmcp.tools import FunctionTool
 from fastmcp.tools import Tool
-from fastmcp.utilities.types import NotSet
-from fastmcp.utilities.types import NotSetT
 from mcp.types import AnyFunction
 from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
+from typing_extensions import Unpack
 
 from .config import MCPServerConfig
 from .config import get_config
@@ -119,86 +117,6 @@ class TaggedFastMCP(FastMCP):
                 "No active MCP context for notification. "
                 "In stateless mode, clients will see changes on next request."
             )
-
-    @overload
-    def tool(
-        self,
-        name_or_fn: AnyFunction,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-    ) -> FunctionTool: ...
-
-    @overload
-    def tool(
-        self,
-        name_or_fn: str | None = None,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-    ) -> Callable[[AnyFunction], FunctionTool]: ...
-
-    def tool(
-        self,
-        name_or_fn: str | Callable[..., Any] | None = None,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-        **kwargs: Any,
-    ) -> Callable[[AnyFunction], FunctionTool] | FunctionTool:
-        """
-        Extend tool decorator that supports tags and other annotations, while remaining
-        signature-compatible with FastMCP.tool to avoid recursion issues with partials.
-        """
-        if isinstance(annotations, dict):
-            annotations = ToolAnnotations(**annotations)
-
-        # Ensure tags are available both via native fastmcp `tags` and inside annotations
-        if tags is not None:
-            tags_ = sorted(tags)
-            if annotations is None:
-                annotations = ToolAnnotations()  # type: ignore[call-arg]
-                annotations.tags = tags_  # type: ignore[attr-defined, union-attr]
-            else:
-                # At this point, annotations is ToolAnnotations (not dict)
-                assert isinstance(annotations, ToolAnnotations)
-                annotations.tags = tags_  # type: ignore[attr-defined]
-
-        return super().tool(
-            name_or_fn,
-            name=name,
-            title=title,
-            description=description,
-            tags=tags,
-            output_schema=output_schema
-            if output_schema is not None
-            else kwargs.get("output_schema"),
-            annotations=annotations,
-            exclude_args=exclude_args,
-            meta=meta,
-            enabled=enabled,
-        )
 
     async def list_tools(
         self, tags: list[str] | None = None, match_all: bool = False
@@ -371,16 +289,37 @@ mcp = TaggedFastMCP(
 )
 
 
+class ToolKwargs(TypedDict, total=False):
+    """Keyword arguments passed through to FastMCP's mcp.tool() decorator.
+
+    All parameters are optional and forwarded directly to FastMCP tool registration.
+    See FastMCP documentation for full details on each parameter.
+    """
+
+    name: str | None
+    title: str | None
+    description: str | None
+    icons: list[Any] | None
+    tags: set[str] | None
+    output_schema: dict[str, Any] | None
+    annotations: Any | None
+    exclude_args: list[str] | None
+    meta: dict[str, Any] | None
+    enabled: bool | None
+
+
 def dr_core_mcp_tool(
-    name: str | None = None,
-    description: str | None = None,
-    tags: set[str] | None = None,
+    **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Combine decorator that includes mcp.tool() and dr_mcp_extras()."""
+    """Combine decorator that includes mcp.tool() and dr_mcp_extras().
+
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
+    """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         instrumented = dr_mcp_extras()(func)
-        mcp.tool(name=name, description=description, tags=tags)(instrumented)
+        mcp.tool(**kwargs)(instrumented)
         return instrumented
 
     return decorator
@@ -413,27 +352,23 @@ async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: A
 
 
 def dr_mcp_tool(
-    name: str | None = None,
-    description: str | None = None,
-    tags: set[str] | None = None,
+    **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Combine decorator that includes mcp.tool(), dr_mcp_extras(), and capture memory ids from
     the request headers if they exist.
 
-    Args:
-        name: Tool name
-        description: Tool description
-        tags: Optional set of tags to apply to the tool
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return await memory_aware_wrapper(func, *args, **kwargs)
+        async def wrapper(*args: Any, **inner_kwargs: Any) -> Any:
+            return await memory_aware_wrapper(func, *args, **inner_kwargs)
 
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
-        mcp.tool(name=name, description=description, tags=tags)(instrumented)
+        mcp.tool(**kwargs)(instrumented)
         return instrumented
 
     return decorator
@@ -488,11 +423,10 @@ async def register_tools(
     # Apply dr_mcp_extras to the memory-aware function
     wrapped_fn = dr_mcp_extras()(memory_aware_fn)
 
-    # Create annotations with tags, deployment_id if provided
-    annotations = ToolAnnotations()  # type: ignore[call-arg]
-    if tags is not None:
-        annotations.tags = tags  # type: ignore[attr-defined]
+    # Create annotations only when additional metadata is required
+    annotations: ToolAnnotations | None = None  # type: ignore[assignment]
     if deployment_id is not None:
+        annotations = ToolAnnotations()  # type: ignore[call-arg]
         annotations.deployment_id = deployment_id  # type: ignore[attr-defined]
 
     tool = Tool.from_function(
