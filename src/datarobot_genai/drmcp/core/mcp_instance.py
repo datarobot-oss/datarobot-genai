@@ -16,6 +16,7 @@ import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
+from typing import TypedDict
 
 from fastmcp import Context
 from fastmcp import FastMCP
@@ -26,6 +27,7 @@ from fastmcp.tools import Tool
 from mcp.types import AnyFunction
 from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
+from typing_extensions import Unpack
 
 from .config import MCPServerConfig
 from .config import get_config
@@ -287,16 +289,37 @@ mcp = TaggedFastMCP(
 )
 
 
+class ToolKwargs(TypedDict, total=False):
+    """Keyword arguments passed through to FastMCP's mcp.tool() decorator.
+
+    All parameters are optional and forwarded directly to FastMCP tool registration.
+    See FastMCP documentation for full details on each parameter.
+    """
+
+    name: str | None
+    title: str | None
+    description: str | None
+    icons: list[Any] | None
+    tags: set[str] | None
+    output_schema: dict[str, Any] | None
+    annotations: Any | None
+    exclude_args: list[str] | None
+    meta: dict[str, Any] | None
+    enabled: bool | None
+
+
 def dr_core_mcp_tool(
-    name: str | None = None,
-    description: str | None = None,
-    tags: set[str] | None = None,
+    **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Combine decorator that includes mcp.tool() and dr_mcp_extras()."""
+    """Combine decorator that includes mcp.tool() and dr_mcp_extras().
+
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
+    """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         instrumented = dr_mcp_extras()(func)
-        mcp.tool(name=name, description=description, tags=tags)(instrumented)
+        mcp.tool(**kwargs)(instrumented)
         return instrumented
 
     return decorator
@@ -329,27 +352,23 @@ async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: A
 
 
 def dr_mcp_tool(
-    name: str | None = None,
-    description: str | None = None,
-    tags: set[str] | None = None,
+    **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Combine decorator that includes mcp.tool(), dr_mcp_extras(), and capture memory ids from
     the request headers if they exist.
 
-    Args:
-        name: Tool name
-        description: Tool description
-        tags: Optional set of tags to apply to the tool
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return await memory_aware_wrapper(func, *args, **kwargs)
+        async def wrapper(*args: Any, **inner_kwargs: Any) -> Any:
+            return await memory_aware_wrapper(func, *args, **inner_kwargs)
 
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
-        mcp.tool(name=name, description=description, tags=tags)(instrumented)
+        mcp.tool(**kwargs)(instrumented)
         return instrumented
 
     return decorator
