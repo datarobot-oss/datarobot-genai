@@ -39,6 +39,54 @@ class ETETestExpectations(BaseModel):
 SHOULD_NOT_BE_EMPTY = "SHOULD_NOT_BE_EMPTY"
 
 
+def _extract_structured_content(tool_result: str) -> Any:
+    r"""
+    Extract and parse structured content from tool result string.
+
+    Tool results are formatted as:
+    "Content: {content}\nStructured content: {structured_content}"
+
+    Structured content can be:
+    1. A JSON object with a "result" key: {"result": "..."} or {"result": "{...}"}
+    2. A direct JSON object: {"key": "value", ...}
+    3. Empty or missing
+
+    Args:
+        tool_result: The tool result string
+
+    Returns
+    -------
+        Parsed structured content, or None if not available
+    """
+    # Early returns for invalid inputs
+    if not tool_result or "Structured content: " not in tool_result:
+        return None
+
+    structured_part = tool_result.split("Structured content: ", 1)[1].strip()
+    # Parse JSON, return None on failure or empty structured_part
+    if not structured_part:
+        return None
+    try:
+        structured_data = json.loads(structured_part)
+    except json.JSONDecodeError:
+        return None
+
+    # If structured data has a "result" key, extract and parse that
+    if isinstance(structured_data, dict) and "result" in structured_data:
+        result_value = structured_data["result"]
+        # If result is a JSON string (starts with { or [), try to parse it
+        if isinstance(result_value, str) and result_value.strip().startswith(("{", "[")):
+            try:
+                parsed_result = json.loads(result_value)
+            except json.JSONDecodeError:
+                parsed_result = result_value  # Return string as-is if parsing fails
+            return parsed_result
+        return result_value  # Return result value directly
+
+    # If it's a direct JSON object (not wrapped in {"result": ...}), return it as-is
+    return structured_data
+
+
 def _check_dict_has_keys(
     expected: dict[str, Any],
     actual: dict[str, Any] | list[dict[str, Any]],
@@ -130,7 +178,26 @@ class ToolBaseE2E:
                             f"result, but got: {response.tool_results[i]}"
                         )
                     else:
-                        actual_result = json.loads(response.tool_results[i])
+                        actual_result = _extract_structured_content(response.tool_results[i])
+                        if actual_result is None:
+                            # Fallback: try to parse the entire tool result as JSON
+                            try:
+                                actual_result = json.loads(response.tool_results[i])
+                            except json.JSONDecodeError:
+                                # If that fails, try to extract content part
+                                if "Content: " in response.tool_results[i]:
+                                    content_part = response.tool_results[i].split("Content: ", 1)[1]
+                                    if "\nStructured content: " in content_part:
+                                        content_part = content_part.split(
+                                            "\nStructured content: ", 1
+                                        )[0]
+                                    try:
+                                        actual_result = json.loads(content_part.strip())
+                                    except json.JSONDecodeError:
+                                        raise AssertionError(
+                                            f"Could not parse tool result for "
+                                            f"{tool_call.tool_name}: {response.tool_results[i]}"
+                                        )
                         assert _check_dict_has_keys(expected_result, actual_result), (
                             f"Should have called {tool_call.tool_name} tool with the correct "
                             f"result structure, but got: {response.tool_results[i]}"

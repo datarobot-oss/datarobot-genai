@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 from typing import Annotated
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 @dr_mcp_tool(tags={"predictive", "data", "write", "upload", "catalog"})
 async def upload_dataset_to_ai_catalog(
+    *,
     file_path: Annotated[str, "The path to the dataset file to upload."] | None = None,
     file_url: Annotated[str, "The URL to the dataset file to upload."] | None = None,
 ) -> ToolError | ToolResult:
@@ -80,11 +82,17 @@ async def list_ai_catalog_items() -> ToolResult:
             structured_content={"datasets": []},
         )
 
+    datasets_dict = {ds.id: ds.name for ds in datasets}
+    datasets_count = len(datasets)
+
     return ToolResult(
-        content=f"Found {len(datasets)} AI Catalog items.",
+        content=(
+            f"Found {datasets_count} AI Catalog items, here are the details:\n"
+            f"{json.dumps(datasets_dict, indent=2)}"
+        ),
         structured_content={
-            "datasets": [{"id": ds.id, "name": ds.name} for ds in datasets],
-            "count": len(datasets),
+            "datasets": datasets_dict,
+            "count": datasets_count,
         },
     )
 

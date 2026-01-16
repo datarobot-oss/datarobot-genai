@@ -30,6 +30,7 @@ class ToolType(str, Enum):
     JIRA = "jira"
     CONFLUENCE = "confluence"
     GDRIVE = "gdrive"
+    MICROSOFT_GRAPH = "microsoft_graph"
 
 
 class ToolConfig(TypedDict):
@@ -39,7 +40,7 @@ class ToolConfig(TypedDict):
     oauth_check: Callable[["MCPServerConfig"], bool] | None
     directory: str
     package_prefix: str
-    config_field_name: str  # Name of the config field (e.g., "enable_predictive_tools")
+    config_field_name: str
 
 
 # Tool configuration registry
@@ -53,24 +54,31 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
     ),
     ToolType.JIRA: ToolConfig(
         name="jira",
-        oauth_check=lambda config: config.is_jira_oauth_configured,
+        oauth_check=lambda config: config.tool_config.is_atlassian_oauth_configured,
         directory="jira",
         package_prefix="datarobot_genai.drmcp.tools.jira",
         config_field_name="enable_jira_tools",
     ),
     ToolType.CONFLUENCE: ToolConfig(
         name="confluence",
-        oauth_check=lambda config: config.is_confluence_oauth_configured,
+        oauth_check=lambda config: config.tool_config.is_atlassian_oauth_configured,
         directory="confluence",
         package_prefix="datarobot_genai.drmcp.tools.confluence",
         config_field_name="enable_confluence_tools",
     ),
     ToolType.GDRIVE: ToolConfig(
         name="gdrive",
-        oauth_check=lambda config: config.is_gdrive_oauth_configured,
+        oauth_check=lambda config: config.tool_config.is_google_oauth_configured,
         directory="gdrive",
         package_prefix="datarobot_genai.drmcp.tools.gdrive",
         config_field_name="enable_gdrive_tools",
+    ),
+    ToolType.MICROSOFT_GRAPH: ToolConfig(
+        name="microsoft_graph",
+        oauth_check=lambda config: config.tool_config.is_microsoft_oauth_configured,
+        directory="microsoft_graph",
+        package_prefix="datarobot_genai.drmcp.tools.microsoft_graph",
+        config_field_name="enable_microsoft_graph_tools",
     ),
 }
 
@@ -92,12 +100,12 @@ def is_tool_enabled(tool_type: ToolType, config: "MCPServerConfig") -> bool:
     -------
         True if the tool is enabled, False otherwise
     """
-    tool_config = TOOL_CONFIGS[tool_type]
-    enable_config_name = tool_config["config_field_name"]
-    is_enabled = getattr(config, enable_config_name)
+    tool_config_registry = TOOL_CONFIGS[tool_type]
+    enable_config_name = tool_config_registry["config_field_name"]
+    is_enabled = getattr(config.tool_config, enable_config_name)
 
     # If tool is enabled, check OAuth requirements if needed
-    if is_enabled and tool_config["oauth_check"] is not None:
-        return tool_config["oauth_check"](config)
+    if is_enabled and tool_config_registry["oauth_check"] is not None:
+        return tool_config_registry["oauth_check"](config)
 
     return is_enabled

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 import uuid
 from typing import Any
 
@@ -26,7 +27,7 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 @pytest.fixture(scope="session")
 def confluence_page_id() -> str:
-    return "7169507349"
+    return "7178321927"
 
 
 @pytest.fixture(scope="session")
@@ -36,7 +37,7 @@ def confluence_page_title() -> str:
 
 @pytest.fixture(scope="session")
 def confluence_space_key() -> str:
-    return "TESTSPACE"
+    return "MCPETE"
 
 
 @pytest.fixture(scope="session")
@@ -79,6 +80,9 @@ def expectations_for_confluence_get_page_by_title_success(
     )
 
 
+@pytest.mark.skipif(
+    not os.getenv("ENABLE_CONFLUENCE_TOOLS"), reason="Confluence tools are not enabled"
+)
 @pytest.mark.asyncio
 class TestConfluenceToolsE2E(ToolBaseE2E):
     """End-to-end tests for confluence tools."""
