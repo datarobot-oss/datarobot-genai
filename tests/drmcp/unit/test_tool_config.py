@@ -33,6 +33,7 @@ class TestToolType:
         assert ToolType.PREDICTIVE.value == "predictive"
         assert ToolType.JIRA.value == "jira"
         assert ToolType.CONFLUENCE.value == "confluence"
+        assert ToolType.MICROSOFT_GRAPH.value == "microsoft_graph"
 
     def test_tool_type_is_string_enum(self) -> None:
         """Test that ToolType is a string enum."""
@@ -77,6 +78,15 @@ class TestToolConfigs:
         assert config["package_prefix"] == "datarobot_genai.drmcp.tools.confluence"
         assert config["config_field_name"] == "enable_confluence_tools"
 
+    def test_microsoft_graph_tool_config(self) -> None:
+        """Test Microsoft Graph tool configuration."""
+        config = TOOL_CONFIGS[ToolType.MICROSOFT_GRAPH]
+        assert config["name"] == "microsoft_graph"
+        assert config["oauth_check"] is not None
+        assert config["directory"] == "microsoft_graph"
+        assert config["package_prefix"] == "datarobot_genai.drmcp.tools.microsoft_graph"
+        assert config["config_field_name"] == "enable_microsoft_graph_tools"
+
     def test_jira_oauth_check_callable(self) -> None:
         """Test that Jira OAuth check is a callable."""
         config = TOOL_CONFIGS[ToolType.JIRA]
@@ -84,10 +94,12 @@ class TestToolConfigs:
 
         # Test that it calls the config method
         mock_config = MagicMock(spec=MCPServerConfig)
-        mock_config.is_jira_oauth_configured = True
+        mock_tool_config = MagicMock()
+        mock_tool_config.is_atlassian_oauth_configured = True
+        mock_config.tool_config = mock_tool_config
         assert config["oauth_check"](mock_config) is True
 
-        mock_config.is_jira_oauth_configured = False
+        mock_tool_config.is_atlassian_oauth_configured = False
         assert config["oauth_check"](mock_config) is False
 
     def test_confluence_oauth_check_callable(self) -> None:
@@ -97,10 +109,27 @@ class TestToolConfigs:
 
         # Test that it calls the config method
         mock_config = MagicMock(spec=MCPServerConfig)
-        mock_config.is_confluence_oauth_configured = True
+        mock_tool_config = MagicMock()
+        mock_tool_config.is_atlassian_oauth_configured = True
+        mock_config.tool_config = mock_tool_config
         assert config["oauth_check"](mock_config) is True
 
-        mock_config.is_confluence_oauth_configured = False
+        mock_tool_config.is_atlassian_oauth_configured = False
+        assert config["oauth_check"](mock_config) is False
+
+    def test_microsoft_graph_oauth_check_callable(self) -> None:
+        """Test that Microsoft Graph OAuth check is a callable."""
+        config = TOOL_CONFIGS[ToolType.MICROSOFT_GRAPH]
+        assert callable(config["oauth_check"])
+
+        # Test that it calls the config method
+        mock_config = MagicMock(spec=MCPServerConfig)
+        mock_tool_config = MagicMock()
+        mock_tool_config.is_microsoft_oauth_configured = True
+        mock_config.tool_config = mock_tool_config
+        assert config["oauth_check"](mock_config) is True
+
+        mock_tool_config.is_microsoft_oauth_configured = False
         assert config["oauth_check"](mock_config) is False
 
 
@@ -118,6 +147,12 @@ class TestGetToolEnableConfigName:
     def test_confluence_config_name(self) -> None:
         """Test config name for Confluence tools."""
         assert get_tool_enable_config_name(ToolType.CONFLUENCE) == "enable_confluence_tools"
+
+    def test_microsoft_graph_config_name(self) -> None:
+        """Test config name for Microsoft Graph tools."""
+        assert (
+            get_tool_enable_config_name(ToolType.MICROSOFT_GRAPH) == "enable_microsoft_graph_tools"
+        )
 
 
 class TestIsToolEnabled:
@@ -147,7 +182,7 @@ class TestIsToolEnabled:
             os.environ,
             {
                 "ENABLE_JIRA_TOOLS": "true",
-                "IS_JIRA_OAUTH_PROVIDER_CONFIGURED": "true",
+                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
             },
             clear=False,
         ):
@@ -167,8 +202,8 @@ class TestIsToolEnabled:
             os.environ,
             {
                 "ENABLE_JIRA_TOOLS": "true",
-                "JIRA_CLIENT_ID": "test_id",
-                "JIRA_CLIENT_SECRET": "test_secret",
+                "ATLASSIAN_CLIENT_ID": "test_id",
+                "ATLASSIAN_CLIENT_SECRET": "test_secret",
             },
             clear=False,
         ):
@@ -181,7 +216,7 @@ class TestIsToolEnabled:
             os.environ,
             {
                 "ENABLE_JIRA_TOOLS": "false",
-                "IS_JIRA_OAUTH_PROVIDER_CONFIGURED": "true",
+                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
             },
             clear=False,
         ):
@@ -195,7 +230,7 @@ class TestIsToolEnabled:
             os.environ,
             {
                 "ENABLE_CONFLUENCE_TOOLS": "true",
-                "IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED": "true",
+                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
             },
             clear=False,
         ):
@@ -215,8 +250,8 @@ class TestIsToolEnabled:
             os.environ,
             {
                 "ENABLE_CONFLUENCE_TOOLS": "true",
-                "CONFLUENCE_CLIENT_ID": "test_id",
-                "CONFLUENCE_CLIENT_SECRET": "test_secret",
+                "ATLASSIAN_CLIENT_ID": "test_id",
+                "ATLASSIAN_CLIENT_SECRET": "test_secret",
             },
             clear=False,
         ):
@@ -229,10 +264,58 @@ class TestIsToolEnabled:
             os.environ,
             {
                 "ENABLE_CONFLUENCE_TOOLS": "false",
-                "IS_CONFLUENCE_OAUTH_PROVIDER_CONFIGURED": "true",
+                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
             },
             clear=False,
         ):
             config = MCPServerConfig()
             # Even with OAuth configured, tool should be disabled
             assert is_tool_enabled(ToolType.CONFLUENCE, config) is False
+
+    def test_microsoft_graph_tool_enabled_with_oauth(self) -> None:
+        """Test Microsoft Graph tool when enabled and OAuth is configured."""
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_MICROSOFT_GRAPH_TOOLS": "true",
+                "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED": "true",
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is True
+
+    def test_microsoft_graph_tool_enabled_without_oauth(self) -> None:
+        """Test Microsoft Graph tool when enabled but OAuth is not configured."""
+        with patch.dict(os.environ, {"ENABLE_MICROSOFT_GRAPH_TOOLS": "true"}, clear=False):
+            config = MCPServerConfig()
+            # No OAuth configured
+            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is False
+
+    def test_microsoft_graph_tool_enabled_with_env_vars(self) -> None:
+        """Test Microsoft Graph tool when enabled and OAuth via env vars."""
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_MICROSOFT_GRAPH_TOOLS": "true",
+                "MICROSOFT_CLIENT_ID": "test_id",
+                "MICROSOFT_CLIENT_SECRET": "test_secret",
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is True
+
+    def test_microsoft_graph_tool_disabled(self) -> None:
+        """Test Microsoft Graph tool when disabled."""
+        with patch.dict(
+            os.environ,
+            {
+                "ENABLE_MICROSOFT_GRAPH_TOOLS": "false",
+                "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED": "true",
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            # Even with OAuth configured, tool should be disabled
+            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is False

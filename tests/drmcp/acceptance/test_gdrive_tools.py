@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 from typing import Any
 
 import pytest
@@ -85,6 +86,7 @@ def expectations_for_gdrive_read_content_success(
     )
 
 
+@pytest.mark.skipif(not os.getenv("ENABLE_GDRIVE_TOOLS"), reason="Gdrive tools are not enabled")
 @pytest.mark.asyncio
 class TestGdriveToolsE2E(ToolBaseE2E):
     """End-to-end tests for gdrive tools."""
@@ -141,6 +143,44 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_read_content_success,
+                openai_llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(reason="Creates real files in Google Drive without cleanup - run manually")
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            "Please create a new text file in Google Drive named 'test-acceptance-file.txt' "
+            "with the content 'Hello from acceptance test'."
+        ],
+    )
+    async def test_gdrive_create_file_success(
+        self,
+        openai_llm_client: Any,
+        prompt_template: str,
+    ) -> None:
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="gdrive_create_file",
+                    parameters={
+                        "name": "test-acceptance-file.txt",
+                        "mime_type": "text/plain",
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=["created", "test-acceptance-file.txt"],
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_gdrive_create_file_success"
+            await self._run_test_with_expectations(
+                prompt_template,
+                expectations,
                 openai_llm_client,
                 session,
                 test_name,
