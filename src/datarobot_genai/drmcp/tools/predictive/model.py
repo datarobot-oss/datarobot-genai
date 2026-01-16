@@ -153,16 +153,7 @@ async def list_models(
     *,
     project_id: Annotated[str, "The DataRobot project ID"] | None = None,
 ) -> ToolError | ToolResult:
-    """
-    List all models in a project.
-
-    Args:
-        project_id: The ID of the DataRobot project.
-
-    Returns
-    -------
-        A string summary of the models in the project.
-    """
+    """List all models in a project."""
     if not project_id:
         return ToolError("Project ID must be provided")
 
