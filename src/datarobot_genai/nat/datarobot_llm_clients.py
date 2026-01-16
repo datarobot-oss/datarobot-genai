@@ -34,6 +34,7 @@ from ..nat.datarobot_llm_providers import DataRobotNIMModelConfig
 if TYPE_CHECKING:
     from crewai import LLM
     from langchain_openai import ChatOpenAI
+    from llama_index.llms.litellm import LiteLLM
 
 ModelType = TypeVar("ModelType")
 
@@ -138,7 +139,7 @@ async def datarobot_llm_gateway_crewai(
 )
 async def datarobot_llm_gateway_llamaindex(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
-) -> AsyncGenerator[LLM]:
+) -> AsyncGenerator[LiteLLM]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
@@ -193,7 +194,7 @@ async def datarobot_llm_deployment_crewai(
 )
 async def datarobot_llm_deployment_llamaindex(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
-) -> AsyncGenerator[LLM]:
+) -> AsyncGenerator[LiteLLM]:
     config = llm_config.model_dump(
         exclude={"type", "thinking"},
         by_alias=True,
@@ -246,7 +247,7 @@ async def datarobot_nim_crewai(
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
 async def datarobot_nim_llamaindex(
     llm_config: DataRobotNIMModelConfig, builder: Builder
-) -> AsyncGenerator[LLM]:
+) -> AsyncGenerator[LiteLLM]:
     config = llm_config.model_dump(
         exclude={"type", "thinking"},
         by_alias=True,
@@ -304,7 +305,7 @@ async def datarobot_llm_component_crewai(
 )
 async def datarobot_llm_component_llamaindex(
     llm_config: DataRobotLLMComponentModelConfig, builder: Builder
-) -> AsyncGenerator[LLM]:
+) -> AsyncGenerator[LiteLLM]:
     config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
