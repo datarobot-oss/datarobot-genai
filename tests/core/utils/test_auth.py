@@ -629,7 +629,7 @@ class TestAsyncOAuthTokenProvider:
 
         assert token == "test_access_token"
         args, kwargs = mock_client.refresh_access_token.call_args
-        assert kwargs["provider_id"] == "ea599021-acc3-490b-b2d7-a811ae1c9759"
+        assert kwargs["identity_id"] == "ea599021-acc3-490b-b2d7-a811ae1c9759"
 
     @pytest.mark.asyncio
     async def test_get_token_multiple_identities(
@@ -647,7 +647,7 @@ class TestAsyncOAuthTokenProvider:
 
         assert token == "test_access_token"
         args, kwargs = mock_client.refresh_access_token.call_args
-        assert kwargs["provider_id"] == "cc3f4426-9db1-4e77-bccb-72bcf7bc1ace"
+        assert kwargs["identity_id"] == "cc3f4426-9db1-4e77-bccb-72bcf7bc1ace"
 
     @pytest.mark.asyncio
     async def test_get_token_google_oauth(
@@ -664,7 +664,7 @@ class TestAsyncOAuthTokenProvider:
 
         assert token == "test_access_token"
         args, kwargs = mock_client.refresh_access_token.call_args
-        assert kwargs["provider_id"] == "3d0edc76-95c6-4b75-9541-3fe17ccf068b"
+        assert kwargs["identity_id"] == "3d0edc76-95c6-4b75-9541-3fe17ccf068b"
 
     @pytest.mark.asyncio
     async def test_get_token_unsupported_auth_type_raises(
