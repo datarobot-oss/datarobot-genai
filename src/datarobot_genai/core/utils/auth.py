@@ -231,7 +231,7 @@ class DatarobotTokenRetriever:
 
     async def refresh_access_token(self, identity: Identity) -> OAuthToken:
         """Refresh the access token using DataRobot's OAuth client."""
-        return await self._client.refresh_access_token(provider_id=identity.provider_identity_id)
+        return await self._client.refresh_access_token(identity_id=identity.provider_identity_id)
 
 
 class AuthlibTokenRetriever:
