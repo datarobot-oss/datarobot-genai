@@ -108,7 +108,7 @@ class AgentKernel:
         config: Any | None = None,
     ) -> ChatCompletion | Stream[ChatCompletionChunk]:
         if config is not None:
-            chat_api_url = f"http://localhost:{config.local_dev_port}",
+            chat_api_url = f"http://localhost:{config.local_dev_port}"
         else:
             chat_api_url = self.base_url
         print(chat_api_url)
