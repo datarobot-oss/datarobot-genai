@@ -12,32 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""LLM MCP Client implementations.
+"""LLM MCP Client implementations for various providers."""
 
-This module provides backwards compatibility by re-exporting all clients from the clients package.
-New code should import directly from `datarobot_genai.drmcp.test_utils.clients`.
-"""
-
-# Re-export everything from clients package for backwards compatibility
-from .clients import (
-    AnthropicMCPClient,
-    BaseLLMMCPClient,
-    BedrockMCPClient,
-    DRLLMGatewayMCPClient,
-    LLMResponse,
-    OpenAILLMMCPClient,
-    ToolCall,
-)
-
-# Backwards compatibility alias
-LLMMCPClient = OpenAILLMMCPClient
+from .anthropic import AnthropicMCPClient
+from .base import BaseLLMMCPClient
+from .base import LLMResponse
+from .base import ToolCall
+from .bedrock import BedrockMCPClient
+from .dr_gateway import DRLLMGatewayMCPClient
+from .openai import OpenAILLMMCPClient
 
 __all__ = [
     "AnthropicMCPClient",
     "BaseLLMMCPClient",
     "BedrockMCPClient",
     "DRLLMGatewayMCPClient",
-    "LLMMCPClient",
     "LLMResponse",
     "OpenAILLMMCPClient",
     "ToolCall",
