@@ -66,9 +66,7 @@ class BedrockMCPClient(BaseLLMMCPClient):
         aws_access_key_id = config_dict.get("aws_access_key_id")
         aws_secret_access_key = config_dict.get("aws_secret_access_key")
         aws_region = config_dict.get("aws_region", "us-east-1")
-        model = config_dict.get(
-            "model", "anthropic.claude-3-5-sonnet-20241022-v2:0"
-        )
+        model = config_dict.get("model", "anthropic.claude-3-5-sonnet-20241022-v2:0")
 
         # AWS Bedrock provides an OpenAI-compatible endpoint
         # Format: https://bedrock-runtime.{region}.amazonaws.com

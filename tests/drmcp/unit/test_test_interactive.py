@@ -525,7 +525,7 @@ class TestDRLLMGatewayMCPClient:
             "model": "gpt-4o-mini",
         }
 
-        client = DRLLMGatewayMCPClient(str(config))
+        DRLLMGatewayMCPClient(str(config))
 
         # Should strip trailing slash before adding /genai/llmgw
         mock_openai_patch.assert_called_once_with(

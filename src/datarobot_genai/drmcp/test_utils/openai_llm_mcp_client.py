@@ -19,15 +19,13 @@ New code should import directly from `datarobot_genai.drmcp.test_utils.clients`.
 """
 
 # Re-export everything from clients package for backwards compatibility
-from .clients import (
-    AnthropicMCPClient,
-    BaseLLMMCPClient,
-    BedrockMCPClient,
-    DRLLMGatewayMCPClient,
-    LLMResponse,
-    OpenAILLMMCPClient,
-    ToolCall,
-)
+from .clients import AnthropicMCPClient
+from .clients import BaseLLMMCPClient
+from .clients import BedrockMCPClient
+from .clients import DRLLMGatewayMCPClient
+from .clients import LLMResponse
+from .clients import OpenAILLMMCPClient
+from .clients import ToolCall
 
 # Backwards compatibility alias
 LLMMCPClient = OpenAILLMMCPClient
