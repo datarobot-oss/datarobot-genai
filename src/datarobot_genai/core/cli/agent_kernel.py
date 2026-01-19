@@ -107,7 +107,10 @@ class AgentKernel:
         stream: bool = False,
         config: Any | None = None,
     ) -> ChatCompletion | Stream[ChatCompletionChunk]:
-        chat_api_url = config.agent_endpoint if config else self.base_url
+        if config is not None:
+            chat_api_url = f"http://localhost:{config.local_dev_port}",
+        else:
+            chat_api_url = self.base_url
         print(chat_api_url)
 
         return self._do_chat_completion(chat_api_url, user_prompt, completion_json, stream=stream)
