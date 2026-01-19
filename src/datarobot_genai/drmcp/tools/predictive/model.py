@@ -62,16 +62,16 @@ async def get_best_model(
 ) -> ToolError | ToolResult:
     """Get the best model for a DataRobot project, optionally by a specific metric."""
     if not project_id:
-        return ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)
     if not project:
-        return ToolError(f"Project with ID {project_id} not found.")
+        raise ToolError(f"Project with ID {project_id} not found.")
 
     leaderboard = project.get_models()
     if not leaderboard:
-        return ToolError("No models found for this project.")
+        raise ToolError("No models found for this project.")
 
     if metric:
         reverse_sort = metric.upper() in [
@@ -126,11 +126,11 @@ async def score_dataset_with_model(
 ) -> ToolError | ToolResult:
     """Score a dataset using a specific DataRobot model."""
     if not project_id:
-        return ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided")
     if not model_id:
-        return ToolError("Model ID must be provided")
+        raise ToolError("Model ID must be provided")
     if not dataset_url:
-        return ToolError("Dataset URL must be provided")
+        raise ToolError("Dataset URL must be provided")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)
@@ -155,7 +155,7 @@ async def list_models(
 ) -> ToolError | ToolResult:
     """List all models in a project."""
     if not project_id:
-        return ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)
