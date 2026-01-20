@@ -19,11 +19,11 @@ A reusable library for building Model Context Protocol (MCP) servers with DataRo
 """
 
 # Export main server components
+from datarobot_genai.drmcp.test_utils.clients import OpenAILLMMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_mcp_server_url
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_headers
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
@@ -70,7 +70,7 @@ __all__ = [
     "get_dr_mcp_server_url",
     "get_headers",
     "ete_test_mcp_session",
-    "LLMMCPClient",
+    "OpenAILLMMCPClient",
     "ETETestExpectations",
     "ToolBaseE2E",
     "ToolCallTestExpectations",

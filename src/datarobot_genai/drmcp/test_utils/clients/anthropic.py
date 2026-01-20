@@ -55,8 +55,8 @@ class AnthropicMCPClient(BaseLLMMCPClient):
         """
         super().__init__(config)
 
-    def _create_openai_client(self, config_dict: dict) -> tuple[openai.OpenAI, str]:
-        """Create the OpenAI client for Anthropic (OpenAI-compatible endpoint)."""
+    def _create_llm_client(self, config_dict: dict) -> tuple[openai.OpenAI, str]:
+        """Create the LLM client for Anthropic (OpenAI-compatible endpoint)."""
         anthropic_api_key = config_dict.get("anthropic_api_key")
         model = config_dict.get("model", "claude-3-5-sonnet-20241022")
 

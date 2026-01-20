@@ -43,8 +43,8 @@ class DRLLMGatewayMCPClient(BaseLLMMCPClient):
         """
         super().__init__(config)
 
-    def _create_openai_client(self, config_dict: dict) -> tuple[openai.OpenAI, str]:
-        """Create the OpenAI client for DataRobot LLM Gateway."""
+    def _create_llm_client(self, config_dict: dict) -> tuple[openai.OpenAI, str]:
+        """Create the LLM client for DataRobot LLM Gateway."""
         datarobot_api_token = config_dict.get("datarobot_api_token")
         datarobot_endpoint = config_dict.get(
             "datarobot_endpoint", "https://app.datarobot.com/api/v2"

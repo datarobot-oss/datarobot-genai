@@ -45,10 +45,10 @@ class OpenAILLMMCPClient(BaseLLMMCPClient):
         """
         super().__init__(config)
 
-    def _create_openai_client(
+    def _create_llm_client(
         self, config_dict: dict
     ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str]:
-        """Create the OpenAI client for OpenAI or Azure OpenAI."""
+        """Create the LLM client for OpenAI or Azure OpenAI."""
         openai_api_key = config_dict.get("openai_api_key")
         openai_api_base = config_dict.get("openai_api_base")
         openai_api_deployment_id = config_dict.get("openai_api_deployment_id")

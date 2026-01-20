@@ -67,7 +67,7 @@ class BaseLLMMCPClient(ABC):
             config: Configuration string or dict with provider-specific keys.
         """
         config_dict = self._parse_config(config)
-        self.openai_client, self.model = self._create_openai_client(config_dict)
+        self.openai_client, self.model = self._create_llm_client(config_dict)
         self.save_llm_responses = config_dict.get("save_llm_responses", True)
         self.available_tools: list[dict[str, Any]] = []
         self.available_prompts: list[dict[str, Any]] = []
@@ -86,18 +86,18 @@ class BaseLLMMCPClient(ABC):
         return config
 
     @abstractmethod
-    def _create_openai_client(
+    def _create_llm_client(
         self, config_dict: dict
     ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str]:
         """
-        Create the OpenAI client.
+        Create the LLM client.
 
         Args:
             config_dict: Parsed configuration dictionary
 
         Returns
         -------
-            Tuple of (OpenAI client instance, model name)
+            Tuple of (LLM client instance, model name)
         """
         pass
 

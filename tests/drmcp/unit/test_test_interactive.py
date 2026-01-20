@@ -32,9 +32,9 @@ from openai.types.chat.chat_completion_message_tool_call import (
 )
 
 from datarobot_genai.drmcp.test_utils.clients import DRLLMGatewayMCPClient
-from datarobot_genai.drmcp.test_utils.test_interactive import LLMMCPClient
-from datarobot_genai.drmcp.test_utils.test_interactive import LLMResponse
-from datarobot_genai.drmcp.test_utils.test_interactive import ToolCall
+from datarobot_genai.drmcp.test_utils.clients import LLMResponse
+from datarobot_genai.drmcp.test_utils.clients import OpenAILLMMCPClient
+from datarobot_genai.drmcp.test_utils.clients import ToolCall
 
 
 # Helper functions for creating mocks
@@ -119,9 +119,9 @@ def basic_client_config() -> dict:
 
 
 @pytest.fixture
-def llm_client(mock_openai_patch, basic_client_config) -> LLMMCPClient:
-    """Create a basic LLMMCPClient instance."""
-    return LLMMCPClient(str(basic_client_config))
+def llm_client(mock_openai_patch, basic_client_config) -> OpenAILLMMCPClient:
+    """Create a basic OpenAILLMMCPClient instance."""
+    return OpenAILLMMCPClient(str(basic_client_config))
 
 
 @pytest.fixture
@@ -166,17 +166,17 @@ class TestLLMResponse:
 
 
 class TestLLMMCPClient:
-    """Test cases for LLMMCPClient class."""
+    """Test cases for OpenAILLMMCPClient class."""
 
     def test_init_with_openai_config(self, mock_openai_patch) -> None:
-        """Test LLMMCPClient initialization with OpenAI config."""
+        """Test OpenAILLMMCPClient initialization with OpenAI config."""
         config = {
             "openai_api_key": "test-key",
             "model": "gpt-4",
             "save_llm_responses": False,
         }
 
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         assert client.model == "gpt-4"
         assert client.save_llm_responses is False
@@ -184,7 +184,7 @@ class TestLLMMCPClient:
         mock_openai_patch.assert_called_once_with(api_key="test-key")
 
     def test_init_with_azure_config(self, mock_azure_openai_patch) -> None:
-        """Test LLMMCPClient initialization with Azure OpenAI config."""
+        """Test OpenAILLMMCPClient initialization with Azure OpenAI config."""
         config = {
             "openai_api_key": "test-key",
             "openai_api_base": "https://test.openai.azure.com",
@@ -192,7 +192,7 @@ class TestLLMMCPClient:
             "openai_api_version": "2024-01-01",
         }
 
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         assert client.model == "deployment-123"
         mock_azure_openai_patch.assert_called_once_with(
@@ -202,19 +202,19 @@ class TestLLMMCPClient:
         )
 
     def test_init_with_dict_config(self, mock_openai_patch) -> None:
-        """Test LLMMCPClient initialization with dict config."""
+        """Test OpenAILLMMCPClient initialization with dict config."""
         config = {"openai_api_key": "test-key", "model": "gpt-3.5-turbo"}
 
-        client = LLMMCPClient(config)
+        client = OpenAILLMMCPClient(config)
 
         assert client.model == "gpt-3.5-turbo"
         mock_openai_patch.assert_called_once_with(api_key="test-key")
 
     def test_init_with_defaults(self, mock_openai_patch) -> None:
-        """Test LLMMCPClient initialization with default values."""
+        """Test OpenAILLMMCPClient initialization with default values."""
         config = {"openai_api_key": "test-key"}
 
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         assert client.model == "gpt-3.5-turbo"
         assert client.save_llm_responses is True
@@ -366,7 +366,7 @@ class TestLLMMCPClient:
     ) -> None:
         """Test process_prompt_with_mcp_support with single LLM response (no tool calls)."""
         config = {"openai_api_key": "test-key", "save_llm_responses": True}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         mock_response = create_mock_chat_completion(content="Final response")
@@ -389,7 +389,7 @@ class TestLLMMCPClient:
     ) -> None:
         """Test process_prompt_with_mcp_support with tool calls."""
         config = {"openai_api_key": "test-key", "save_llm_responses": True}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
 
@@ -418,7 +418,7 @@ class TestLLMMCPClient:
     ) -> None:
         """Test that process_prompt_with_mcp_support cleans content (removes * and lowercases)."""
         config = {"openai_api_key": "test-key", "save_llm_responses": False}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         mock_response = create_mock_chat_completion(content="Final *Response* With CAPS")
@@ -436,7 +436,7 @@ class TestLLMMCPClient:
     ) -> None:
         """Test process_prompt_with_mcp_support without saving responses."""
         config = {"openai_api_key": "test-key", "save_llm_responses": False}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         mock_response = create_mock_chat_completion(content="Response")

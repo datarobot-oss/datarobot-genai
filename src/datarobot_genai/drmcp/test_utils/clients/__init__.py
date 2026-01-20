@@ -18,14 +18,12 @@ from .anthropic import AnthropicMCPClient
 from .base import BaseLLMMCPClient
 from .base import LLMResponse
 from .base import ToolCall
-from .bedrock import BedrockMCPClient
 from .dr_gateway import DRLLMGatewayMCPClient
 from .openai import OpenAILLMMCPClient
 
 __all__ = [
     "AnthropicMCPClient",
     "BaseLLMMCPClient",
-    "BedrockMCPClient",
     "DRLLMGatewayMCPClient",
     "LLMResponse",
     "OpenAILLMMCPClient",

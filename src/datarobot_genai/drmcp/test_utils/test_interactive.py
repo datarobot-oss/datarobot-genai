@@ -40,40 +40,40 @@ from mcp.types import ElicitResult
 
 from datarobot_genai.drmcp import get_dr_mcp_server_url
 from datarobot_genai.drmcp import get_headers
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMResponse
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import ToolCall
+from datarobot_genai.drmcp.test_utils.clients import DRLLMGatewayMCPClient
+from datarobot_genai.drmcp.test_utils.clients import LLMResponse
+from datarobot_genai.drmcp.test_utils.clients import ToolCall
 
 # Re-export for backwards compatibility
-__all__ = ["LLMMCPClient", "LLMResponse", "ToolCall", "test_mcp_interactive"]
+__all__ = ["DRLLMGatewayMCPClient", "LLMResponse", "ToolCall", "test_mcp_interactive"]
 
 
 async def test_mcp_interactive() -> None:
     """Test the MCP server interactively with LLM agent."""
     # Check for required environment variables
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-    if not openai_api_key:
-        print("❌ Error: OPENAI_API_KEY environment variable is required")
+    datarobot_api_token = os.environ.get("DATAROBOT_API_TOKEN")
+    if not datarobot_api_token:
+        print("❌ Error: DATAROBOT_API_TOKEN environment variable is required")
         print("Please set it in your .env file or export it")
         return
 
-    # Optional Azure OpenAI settings
-    openai_api_base = os.environ.get("OPENAI_API_BASE")
-    openai_api_deployment_id = os.environ.get("OPENAI_API_DEPLOYMENT_ID")
-    openai_api_version = os.environ.get("OPENAI_API_VERSION")
+    # Optional DataRobot settings
+    datarobot_endpoint = os.environ.get("DATAROBOT_ENDPOINT")
+    model = os.environ.get("MODEL")
 
     print("🤖 Initializing LLM MCP Client...")
 
     # Initialize the LLM client with elicitation handler
     config = {
-        "openai_api_key": openai_api_key,
-        "openai_api_base": openai_api_base,
-        "openai_api_deployment_id": openai_api_deployment_id,
-        "openai_api_version": openai_api_version,
+        "datarobot_api_token": datarobot_api_token,
         "save_llm_responses": False,
     }
+    if datarobot_endpoint:
+        config["datarobot_endpoint"] = datarobot_endpoint
+    if model:
+        config["model"] = model
 
-    llm_client = LLMMCPClient(str(config))
+    llm_client = DRLLMGatewayMCPClient(str(config))
 
     # Get MCP server URL
     mcp_server_url = get_dr_mcp_server_url()
