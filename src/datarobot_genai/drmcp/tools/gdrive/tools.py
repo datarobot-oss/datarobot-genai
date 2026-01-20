@@ -164,7 +164,6 @@ async def gdrive_read_content(
             f"An unexpected error occurred while reading Google Drive file content: {str(e)}"
         )
 
-    # Provide helpful context about the conversion
     export_info = ""
     if file_content.was_exported:
         export_info = f" (exported from {file_content.original_mime_type})"
@@ -252,7 +251,6 @@ async def gdrive_create_file(
         logger.error(f"Unexpected error creating Google Drive file: {e}")
         raise ToolError(f"An unexpected error occurred while creating Google Drive file: {str(e)}")
 
-    # Build response message
     file_type = "folder" if mime_type == GOOGLE_DRIVE_FOLDER_MIME else "file"
     content_info = ""
     if initial_content and mime_type != GOOGLE_DRIVE_FOLDER_MIME:
@@ -260,11 +258,90 @@ async def gdrive_create_file(
 
     return ToolResult(
         content=f"Successfully created {file_type} '{created_file.name}'{content_info}.",
-        structured_content={
-            "id": created_file.id,
-            "name": created_file.name,
-            "mimeType": created_file.mime_type,
-            "webViewLink": created_file.web_view_link,
-            "createdTime": created_file.created_time,
-        },
+        structured_content=created_file.as_flat_dict(),
+    )
+
+
+@dr_mcp_tool(
+    tags={"google", "gdrive", "update", "metadata", "rename", "star", "trash"}, enabled=False
+)
+async def gdrive_update_metadata(
+    *,
+    file_id: Annotated[str, "The ID of the file or folder to update."],
+    new_name: Annotated[str | None, "A new name to rename the file."] = None,
+    starred: Annotated[bool | None, "Set to True to star the file or False to unstar it."] = None,
+    trash: Annotated[bool | None, "Set to True to trash the file or False to restore it."] = None,
+) -> ToolResult:
+    """
+    Update non-content metadata fields of a Google Drive file or folder.
+
+    This tool allows you to:
+    - Rename files and folders by setting new_name
+    - Star or unstar files (per-user preference) with starred
+    - Move files to trash or restore them with trash
+
+    Usage:
+        - Rename: gdrive_update_metadata(file_id="1ABC...", new_name="New Name.txt")
+        - Star: gdrive_update_metadata(file_id="1ABC...", starred=True)
+        - Unstar: gdrive_update_metadata(file_id="1ABC...", starred=False)
+        - Trash: gdrive_update_metadata(file_id="1ABC...", trash=True)
+        - Restore: gdrive_update_metadata(file_id="1ABC...", trash=False)
+        - Multiple: gdrive_update_metadata(file_id="1ABC...", new_name="New.txt", starred=True)
+
+    Note:
+        - At least one of new_name, starred, or trash must be provided.
+        - Starring is per-user: starring a shared file only affects your view.
+        - Trashing a folder trashes all contents recursively.
+        - Trashing requires permissions (owner for My Drive, organizer for Shared Drives).
+    """
+    if not file_id or not file_id.strip():
+        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+
+    if new_name is None and starred is None and trash is None:
+        raise ToolError(
+            "Argument validation error: at least one of 'new_name', 'starred', or 'trash' "
+            "must be provided."
+        )
+
+    if new_name is not None and not new_name.strip():
+        raise ToolError("Argument validation error: 'new_name' cannot be empty or whitespace.")
+
+    access_token = await get_gdrive_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with GoogleDriveClient(access_token) as client:
+            updated_file = await client.update_file_metadata(
+                file_id=file_id,
+                new_name=new_name,
+                starred=starred,
+                trashed=trash,
+            )
+    except GoogleDriveError as e:
+        logger.error(f"Google Drive error updating file metadata: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error updating Google Drive file metadata: {e}")
+        raise ToolError(
+            f"An unexpected error occurred while updating Google Drive file metadata: {str(e)}"
+        )
+
+    changes: list[str] = []
+    if new_name is not None:
+        changes.append(f"renamed to '{new_name}'")
+    if starred is True:
+        changes.append("starred")
+    elif starred is False:
+        changes.append("unstarred")
+    if trash is True:
+        changes.append("moved to trash")
+    elif trash is False:
+        changes.append("restored from trash")
+
+    changes_description = ", ".join(changes)
+
+    return ToolResult(
+        content=f"Successfully updated file '{updated_file.name}': {changes_description}.",
+        structured_content=updated_file.as_flat_dict(),
     )

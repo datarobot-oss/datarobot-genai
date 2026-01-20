@@ -25,6 +25,7 @@ from datarobot_genai.drmcp.tools.clients.gdrive import PaginatedResult
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_find_contents
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_read_content
+from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_update_metadata
 
 
 @pytest.fixture
@@ -415,3 +416,70 @@ class TestGdriveCreateFile:
                 await gdrive_create_file(
                     name="file.txt", mime_type="text/plain", parent_id="nonexistent"
                 )
+
+
+@pytest.fixture
+def gdrive_client_update_file_metadata_mock() -> Iterator[GoogleDriveFile]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.update_file_metadata"
+    ) as mock:
+        updated_file = GoogleDriveFile(
+            id="file_123",
+            name="Updated File.txt",
+            mime_type="text/plain",
+            starred=True,
+            trashed=False,
+        )
+        mock.return_value = updated_file
+        yield updated_file
+
+
+@pytest.fixture
+def gdrive_client_update_file_metadata_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.update_file_metadata"
+    ) as mock:
+        mock.side_effect = GoogleDriveError("File not found.")
+        yield
+
+
+class TestGdriveUpdateMetadata:
+    """Gdrive update metadata tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_metadata_happy_path(
+        self,
+        get_gdrive_access_token_mock: None,
+        gdrive_client_update_file_metadata_mock: GoogleDriveFile,
+    ) -> None:
+        """Gdrive update metadata -- happy path with multiple updates."""
+        tool_result = await gdrive_update_metadata(
+            file_id="file_123", new_name="Updated File.txt", starred=True, trash=False
+        )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "Successfully updated file 'Updated File.txt'" in content[0].text
+        assert "renamed to 'Updated File.txt'" in content[0].text
+        assert "starred" in content[0].text
+        assert structured_content["id"] == "file_123"
+        assert structured_content["name"] == "Updated File.txt"
+        assert structured_content["starred"] is True
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_metadata_empty_file_id(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive update metadata -- empty file_id raises error."""
+        with pytest.raises(MCPError, match="file_id.*cannot be empty"):
+            await gdrive_update_metadata(file_id="", new_name="New.txt")
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_metadata_when_error_in_client(
+        self,
+        get_gdrive_access_token_mock: None,
+        gdrive_client_update_file_metadata_error_mock: None,
+    ) -> None:
+        """Gdrive update metadata -- error in client."""
+        with pytest.raises(MCPError, match="not found"):
+            await gdrive_update_metadata(file_id="nonexistent", new_name="New.txt")
