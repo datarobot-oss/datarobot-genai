@@ -907,9 +907,10 @@ class GoogleDriveClient:
             raise GoogleDriveError(f"Drive API error {response.status_code}: {response.text}")
 
         if action == "add":
-            permission_id = response.json()["id"]
+            return response.json()["id"]
 
-        return permission_id
+        # Cannot be null here because of above validators
+        return permission_id  # type: ignore
 
     async def __aenter__(self) -> "GoogleDriveClient":
         """Async context manager entry."""
