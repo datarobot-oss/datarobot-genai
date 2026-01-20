@@ -16,6 +16,7 @@
 
 import logging
 from typing import Annotated
+from typing import Literal
 
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
@@ -345,3 +346,99 @@ async def gdrive_update_metadata(
         content=f"Successfully updated file '{updated_file.name}': {changes_description}.",
         structured_content=updated_file.as_flat_dict(),
     )
+
+
+@dr_mcp_tool(tags={"google", "gdrive", "manage", "access", "acl"})
+async def gdrive_manage_access(
+    *,
+    file_id: Annotated[str, "The ID of the file or folder."],
+    action: Annotated[Literal["add", "update", "remove"], "The operation to perform."],
+    role: Annotated[
+        Literal["reader", "commenter", "writer", "fileOrganizer", "organizer", "owner"] | None,
+        "The access level.",
+    ] = None,
+    email_address: Annotated[
+        str | None, "The email of the user or group (required for 'add')."
+    ] = None,
+    permission_id: Annotated[
+        str | None, "The specific permission ID (required for 'update' or 'remove')."
+    ] = None,
+    transfer_ownership: Annotated[
+        bool, "Whether to transfer ownership (only for 'update' to 'owner' role)."
+    ] = False,
+) -> ToolResult:
+    """
+    Consolidated tool for sharing files and managing permissions.
+    Pushes all logic to the Google Drive API permissions resource (create, update, delete).
+
+    Usage:
+        - Add role: gdrive_manage_access(
+            file_id="SomeFileId",
+            action="add",
+            role="reader",
+            email_address="dummy@user.com"
+          )
+        - Update role: gdrive_manage_access(
+            file_id="SomeFileId",
+            action="update",
+            role="reader",
+            permission_id="SomePermissionId"
+          )
+        - Remove permission: gdrive_manage_access(
+            file_id="SomeFileId",
+            action="remove",
+            permission_id="SomePermissionId"
+          )
+    """
+    if not file_id or not file_id.strip():
+        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+
+    if action == "add" and not email_address:
+        raise ToolError("'email_address' is required for action 'add'.")
+
+    if action in ("update", "remove") and not permission_id:
+        raise ToolError("'permission_id' is required for action 'update' or 'remove'.")
+
+    if action != "remove" and not role:
+        raise ToolError("'role' is required for action 'add' or 'update'.")
+
+    access_token = await get_gdrive_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with GoogleDriveClient(access_token) as client:
+            permission_id = await client.manage_access(
+                file_id=file_id,
+                action=action,
+                role=role,
+                email_address=email_address,
+                permission_id=permission_id,
+                transfer_ownership=transfer_ownership,
+            )
+    except GoogleDriveError as e:
+        logger.error(f"Google Drive permission operation failed: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error changing permissions for Google Drive file {file_id}: {e}")
+        raise ToolError(
+            f"Unexpected error changing permissions for Google Drive file {file_id}: {str(e)}"
+        )
+
+    # Build response
+    structured_content = {"affectedFileId": file_id}
+    if action == "add":
+        content = (
+            f"Successfully added role '{role}' for '{email_address}' for gdrive file '{file_id}'. "
+            f"New permission id '{permission_id}'."
+        )
+        structured_content["newPermissionId"] = permission_id
+    elif action == "update":
+        content = (
+            f"Successfully updated role '{role}' (permission '{permission_id}') "
+            f"for gdrive file '{file_id}'."
+        )
+    else:  # action == "remove":
+        content = f"Successfully removed permission '{permission_id}' for gdrive file '{file_id}'."
+
+    return ToolResult(content=content, structured_content=structured_content)
