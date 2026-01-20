@@ -867,6 +867,18 @@ class GoogleDriveClient:
                 insufficient permissions, resource not found, ownership transfer
                 not allowed, rate limited, etc.).
         """
+        if not file_id.strip():
+            raise GoogleDriveError("Argument validation error: 'file_id' cannot be empty.")
+
+        if action == "add" and not email_address:
+            raise GoogleDriveError("'email_address' is required for action 'add'.")
+
+        if action in ("update", "remove") and not permission_id:
+            raise GoogleDriveError("'permission_id' is required for action 'update' or 'remove'.")
+
+        if action != "remove" and not role:
+            raise GoogleDriveError("'role' is required for action 'add' or 'update'.")
+
         if action == "add":
             response = await self._client.post(
                 url=f"/{file_id}/permissions",
