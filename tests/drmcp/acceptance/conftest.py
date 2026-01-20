@@ -17,16 +17,16 @@ from typing import Any
 
 import pytest
 
+from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_openai_llm_client_config
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
 
 
 @pytest.fixture(scope="session")
-def openai_llm_client() -> LLMMCPClient:
+def openai_llm_client() -> OpenAILLMMCPClient:
     """Create OpenAI LLM MCP client for the test session."""
     try:
         config = get_openai_llm_client_config()
-        return LLMMCPClient(str(config))
+        return OpenAILLMMCPClient(str(config))
     except ValueError as e:
         raise ValueError(f"Missing required OpenAI environment variables: {e}") from e
     except Exception as e:
