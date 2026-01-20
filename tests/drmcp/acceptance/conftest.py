@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from datarobot_genai.drmcp.test_utils.clients import OpenAILLMMCPClient
+from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_openai_llm_client_config
 
 

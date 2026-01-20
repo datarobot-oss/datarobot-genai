@@ -17,8 +17,8 @@
 from unittest.mock import mock_open
 from unittest.mock import patch
 
-from datarobot_genai.drmcp.test_utils.clients import LLMResponse
-from datarobot_genai.drmcp.test_utils.clients import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.base import LLMResponse
+from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
 from datarobot_genai.drmcp.test_utils.utils import format_response
 from datarobot_genai.drmcp.test_utils.utils import format_tool_call
 from datarobot_genai.drmcp.test_utils.utils import load_env

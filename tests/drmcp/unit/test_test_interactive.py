@@ -31,10 +31,10 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function as ChatCompletionMessageToolCallFunction,
 )
 
-from datarobot_genai.drmcp.test_utils.clients import DRLLMGatewayMCPClient
-from datarobot_genai.drmcp.test_utils.clients import LLMResponse
-from datarobot_genai.drmcp.test_utils.clients import OpenAILLMMCPClient
-from datarobot_genai.drmcp.test_utils.clients import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.base import LLMResponse
+from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
+from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
 
 
 # Helper functions for creating mocks

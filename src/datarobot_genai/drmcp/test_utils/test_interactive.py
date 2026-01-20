@@ -40,9 +40,9 @@ from mcp.types import ElicitResult
 
 from datarobot_genai.drmcp import get_dr_mcp_server_url
 from datarobot_genai.drmcp import get_headers
-from datarobot_genai.drmcp.test_utils.clients import DRLLMGatewayMCPClient
-from datarobot_genai.drmcp.test_utils.clients import LLMResponse
-from datarobot_genai.drmcp.test_utils.clients import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.base import LLMResponse
+from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 
 # Re-export for backwards compatibility
 __all__ = ["DRLLMGatewayMCPClient", "LLMResponse", "ToolCall", "test_mcp_interactive"]

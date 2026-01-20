@@ -19,7 +19,7 @@ A reusable library for building Model Context Protocol (MCP) servers with DataRo
 """
 
 # Export main server components
-from datarobot_genai.drmcp.test_utils.clients import OpenAILLMMCPClient
+from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_mcp_server_url
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_headers
