@@ -33,7 +33,17 @@ from datarobot_genai.drmcp.core.auth import get_access_token
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FIELDS = {"id", "name", "size", "mimeType", "webViewLink", "createdTime", "modifiedTime"}
+SUPPORTED_FIELDS = {
+    "id",
+    "name",
+    "size",
+    "mimeType",
+    "webViewLink",
+    "createdTime",
+    "modifiedTime",
+    "starred",
+    "trashed",
+}
 SUPPORTED_FIELDS_STR = ",".join(SUPPORTED_FIELDS)
 DEFAULT_FIELDS = f"nextPageToken,files({SUPPORTED_FIELDS_STR})"
 GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
@@ -119,6 +129,8 @@ class GoogleDriveFile(BaseModel):
     web_view_link: Annotated[str | None, Field(alias="webViewLink")] = None
     created_time: Annotated[str | None, Field(alias="createdTime")] = None
     modified_time: Annotated[str | None, Field(alias="modifiedTime")] = None
+    starred: bool | None = None
+    trashed: bool | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -133,7 +145,30 @@ class GoogleDriveFile(BaseModel):
             web_view_link=data.get("webViewLink"),
             created_time=data.get("createdTime"),
             modified_time=data.get("modifiedTime"),
+            starred=data.get("starred"),
+            trashed=data.get("trashed"),
         )
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the file."""
+        result: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "mimeType": self.mime_type,
+        }
+        if self.size is not None:
+            result["size"] = self.size
+        if self.web_view_link is not None:
+            result["webViewLink"] = self.web_view_link
+        if self.created_time is not None:
+            result["createdTime"] = self.created_time
+        if self.modified_time is not None:
+            result["modifiedTime"] = self.modified_time
+        if self.starred is not None:
+            result["starred"] = self.starred
+        if self.trashed is not None:
+            result["trashed"] = self.trashed
+        return result
 
 
 class PaginatedResult(BaseModel):
@@ -434,6 +469,66 @@ class GoogleDriveClient:
             raise GoogleDriveError(f"File with ID '{file_id}' not found.")
         if response.status_code == 403:
             raise GoogleDriveError(f"Permission denied: you don't have access to file '{file_id}'.")
+        if response.status_code == 429:
+            raise GoogleDriveError("Rate limit exceeded. Please try again later.")
+
+        response.raise_for_status()
+        return GoogleDriveFile.from_api_response(response.json())
+
+    async def update_file_metadata(
+        self,
+        file_id: str,
+        new_name: str | None = None,
+        starred: bool | None = None,
+        trashed: bool | None = None,
+    ) -> GoogleDriveFile:
+        """Update file metadata in Google Drive.
+
+        Args:
+            file_id: The ID of the file to update.
+            new_name: A new name to rename the file. Must not be empty or whitespace.
+            starred: Set to True to star the file or False to unstar it.
+            trashed: Set to True to trash the file or False to restore it.
+
+        Returns
+        -------
+            GoogleDriveFile with updated metadata.
+
+        Raises
+        ------
+            GoogleDriveError: If no update fields are provided, file is not found,
+                             access is denied, or the request is invalid.
+        """
+        if new_name is None and starred is None and trashed is None:
+            raise GoogleDriveError(
+                "At least one of new_name, starred, or trashed must be provided."
+            )
+
+        if new_name is not None and not new_name.strip():
+            raise GoogleDriveError("new_name cannot be empty or whitespace.")
+
+        body: dict[str, Any] = {}
+        if new_name is not None:
+            body["name"] = new_name
+        if starred is not None:
+            body["starred"] = starred
+        if trashed is not None:
+            body["trashed"] = trashed
+
+        response = await self._client.patch(
+            f"/{file_id}",
+            json=body,
+            params={"fields": SUPPORTED_FIELDS_STR, "supportsAllDrives": "true"},
+        )
+
+        if response.status_code == 404:
+            raise GoogleDriveError(f"File with ID '{file_id}' not found.")
+        if response.status_code == 403:
+            raise GoogleDriveError(
+                f"Permission denied: you don't have permission to update file '{file_id}'."
+            )
+        if response.status_code == 400:
+            raise GoogleDriveError("Bad request: invalid parameters for file update.")
         if response.status_code == 429:
             raise GoogleDriveError("Rate limit exceeded. Please try again later.")
 
