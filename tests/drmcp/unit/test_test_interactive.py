@@ -31,9 +31,10 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function as ChatCompletionMessageToolCallFunction,
 )
 
-from datarobot_genai.drmcp.test_utils.test_interactive import LLMMCPClient
-from datarobot_genai.drmcp.test_utils.test_interactive import LLMResponse
-from datarobot_genai.drmcp.test_utils.test_interactive import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.base import LLMResponse
+from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
+from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
+from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
 
 
 # Helper functions for creating mocks
@@ -100,14 +101,14 @@ def create_mock_call_tool_result(
 @pytest.fixture
 def mock_openai_patch():
     """Fixture to patch OpenAI and return the mock."""
-    with patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.openai.OpenAI") as mock:
+    with patch("datarobot_genai.drmcp.test_utils.clients.openai.openai.OpenAI") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_azure_openai_patch():
     """Fixture to patch AzureOpenAI and return the mock."""
-    with patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.openai.AzureOpenAI") as mock:
+    with patch("datarobot_genai.drmcp.test_utils.clients.openai.openai.AzureOpenAI") as mock:
         yield mock
 
 
@@ -118,9 +119,9 @@ def basic_client_config() -> dict:
 
 
 @pytest.fixture
-def llm_client(mock_openai_patch, basic_client_config) -> LLMMCPClient:
-    """Create a basic LLMMCPClient instance."""
-    return LLMMCPClient(str(basic_client_config))
+def llm_client(mock_openai_patch, basic_client_config) -> OpenAILLMMCPClient:
+    """Create a basic OpenAILLMMCPClient instance."""
+    return OpenAILLMMCPClient(str(basic_client_config))
 
 
 @pytest.fixture
@@ -165,17 +166,17 @@ class TestLLMResponse:
 
 
 class TestLLMMCPClient:
-    """Test cases for LLMMCPClient class."""
+    """Test cases for OpenAILLMMCPClient class."""
 
     def test_init_with_openai_config(self, mock_openai_patch) -> None:
-        """Test LLMMCPClient initialization with OpenAI config."""
+        """Test OpenAILLMMCPClient initialization with OpenAI config."""
         config = {
             "openai_api_key": "test-key",
             "model": "gpt-4",
             "save_llm_responses": False,
         }
 
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         assert client.model == "gpt-4"
         assert client.save_llm_responses is False
@@ -183,7 +184,7 @@ class TestLLMMCPClient:
         mock_openai_patch.assert_called_once_with(api_key="test-key")
 
     def test_init_with_azure_config(self, mock_azure_openai_patch) -> None:
-        """Test LLMMCPClient initialization with Azure OpenAI config."""
+        """Test OpenAILLMMCPClient initialization with Azure OpenAI config."""
         config = {
             "openai_api_key": "test-key",
             "openai_api_base": "https://test.openai.azure.com",
@@ -191,7 +192,7 @@ class TestLLMMCPClient:
             "openai_api_version": "2024-01-01",
         }
 
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         assert client.model == "deployment-123"
         mock_azure_openai_patch.assert_called_once_with(
@@ -201,19 +202,19 @@ class TestLLMMCPClient:
         )
 
     def test_init_with_dict_config(self, mock_openai_patch) -> None:
-        """Test LLMMCPClient initialization with dict config."""
+        """Test OpenAILLMMCPClient initialization with dict config."""
         config = {"openai_api_key": "test-key", "model": "gpt-3.5-turbo"}
 
-        client = LLMMCPClient(config)
+        client = OpenAILLMMCPClient(config)
 
         assert client.model == "gpt-3.5-turbo"
         mock_openai_patch.assert_called_once_with(api_key="test-key")
 
     def test_init_with_defaults(self, mock_openai_patch) -> None:
-        """Test LLMMCPClient initialization with default values."""
+        """Test OpenAILLMMCPClient initialization with default values."""
         config = {"openai_api_key": "test-key"}
 
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         assert client.model == "gpt-3.5-turbo"
         assert client.save_llm_responses is True
@@ -359,13 +360,13 @@ class TestLLMMCPClient:
         assert "tools" not in call_kwargs
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.save_response_to_file")
+    @patch("datarobot_genai.drmcp.test_utils.clients.base.save_response_to_file")
     async def test_process_prompt_with_mcp_support_single_response(
         self, mock_save_file, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:
         """Test process_prompt_with_mcp_support with single LLM response (no tool calls)."""
         config = {"openai_api_key": "test-key", "save_llm_responses": True}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         mock_response = create_mock_chat_completion(content="Final response")
@@ -378,7 +379,7 @@ class TestLLMMCPClient:
         mock_save_file.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.save_response_to_file")
+    @patch("datarobot_genai.drmcp.test_utils.clients.base.save_response_to_file")
     async def test_process_prompt_with_mcp_support_with_tool_calls(
         self,
         mock_save_file,
@@ -388,7 +389,7 @@ class TestLLMMCPClient:
     ) -> None:
         """Test process_prompt_with_mcp_support with tool calls."""
         config = {"openai_api_key": "test-key", "save_llm_responses": True}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
 
@@ -417,7 +418,7 @@ class TestLLMMCPClient:
     ) -> None:
         """Test that process_prompt_with_mcp_support cleans content (removes * and lowercases)."""
         config = {"openai_api_key": "test-key", "save_llm_responses": False}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         mock_response = create_mock_chat_completion(content="Final *Response* With CAPS")
@@ -435,16 +436,99 @@ class TestLLMMCPClient:
     ) -> None:
         """Test process_prompt_with_mcp_support without saving responses."""
         config = {"openai_api_key": "test-key", "save_llm_responses": False}
-        client = LLMMCPClient(str(config))
+        client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         mock_response = create_mock_chat_completion(content="Response")
         mock_openai_client_instance.chat.completions.create.return_value = mock_response
 
         with patch(
-            "datarobot_genai.drmcp.test_utils.openai_llm_mcp_client.save_response_to_file"
+            "datarobot_genai.drmcp.test_utils.clients.base.save_response_to_file"
         ) as mock_save:
             result = await client.process_prompt_with_mcp_support("test", mock_session)
 
             assert result.content == "response"
             mock_save.assert_not_called()
+
+
+class TestDRLLMGatewayMCPClient:
+    """Test cases for DRLLMGatewayMCPClient class."""
+
+    def test_init_with_dr_gateway_config(self, mock_openai_patch) -> None:
+        """Test DRLLMGatewayMCPClient initialization."""
+        config = {
+            "datarobot_api_token": "test-token",
+            "datarobot_endpoint": "https://app.datarobot.com/api/v2",
+            "model": "gpt-4o-mini",
+        }
+
+        client = DRLLMGatewayMCPClient(str(config))
+
+        assert client.model == "gpt-4o-mini"
+        assert client.save_llm_responses is True
+        assert client.available_tools == []
+        mock_openai_patch.assert_called_once_with(
+            api_key="test-token",
+            base_url="https://app.datarobot.com/api/v2/genai/llmgw",
+        )
+
+    def test_init_with_defaults(self, mock_openai_patch) -> None:
+        """Test DRLLMGatewayMCPClient initialization with default values."""
+        config = {"datarobot_api_token": "test-token"}
+
+        client = DRLLMGatewayMCPClient(str(config))
+
+        assert client.model == "gpt-4o-mini"
+        assert client.save_llm_responses is True
+        mock_openai_patch.assert_called_once_with(
+            api_key="test-token",
+            base_url="https://app.datarobot.com/api/v2/genai/llmgw",
+        )
+
+    def test_init_with_custom_endpoint(self, mock_openai_patch) -> None:
+        """Test DRLLMGatewayMCPClient initialization with custom endpoint."""
+        config = {
+            "datarobot_api_token": "test-token",
+            "datarobot_endpoint": "https://custom.datarobot.com/api/v2",
+            "model": "claude-3-5-sonnet-20241022",
+        }
+
+        client = DRLLMGatewayMCPClient(str(config))
+
+        assert client.model == "claude-3-5-sonnet-20241022"
+        mock_openai_patch.assert_called_once_with(
+            api_key="test-token",
+            base_url="https://custom.datarobot.com/api/v2/genai/llmgw",
+        )
+
+    def test_init_with_dict_config(self, mock_openai_patch) -> None:
+        """Test DRLLMGatewayMCPClient initialization with dict config."""
+        config = {
+            "datarobot_api_token": "test-token",
+            "datarobot_endpoint": "https://app.datarobot.com/api/v2",
+            "model": "gpt-4o-mini",
+        }
+
+        client = DRLLMGatewayMCPClient(config)
+
+        assert client.model == "gpt-4o-mini"
+        mock_openai_patch.assert_called_once_with(
+            api_key="test-token",
+            base_url="https://app.datarobot.com/api/v2/genai/llmgw",
+        )
+
+    def test_init_with_endpoint_trailing_slash(self, mock_openai_patch) -> None:
+        """Test DRLLMGatewayMCPClient handles endpoint with trailing slash."""
+        config = {
+            "datarobot_api_token": "test-token",
+            "datarobot_endpoint": "https://app.datarobot.com/api/v2/",
+            "model": "gpt-4o-mini",
+        }
+
+        DRLLMGatewayMCPClient(str(config))
+
+        # Should strip trailing slash before adding /genai/llmgw
+        mock_openai_patch.assert_called_once_with(
+            api_key="test-token",
+            base_url="https://app.datarobot.com/api/v2/genai/llmgw",
+        )
