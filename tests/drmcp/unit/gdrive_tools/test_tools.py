@@ -24,6 +24,7 @@ from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFileContent
 from datarobot_genai.drmcp.tools.clients.gdrive import PaginatedResult
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_find_contents
+from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_manage_access
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_read_content
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_update_metadata
 
@@ -415,6 +416,138 @@ class TestGdriveCreateFile:
             with pytest.raises(MCPError, match="Parent folder not found"):
                 await gdrive_create_file(
                     name="file.txt", mime_type="text/plain", parent_id="nonexistent"
+                )
+
+
+class TestGdriveManageAccess:
+    """Gdrive manage access tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_gdrive_add_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
+        """Gdrive add role -- happy path."""
+        new_permission_id = "dummy_permission_id"
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+        ) as mock:
+            mock.return_value = new_permission_id
+            tool_result = await gdrive_manage_access(
+                file_id="dummy_file_id", action="add", role="reader", email_address="dummy@user.com"
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert (
+            "Successfully added role 'reader' for 'dummy@user.com' "
+            "for gdrive file 'dummy_file_id'. New permission id 'dummy_permission_id'."
+            in content[0].text
+        )
+        assert structured_content["affectedFileId"] == "dummy_file_id"
+        assert structured_content["newPermissionId"] == new_permission_id
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
+        """Gdrive update role -- happy path."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+        ) as mock:
+            permission_id = "dummy_permission_id"
+            mock.return_value = permission_id
+            tool_result = await gdrive_manage_access(
+                file_id="dummy_file_id",
+                action="update",
+                role="reader",
+                permission_id=permission_id,
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert (
+            "Successfully updated role 'reader' (permission 'dummy_permission_id') "
+            "for gdrive file 'dummy_file_id'." in content[0].text
+        )
+        assert structured_content["affectedFileId"] == "dummy_file_id"
+
+    @pytest.mark.asyncio
+    async def test_gdrive_remove_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
+        """Gdrive remove role -- happy path."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+        ) as mock:
+            permission_id = "dummy_permission_id"
+            mock.return_value = permission_id
+            tool_result = await gdrive_manage_access(
+                file_id="dummy_file_id", action="remove", permission_id=permission_id
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert (
+            "Successfully removed permission 'dummy_permission_id' for gdrive file 'dummy_file_id'."
+            in content[0].text
+        )
+        assert structured_content["affectedFileId"] == "dummy_file_id"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "function_kwargs,error_message",
+        [
+            ({"file_id": "", "action": "add"}, "file_id.*cannot be empty"),
+            (
+                {"file_id": "dummy_file_id", "action": "add", "email_address": ""},
+                "email_address.*is required for action 'add'",
+            ),
+            (
+                {"file_id": "dummy_file_id", "action": "update", "permission_id": ""},
+                "permission_id.*is required for action.*update",
+            ),
+            (
+                {"file_id": "dummy_file_id", "action": "remove", "permission_id": ""},
+                "permission_id.*is required for action.*remove",
+            ),
+            (
+                {
+                    "file_id": "dummy_file_id",
+                    "action": "add",
+                    "email_address": "dummy@email.com",
+                    "role": "",
+                },
+                "role.*is required for action.*add",
+            ),
+            (
+                {
+                    "file_id": "dummy_file_id",
+                    "action": "update",
+                    "permission_id": "dummy_permission_id",
+                    "role": "",
+                },
+                "role.*is required for action.*update",
+            ),
+        ],
+    )
+    async def test_gdrive_manage_access_input_validation(
+        self,
+        get_gdrive_access_token_mock: None,
+        function_kwargs: dict,
+        error_message: str,
+    ) -> None:
+        """Gdrive manage access -- input validation."""
+        with pytest.raises(MCPError, match=error_message):
+            await gdrive_manage_access(**function_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_gdrive_manage_access_when_error_in_client(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive manage access -- error in client."""
+        error_msg = "Dummy Drive API Error."
+        with pytest.raises(MCPError, match=error_msg):
+            with patch(
+                "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+            ) as mock:
+                mock.side_effect = GoogleDriveError(error_msg)
+                await gdrive_manage_access(
+                    file_id="dummy_file_id",
+                    action="add",
+                    email_address="dummy@email.com",
+                    role="reader",
                 )
 
 
