@@ -40,7 +40,10 @@ async def test_get_best_model_success() -> None:
 
         result = await model.get_best_model(project_id="pid", metric="AUC")
         assert hasattr(result, "content")
-        assert result.content[0].text == "Best model: XGBoost with AUC: 0.90"
+        assert (
+            result.content[0].text
+            == "Best model: XGBoost with AUC: 0.90\nPerformance metrics:\n  - AUC: 0.9000"
+        )
 
 
 @pytest.mark.asyncio
@@ -52,9 +55,10 @@ async def test_get_best_model_no_models() -> None:
         mock_client.Project.get.return_value = mock_project
         mock_get_client.return_value = mock_client
 
-        result = await model.get_best_model(project_id="pid", metric="AUC")
-        assert isinstance(result, ToolError)
-        assert "No models found for this project." in str(result)
+        with pytest.raises(
+            ToolError, match="Error in get_best_model: ToolError: No models found for this project."
+        ):
+            await model.get_best_model(project_id="pid", metric="AUC")
 
 
 @pytest.mark.asyncio
@@ -64,9 +68,10 @@ async def test_get_best_model_project_not_found() -> None:
         mock_client.Project.get.return_value = None
         mock_get_client.return_value = mock_client
 
-        result = await model.get_best_model(project_id="pid", metric="AUC")
-        assert isinstance(result, ToolError)
-        assert "Project with ID pid not found." in str(result)
+        with pytest.raises(
+            ToolError, match="Error in get_best_model: ToolError: Project with ID pid not found."
+        ):
+            await model.get_best_model(project_id="pid", metric="AUC")
 
 
 @pytest.mark.asyncio

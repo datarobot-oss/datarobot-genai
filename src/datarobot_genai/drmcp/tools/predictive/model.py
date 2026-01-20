@@ -101,15 +101,25 @@ async def get_best_model(
         if metric_value is not None:
             metric_info = f" with {metric}: {metric_value:.2f}"
 
-    best_model_dict = {
-        "id": best_model.id,
-        "model_type": best_model.model_type,
-        "metric": metric,
-        "metric_value": metric_value,
-    }
+    # Include full metrics in the response
+    best_model_dict = model_to_dict(best_model)
+    best_model_dict["metric"] = metric
+    best_model_dict["metric_value"] = metric_value
+
+    # Format metrics for human-readable content
+    metrics_text = ""
+    if best_model.metrics:
+        metrics_list = []
+        for metric_name, metric_data in best_model.metrics.items():
+            if isinstance(metric_data, dict) and "validation" in metric_data:
+                val = metric_data["validation"]
+                if val is not None:
+                    metrics_list.append(f"{metric_name}: {val:.4f}")
+        if metrics_list:
+            metrics_text = "\nPerformance metrics:\n" + "\n".join(f"  - {m}" for m in metrics_list)
 
     return ToolResult(
-        content=f"Best model: {best_model.model_type}{metric_info}",
+        content=f"Best model: {best_model.model_type}{metric_info}{metrics_text}",
         structured_content={
             "project_id": project_id,
             "best_model": best_model_dict,

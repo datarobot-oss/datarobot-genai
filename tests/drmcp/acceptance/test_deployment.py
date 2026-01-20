@@ -70,7 +70,7 @@ def expectations_for_get_model_info_from_deployment_failure(
                 name="get_model_info_from_deployment",
                 parameters={"deployment_id": nonexistent_deployment_id},
                 result=(
-                    "Error calling tool 'get_model_info_from_deployment': Error in "
+                    "Error in "
                     "get_model_info_from_deployment: ClientError: 404 client error: "
                     "{'message': 'Not Found'}"
                 ),
