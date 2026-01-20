@@ -20,6 +20,7 @@ import logging
 import uuid
 from typing import Annotated
 from typing import Any
+from typing import Literal
 
 import httpx
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
@@ -820,6 +821,83 @@ class GoogleDriveClient:
             },
             headers={"Content-Type": f"multipart/related; boundary={boundary}"},
         )
+
+    async def manage_access(
+        self,
+        *,
+        file_id: str,
+        action: Literal["add", "update", "remove"],
+        role: Literal["reader", "commenter", "writer", "fileOrganizer", "organizer", "owner"]
+        | None = None,
+        email_address: str | None = None,
+        permission_id: str | None = None,
+        transfer_ownership: bool = False,
+    ) -> str:
+        """Manage access permissions for a Google Drive file or folder.
+
+        Adds, updates, or removes sharing permissions on an existing Google Drive
+        file or folder using the Google Drive Permissions API.
+
+        This method supports granting access to users or groups, changing access
+        roles, and revoking permissions. Ownership transfer is supported for files
+        in "My Drive" when explicitly requested.
+
+        Args:
+            file_id: The ID of the Google Drive file or folder whose permissions
+                are being managed.
+            action: The permission operation to perform.
+            role: The access role to assign or update. Valid values include
+                Required for "add" and "update" actions.
+            email_address: The email address of the user or group to grant access to.
+                Required for the "add" action.
+            permission_id: The ID of the permission to update or remove.
+                Required for "update" and "remove" actions.
+            transfer_ownership: Whether to transfer ownership of the file.
+                Only applicable when action="update" and role="owner".
+
+        Returns
+        -------
+            Permission id.
+            For "add" its newly added permission.
+            For "update"/"remove" its previous permission.
+
+        Raises
+        ------
+            GoogleDriveError: If the permission operation fails (invalid arguments,
+                insufficient permissions, resource not found, ownership transfer
+                not allowed, rate limited, etc.).
+        """
+        if action == "add":
+            response = await self._client.post(
+                url=f"/{file_id}/permissions",
+                json={
+                    "type": "user",
+                    "role": role,
+                    "emailAddress": email_address,
+                },
+                params={"sendNotificationEmail": False, "supportsAllDrives": True},
+            )
+
+        elif action == "update":
+            response = await self._client.patch(
+                url=f"/{file_id}/permissions/{permission_id}",
+                json={"role": role},
+                params={"transferOwnership": transfer_ownership, "supportsAllDrives": True},
+            )
+
+        elif action == "remove":
+            response = await self._client.delete(url=f"/{file_id}/permissions/{permission_id}")
+
+        else:
+            raise GoogleDriveError(f"Invalid action '{action}'")
+
+        if response.status_code not in (200, 201, 204):
+            raise GoogleDriveError(f"Drive API error {response.status_code}: {response.text}")
+
+        if action == "add":
+            permission_id = response.json()["id"]
+
+        return permission_id
 
     async def __aenter__(self) -> "GoogleDriveClient":
         """Async context manager entry."""
