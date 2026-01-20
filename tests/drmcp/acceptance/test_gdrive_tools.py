@@ -185,3 +185,46 @@ class TestGdriveToolsE2E(ToolBaseE2E):
                 session,
                 test_name,
             )
+
+    @pytest.mark.skip(reason="Modifies real files in Google Drive - run manually")
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            "Please rename the Google Drive file with ID '{file_id}' to 'renamed-test-file.txt' "
+            "and star it."
+        ],
+    )
+    async def test_gdrive_update_metadata_success(
+        self,
+        openai_llm_client: Any,
+        prompt_template: str,
+    ) -> None:
+        # Note: Replace with a real file ID when running manually
+        test_file_id = "test_file_id_placeholder"
+        prompt = prompt_template.format(file_id=test_file_id)
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="gdrive_update_metadata",
+                    parameters={
+                        "file_id": test_file_id,
+                        "new_name": "renamed-test-file.txt",
+                        "starred": True,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=["renamed", "starred"],
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_gdrive_update_metadata_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                openai_llm_client,
+                session,
+                test_name,
+            )
