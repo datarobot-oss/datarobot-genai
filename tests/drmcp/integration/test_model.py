@@ -91,8 +91,7 @@ class TestMCPToolsIntegration:
                 else str(result.content[0])
             )
             assert (
-                "Error calling tool 'get_best_model': Error in get_best_model: "
-                "ClientError: 404 client error: {'message': 'Not Found'}"
+                "Error in get_best_model: ClientError: 404 client error: {'message': 'Not Found'}"
             ) in result_text, f"Result text: {result_text}"
 
             # 5 Test metric-based sorting of models
@@ -134,7 +133,7 @@ class TestMCPToolsIntegration:
                 else str(result.content[0])
             )
             assert (
-                "Error calling tool 'score_dataset_with_model': Error in "
+                "Error in "
                 "score_dataset_with_model: ClientError: 404 client error: "
                 "{'message': 'Not Found'}" in result_text
             ), f"Result text: {result_text}"

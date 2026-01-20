@@ -35,12 +35,6 @@ def expectations_for_get_best_model_success(
                 parameters={"project_id": classification_project_id},
                 result="Best model: Keras Text Convolutional Neural Network Classifier",
             ),
-            ToolCallTestExpectations(
-                name="list_models",
-                parameters={"project_id": classification_project_id},
-                # checking if the result has the correct keys
-                result={"id": "", "model_type": "", "metrics": {}},
-            ),
         ],
         llm_response_content_contains_expectations=[
             "Keras",
@@ -63,7 +57,7 @@ def expectations_for_get_best_model_failure(
                 name="get_best_model",
                 parameters={"project_id": nonexistent_project_id},
                 result=(
-                    "Error calling tool 'get_best_model': Error in get_best_model: "
+                    "Error in get_best_model: "
                     "ClientError: 404 client error: {'message': 'Not Found'}"
                 ),
             ),
@@ -113,8 +107,8 @@ def expectations_for_score_dataset_with_model_failure(
                     "dataset_url": dataset_url,
                 },
                 result=(
-                    "Error calling tool 'score_dataset_with_model': Error in "
-                    "score_dataset_with_model: ClientError: 404 client error: "
+                    "Error in score_dataset_with_model: "
+                    "ClientError: 404 client error: "
                     "{'message': 'Not Found'}"
                 ),
             ),

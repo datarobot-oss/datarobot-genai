@@ -15,8 +15,8 @@ from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
@@ -129,7 +129,7 @@ class TestConfluenceGetPage:
         """Confluence get page by title without space_key -- should raise error."""
         page_title = "Test Page"
 
-        with pytest.raises(MCPError, match="space_key.*required"):
+        with pytest.raises(ToolError, match="space_key.*required"):
             await confluence_get_page(page_id_or_title=page_title)
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestConfluenceGetPage:
         """Confluence get page -- error in client."""
         page_id = "12345"
 
-        with pytest.raises(MCPError, match="Page not found"):
+        with pytest.raises(ToolError, match="Page not found"):
             await confluence_get_page(page_id_or_title=page_id)
 
     @pytest.mark.asyncio
@@ -152,7 +152,7 @@ class TestConfluenceGetPage:
         """Confluence get page with empty page_id -- should raise error."""
         page_id = ""
 
-        with pytest.raises(MCPError, match="cannot be empty"):
+        with pytest.raises(ToolError, match="cannot be empty"):
             await confluence_get_page(page_id_or_title=page_id)
 
 
@@ -210,7 +210,7 @@ class TestConfluenceAddComment:
         page_id = ""
         comment_body = "<p>Test comment</p>"
 
-        with pytest.raises(MCPError, match="page_id.*cannot be empty"):
+        with pytest.raises(ToolError, match="page_id.*cannot be empty"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
     @pytest.mark.asyncio
@@ -222,7 +222,7 @@ class TestConfluenceAddComment:
         page_id = "12345"
         comment_body = ""
 
-        with pytest.raises(MCPError, match="comment_body.*cannot be empty"):
+        with pytest.raises(ToolError, match="comment_body.*cannot be empty"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
     @pytest.mark.asyncio
@@ -235,7 +235,7 @@ class TestConfluenceAddComment:
         page_id = "12345"
         comment_body = "<p>Test comment</p>"
 
-        with pytest.raises(MCPError, match="Page not found"):
+        with pytest.raises(ToolError, match="Page not found"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
 
@@ -328,7 +328,7 @@ class TestConfluenceSearch:
         """Confluence search -- error in client."""
         cql_query = "type=page AND space=TEST"
 
-        with pytest.raises(MCPError, match="Search failed"):
+        with pytest.raises(ToolError, match="Search failed"):
             await confluence_search(cql_query=cql_query)
 
     @pytest.mark.asyncio
@@ -336,7 +336,7 @@ class TestConfluenceSearch:
         self, get_atlassian_access_token_mock: None
     ) -> None:
         """Confluence search -- empty query validation."""
-        with pytest.raises(MCPError, match="cannot be empty"):
+        with pytest.raises(ToolError, match="cannot be empty"):
             await confluence_search(cql_query="")
 
     @pytest.mark.asyncio
@@ -344,7 +344,7 @@ class TestConfluenceSearch:
         self, get_atlassian_access_token_mock: None
     ) -> None:
         """Confluence search -- max_results below 1 should raise error."""
-        with pytest.raises(MCPError, match="max_results.*must be between 1 and 100"):
+        with pytest.raises(ToolError, match="max_results.*must be between 1 and 100"):
             await confluence_search(cql_query="type=page", max_results=0)
 
     @pytest.mark.asyncio
@@ -352,7 +352,7 @@ class TestConfluenceSearch:
         self, get_atlassian_access_token_mock: None
     ) -> None:
         """Confluence search -- max_results above 100 should raise error."""
-        with pytest.raises(MCPError, match="max_results.*must be between 1 and 100"):
+        with pytest.raises(ToolError, match="max_results.*must be between 1 and 100"):
             await confluence_search(cql_query="type=page", max_results=101)
 
 
@@ -484,7 +484,7 @@ class TestConfluenceUpdatePage:
         new_body_content = "<p>Updated content</p>"
         version_number = 5
 
-        with pytest.raises(MCPError, match="page_id.*cannot be empty"):
+        with pytest.raises(ToolError, match="page_id.*cannot be empty"):
             await confluence_update_page(
                 page_id=page_id,
                 new_body_content=new_body_content,
@@ -501,7 +501,7 @@ class TestConfluenceUpdatePage:
         new_body_content = ""
         version_number = 5
 
-        with pytest.raises(MCPError, match="new_body_content.*cannot be empty"):
+        with pytest.raises(ToolError, match="new_body_content.*cannot be empty"):
             await confluence_update_page(
                 page_id=page_id,
                 new_body_content=new_body_content,
@@ -518,7 +518,7 @@ class TestConfluenceUpdatePage:
         new_body_content = "<p>Updated content</p>"
         version_number = 0
 
-        with pytest.raises(MCPError, match="version_number.*must be a positive integer"):
+        with pytest.raises(ToolError, match="version_number.*must be a positive integer"):
             await confluence_update_page(
                 page_id=page_id,
                 new_body_content=new_body_content,
@@ -536,7 +536,7 @@ class TestConfluenceUpdatePage:
         new_body_content = "<p>Updated content</p>"
         version_number = 5
 
-        with pytest.raises(MCPError, match="Page not found"):
+        with pytest.raises(ToolError, match="Page not found"):
             await confluence_update_page(
                 page_id=page_id,
                 new_body_content=new_body_content,

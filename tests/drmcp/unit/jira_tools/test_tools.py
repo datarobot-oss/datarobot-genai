@@ -15,8 +15,8 @@ from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.jira import Issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_create_issue
 from datarobot_genai.drmcp.tools.jira.tools import jira_get_issue
@@ -232,7 +232,7 @@ class TestJiraSearchIssues:
         """Jira search issues -- error in client."""
         jql_query = "issuetype = Story AND project = PROJ AND summary ~ Dummy"
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_search_issues(jql_query=jql_query)
 
 
@@ -268,7 +268,7 @@ class TestJiraGetIssue:
         """Jira get issue -- error in client."""
         issue_key = "PROJ-123"
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_get_issue(issue_key=issue_key)
 
 
@@ -311,7 +311,7 @@ class TestJiraCreateIssue:
         issue_type = "Not existing issue type"  # <- Main change here
         description = "Dummy description of bug"
 
-        with pytest.raises(MCPError, match="Unexpected issue type"):
+        with pytest.raises(ToolError, match="Unexpected issue type"):
             await jira_create_issue(
                 project_key=project_key,
                 summary=summary,
@@ -331,7 +331,7 @@ class TestJiraCreateIssue:
         issue_type = "Bug"
         description = "Dummy description of bug"
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_create_issue(
                 project_key=project_key,
                 summary=summary,
@@ -352,7 +352,7 @@ class TestJiraCreateIssue:
         issue_type = "Bug"
         description = "Dummy description of bug"
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_create_issue(
                 project_key=project_key,
                 summary=summary,
@@ -391,7 +391,7 @@ class TestJiraUpdateIssue:
         issue_key = "PROJ-123"
         fields_to_update = {"summary": "New dummy summary"}
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_update_issue(issue_key=issue_key, fields_to_update=fields_to_update)
 
 
@@ -431,7 +431,7 @@ class TestJiraTransitionIssue:
         issue_key = "PROJ-123"
         transition_name = "NotExistingTransition"
 
-        with pytest.raises(MCPError, match="Unexpected transition name"):
+        with pytest.raises(ToolError, match="Unexpected transition name"):
             await jira_transition_issue(issue_key=issue_key, transition_name=transition_name)
 
     @pytest.mark.asyncio
@@ -444,7 +444,7 @@ class TestJiraTransitionIssue:
         issue_key = "PROJ-123"
         transition_name = "Closed"
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_transition_issue(issue_key=issue_key, transition_name=transition_name)
 
     @pytest.mark.asyncio
@@ -458,5 +458,5 @@ class TestJiraTransitionIssue:
         issue_key = "PROJ-123"
         transition_name = "Closed"
 
-        with pytest.raises(MCPError):
+        with pytest.raises(ToolError):
             await jira_transition_issue(issue_key=issue_key, transition_name=transition_name)

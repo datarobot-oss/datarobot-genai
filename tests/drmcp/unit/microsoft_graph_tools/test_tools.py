@@ -19,7 +19,6 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphItem
 from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_graph_search_content
@@ -173,7 +172,7 @@ class TestMicrosoftGraphSearchContent:
         get_microsoft_graph_access_token_mock: None,
     ) -> None:
         """Test search with empty query raises error."""
-        with pytest.raises(MCPError) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await microsoft_graph_search_content(search_query="")
         assert "cannot be empty" in str(exc_info.value).lower()
 
@@ -183,7 +182,7 @@ class TestMicrosoftGraphSearchContent:
         get_microsoft_graph_access_token_mock: None,
     ) -> None:
         """Test search with invalid site URL raises error."""
-        with pytest.raises(MCPError) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await microsoft_graph_search_content(search_query="test", site_url="invalid-url")
         assert "invalid" in str(exc_info.value).lower()
 
@@ -194,7 +193,7 @@ class TestMicrosoftGraphSearchContent:
             "datarobot_genai.drmcp.tools.microsoft_graph.tools.get_microsoft_graph_access_token",
             return_value=ToolError("OAuth error"),
         ):
-            with pytest.raises(MCPError) as exc_info:
+            with pytest.raises(ToolError) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
 
@@ -213,7 +212,7 @@ class TestMicrosoftGraphSearchContent:
             mock_client.search_content = AsyncMock(side_effect=MicrosoftGraphError("Client error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(MCPError) as exc_info:
+            with pytest.raises(ToolError) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "client error" in str(exc_info.value).lower()
 
@@ -232,7 +231,7 @@ class TestMicrosoftGraphSearchContent:
             mock_client.search_content = AsyncMock(side_effect=Exception("Unexpected error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(MCPError) as exc_info:
+            with pytest.raises(ToolError) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "unexpected error" in str(exc_info.value).lower()
 
