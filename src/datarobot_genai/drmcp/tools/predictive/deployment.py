@@ -69,13 +69,7 @@ async def deploy_model(
     label: Annotated[str, "The label/name for the deployment"] | None = None,
     description: Annotated[str, "Optional description for the deployment"] | None = None,
 ) -> ToolError | ToolResult:
-    """
-    Deploy a model by creating a new DataRobot deployment.
-
-    Returns
-    -------
-        JSON string with deployment ID and label, or error message.
-    """
+    """Deploy a model by creating a new DataRobot deployment."""
     if not model_id:
         raise ToolError("Model ID must be provided")
     if not label:
