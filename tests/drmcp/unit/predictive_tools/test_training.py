@@ -335,6 +335,7 @@ async def test_start_autopilot_validation() -> None:
 @pytest.mark.asyncio
 async def test_suggest_use_cases_dataset_not_found() -> None:
     """Test that suggest_use_cases provides a clear error message when dataset is not found."""
+
     # Create a mock ClientError that matches the DataRobot SDK error format
     class MockClientError(Exception):
         def __init__(self, message: str, status_code: int = 404):

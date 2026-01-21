@@ -64,10 +64,12 @@ def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFra
         client: DataRobot SDK client instance
         dataset_id: The ID of the dataset to fetch
 
-    Returns:
+    Returns
+    -------
         Tuple of (dataset object, dataframe)
 
-    Raises:
+    Raises
+    ------
         ToolError: If dataset is not found (404) or other error occurs
     """
     try:
@@ -514,7 +516,7 @@ async def start_autopilot(
         if dataset_url:
             dataset = client.Dataset.create_from_url(dataset_url)
         else:
-            dataset, _ = _get_dataset_or_raise(client, dataset_id)
+            dataset = client.Dataset.get(dataset_id)
 
         project = client.Project.create_from_dataset(
             dataset.id, project_name=project_name, use_case=use_case_id
