@@ -33,11 +33,12 @@ async def list_deployments() -> ToolResult:
     if not deployments:
         return ToolResult(
             content="No deployments found.",
-            structured_content={},
+            structured_content={"deployments": []},
         )
+    deployments_dict = {d.id: d.label for d in deployments}
     return ToolResult(
         content="\n".join(f"{d.id}: {d.label}" for d in deployments),
-        structured_content=deployments,
+        structured_content={"deployments": deployments_dict},
     )
 
 
