@@ -17,18 +17,18 @@ from typing import Any
 
 import pytest
 
-from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
-from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_openai_llm_client_config
+from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
+from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_llm_gateway_client_config
 
 
 @pytest.fixture(scope="session")
-def openai_llm_client() -> OpenAILLMMCPClient:
-    """Create OpenAI LLM MCP client for the test session."""
+def llm_client() -> DRLLMGatewayMCPClient:
+    """Create DataRobot LLM Gateway MCP client for the test session."""
     try:
-        config = get_openai_llm_client_config()
-        return OpenAILLMMCPClient(str(config))
+        config = get_dr_llm_gateway_client_config()
+        return DRLLMGatewayMCPClient(str(config))
     except ValueError as e:
-        raise ValueError(f"Missing required OpenAI environment variables: {e}") from e
+        raise ValueError(f"Missing required DataRobot environment variables: {e}") from e
     except Exception as e:
         raise ConnectionError(f"Failed to create LLM MCP client: {str(e)}") from e
 

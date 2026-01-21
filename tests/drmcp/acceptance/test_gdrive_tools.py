@@ -100,7 +100,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_find_contents_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_gdrive_list_files_success: ETETestExpectations,
         gdrive_folder_id: str,
         list_files_no_of_results: int,
@@ -116,7 +116,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_list_files_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -130,7 +130,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_read_content_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_gdrive_read_content_success: ETETestExpectations,
         gdrive_pdf_file_id: str,
         prompt_template: str,
@@ -143,7 +143,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_read_content_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -158,7 +158,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_create_file_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         prompt_template: str,
     ) -> None:
         expectations = ETETestExpectations(
@@ -181,7 +181,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt_template,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -196,7 +196,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_update_metadata_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         prompt_template: str,
     ) -> None:
         # Note: Replace with a real file ID when running manually
@@ -224,7 +224,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -236,7 +236,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_manage_access_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         prompt_template: str,
     ) -> None:
         # Note: Replace with a real file ID and email when running manually
@@ -266,7 +266,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

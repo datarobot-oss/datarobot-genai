@@ -128,7 +128,7 @@ class TestPredictE2E(ToolBaseE2E):
     )
     async def test_predict_by_file_path_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_by_file_path_success: ETETestExpectations,
         deployment_id: str,
         classification_predict_file_path: Path,
@@ -145,7 +145,7 @@ class TestPredictE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_by_file_path_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -161,7 +161,7 @@ class TestPredictE2E(ToolBaseE2E):
     )
     async def test_predict_by_ai_catalog_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_by_ai_catalog_success: ETETestExpectations,
         deployment_id: str,
         classification_project_id: str,
@@ -180,7 +180,7 @@ class TestPredictE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_by_ai_catalog_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -196,7 +196,7 @@ class TestPredictE2E(ToolBaseE2E):
     )
     async def test_predict_from_project_data_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_from_project_data_success: ETETestExpectations,
         deployment_id: str,
         classification_project_id: str,
@@ -212,7 +212,7 @@ class TestPredictE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_from_project_data_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -229,7 +229,7 @@ class TestPredictE2E(ToolBaseE2E):
     )
     async def test_get_prediction_explanations_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_prediction_explanations_success: ETETestExpectations,
         classification_project_id: str,
         model_id: str,
@@ -250,7 +250,7 @@ class TestPredictE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_prediction_explanations_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
