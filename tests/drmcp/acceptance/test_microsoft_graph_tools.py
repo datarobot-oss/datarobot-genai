@@ -53,7 +53,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
     )
     async def test_microsoft_graph_search_content_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_microsoft_graph_search_content_success: ETETestExpectations,
         prompt_template: str,
     ) -> None:
@@ -67,7 +67,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_microsoft_graph_search_content_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

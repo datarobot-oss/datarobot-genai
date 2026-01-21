@@ -142,7 +142,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_get_best_model_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_best_model_success: ETETestExpectations,
         classification_project_id: str,
         prompt_template: str,
@@ -155,7 +155,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_best_model_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -172,7 +172,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_get_best_model_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_best_model_failure: ETETestExpectations,
         nonexistent_project_id: str,
         prompt_template: str,
@@ -185,7 +185,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_best_model_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -208,7 +208,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_score_dataset_with_model_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_score_dataset_with_model_success: ETETestExpectations,
         classification_project_id: str,
         model_id: str,
@@ -227,7 +227,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_score_dataset_with_model_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -244,7 +244,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_score_dataset_with_model_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_score_dataset_with_model_failure: ETETestExpectations,
         classification_project_id: str,
         nonexistent_model_id: str,
@@ -263,7 +263,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_score_dataset_with_model_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
