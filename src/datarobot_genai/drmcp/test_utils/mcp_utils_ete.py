@@ -68,6 +68,26 @@ def get_openai_llm_client_config() -> dict[str, str]:
     return config
 
 
+def get_dr_llm_gateway_client_config() -> dict[str, str]:
+    """Get DataRobot LLM Gateway client configuration."""
+    datarobot_api_token = os.environ.get("DATAROBOT_API_TOKEN")
+    datarobot_endpoint = os.environ.get("DATAROBOT_ENDPOINT")
+    save_llm_responses = os.environ.get("SAVE_LLM_RESPONSES", "false").lower() == "true"
+
+    if not datarobot_api_token:
+        raise ValueError("Missing required environment variable: DATAROBOT_API_TOKEN")
+
+    config: dict[str, str] = {
+        "datarobot_api_token": datarobot_api_token,
+        "save_llm_responses": str(save_llm_responses),
+    }
+
+    if datarobot_endpoint:
+        config["datarobot_endpoint"] = datarobot_endpoint
+
+    return config
+
+
 def get_headers() -> dict[str, str]:
     # When the MCP server is deployed in DataRobot, we have to include the API token in headers for
     # authentication.

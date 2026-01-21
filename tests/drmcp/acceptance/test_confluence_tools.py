@@ -89,7 +89,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
 
     async def test_confluence_get_page_by_id_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_confluence_get_page_by_id_success: ETETestExpectations,
         confluence_page_id: str,
     ) -> None:
@@ -101,14 +101,14 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_confluence_get_page_by_id_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
 
     async def test_confluence_get_page_by_title_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_confluence_get_page_by_title_success: ETETestExpectations,
         confluence_page_title: str,
         confluence_space_key: str,
@@ -126,14 +126,14 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_confluence_get_page_by_title_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
 
     async def test_confluence_search_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
     ) -> None:
         """Test searching Confluence content with CQL query."""
         cql_query = 'type=page AND title ~ "MCP Acceptance"'
@@ -163,7 +163,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -171,7 +171,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
     @pytest.mark.skip(reason="Creates real pages in Confluence without cleanup - run manually")
     async def test_confluence_create_page_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         confluence_space_key: str,
     ) -> None:
         """Test creating a new Confluence page.
@@ -212,7 +212,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -220,7 +220,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
     @pytest.mark.skip(reason="Creates real comments in Confluence without cleanup - run manually")
     async def test_confluence_add_comment_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         confluence_page_id: str,
     ) -> None:
         """Test adding a comment to a Confluence page.
@@ -258,7 +258,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -266,7 +266,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
     @pytest.mark.skip(reason="Skipped by default to avoid modifying real Confluence data")
     async def test_confluence_update_page_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         confluence_page_id: str,
     ) -> None:
         """Test updating a Confluence page -- requires real page ID."""
@@ -303,7 +303,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

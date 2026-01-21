@@ -54,9 +54,9 @@ async def get_project_dataset_by_name(
     The dataset ID and the dataset type (source or prediction) as a string, or an error message.
     """
     if not project_id:
-        return ToolError("Project ID is required.")
+        raise ToolError("Project ID is required.")
     if not dataset_name:
-        return ToolError("Dataset name is required.")
+        raise ToolError("Dataset name is required.")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)

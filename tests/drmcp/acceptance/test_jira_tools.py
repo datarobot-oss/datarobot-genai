@@ -169,7 +169,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
     )
     async def test_jira_issue_search_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_jira_search_issues_success: ETETestExpectations,
         project_key: str,
         search_no_of_results: int,
@@ -187,7 +187,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_jira_search_issues_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -198,7 +198,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
     )
     async def test_jira_issue_get_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_jira_get_issue_success: ETETestExpectations,
         jira_issue_key: str,
         prompt_template: str,
@@ -211,7 +211,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_jira_get_issue_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -225,7 +225,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
     )
     async def test_jira_issue_create_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_jira_create_issue_success: ETETestExpectations,
         project_key: str,
         jira_new_ticket_name: str,
@@ -239,7 +239,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_jira_create_issue_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -253,7 +253,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
     )
     async def test_jira_issue_update_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_jira_update_issue_success: ETETestExpectations,
         jira_issue_key: str,
         jira_updated_ticket_name: str,
@@ -269,7 +269,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_jira_update_issue_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -283,7 +283,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
     )
     async def test_jira_issue_transition_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_jira_transition_issue_success: ETETestExpectations,
         jira_issue_key: str,
         jira_updated_ticket_status: str,
@@ -299,7 +299,7 @@ class TestJiraToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_jira_transition_issue_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

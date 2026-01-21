@@ -20,6 +20,7 @@ import logging
 import uuid
 from typing import Annotated
 from typing import Any
+from typing import Literal
 
 import httpx
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
@@ -33,7 +34,17 @@ from datarobot_genai.drmcp.core.auth import get_access_token
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FIELDS = {"id", "name", "size", "mimeType", "webViewLink", "createdTime", "modifiedTime"}
+SUPPORTED_FIELDS = {
+    "id",
+    "name",
+    "size",
+    "mimeType",
+    "webViewLink",
+    "createdTime",
+    "modifiedTime",
+    "starred",
+    "trashed",
+}
 SUPPORTED_FIELDS_STR = ",".join(SUPPORTED_FIELDS)
 DEFAULT_FIELDS = f"nextPageToken,files({SUPPORTED_FIELDS_STR})"
 GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
@@ -119,6 +130,8 @@ class GoogleDriveFile(BaseModel):
     web_view_link: Annotated[str | None, Field(alias="webViewLink")] = None
     created_time: Annotated[str | None, Field(alias="createdTime")] = None
     modified_time: Annotated[str | None, Field(alias="modifiedTime")] = None
+    starred: bool | None = None
+    trashed: bool | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -133,7 +146,30 @@ class GoogleDriveFile(BaseModel):
             web_view_link=data.get("webViewLink"),
             created_time=data.get("createdTime"),
             modified_time=data.get("modifiedTime"),
+            starred=data.get("starred"),
+            trashed=data.get("trashed"),
         )
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the file."""
+        result: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "mimeType": self.mime_type,
+        }
+        if self.size is not None:
+            result["size"] = self.size
+        if self.web_view_link is not None:
+            result["webViewLink"] = self.web_view_link
+        if self.created_time is not None:
+            result["createdTime"] = self.created_time
+        if self.modified_time is not None:
+            result["modifiedTime"] = self.modified_time
+        if self.starred is not None:
+            result["starred"] = self.starred
+        if self.trashed is not None:
+            result["trashed"] = self.trashed
+        return result
 
 
 class PaginatedResult(BaseModel):
@@ -440,6 +476,66 @@ class GoogleDriveClient:
         response.raise_for_status()
         return GoogleDriveFile.from_api_response(response.json())
 
+    async def update_file_metadata(
+        self,
+        file_id: str,
+        new_name: str | None = None,
+        starred: bool | None = None,
+        trashed: bool | None = None,
+    ) -> GoogleDriveFile:
+        """Update file metadata in Google Drive.
+
+        Args:
+            file_id: The ID of the file to update.
+            new_name: A new name to rename the file. Must not be empty or whitespace.
+            starred: Set to True to star the file or False to unstar it.
+            trashed: Set to True to trash the file or False to restore it.
+
+        Returns
+        -------
+            GoogleDriveFile with updated metadata.
+
+        Raises
+        ------
+            GoogleDriveError: If no update fields are provided, file is not found,
+                             access is denied, or the request is invalid.
+        """
+        if new_name is None and starred is None and trashed is None:
+            raise GoogleDriveError(
+                "At least one of new_name, starred, or trashed must be provided."
+            )
+
+        if new_name is not None and not new_name.strip():
+            raise GoogleDriveError("new_name cannot be empty or whitespace.")
+
+        body: dict[str, Any] = {}
+        if new_name is not None:
+            body["name"] = new_name
+        if starred is not None:
+            body["starred"] = starred
+        if trashed is not None:
+            body["trashed"] = trashed
+
+        response = await self._client.patch(
+            f"/{file_id}",
+            json=body,
+            params={"fields": SUPPORTED_FIELDS_STR, "supportsAllDrives": "true"},
+        )
+
+        if response.status_code == 404:
+            raise GoogleDriveError(f"File with ID '{file_id}' not found.")
+        if response.status_code == 403:
+            raise GoogleDriveError(
+                f"Permission denied: you don't have permission to update file '{file_id}'."
+            )
+        if response.status_code == 400:
+            raise GoogleDriveError("Bad request: invalid parameters for file update.")
+        if response.status_code == 429:
+            raise GoogleDriveError("Rate limit exceeded. Please try again later.")
+
+        response.raise_for_status()
+        return GoogleDriveFile.from_api_response(response.json())
+
     async def _export_workspace_file(self, file_id: str, export_mime_type: str) -> str:
         """Export a Google Workspace file to the specified format.
 
@@ -725,6 +821,96 @@ class GoogleDriveClient:
             },
             headers={"Content-Type": f"multipart/related; boundary={boundary}"},
         )
+
+    async def manage_access(
+        self,
+        *,
+        file_id: str,
+        action: Literal["add", "update", "remove"],
+        role: Literal["reader", "commenter", "writer", "fileOrganizer", "organizer", "owner"]
+        | None = None,
+        email_address: str | None = None,
+        permission_id: str | None = None,
+        transfer_ownership: bool = False,
+    ) -> str:
+        """Manage access permissions for a Google Drive file or folder.
+
+        Adds, updates, or removes sharing permissions on an existing Google Drive
+        file or folder using the Google Drive Permissions API.
+
+        This method supports granting access to users or groups, changing access
+        roles, and revoking permissions. Ownership transfer is supported for files
+        in "My Drive" when explicitly requested.
+
+        Args:
+            file_id: The ID of the Google Drive file or folder whose permissions
+                are being managed.
+            action: The permission operation to perform.
+            role: The access role to assign or update. Valid values include
+                Required for "add" and "update" actions.
+            email_address: The email address of the user or group to grant access to.
+                Required for the "add" action.
+            permission_id: The ID of the permission to update or remove.
+                Required for "update" and "remove" actions.
+            transfer_ownership: Whether to transfer ownership of the file.
+                Only applicable when action="update" and role="owner".
+
+        Returns
+        -------
+            Permission id.
+            For "add" its newly added permission.
+            For "update"/"remove" its previous permission.
+
+        Raises
+        ------
+            GoogleDriveError: If the permission operation fails (invalid arguments,
+                insufficient permissions, resource not found, ownership transfer
+                not allowed, rate limited, etc.).
+        """
+        if not file_id.strip():
+            raise GoogleDriveError("Argument validation error: 'file_id' cannot be empty.")
+
+        if action == "add" and not email_address:
+            raise GoogleDriveError("'email_address' is required for action 'add'.")
+
+        if action in ("update", "remove") and not permission_id:
+            raise GoogleDriveError("'permission_id' is required for action 'update' or 'remove'.")
+
+        if action != "remove" and not role:
+            raise GoogleDriveError("'role' is required for action 'add' or 'update'.")
+
+        if action == "add":
+            response = await self._client.post(
+                url=f"/{file_id}/permissions",
+                json={
+                    "type": "user",
+                    "role": role,
+                    "emailAddress": email_address,
+                },
+                params={"sendNotificationEmail": False, "supportsAllDrives": True},
+            )
+
+        elif action == "update":
+            response = await self._client.patch(
+                url=f"/{file_id}/permissions/{permission_id}",
+                json={"role": role},
+                params={"transferOwnership": transfer_ownership, "supportsAllDrives": True},
+            )
+
+        elif action == "remove":
+            response = await self._client.delete(url=f"/{file_id}/permissions/{permission_id}")
+
+        else:
+            raise GoogleDriveError(f"Invalid action '{action}'")
+
+        if response.status_code not in (200, 201, 204):
+            raise GoogleDriveError(f"Drive API error {response.status_code}: {response.text}")
+
+        if action == "add":
+            return response.json()["id"]
+
+        # Cannot be null here because of above validators
+        return permission_id  # type: ignore
 
     async def __aenter__(self) -> "GoogleDriveClient":
         """Async context manager entry."""

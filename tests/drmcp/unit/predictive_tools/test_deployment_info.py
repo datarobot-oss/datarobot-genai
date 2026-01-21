@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive.deployment_info import generate_prediction_data_template
 from datarobot_genai.drmcp.tools.predictive.deployment_info import get_deployment_features
 from datarobot_genai.drmcp.tools.predictive.deployment_info import get_deployment_info
@@ -407,7 +407,7 @@ async def test_validate_prediction_data_error(mock_get_features: Any) -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         f.write("a,b\n1,2\n")
         f.flush()
-        with pytest.raises(MCPError) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await validate_prediction_data("bad_id", f.name)
         assert "Error in validate_prediction_data: JSONDecodeError: Expecting value" in str(
             exc_info.value
@@ -608,7 +608,7 @@ async def test_generate_prediction_data_template_exception(
     mock_get_features: Any,
 ) -> None:
     mock_get_features.side_effect = Exception("fail")
-    with pytest.raises(MCPError) as exc_info:
+    with pytest.raises(ToolError) as exc_info:
         await generate_prediction_data_template("id")
     assert "Error in generate_prediction_data_template: Exception: fail" == str(exc_info.value)
 
@@ -617,7 +617,7 @@ async def test_generate_prediction_data_template_exception(
 @pytest.mark.asyncio
 async def test_validate_prediction_data_file_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = json.dumps({"features": [], "model_type": "Test"})
-    with pytest.raises(MCPError) as exc_info:
+    with pytest.raises(ToolError) as exc_info:
         await validate_prediction_data("id", "/not/a/real/file.csv")
     assert (
         "Error in validate_prediction_data: FileNotFoundError: [Errno 2] No such file or "

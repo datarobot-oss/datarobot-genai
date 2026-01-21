@@ -349,6 +349,42 @@ class TestGoogleDriveClient:
             assert result.content == "Extracted PDF text content"
 
 
+class TestGoogleDriveFile:
+    """Test GoogleDriveFile model."""
+
+    def test_as_flat_dict(self) -> None:
+        """Test as_flat_dict includes present fields and excludes None fields."""
+        # Full file with all optional fields
+        full_file = GoogleDriveFile(
+            id="file123",
+            name="test.txt",
+            mime_type="text/plain",
+            size=1024,
+            web_view_link="https://drive.google.com/file/d/file123/view",
+            created_time="2025-01-01T00:00:00.000Z",
+            modified_time="2025-01-10T12:00:00.000Z",
+            starred=True,
+            trashed=False,
+        )
+        result = full_file.as_flat_dict()
+        assert result == {
+            "id": "file123",
+            "name": "test.txt",
+            "mimeType": "text/plain",
+            "size": 1024,
+            "webViewLink": "https://drive.google.com/file/d/file123/view",
+            "createdTime": "2025-01-01T00:00:00.000Z",
+            "modifiedTime": "2025-01-10T12:00:00.000Z",
+            "starred": True,
+            "trashed": False,
+        }
+
+        # Minimal file - optional fields excluded
+        minimal = GoogleDriveFile(id="min", name="min.txt", mime_type="text/plain")
+        minimal_result = minimal.as_flat_dict()
+        assert minimal_result == {"id": "min", "name": "min.txt", "mimeType": "text/plain"}
+
+
 class TestGoogleDriveFileContent:
     """Test GoogleDriveFileContent model."""
 
@@ -697,3 +733,106 @@ class TestCreateFile:
 
             with pytest.raises(GoogleDriveError, match="Rate limit exceeded"):
                 await client.create_file(name="file.txt", mime_type="text/plain")
+
+
+class TestUpdateFileMetadata:
+    """Test GoogleDriveClient.update_file_metadata method."""
+
+    @pytest.fixture
+    def mock_access_token(self) -> str:
+        """Mock access token."""
+        return "test_access_token_123"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kwargs,expected_body,response_field,expected_value",
+        [
+            ({"new_name": "New.txt"}, {"name": "New.txt"}, "name", "Updated Name.txt"),
+            ({"starred": True}, {"starred": True}, "starred", True),
+            ({"trashed": False}, {"trashed": False}, "trashed", False),
+        ],
+    )
+    async def test_update_file_metadata_success(
+        self,
+        mock_access_token: str,
+        kwargs: dict,
+        expected_body: dict,
+        response_field: str,
+        expected_value: bool | str,
+    ) -> None:
+        """Test updating file metadata with various fields."""
+        response_data = {
+            "id": "file_123",
+            "name": "Updated Name.txt",
+            "mimeType": "text/plain",
+            "starred": kwargs.get("starred", False),
+            "trashed": kwargs.get("trashed", False),
+        }
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_patch(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                assert url == "/file_123"
+                assert json == expected_body
+                assert params.get("supportsAllDrives") == "true"
+                return make_response(200, response_data, method="PATCH")
+
+            client._client.patch = mock_patch
+            result = await client.update_file_metadata(file_id="file_123", **kwargs)
+            assert getattr(result, response_field.replace("name", "name")) == expected_value
+
+    @pytest.mark.asyncio
+    async def test_update_file_metadata_multiple_fields(self, mock_access_token: str) -> None:
+        """Test updating multiple fields at once."""
+        response_data = {"id": "file_123", "name": "New.txt", "mimeType": "text/plain"}
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_patch(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                assert json == {"name": "New.txt", "starred": True, "trashed": False}
+                return make_response(200, response_data, method="PATCH")
+
+            client._client.patch = mock_patch
+            result = await client.update_file_metadata(
+                file_id="file_123", new_name="New.txt", starred=True, trashed=False
+            )
+            assert result.id == "file_123"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invalid_name", ["", "   "])
+    async def test_update_file_metadata_invalid_name_error(
+        self, mock_access_token: str, invalid_name: str
+    ) -> None:
+        """Test error when new_name is empty or whitespace."""
+        async with GoogleDriveClient(mock_access_token) as client:
+            with pytest.raises(GoogleDriveError, match="new_name cannot be empty"):
+                await client.update_file_metadata(file_id="file_123", new_name=invalid_name)
+
+    @pytest.mark.asyncio
+    async def test_update_file_metadata_no_fields_error(self, mock_access_token: str) -> None:
+        """Test error when no update fields are provided."""
+        async with GoogleDriveClient(mock_access_token) as client:
+            with pytest.raises(GoogleDriveError, match="At least one of"):
+                await client.update_file_metadata(file_id="file_123")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status_code,error_match",
+        [(404, "not found"), (403, "Permission denied"), (400, "Bad request"), (429, "Rate limit")],
+    )
+    async def test_update_file_metadata_http_errors(
+        self, mock_access_token: str, status_code: int, error_match: str
+    ) -> None:
+        """Test HTTP error handling."""
+        async with GoogleDriveClient(mock_access_token) as client:
+
+            async def mock_patch(
+                url: str, json: dict | None = None, params: dict | None = None, **kwargs
+            ) -> httpx.Response:
+                return make_response(status_code, method="PATCH")
+
+            client._client.patch = mock_patch
+            with pytest.raises(GoogleDriveError, match=error_match):
+                await client.update_file_metadata(file_id="file_123", new_name="New.txt")

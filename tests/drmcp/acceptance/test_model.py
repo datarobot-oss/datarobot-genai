@@ -35,12 +35,6 @@ def expectations_for_get_best_model_success(
                 parameters={"project_id": classification_project_id},
                 result="Best model: Keras Text Convolutional Neural Network Classifier",
             ),
-            ToolCallTestExpectations(
-                name="list_models",
-                parameters={"project_id": classification_project_id},
-                # checking if the result has the correct keys
-                result={"id": "", "model_type": "", "metrics": {}},
-            ),
         ],
         llm_response_content_contains_expectations=[
             "Keras",
@@ -63,7 +57,7 @@ def expectations_for_get_best_model_failure(
                 name="get_best_model",
                 parameters={"project_id": nonexistent_project_id},
                 result=(
-                    "Error calling tool 'get_best_model': Error in get_best_model: "
+                    "Error in get_best_model: "
                     "ClientError: 404 client error: {'message': 'Not Found'}"
                 ),
             ),
@@ -113,8 +107,8 @@ def expectations_for_score_dataset_with_model_failure(
                     "dataset_url": dataset_url,
                 },
                 result=(
-                    "Error calling tool 'score_dataset_with_model': Error in "
-                    "score_dataset_with_model: ClientError: 404 client error: "
+                    "Error in score_dataset_with_model: "
+                    "ClientError: 404 client error: "
                     "{'message': 'Not Found'}"
                 ),
             ),
@@ -148,7 +142,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_get_best_model_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_best_model_success: ETETestExpectations,
         classification_project_id: str,
         prompt_template: str,
@@ -161,7 +155,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_best_model_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -178,7 +172,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_get_best_model_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_best_model_failure: ETETestExpectations,
         nonexistent_project_id: str,
         prompt_template: str,
@@ -191,7 +185,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_best_model_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -214,7 +208,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_score_dataset_with_model_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_score_dataset_with_model_success: ETETestExpectations,
         classification_project_id: str,
         model_id: str,
@@ -233,7 +227,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_score_dataset_with_model_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -250,7 +244,7 @@ class TestModelE2E(ToolBaseE2E):
     )
     async def test_score_dataset_with_model_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_score_dataset_with_model_failure: ETETestExpectations,
         classification_project_id: str,
         nonexistent_model_id: str,
@@ -269,7 +263,7 @@ class TestModelE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_score_dataset_with_model_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

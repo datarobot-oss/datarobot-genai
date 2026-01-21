@@ -296,20 +296,32 @@ async def test_start_autopilot_validation() -> None:
     """Test validation of input parameters for start_autopilot."""
     # Test missing dataset info for new project
     with patch("datarobot_genai.drmcp.tools.predictive.training.get_sdk_client"):
-        result = await training.start_autopilot(target="target")
-        assert isinstance(result, ToolError)
-        assert "Either dataset_url or dataset_id must be provided" in str(result)
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in start_autopilot: ToolError: "
+                "Either dataset_url or dataset_id must be provided"
+            ),
+        ):
+            await training.start_autopilot(target="target")
 
         # Test conflicting dataset inputs
-        result = await training.start_autopilot(
-            target="target",
-            dataset_url="http://test.com/data.csv",
-            dataset_id="test_dataset_id",
-        )
-        assert isinstance(result, ToolError)
-        assert "Please provide either dataset_url or dataset_id, not both" in str(result)
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in start_autopilot: ToolError: "
+                "Please provide either dataset_url or dataset_id, not both"
+            ),
+        ):
+            await training.start_autopilot(
+                target="target",
+                dataset_url="http://test.com/data.csv",
+                dataset_id="test_dataset_id",
+            )
 
         # Test missing target
-        result = await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
-        assert isinstance(result, ToolError)
-        assert "Target variable must be specified" in str(result)
+        with pytest.raises(
+            ToolError,
+            match="Error in start_autopilot: ToolError: Target variable must be specified",
+        ):
+            await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")

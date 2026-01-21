@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc.
+# Copyright 2026 DataRobot, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Base classes for LLM MCP clients."""
+
 import json
+from abc import ABC
+from abc import abstractmethod
 from ast import literal_eval
 from typing import Any
 
@@ -23,7 +27,7 @@ from mcp.types import ListToolsResult
 from mcp.types import TextContent
 from openai.types.chat.chat_completion import ChatCompletion
 
-from .utils import save_response_to_file
+from datarobot_genai.drmcp.test_utils.utils import save_response_to_file
 
 
 class ToolCall:
@@ -44,9 +48,9 @@ class LLMResponse:
         self.tool_results = tool_results
 
 
-class LLMMCPClient:
+class BaseLLMMCPClient(ABC):
     """
-    Client for interacting with LLMs via MCP.
+    Base class for LLM MCP clients.
 
     Note: Elicitation is handled at the protocol level by FastMCP's ctx.elicit().
     Tools using FastMCP's built-in elicitation will work automatically.
@@ -54,54 +58,48 @@ class LLMMCPClient:
 
     def __init__(
         self,
-        config: str,
+        config: str | dict,
     ):
         """
         Initialize the LLM MCP client.
 
         Args:
-            config: Configuration string or dict with:
-                - openai_api_key: OpenAI API key
-                - openai_api_base: Optional Azure OpenAI endpoint
-                - openai_api_deployment_id: Optional Azure deployment ID
-                - openai_api_version: Optional Azure API version
-                - model: Model name (default: "gpt-3.5-turbo")
-                - save_llm_responses: Whether to save responses (default: True)
+            config: Configuration string or dict with provider-specific keys.
         """
-        # Parse config string to extract parameters
-        if isinstance(config, str):
-            # Try JSON first (safer), fall back to literal_eval for Python dict strings
-            try:
-                config_dict = json.loads(config)
-            except json.JSONDecodeError:
-                # Fall back to literal_eval for Python dict literal strings
-                config_dict = literal_eval(config)
-        else:
-            config_dict = config
-
-        openai_api_key = config_dict.get("openai_api_key")
-        openai_api_base = config_dict.get("openai_api_base")
-        openai_api_deployment_id = config_dict.get("openai_api_deployment_id")
-        model = config_dict.get("model", "gpt-3.5-turbo")
-        save_llm_responses = config_dict.get("save_llm_responses", True)
-
-        if openai_api_base and openai_api_deployment_id:
-            # Azure OpenAI
-            self.openai_client = openai.AzureOpenAI(
-                api_key=openai_api_key,
-                azure_endpoint=openai_api_base,
-                api_version=config_dict.get("openai_api_version", "2024-02-15-preview"),
-            )
-            self.model = openai_api_deployment_id
-        else:
-            # Regular OpenAI
-            self.openai_client = openai.OpenAI(api_key=openai_api_key)  # type: ignore[assignment]
-            self.model = model
-
-        self.save_llm_responses = save_llm_responses
+        config_dict = self._parse_config(config)
+        self.openai_client, self.model = self._create_llm_client(config_dict)
+        self.save_llm_responses = config_dict.get("save_llm_responses", True)
         self.available_tools: list[dict[str, Any]] = []
         self.available_prompts: list[dict[str, Any]] = []
         self.available_resources: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _parse_config(config: str | dict) -> dict:
+        """Parse config string to dict."""
+        if isinstance(config, str):
+            # Try JSON first (safer), fall back to literal_eval for Python dict strings
+            try:
+                return json.loads(config)
+            except json.JSONDecodeError:
+                # Fall back to literal_eval for Python dict literal strings
+                return literal_eval(config)
+        return config
+
+    @abstractmethod
+    def _create_llm_client(
+        self, config_dict: dict
+    ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str]:
+        """
+        Create the LLM client.
+
+        Args:
+            config_dict: Parsed configuration dictionary
+
+        Returns
+        -------
+            Tuple of (LLM client instance, model name)
+        """
+        pass
 
     async def _add_mcp_tool_to_available_tools(self, mcp_session: ClientSession) -> None:
         """Add a tool to the available tools."""

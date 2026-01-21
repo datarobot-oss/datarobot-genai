@@ -70,7 +70,7 @@ def expectations_for_get_model_info_from_deployment_failure(
                 name="get_model_info_from_deployment",
                 parameters={"deployment_id": nonexistent_deployment_id},
                 result=(
-                    "Error calling tool 'get_model_info_from_deployment': Error in "
+                    "Error in "
                     "get_model_info_from_deployment: ClientError: 404 client error: "
                     "{'message': 'Not Found'}"
                 ),
@@ -102,7 +102,7 @@ class TestDeploymentE2E(ToolBaseE2E):
     )
     async def test_list_deployments_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_list_deployments_success: ETETestExpectations,
         prompt: str,
     ) -> None:
@@ -110,7 +110,7 @@ class TestDeploymentE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_list_deployments_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
@@ -131,7 +131,7 @@ class TestDeploymentE2E(ToolBaseE2E):
     )
     async def test_get_model_info_from_deployment_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_model_info_from_deployment_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
@@ -142,7 +142,7 @@ class TestDeploymentE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_model_info_from_deployment_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
@@ -163,7 +163,7 @@ class TestDeploymentE2E(ToolBaseE2E):
     )
     async def test_get_model_info_from_deployment_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_model_info_from_deployment_failure: ETETestExpectations,
         nonexistent_deployment_id: str,
         prompt_template: str,
@@ -174,7 +174,7 @@ class TestDeploymentE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_model_info_from_deployment_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
