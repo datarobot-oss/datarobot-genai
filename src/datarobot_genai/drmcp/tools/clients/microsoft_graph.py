@@ -16,6 +16,7 @@
 
 import logging
 from typing import Any
+from typing import Literal
 from urllib.parse import quote
 
 import httpx
@@ -540,6 +541,48 @@ class MicrosoftGraphClient:
             error_msg = "Rate limit exceeded. Please try again later."
 
         return MicrosoftGraphError(error_msg)
+
+    async def share_item(
+        self,
+        file_id: str,
+        document_library_id: str,
+        recipient_emails: list[str],
+        role: Literal["read", "write"],
+    ) -> None:
+        """
+        Share sharepoint / ondrive item using Microsoft Graph API.
+        Under the hood all resources in sharepoint/onedrive
+            in MS Graph API are treated as 'driveItem'.
+
+        Args:
+            file_id: The ID of the file or folder to share.
+            document_library_id: The ID of the document library containing the item.
+            recipient_emails: A list of email addresses to invite.
+            role: The role to assign.
+
+        Returns
+        -------
+            None
+
+        Raises
+        ------
+            MicrosoftGraphError: If sharing fails
+        """
+        graph_url = f"{GRAPH_API_BASE}/drives/{document_library_id}/items/{file_id}/invite"
+
+        payload = {
+            "recipients": [{"email": email} for email in recipient_emails],
+            "requireSignIn": True,
+            "sendInvitation": False,
+            "roles": [role],
+        }
+
+        response = await self._client.post(url=graph_url, json=payload)
+
+        if response.status_code not in (200, 201):
+            raise MicrosoftGraphError(
+                f"Microsoft Graph API error {response.status_code}: {response.text}"
+            )
 
     async def __aenter__(self) -> "MicrosoftGraphClient":
         """Async context manager entry."""
