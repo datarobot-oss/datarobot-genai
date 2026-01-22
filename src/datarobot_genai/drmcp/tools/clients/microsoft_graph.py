@@ -16,6 +16,7 @@
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
@@ -414,6 +415,131 @@ class MicrosoftGraphClient:
             return resource
 
         return base_resource
+
+    async def get_personal_drive_id(self) -> str:
+        """Get the current user's personal OneDrive drive ID.
+
+        Returns
+        -------
+            The drive ID string for the user's personal OneDrive.
+
+        Raises
+        ------
+            MicrosoftGraphError: If the drive cannot be retrieved.
+        """
+        try:
+            response = await self._client.get(f"{GRAPH_API_BASE}/me/drive")
+            response.raise_for_status()
+            data = response.json()
+            return data["id"]
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            if status_code == 401:
+                raise MicrosoftGraphError(
+                    "Authentication failed. Access token may be expired or invalid."
+                ) from e
+            if status_code == 403:
+                raise MicrosoftGraphError(
+                    "Permission denied: cannot access personal OneDrive. "
+                    "Requires Files.Read or Files.ReadWrite permission."
+                ) from e
+            raise MicrosoftGraphError(f"Failed to get personal OneDrive: HTTP {status_code}") from e
+
+    async def create_file(
+        self,
+        drive_id: str,
+        file_name: str,
+        content: str,
+        parent_folder_id: str = "root",
+        conflict_behavior: str = "rename",
+    ) -> MicrosoftGraphItem:
+        """Create a text file in a drive (SharePoint document library or OneDrive).
+
+        Uses Microsoft Graph's simple upload endpoint for files < 4MB.
+        Files are created as text/plain content.
+
+        Args:
+            drive_id: The ID of the drive (document library) where the file will be created.
+            file_name: The name of the file to create (e.g., 'report.txt').
+            content: The text content to store in the file.
+            parent_folder_id: ID of the parent folder. Defaults to "root" (drive root folder).
+            conflict_behavior: How to handle name conflicts. Options:
+                - "rename" (default): Auto-renames to 'filename (1).txt', etc.
+                - "fail": Returns 409 Conflict error
+                - "replace": Overwrites existing file
+
+        Returns
+        -------
+            MicrosoftGraphItem representing the created file.
+
+        Raises
+        ------
+            MicrosoftGraphError: If file creation fails.
+        """
+        if not drive_id or not drive_id.strip():
+            raise MicrosoftGraphError("drive_id cannot be empty")
+        if not file_name or not file_name.strip():
+            raise MicrosoftGraphError("file_name cannot be empty")
+
+        # URL encode the filename for path-based addressing
+        encoded_name = quote(file_name, safe="")
+
+        # Simple upload endpoint for files < 4MB
+        # Reference: https://learn.microsoft.com/en-us/graph/api/driveitem-put-content
+        upload_url = (
+            f"{GRAPH_API_BASE}/drives/{drive_id}/items/{parent_folder_id}:/{encoded_name}:/content"
+        )
+
+        try:
+            response = await self._client.put(
+                upload_url,
+                content=content.encode("utf-8"),
+                headers={"Content-Type": "text/plain"},
+                params={"@microsoft.graph.conflictBehavior": conflict_behavior},
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise self._handle_create_file_error(e, drive_id, file_name, parent_folder_id) from e
+
+        return MicrosoftGraphItem.from_api_response(response.json())
+
+    def _handle_create_file_error(
+        self,
+        error: httpx.HTTPStatusError,
+        drive_id: str,
+        file_name: str,
+        parent_folder_id: str,
+    ) -> MicrosoftGraphError:
+        """Handle HTTP errors for file creation and return appropriate MicrosoftGraphError."""
+        status_code = error.response.status_code
+        error_msg = f"Failed to create file: HTTP {status_code}"
+
+        if status_code == 400:
+            try:
+                error_data = error.response.json()
+                api_message = error_data.get("error", {}).get("message", "Invalid request")
+                error_msg = f"Bad request creating file: {api_message}"
+            except Exception:
+                error_msg = "Bad request: invalid parameters for file creation."
+        elif status_code == 401:
+            error_msg = "Authentication failed. Access token may be expired or invalid."
+        elif status_code == 403:
+            error_msg = (
+                f"Permission denied: you don't have permission to create files in drive "
+                f"'{drive_id}'. Requires Files.ReadWrite.All permission."
+            )
+        elif status_code == 404:
+            error_msg = (
+                f"Parent folder '{parent_folder_id}' not found in drive '{drive_id}'."
+                if parent_folder_id != "root"
+                else f"Drive '{drive_id}' not found."
+            )
+        elif status_code == 409:
+            error_msg = f"File '{file_name}' already exists and conflict behavior is set to 'fail'."
+        elif status_code == 429:
+            error_msg = "Rate limit exceeded. Please try again later."
+
+        return MicrosoftGraphError(error_msg)
 
     async def __aenter__(self) -> "MicrosoftGraphClient":
         """Async context manager entry."""
