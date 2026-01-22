@@ -19,6 +19,7 @@ import logging
 from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Annotated
+from typing import Any
 
 import pandas as pd
 from fastmcp.exceptions import ToolError
@@ -56,6 +57,36 @@ class DatasetInsight:
     missing_data_summary: dict[str, float]
 
 
+def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFrame]:
+    """Fetch dataset and return it with its dataframe, with proper error handling.
+
+    Args:
+        client: DataRobot SDK client instance
+        dataset_id: The ID of the dataset to fetch
+
+    Returns
+    -------
+        Tuple of (dataset object, dataframe)
+
+    Raises
+    ------
+        ToolError: If dataset is not found (404) or other error occurs
+    """
+    try:
+        dataset = client.Dataset.get(dataset_id)
+        return dataset, dataset.get_as_dataframe()
+    except Exception as e:
+        error_str = str(e)
+        # Check if it's a 404 error (dataset not found)
+        if "404" in error_str or "Not Found" in error_str:
+            raise ToolError(
+                f"Dataset '{dataset_id}' not found. Please verify the dataset ID exists "
+                "and you have access to it."
+            )
+        # For other errors, provide context
+        raise ToolError(f"Failed to retrieve dataset '{dataset_id}': {error_str}")
+
+
 @dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
 async def analyze_dataset(
     *,
@@ -66,8 +97,7 @@ async def analyze_dataset(
         raise ToolError("Dataset ID must be provided")
 
     client = get_sdk_client()
-    dataset = client.Dataset.get(dataset_id)
-    df = dataset.get_as_dataframe()
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Analyze dataset structure
     numerical_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
@@ -119,12 +149,11 @@ async def suggest_use_cases(
         raise ToolError("Dataset ID must be provided")
 
     client = get_sdk_client()
-    dataset = client.Dataset.get(dataset_id)
-    df = dataset.get_as_dataframe()
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
-    insights_json = await analyze_dataset(dataset_id)
-    insights = json.loads(insights_json)
+    insights_result = await analyze_dataset(dataset_id=dataset_id)
+    insights = insights_result.structured_content
 
     suggestions = []
     for target_col in insights["potential_targets"]:
@@ -151,12 +180,11 @@ async def get_exploratory_insights(
         raise ToolError("Dataset ID must be provided")
 
     client = get_sdk_client()
-    dataset = client.Dataset.get(dataset_id)
-    df = dataset.get_as_dataframe()
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
-    insights_json = await analyze_dataset(dataset_id)
-    insights = json.loads(insights_json)
+    insights_result = await analyze_dataset(dataset_id=dataset_id)
+    insights = insights_result.structured_content
 
     eda_insights = {
         "dataset_summary": {
