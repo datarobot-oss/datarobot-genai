@@ -296,37 +296,15 @@ async def microsoft_create_file(
     """
     Create a new text file in SharePoint or OneDrive.
 
-    This tool supports two modes:
+    **Personal OneDrive:** Just provide file_name and content_text.
+    The file saves to your personal OneDrive root folder.
 
-    **1. Personal OneDrive (simplest):**
-       Just provide file_name and content_text. The file is saved to your
-       personal OneDrive root folder.
+    **SharePoint:** Provide document_library_id to save to a specific
+    SharePoint site. Get the ID from microsoft_graph_search_content
+    results ('documentLibraryId' field).
 
-       Example:
-           sharepoint_create_file(
-               file_name="notes.txt",
-               content_text="My notes here..."
-           )
-
-    **2. SharePoint Document Library:**
-       Provide document_library_id to save to a specific SharePoint site.
-       Get the ID from microsoft_graph_search_content results ('documentLibraryId' field).
-
-       Example:
-           sharepoint_create_file(
-               file_name="report.txt",
-               content_text="Report content...",
-               document_library_id="b!abc123...",
-               parent_folder_id="01ABC..."  # optional subfolder
-           )
-
-    **Conflict Resolution:**
-    If a file with the same name exists, it will be automatically renamed
-    (e.g., 'report (1).txt').
-
-    **Permissions Required:**
-    - Files.ReadWrite (for OneDrive)
-    - Files.ReadWrite.All or Sites.ReadWrite.All (for SharePoint)
+    **Conflict Resolution:** If a file with the same name exists,
+    it will be automatically renamed (e.g., 'report (1).txt').
     """
     if not file_name or not file_name.strip():
         raise ToolError("Error: file_name is required.")
@@ -339,29 +317,22 @@ async def microsoft_create_file(
 
     folder_id = parent_folder_id if parent_folder_id else "root"
 
-    try:
-        async with MicrosoftGraphClient(access_token=access_token) as client:
-            # Auto-fetch personal OneDrive if no library specified
-            if document_library_id is None:
-                drive_id = await client.get_personal_drive_id()
-                is_personal_onedrive = True
-            else:
-                drive_id = document_library_id
-                is_personal_onedrive = False
+    async with MicrosoftGraphClient(access_token=access_token) as client:
+        # Auto-fetch personal OneDrive if no library specified
+        if document_library_id is None:
+            drive_id = await client.get_personal_drive_id()
+            is_personal_onedrive = True
+        else:
+            drive_id = document_library_id
+            is_personal_onedrive = False
 
-            created_file = await client.create_file(
-                drive_id=drive_id,
-                file_name=file_name.strip(),
-                content=content_text,
-                parent_folder_id=folder_id,
-                conflict_behavior="rename",
-            )
-    except MicrosoftGraphError as e:
-        logger.error(f"Microsoft Graph error creating file: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error creating file: {e}", exc_info=True)
-        raise ToolError(f"An unexpected error occurred while creating file: {str(e)}")
+        created_file = await client.create_file(
+            drive_id=drive_id,
+            file_name=file_name.strip(),
+            content=content_text,
+            parent_folder_id=folder_id,
+            conflict_behavior="rename",
+        )
 
     return ToolResult(
         content=f"File '{created_file.name}' created successfully.",
