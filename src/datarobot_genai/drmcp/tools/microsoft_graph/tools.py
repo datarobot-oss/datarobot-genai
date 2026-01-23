@@ -23,7 +23,6 @@ from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url
 
@@ -143,25 +142,16 @@ async def microsoft_graph_search_content(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with MicrosoftGraphClient(access_token=access_token, site_url=site_url) as client:
-            items = await client.search_content(
-                search_query=search_query,
-                site_id=site_id,
-                from_offset=from_offset,
-                size=size,
-                entity_types=entity_types,
-                filters=filters,
-                include_hidden_content=include_hidden_content,
-                region=region,
-            )
-    except MicrosoftGraphError as e:
-        logger.error(f"Microsoft Graph error searching content: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error searching Microsoft Graph content: {e}", exc_info=True)
-        raise ToolError(
-            f"An unexpected error occurred while searching Microsoft Graph content: {str(e)}"
+    async with MicrosoftGraphClient(access_token=access_token, site_url=site_url) as client:
+        items = await client.search_content(
+            search_query=search_query,
+            site_id=site_id,
+            from_offset=from_offset,
+            size=size,
+            entity_types=entity_types,
+            filters=filters,
+            include_hidden_content=include_hidden_content,
+            region=region,
         )
 
     results = []
@@ -235,21 +225,14 @@ async def microsoft_graph_share_item(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with MicrosoftGraphClient(access_token=access_token) as client:
-            await client.share_item(
-                file_id=file_id,
-                document_library_id=document_library_id,
-                recipient_emails=recipient_emails,
-                role=role,
-                send_invitation=send_invitation,
-            )
-    except Exception as e:
-        logger.error(
-            f"Unexpected error while sharing item through Microsoft Graph: {e}",
-            exc_info=True,
+    async with MicrosoftGraphClient(access_token=access_token) as client:
+        await client.share_item(
+            file_id=file_id,
+            document_library_id=document_library_id,
+            recipient_emails=recipient_emails,
+            role=role,
+            send_invitation=send_invitation,
         )
-        raise ToolError(f"Unexpected error while sharing item through Microsoft Graph: {str(e)}")
 
     n = len(recipient_emails)
     return ToolResult(
