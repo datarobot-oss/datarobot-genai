@@ -55,26 +55,16 @@ async def confluence_get_page(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with ConfluenceClient(access_token) as client:
-            if page_id_or_title.isdigit():
-                page_response = await client.get_page_by_id(page_id_or_title)
-            else:
-                if not space_key:
-                    raise ToolError(
-                        "Argument validation error: "
-                        "'space_key' is required when identifying a page by title."
-                    )
-                page_response = await client.get_page_by_title(page_id_or_title, space_key)
-    except ConfluenceError as e:
-        logger.error(f"Confluence error getting page: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error getting Confluence page: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while getting Confluence page "
-            f"'{page_id_or_title}': {str(e)}"
-        )
+    async with ConfluenceClient(access_token) as client:
+        if page_id_or_title.isdigit():
+            page_response = await client.get_page_by_id(page_id_or_title)
+        else:
+            if not space_key:
+                raise ToolError(
+                    "Argument validation error: "
+                    "'space_key' is required when identifying a page by title."
+                )
+            page_response = await client.get_page_by_title(page_id_or_title, space_key)
 
     return ToolResult(
         content=f"Successfully retrieved page '{page_response.title}'.",
@@ -116,22 +106,12 @@ async def confluence_create_page(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with ConfluenceClient(access_token) as client:
-            page_response = await client.create_page(
-                space_key=space_key,
-                title=title,
-                body_content=body_content,
-                parent_id=parent_id,
-            )
-    except ConfluenceError as e:
-        logger.error(f"Confluence error creating page: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error creating Confluence page: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while creating Confluence page "
-            f"'{title}' in space '{space_key}': {str(e)}"
+    async with ConfluenceClient(access_token) as client:
+        page_response = await client.create_page(
+            space_key=space_key,
+            title=title,
+            body_content=body_content,
+            parent_id=parent_id,
         )
 
     return ToolResult(
@@ -164,19 +144,10 @@ async def confluence_add_comment(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with ConfluenceClient(access_token) as client:
-            comment_response = await client.add_comment(
-                page_id=page_id,
-                comment_body=comment_body,
-            )
-    except ConfluenceError as e:
-        logger.error(f"Confluence error adding comment: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error adding comment to Confluence page: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while adding comment to page '{page_id}': {str(e)}"
+    async with ConfluenceClient(access_token) as client:
+        comment_response = await client.add_comment(
+            page_id=page_id,
+            comment_body=comment_body,
         )
 
     return ToolResult(
@@ -220,32 +191,24 @@ async def confluence_search(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with ConfluenceClient(access_token) as client:
-            results = await client.search_confluence_content(
-                cql_query=cql_query, max_results=max_results
-            )
+    async with ConfluenceClient(access_token) as client:
+        results = await client.search_confluence_content(
+            cql_query=cql_query, max_results=max_results
+        )
 
-            # If include_body is True, fetch full content for each page
-            if include_body and results:
-                data = []
-                for result in results:
-                    flat = result.as_flat_dict()
-                    try:
-                        page = await client.get_page_by_id(result.id)
-                        flat["body"] = page.body
-                    except ConfluenceError:
-                        flat["body"] = None  # Keep excerpt if page fetch fails
-                    data.append(flat)
-            else:
-                data = [result.as_flat_dict() for result in results]
-
-    except ConfluenceError as e:
-        logger.error(f"Confluence error searching content: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error searching Confluence content: {e}")
-        raise ToolError(f"An unexpected error occurred while searching Confluence: {str(e)}")
+        # If include_body is True, fetch full content for each page
+        if include_body and results:
+            data = []
+            for result in results:
+                flat = result.as_flat_dict()
+                try:
+                    page = await client.get_page_by_id(result.id)
+                    flat["body"] = page.body
+                except ConfluenceError:
+                    flat["body"] = None  # Keep excerpt if page fetch fails
+                data.append(flat)
+        else:
+            data = [result.as_flat_dict() for result in results]
 
     n = len(results)
     return ToolResult(
@@ -296,20 +259,11 @@ async def confluence_update_page(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with ConfluenceClient(access_token) as client:
-            page_response = await client.update_page(
-                page_id=page_id,
-                new_body_content=new_body_content,
-                version_number=version_number,
-            )
-    except ConfluenceError as e:
-        logger.error(f"Confluence error updating page: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error updating Confluence page: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while updating Confluence page '{page_id}': {str(e)}"
+    async with ConfluenceClient(access_token) as client:
+        page_response = await client.update_page(
+            page_id=page_id,
+            new_body_content=new_body_content,
+            version_number=version_number,
         )
 
     return ToolResult(

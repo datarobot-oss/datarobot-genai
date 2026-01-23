@@ -28,7 +28,6 @@ from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
 from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS
 from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS_STR
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveClient
-from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveError
 from datarobot_genai.drmcp.tools.clients.gdrive import get_gdrive_access_token
 
 logger = logging.getLogger(__name__)
@@ -79,22 +78,15 @@ async def gdrive_find_contents(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with GoogleDriveClient(access_token) as client:
-            data = await client.list_files(
-                page_size=page_size,
-                page_token=page_token,
-                query=query,
-                limit=limit,
-                folder_id=folder_id,
-                recursive=recursive,
-            )
-    except GoogleDriveError as e:
-        logger.error(f"Google Drive error listing files: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error listing Google Drive files: {e}")
-        raise ToolError(f"An unexpected error occurred while listing Google Drive files: {str(e)}")
+    async with GoogleDriveClient(access_token) as client:
+        data = await client.list_files(
+            page_size=page_size,
+            page_token=page_token,
+            query=query,
+            limit=limit,
+            folder_id=folder_id,
+            recursive=recursive,
+        )
 
     filtered_fields = set(fields).intersection(SUPPORTED_FIELDS) if fields else SUPPORTED_FIELDS
     number_of_files = len(data.files)
@@ -155,17 +147,8 @@ async def gdrive_read_content(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with GoogleDriveClient(access_token) as client:
-            file_content = await client.read_file_content(file_id, target_format)
-    except GoogleDriveError as e:
-        logger.error(f"Google Drive error reading file content: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error reading Google Drive file content: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while reading Google Drive file content: {str(e)}"
-        )
+    async with GoogleDriveClient(access_token) as client:
+        file_content = await client.read_file_content(file_id, target_format)
 
     export_info = ""
     if file_content.was_exported:
@@ -239,20 +222,13 @@ async def gdrive_create_file(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with GoogleDriveClient(access_token) as client:
-            created_file = await client.create_file(
-                name=name,
-                mime_type=mime_type,
-                parent_id=parent_id,
-                initial_content=initial_content,
-            )
-    except GoogleDriveError as e:
-        logger.error(f"Google Drive error creating file: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error creating Google Drive file: {e}")
-        raise ToolError(f"An unexpected error occurred while creating Google Drive file: {str(e)}")
+    async with GoogleDriveClient(access_token) as client:
+        created_file = await client.create_file(
+            name=name,
+            mime_type=mime_type,
+            parent_id=parent_id,
+            initial_content=initial_content,
+        )
 
     file_type = "folder" if mime_type == GOOGLE_DRIVE_FOLDER_MIME else "file"
     content_info = ""
@@ -313,21 +289,12 @@ async def gdrive_update_metadata(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with GoogleDriveClient(access_token) as client:
-            updated_file = await client.update_file_metadata(
-                file_id=file_id,
-                new_name=new_name,
-                starred=starred,
-                trashed=trash,
-            )
-    except GoogleDriveError as e:
-        logger.error(f"Google Drive error updating file metadata: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error updating Google Drive file metadata: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while updating Google Drive file metadata: {str(e)}"
+    async with GoogleDriveClient(access_token) as client:
+        updated_file = await client.update_file_metadata(
+            file_id=file_id,
+            new_name=new_name,
+            starred=starred,
+            trashed=trash,
         )
 
     changes: list[str] = []
@@ -408,23 +375,14 @@ async def gdrive_manage_access(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with GoogleDriveClient(access_token) as client:
-            permission_id = await client.manage_access(
-                file_id=file_id,
-                action=action,
-                role=role,
-                email_address=email_address,
-                permission_id=permission_id,
-                transfer_ownership=transfer_ownership,
-            )
-    except GoogleDriveError as e:
-        logger.error(f"Google Drive permission operation failed: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error changing permissions for Google Drive file {file_id}: {e}")
-        raise ToolError(
-            f"Unexpected error changing permissions for Google Drive file {file_id}: {str(e)}"
+    async with GoogleDriveClient(access_token) as client:
+        permission_id = await client.manage_access(
+            file_id=file_id,
+            action=action,
+            role=role,
+            email_address=email_address,
+            permission_id=permission_id,
+            transfer_ownership=transfer_ownership,
         )
 
     # Build response
