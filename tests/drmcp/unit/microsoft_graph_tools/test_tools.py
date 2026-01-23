@@ -21,6 +21,7 @@ from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphItem
+from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_create_file
 from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_graph_search_content
 
 
@@ -258,3 +259,115 @@ class TestMicrosoftGraphSearchContent:
 
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["region"] == "NAM"
+
+
+class TestMicrosoftCreateFile:
+    """Test microsoft_create_file tool."""
+
+    @pytest.fixture
+    def mock_created_file(self) -> MicrosoftGraphItem:
+        """Mock created file."""
+        return MicrosoftGraphItem(
+            id="new_file_123",
+            name="report.txt",
+            web_url="https://example.sharepoint.com/sites/test/Shared%20Documents/report.txt",
+            size=25,
+            created_datetime="2025-01-14T12:00:00Z",
+            last_modified_datetime="2025-01-14T12:00:00Z",
+            is_folder=False,
+            mime_type="text/plain",
+            drive_id="drive123",
+            parent_folder_id="root",
+        )
+
+    @pytest.fixture
+    def mock_client_create_success(
+        self, mock_created_file: MicrosoftGraphItem
+    ) -> Iterator[AsyncMock]:
+        """Mock successful client file creation with OneDrive support."""
+        with patch(
+            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.create_file = AsyncMock(return_value=mock_created_file)
+            mock_client.get_personal_drive_id = AsyncMock(return_value="personal_drive_123")
+            mock_client_class.return_value = mock_client
+            yield mock_client
+
+    @pytest.mark.asyncio
+    async def test_create_file_sharepoint(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+        mock_client_create_success: AsyncMock,
+    ) -> None:
+        """Test file creation in SharePoint with explicit document_library_id."""
+        result = await microsoft_create_file(
+            file_name="report.txt",
+            content_text="Content",
+            document_library_id="drive123",
+        )
+
+        assert "created successfully" in result.content[0].text
+        assert result.structured_content["destination"] == "sharepoint"
+        assert result.structured_content["driveId"] == "drive123"
+
+        call_kwargs = mock_client_create_success.create_file.call_args[1]
+        assert call_kwargs["drive_id"] == "drive123"
+
+    @pytest.mark.asyncio
+    async def test_create_file_onedrive_auto(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+        mock_client_create_success: AsyncMock,
+    ) -> None:
+        """Test file creation in personal OneDrive when no library specified."""
+        result = await microsoft_create_file(
+            file_name="notes.txt",
+            content_text="My notes",
+        )
+
+        assert "created successfully" in result.content[0].text
+        assert result.structured_content["destination"] == "onedrive"
+        assert result.structured_content["driveId"] == "personal_drive_123"
+
+        mock_client_create_success.get_personal_drive_id.assert_called_once()
+        call_kwargs = mock_client_create_success.create_file.call_args[1]
+        assert call_kwargs["drive_id"] == "personal_drive_123"
+
+    @pytest.mark.asyncio
+    async def test_create_file_validation_errors(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+    ) -> None:
+        """Test validation errors for missing required fields."""
+        with pytest.raises(ToolError, match="file_name is required"):
+            await microsoft_create_file(file_name="", content_text="Content")
+
+        with pytest.raises(ToolError, match="content_text is required"):
+            await microsoft_create_file(file_name="test.txt", content_text="")
+
+    @pytest.mark.asyncio
+    async def test_create_file_client_error(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+    ) -> None:
+        """Test error handling for client exceptions."""
+        with patch(
+            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.create_file = AsyncMock(
+                side_effect=MicrosoftGraphError("Permission denied")
+            )
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(ToolError, match="[Pp]ermission denied"):
+                await microsoft_create_file(
+                    file_name="report.txt",
+                    content_text="Content",
+                    document_library_id="drive123",
+                )
