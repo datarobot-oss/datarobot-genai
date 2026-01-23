@@ -16,13 +16,13 @@
 
 import logging
 from typing import Annotated
+from typing import Literal
 
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url
 
@@ -142,25 +142,16 @@ async def microsoft_graph_search_content(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with MicrosoftGraphClient(access_token=access_token, site_url=site_url) as client:
-            items = await client.search_content(
-                search_query=search_query,
-                site_id=site_id,
-                from_offset=from_offset,
-                size=size,
-                entity_types=entity_types,
-                filters=filters,
-                include_hidden_content=include_hidden_content,
-                region=region,
-            )
-    except MicrosoftGraphError as e:
-        logger.error(f"Microsoft Graph error searching content: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error searching Microsoft Graph content: {e}", exc_info=True)
-        raise ToolError(
-            f"An unexpected error occurred while searching Microsoft Graph content: {str(e)}"
+    async with MicrosoftGraphClient(access_token=access_token, site_url=site_url) as client:
+        items = await client.search_content(
+            search_query=search_query,
+            site_id=site_id,
+            from_offset=from_offset,
+            size=size,
+            entity_types=entity_types,
+            filters=filters,
+            include_hidden_content=include_hidden_content,
+            region=region,
         )
 
     results = []
@@ -194,6 +185,68 @@ async def microsoft_graph_search_content(
             "size": size,
             "results": results,
             "count": n,
+        },
+    )
+
+
+@dr_mcp_tool(tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False)
+async def microsoft_graph_share_item(
+    *,
+    file_id: Annotated[str, "The ID of the file or folder to share."],
+    document_library_id: Annotated[str, "The ID of the document library containing the item."],
+    recipient_emails: Annotated[list[str], "A list of email addresses to invite."],
+    role: Annotated[Literal["read", "write"], "The role to assign: 'read' or 'write'."] = "read",
+    send_invitation: Annotated[
+        bool, "Flag determining if recipients should be notified. Default False"
+    ] = False,
+) -> ToolResult | ToolError:
+    """
+    Share a SharePoint or Onedrive file or folder with one or more users.
+    It works with internal users or existing guest users in the
+    tenant. It does NOT create new guest accounts and does NOT use the tenant-level
+    /invitations endpoint.
+
+    Microsoft Graph API is treating OneDrive and SharePoint resources as driveItem.
+
+    API Reference:
+    - DriveItem Resource Type: https://learn.microsoft.com/en-us/graph/api/resources/driveitem
+    - API Documentation: https://learn.microsoft.com/en-us/graph/api/driveitem-invite
+    """
+    if not file_id or not file_id.strip():
+        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+
+    if not document_library_id or not document_library_id.strip():
+        raise ToolError("Argument validation error: 'document_library_id' cannot be empty.")
+
+    if not recipient_emails:
+        raise ToolError("Argument validation error: you must provide at least one 'recipient'.")
+
+    access_token = await get_microsoft_graph_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    async with MicrosoftGraphClient(access_token=access_token) as client:
+        await client.share_item(
+            file_id=file_id,
+            document_library_id=document_library_id,
+            recipient_emails=recipient_emails,
+            role=role,
+            send_invitation=send_invitation,
+        )
+
+    n = len(recipient_emails)
+    return ToolResult(
+        content=(
+            f"Successfully shared file {file_id} "
+            f"from document library {document_library_id} "
+            f"with {n} recipients with '{role}' role."
+        ),
+        structured_content={
+            "fileId": file_id,
+            "documentLibraryId": document_library_id,
+            "recipientEmails": recipient_emails,
+            "n": n,
+            "role": role,
         },
     )
 

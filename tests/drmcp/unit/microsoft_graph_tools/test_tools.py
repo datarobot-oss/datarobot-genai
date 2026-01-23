@@ -23,6 +23,7 @@ from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphEr
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphItem
 from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_create_file
 from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_graph_search_content
+from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_graph_share_item
 
 
 @pytest.fixture
@@ -74,6 +75,13 @@ def mock_client_search_success(mock_graph_items: list[MicrosoftGraphItem]) -> It
         mock_client.search_content = AsyncMock(return_value=mock_graph_items)
         mock_client_class.return_value = mock_client
         yield mock_client
+
+
+@pytest.fixture
+def mock_client_share_item_success() -> Iterator[None]:
+    """Mock successful client share item method."""
+    with patch("datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient.share_item"):
+        yield
 
 
 class TestMicrosoftGraphSearchContent:
@@ -259,6 +267,134 @@ class TestMicrosoftGraphSearchContent:
 
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["region"] == "NAM"
+
+
+class TestMicrosoftGraphShareItem:
+    """Test microsoft_graph_share_item tool."""
+
+    @pytest.mark.asyncio
+    async def test_share_item_success(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+        mock_client_share_item_success: AsyncMock,
+    ) -> None:
+        """Test successful share item."""
+        result = await microsoft_graph_share_item(
+            file_id="dummy_file_id",
+            document_library_id="dummy_document_library_id",
+            recipient_emails=["dummy@user.com", "dummy2@user.com"],
+            role="read",
+        )
+
+        assert result.content[0].text == (
+            "Successfully shared file dummy_file_id "
+            "from document library dummy_document_library_id "
+            "with 2 recipients with 'read' role."
+        )
+        assert result.structured_content["fileId"] == "dummy_file_id"
+        assert result.structured_content["documentLibraryId"] == "dummy_document_library_id"
+        assert result.structured_content["recipientEmails"] == ["dummy@user.com", "dummy2@user.com"]
+        assert result.structured_content["role"] == "read"
+        assert result.structured_content["n"] == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "function_kwargs,error_message",
+        [
+            (
+                {
+                    "file_id": "",
+                    "document_library_id": "dummy_document_library_id",
+                    "recipient_emails": ["dummy@user.com"],
+                    "role": "read",
+                },
+                "file_id.*cannot be empty",
+            ),
+            (
+                {
+                    "file_id": "dummy_file_id",
+                    "document_library_id": "",
+                    "recipient_emails": ["dummy@user.com"],
+                    "role": "read",
+                },
+                "document_library_id.*cannot be empty",
+            ),
+            (
+                {
+                    "file_id": "dummy_file_id",
+                    "document_library_id": "dummy_document_library_id",
+                    "recipient_emails": [],
+                    "role": "read",
+                },
+                "you must provide at least one 'recipient'",
+            ),
+        ],
+    )
+    async def test_share_item_input_validation(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+        function_kwargs: dict,
+        error_message: str,
+    ) -> None:
+        """Test share item -- input validation."""
+        with pytest.raises(ToolError, match=error_message):
+            await microsoft_graph_share_item(**function_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_share_item_oauth_error(self) -> None:
+        """Test share item when OAuth token retrieval fails."""
+        with patch(
+            "datarobot_genai.drmcp.tools.microsoft_graph.tools.get_microsoft_graph_access_token",
+            return_value=ToolError("OAuth error"),
+        ):
+            with pytest.raises(ToolError) as exc_info:
+                await microsoft_graph_share_item(
+                    file_id="dummy_file_id",
+                    document_library_id="dummy_document_library_id",
+                    recipient_emails=["dummy@user.com", "dummy2@user.com"],
+                    role="read",
+                )
+            assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_share_item_client_error(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+    ) -> None:
+        """Test share item when client raises error."""
+        with patch(
+            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient.share_item"
+        ) as mock_fn:
+            mock_fn.side_effect = MicrosoftGraphError("Client error")
+
+            with pytest.raises(ToolError) as exc_info:
+                await microsoft_graph_share_item(
+                    file_id="dummy_file_id",
+                    document_library_id="dummy_document_library_id",
+                    recipient_emails=["dummy@user.com", "dummy2@user.com"],
+                    role="read",
+                )
+            assert "client error" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_share_item_unexpected_error(
+        self,
+        get_microsoft_graph_access_token_mock: None,
+    ) -> None:
+        """Test share item when unexpected error occurs."""
+        with patch(
+            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient.share_item"
+        ) as mock_fn:
+            mock_fn.side_effect = Exception("Unexpected error")
+
+            with pytest.raises(ToolError) as exc_info:
+                await microsoft_graph_share_item(
+                    file_id="dummy_file_id",
+                    document_library_id="dummy_document_library_id",
+                    recipient_emails=["dummy@user.com", "dummy2@user.com"],
+                    role="read",
+                )
+            assert "unexpected error" in str(exc_info.value).lower()
 
 
 class TestMicrosoftCreateFile:
