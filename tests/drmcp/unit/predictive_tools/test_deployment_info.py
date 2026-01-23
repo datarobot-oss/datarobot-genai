@@ -21,6 +21,8 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 
 from datarobot_genai.drmcp.tools.predictive.deployment_info import generate_prediction_data_template
 from datarobot_genai.drmcp.tools.predictive.deployment_info import get_deployment_features
@@ -28,6 +30,15 @@ from datarobot_genai.drmcp.tools.predictive.deployment_info import get_deploymen
 from datarobot_genai.drmcp.tools.predictive.deployment_info import validate_prediction_data
 
 IMPORTANCE_THRESHOLD_TEST = 0.8
+
+
+def _extract_content(result_obj: ToolResult | ToolError) -> str:
+    """Extract text content from ToolResult."""
+    if isinstance(result_obj, ToolError):
+        raise result_obj
+    if result_obj.content and isinstance(result_obj.content[0], TextContent):
+        return result_obj.content[0].text
+    return str(result_obj.content)
 
 
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_sdk_client")
@@ -80,13 +91,20 @@ async def test_get_deployment_info_success(mock_get_sdk_client: Any) -> None:
     mock_client.Project.get.return_value = mock_project
 
     # Test
-    result = await get_deployment_info("dep123")
+    result = await get_deployment_info(deployment_id="dep123")
 
     # Handle potential error response
-    if result.startswith("Error"):
-        pytest.fail(f"get_deployment_features returned error: {result}")
+    if isinstance(result, ToolError):
+        pytest.fail(f"get_deployment_info returned error: {result}")
+    # Extract text content from ToolResult
+    if result.content and isinstance(result.content[0], TextContent):
+        result_content = result.content[0].text
+    else:
+        result_content = str(result.content)
+    if result_content.startswith("Error"):
+        pytest.fail(f"get_deployment_features returned error: {result_content}")
 
-    result_json = json.loads(result)
+    result_json = json.loads(result_content)
 
     # Assertions
     assert result_json["deployment_id"] == "dep123"
@@ -158,10 +176,11 @@ async def test_generate_prediction_data_template(
         },
         "total_features": 4,
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
 
     # Test
-    result = await generate_prediction_data_template("dep123", n_rows=3)
+    result_obj = await generate_prediction_data_template(deployment_id="dep123", n_rows=3)
+    result = _extract_content(result_obj)
 
     # Assertions
     assert "# Prediction Data Template" in result
@@ -237,10 +256,11 @@ async def test_validate_prediction_data_valid(
             "series_id_columns": [],
         },
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
 
     # Test
-    result = await validate_prediction_data("dep123", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="dep123", file_path=str(test_file))
+    result = _extract_content(result_obj)
     result_json = json.loads(result)
 
     # Assertions
@@ -267,26 +287,29 @@ async def test_validate_prediction_data_missing_important_feature(
         "target_type": "",
         "total_features": 2,
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     mock_get_sdk_client.return_value = MagicMock()
     # Only notimp present
     df = pd.DataFrame({"notimp": ["", ""]})
     test_file = tmp_path / "test3.csv"
     df.to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "Missing important feature: imp" in result
     assert "status" in result and "invalid" not in result
     # If present but all missing, info not warning
     df2 = pd.DataFrame({"imp": [None, None], "notimp": ["", ""]})
     test_file2 = tmp_path / "test4.csv"
     df2.to_csv(test_file2, index=False)
-    result2 = await validate_prediction_data("id", str(test_file2))
+    result_obj2 = await validate_prediction_data(deployment_id="id", file_path=str(test_file2))
+    result2 = _extract_content(result_obj2)
     assert "is entirely missing or empty (this is allowed)" in result2
     # If present and not all missing, type check applies
     df3 = pd.DataFrame({"imp": ["bad", "bad"], "notimp": ["", ""]})
     test_file3 = tmp_path / "test5.csv"
     df3.to_csv(test_file3, index=False)
-    result3 = await validate_prediction_data("id", str(test_file3))
+    result_obj3 = await validate_prediction_data(deployment_id="id", file_path=str(test_file3))
+    result3 = _extract_content(result_obj3)
     assert "should be numeric but is object" in result3
 
 
@@ -294,9 +317,10 @@ async def test_validate_prediction_data_missing_important_feature(
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_features")
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_error(mock_get_features: Any) -> None:
-    mock_get_features.return_value = "Error: something went wrong"
-    result = await generate_prediction_data_template("bad_id")
-    assert result.startswith("Error: ")
+    mock_get_features.return_value = ToolResult(content="Error: something went wrong")
+    with pytest.raises(ToolError) as exc_info:
+        await generate_prediction_data_template(deployment_id="bad_id")
+    assert "Error with feature information" in str(exc_info.value)
 
 
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_features")
@@ -304,16 +328,19 @@ async def test_generate_prediction_data_template_error(mock_get_features: Any) -
 async def test_generate_prediction_data_template_empty_features(
     mock_get_features: Any,
 ) -> None:
-    mock_get_features.return_value = json.dumps(
-        {
-            "features": [],
-            "model_type": "Test",
-            "target": "",
-            "target_type": "",
-            "total_features": 0,
-        }
+    mock_get_features.return_value = ToolResult(
+        content=json.dumps(
+            {
+                "features": [],
+                "model_type": "Test",
+                "target": "",
+                "target_type": "",
+                "total_features": 0,
+            }
+        )
     )
-    result = await generate_prediction_data_template("empty_id")
+    result_obj = await generate_prediction_data_template(deployment_id="empty_id")
+    result = _extract_content(result_obj)
     assert "# Total Features: 0" in result
 
 
@@ -329,8 +356,9 @@ async def test_generate_prediction_data_template_unknown_type(
         "target_type": "",
         "total_features": 1,
     }
-    mock_get_features.return_value = json.dumps(features_info)
-    result = await generate_prediction_data_template("id", n_rows=2)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
+    result_obj = await generate_prediction_data_template(deployment_id="id", n_rows=2)
+    result = _extract_content(result_obj)
     assert '""' in result
 
 
@@ -349,8 +377,9 @@ async def test_generate_prediction_data_template_none_min_max(
         "target_type": "",
         "total_features": 2,
     }
-    mock_get_features.return_value = json.dumps(features_info)
-    result = await generate_prediction_data_template("id")
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
+    result_obj = await generate_prediction_data_template(deployment_id="id")
+    result = _extract_content(result_obj)
     assert "num" in result and "dt" in result
 
 
@@ -372,8 +401,9 @@ async def test_generate_prediction_data_template_key_summary(
         "target_type": "",
         "total_features": 1,
     }
-    mock_get_features.return_value = json.dumps(features_info)
-    result = await generate_prediction_data_template("id")
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
+    result_obj = await generate_prediction_data_template(deployment_id="id")
+    result = _extract_content(result_obj)
     assert "cat" in result
 
 
@@ -395,20 +425,21 @@ async def test_generate_prediction_data_template_multiseries(
             "series_id_columns": ["series_id"],
         },
     }
-    mock_get_features.return_value = json.dumps(features_info)
-    result = await generate_prediction_data_template("id")
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
+    result_obj = await generate_prediction_data_template(deployment_id="id")
+    result = _extract_content(result_obj)
     assert "dt_col" in result and "series_id" in result
 
 
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_features")
 @pytest.mark.asyncio
 async def test_validate_prediction_data_error(mock_get_features: Any) -> None:
-    mock_get_features.return_value = "Error: bad deployment"
+    mock_get_features.return_value = ToolResult(content="Error: bad deployment")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         f.write("a,b\n1,2\n")
         f.flush()
         with pytest.raises(ToolError) as exc_info:
-            await validate_prediction_data("bad_id", f.name)
+            await validate_prediction_data(deployment_id="bad_id", file_path=f.name)
         assert "Error in validate_prediction_data: JSONDecodeError: Expecting value" in str(
             exc_info.value
         )
@@ -430,10 +461,11 @@ async def test_validate_prediction_data_missing_feature(
         ],
         "model_type": "Test",
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     test_file = tmp_path / "test.csv"
     pd.DataFrame({"bar": [1, 2]}).to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "Missing important feature" in result
 
 
@@ -453,10 +485,11 @@ async def test_validate_prediction_data_extra_columns(
         ],
         "model_type": "Test",
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     test_file = tmp_path / "test.csv"
     pd.DataFrame({"foo": [1, 2], "extra": [3, 4]}).to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "Extra columns found" in result
 
 
@@ -476,10 +509,11 @@ async def test_validate_prediction_data_type_mismatch(
         ],
         "model_type": "Test",
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     test_file = tmp_path / "test.csv"
     pd.DataFrame({"foo": ["a", "b"]}).to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "should be numeric" in result
 
 
@@ -505,10 +539,11 @@ async def test_validate_prediction_data_time_series_missing(
             "series_id_columns": ["series_id"],
         },
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     test_file = tmp_path / "test.csv"
     pd.DataFrame({"foo": [1, 2]}).to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "Missing required datetime column" in result
 
 
@@ -540,20 +575,22 @@ async def test_validate_prediction_data_time_series_parse_error(
             "series_id_columns": [],
         },
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     test_file = tmp_path / "test.csv"
     pd.DataFrame({"foo": [1, 2], "dt_col": ["bad", "bad"]}).to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "cannot be parsed as dates" in result
 
 
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_info")
 @pytest.mark.asyncio
 async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> None:
-    mock_info = json.dumps({})
+    mock_info = ToolResult(content=json.dumps({}))
     mock_get_info.return_value = mock_info
 
-    result = await get_deployment_features("id")
+    result_obj = await get_deployment_features(deployment_id="id")
+    result = _extract_content(result_obj)
     assert "features" in result and "total_features" in result
 
 
@@ -572,7 +609,8 @@ async def test_get_deployment_info_custom_model() -> None:
         "datarobot_genai.drmcp.tools.predictive.deployment_info.get_sdk_client"
     ) as mock_client:
         mock_client.return_value.Deployment.get.return_value = DummyDeployment()
-        result = await get_deployment_info("custom_id")
+        result_obj = await get_deployment_info(deployment_id="custom_id")
+        result = _extract_content(result_obj)
         info = json.loads(result)
         assert info["model_type"] == "custom"
         assert info["target"] == ""
@@ -596,8 +634,9 @@ async def test_generate_prediction_data_template_categorical_defaults(
         "target_type": "",
         "total_features": 3,
     }
-    mock_get_features.return_value = json.dumps(features_info)
-    result = await generate_prediction_data_template("id", n_rows=2)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
+    result_obj = await generate_prediction_data_template(deployment_id="id", n_rows=2)
+    result = _extract_content(result_obj)
     # All should be empty string columns
     assert ",," in result
 
@@ -609,16 +648,18 @@ async def test_generate_prediction_data_template_exception(
 ) -> None:
     mock_get_features.side_effect = Exception("fail")
     with pytest.raises(ToolError) as exc_info:
-        await generate_prediction_data_template("id")
+        await generate_prediction_data_template(deployment_id="id")
     assert "Error in generate_prediction_data_template: Exception: fail" == str(exc_info.value)
 
 
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_features")
 @pytest.mark.asyncio
 async def test_validate_prediction_data_file_error(mock_get_features: Any) -> None:
-    mock_get_features.return_value = json.dumps({"features": [], "model_type": "Test"})
+    mock_get_features.return_value = ToolResult(
+        content=json.dumps({"features": [], "model_type": "Test"})
+    )
     with pytest.raises(ToolError) as exc_info:
-        await validate_prediction_data("id", "/not/a/real/file.csv")
+        await validate_prediction_data(deployment_id="id", file_path="/not/a/real/file.csv")
     assert (
         "Error in validate_prediction_data: FileNotFoundError: [Errno 2] No such file or "
         "directory: '/not/a/real/file.csv'" == str(exc_info.value)
@@ -628,20 +669,19 @@ async def test_validate_prediction_data_file_error(mock_get_features: Any) -> No
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_info")
 @pytest.mark.asyncio
 async def test_get_deployment_features_error_string(mock_get_info: Any) -> None:
-    mock_get_info.return_value = "Error: not found"
-    result = await get_deployment_features("id")
-    info = json.loads(result)
-    assert info["features"] == []
-    assert info["total_features"] == 0
-    assert "error" in info
+    mock_get_info.return_value = ToolResult(content="Error: not found")
+    with pytest.raises(ToolError) as exc_info:
+        await get_deployment_features(deployment_id="id")
+    assert "Error with deployment info" in str(exc_info.value)
 
 
 @patch("datarobot_genai.drmcp.tools.predictive.deployment_info.get_deployment_info")
 @pytest.mark.asyncio
 async def test_get_deployment_features_optional_fields(mock_get_info: Any) -> None:
     base = {"features": [], "total_features": 0}
-    mock_get_info.return_value = json.dumps(base)
-    result = await get_deployment_features("id")
+    mock_get_info.return_value = ToolResult(content=json.dumps(base))
+    result_obj = await get_deployment_features(deployment_id="id")
+    result = _extract_content(result_obj)
     info = json.loads(result)
     assert "features" in info and "total_features" in info
     base.update(
@@ -657,8 +697,9 @@ async def test_get_deployment_features_optional_fields(mock_get_info: Any) -> No
             "target_type": "regression",
         }
     )
-    mock_get_info.return_value = json.dumps(base)
-    result = await get_deployment_features("id")
+    mock_get_info.return_value = ToolResult(content=json.dumps(base))
+    result_obj = await get_deployment_features(deployment_id="id")
+    result = _extract_content(result_obj)
     info = json.loads(result)
     assert info["model_type"] == "XGB"
     assert info["target"] == "y"
@@ -686,8 +727,9 @@ async def test_generate_prediction_data_template_frequent_values(
         "target_type": "",
         "total_features": 3,
     }
-    mock_get_features.return_value = json.dumps(features_info)
-    result = await generate_prediction_data_template("id", n_rows=2)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
+    result_obj = await generate_prediction_data_template(deployment_id="id", n_rows=2)
+    result = _extract_content(result_obj)
     # cat should use 'A', num and txt should be empty or null
     assert "A,," in result
 
@@ -709,19 +751,21 @@ async def test_validate_prediction_data_missing_values(
         "target_type": "",
         "total_features": 3,
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     mock_get_sdk_client.return_value = MagicMock()
     # All missing values (empty string)
     df = pd.DataFrame({"cat": ["", ""], "num": [None, None], "txt": ["", ""]})
     test_file = tmp_path / "test.csv"
     df.to_csv(test_file, index=False)
-    result = await validate_prediction_data("id", str(test_file))
+    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    result = _extract_content(result_obj)
     assert "is entirely missing or empty (this is allowed)" in result
     # One column present, one missing
     df2 = pd.DataFrame({"cat": ["A", "B"]})
     test_file2 = tmp_path / "test2.csv"
     df2.to_csv(test_file2, index=False)
-    result2 = await validate_prediction_data("id", str(test_file2))
+    result_obj2 = await validate_prediction_data(deployment_id="id", file_path=str(test_file2))
+    result2 = _extract_content(result_obj2)
     assert "Missing feature column: num" in result2
     assert "Missing feature column: txt" in result2
     # No errors or invalid status for missing values
@@ -744,14 +788,16 @@ async def test_validate_prediction_data_with_csv_string(
         "target_type": "",
         "total_features": 2,
     }
-    mock_get_features.return_value = json.dumps(features_info)
+    mock_get_features.return_value = ToolResult(content=json.dumps(features_info))
     mock_get_sdk_client.return_value = MagicMock()
     # CSV string with only 'cat' column
     csv_str = "cat\nA\nB\n"
-    result = await validate_prediction_data("id", csv_string=csv_str)
+    result_obj = await validate_prediction_data(deployment_id="id", csv_string=csv_str)
+    result = _extract_content(result_obj)
     assert "Missing feature column: num" in result
     assert "status" in result and "invalid" not in result
     # CSV string with both columns
     csv_str2 = "cat,num\nA,1\nB,2\n"
-    result2 = await validate_prediction_data("id", csv_string=csv_str2)
+    result_obj2 = await validate_prediction_data(deployment_id="id", csv_string=csv_str2)
+    result2 = _extract_content(result_obj2)
     assert "status" in result2 and "invalid" not in result2

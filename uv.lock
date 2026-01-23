@@ -1063,7 +1063,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.2.38"
+version = "0.2.39"
 source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },

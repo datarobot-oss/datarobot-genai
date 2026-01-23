@@ -19,9 +19,13 @@ import json
 import logging
 from datetime import datetime
 from datetime import timedelta
+from typing import Annotated
 from typing import Any
 
 import pandas as pd
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
@@ -29,40 +33,18 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"deployment", "info", "metadata"})
-async def get_deployment_info(deployment_id: str) -> str:
+@dr_mcp_tool(tags={"predictive", "deployment", "read", "info", "metadata"})
+async def get_deployment_info(
+    *,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+) -> ToolError | ToolResult:
     """
     Retrieve information about the deployment, including the list of
     features needed to make predictions on this deployment.
-
-    Args:
-        deployment_id: The ID of the DataRobot deployment
-
-    Returns
-    -------
-        JSON string containing model and feature information including:
-        For datarobot native models will return model information for custom models
-        this will likely just return features and total_features values.
-
-        - model_type: Type of model
-        - target: Name of the target feature
-        - target_type: Type of the target feature
-        - features: List of features with their importance and type
-        - total_features: Total number of features
-        - time_series_config: Time series configuration if applicable
-
-            for features:
-            - feature_name: Name of the feature
-            - ``name`` : str, feature name
-            - ``feature_type`` : str, feature type
-            - ``importance`` : float, numeric measure of the relationship strength between
-                the feature and target (independent of model or other features)
-            - ``date_format`` : str or None, the date format string for how this feature was
-                interpreted, null if not a date feature, compatible with
-                https://docs.python.org/2/library/time.html#time.strftime.
-            - ``known_in_advance`` : bool, whether the feature was selected as known in advance in
-                a time series model, false for non-time series models.
     """
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+
     client = get_sdk_client()
     deployment = client.Deployment.get(deployment_id)
 
@@ -112,40 +94,34 @@ async def get_deployment_info(deployment_id: str) -> str:
             "series_id_columns": partition.multiseries_id_columns or [],
         }
 
-    return json.dumps(result, indent=2)
+    return ToolResult(
+        content=json.dumps(result, indent=2),
+        structured_content=result,
+    )
 
 
-@dr_mcp_tool(tags={"deployment", "template", "data"})
-async def generate_prediction_data_template(deployment_id: str, n_rows: int = 1) -> str:
-    """
-    Generate a template CSV with the correct structure for making predictions.
+@dr_mcp_tool(tags={"predictive", "deployment", "read", "template", "data"})
+async def generate_prediction_data_template(
+    *,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+    n_rows: Annotated[int, "Number of template rows to generate"] = 1,
+) -> ToolError | ToolResult:
+    """Generate a template CSV with the correct structure for making predictions."""
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+    if n_rows is None or n_rows <= 0:
+        n_rows = 1
 
-    This creates a template with:
-    - All required feature columns in the correct order
-    - Sample values based on feature types
-    - Comments explaining each feature
-    - When using this tool, always consider feature importance. For features with high importance,
-      try to infer or ask for a reasonable value, using frequent values or domain knowledge if
-      available. For less important features, you may leave them blank.
-    - If frequent values are available for a feature, they will be used as sample values;
-      otherwise, blank fields will be used.
-      Please note that using frequent values in your predictions data can influence the prediction,
-      think of it as sending in the average value for the feature. If you don't want this effect on
-      your predictions leave the field blank you in predictions dataset.
-
-    Args:
-        deployment_id: The ID of the DataRobot deployment
-        n_rows: Number of template rows to generate (default 1)
-
-    Returns
-    -------
-        CSV template string with sample data ready for predictions
-    """
     # Get feature information
-    features_json = await get_deployment_features(deployment_id)
+    features_result = await get_deployment_features(deployment_id=deployment_id)
     # Add error handling for empty or error responses
+    # Extract text content from ToolResult
+    if features_result.content and isinstance(features_result.content[0], TextContent):
+        features_json = features_result.content[0].text
+    else:
+        features_json = str(features_result.content)
     if not features_json or features_json.strip().startswith("Error"):
-        return f"Error: {features_json}"
+        raise ToolError(f"Error with feature information: {features_json}")
     features_info = json.loads(features_json)
 
     # Create template data
@@ -218,49 +194,55 @@ async def generate_prediction_data_template(deployment_id: str, n_rows: int = 1)
     result += f"# Total Features: {features_info['total_features']}\n"
     result += df.to_csv(index=False)
 
-    return str(result)
+    # Build structured content with template data and metadata
+    structured_content = {
+        "deployment_id": deployment_id,
+        "model_type": features_info["model_type"],
+        "target": features_info["target"],
+        "target_type": features_info["target_type"],
+        "total_features": features_info["total_features"],
+        "template_data": df.to_dict("records"),  # Convert DataFrame to list of dicts
+    }
+
+    if "time_series_config" in features_info:
+        structured_content["time_series_config"] = features_info["time_series_config"]
+
+    return ToolResult(
+        content=str(result),
+        structured_content=structured_content,
+    )
 
 
-@dr_mcp_tool(tags={"deployment", "validation", "data"})
+@dr_mcp_tool(tags={"predictive", "deployment", "read", "validation", "data"})
 async def validate_prediction_data(
-    deployment_id: str,
-    file_path: str | None = None,
-    csv_string: str | None = None,
-) -> str:
-    """
-    Validate if a CSV file is suitable for making predictions with a deployment.
-
-    Checks:
-    - All required features are present
-    - Feature types match expectations
-    - Missing values (null, empty string, or blank fields) are allowed and will not cause errors
-    - No critical issues that would prevent predictions
-
-    Args:
-        deployment_id: The ID of the DataRobot deployment
-        file_path: Path to the CSV file to validate (optional if csv_string is provided)
-        csv_string: CSV data as a string (optional, used if file_path is not provided)
-
-    Returns
-    -------
-        Validation report including any errors, warnings, and suggestions
-    """
+    *,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+    file_path: Annotated[
+        str, "Path to the CSV file to validate (optional if csv_string is provided)"
+    ]
+    | None = None,
+    csv_string: Annotated[str, "CSV data as a string (optional, used if file_path is not provided)"]
+    | None = None,
+) -> ToolError | ToolResult:
+    """Validate if a CSV file is suitable for making predictions with a deployment."""
     # Load the data
     if csv_string is not None:
         df = pd.read_csv(io.StringIO(csv_string))
     elif file_path is not None:
         df = pd.read_csv(file_path)
     else:
-        return json.dumps(
-            {
-                "status": "error",
-                "error": "Must provide either file_path or csv_string.",
-            },
-            indent=2,
-        )
+        raise ToolError("Must provide either file_path or csv_string.")
+
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
 
     # Get deployment features
-    features_json = await get_deployment_features(deployment_id)
+    features_result = await get_deployment_features(deployment_id=deployment_id)
+    # Extract text content from ToolResult
+    if features_result.content and isinstance(features_result.content[0], TextContent):
+        features_json = features_result.content[0].text
+    else:
+        features_json = str(features_result.content)
     features_info = json.loads(features_json)
 
     validation_report: dict[str, Any] = {
@@ -359,22 +341,29 @@ async def validate_prediction_data(
         "model_type": features_info["model_type"],
     }
 
-    return json.dumps(validation_report, indent=2)
+    return ToolResult(
+        content=json.dumps(validation_report, indent=2),
+        structured_content=validation_report,
+    )
 
 
-@dr_mcp_tool(tags={"deployment", "features", "info"})
-async def get_deployment_features(deployment_id: str) -> str:
-    """
-    Retrieve only the features list for a deployment, as JSON string.
-    Args:
-        deployment_id: The ID of the DataRobot deployment
-    Returns:
-        JSON string containing only the features list and time series config if present.
-    """
-    info_json = await get_deployment_info(deployment_id)
+@dr_mcp_tool(tags={"predictive", "deployment", "read", "features", "info"})
+async def get_deployment_features(
+    *,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+) -> ToolError | ToolResult:
+    """Retrieve only the features list for a deployment, as JSON string."""
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+
+    info_result = await get_deployment_info(deployment_id=deployment_id)
+    # Extract text content from ToolResult
+    if info_result.content and isinstance(info_result.content[0], TextContent):
+        info_json = info_result.content[0].text
+    else:
+        info_json = str(info_result.content)
     if not info_json.strip().startswith("{"):
-        # Return a default error JSON
-        return json.dumps({"features": [], "total_features": 0, "error": info_json}, indent=2)
+        raise ToolError(f"Error with deployment info: {info_json}")
     info = json.loads(info_json)
     # Only keep features, time_series_config, and total_features
     result = {
@@ -389,4 +378,8 @@ async def get_deployment_features(deployment_id: str) -> str:
         result["target"] = info["target"]
     if "target_type" in info:
         result["target_type"] = info["target_type"]
-    return json.dumps(result, indent=2)
+
+    return ToolResult(
+        content=json.dumps(result, indent=2),
+        structured_content=result,
+    )
