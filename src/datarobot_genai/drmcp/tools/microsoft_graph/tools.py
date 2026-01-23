@@ -16,6 +16,7 @@
 
 import logging
 from typing import Annotated
+from typing import Any
 from typing import Literal
 
 from fastmcp.exceptions import ToolError
@@ -23,6 +24,7 @@ from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
+from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url
 
@@ -261,7 +263,8 @@ async def microsoft_graph_share_item(
         "create",
         "file",
         "write",
-    }
+    },
+    enabled=False,
 )
 async def microsoft_create_file(
     *,
@@ -327,4 +330,146 @@ async def microsoft_create_file(
             "webUrl": created_file.web_url,
             "parentFolderId": created_file.parent_folder_id,
         },
+    )
+
+
+@dr_mcp_tool(
+    tags={
+        "microsoft",
+        "graph api",
+        "sharepoint",
+        "onedrive",
+        "metadata",
+        "update",
+        "fields",
+        "compliance",
+    },
+    enabled=False,
+)
+async def microsoft_update_metadata(
+    *,
+    item_id: Annotated[str, "The ID of the file or list item to update."],
+    fields_to_update: Annotated[
+        dict[str, Any],
+        "Key-value pairs of metadata fields to modify. "
+        "For SharePoint list items: any custom column values. "
+        "For drive items: 'name' and/or 'description'.",
+    ],
+    site_id: Annotated[
+        str | None,
+        "The site ID (required for SharePoint list items, along with list_id).",
+    ] = None,
+    list_id: Annotated[
+        str | None,
+        "The list ID (required for SharePoint list items, along with site_id).",
+    ] = None,
+    document_library_id: Annotated[
+        str | None,
+        "The drive ID (required for OneDrive/drive item updates). "
+        "Cannot be used together with site_id and list_id.",
+    ] = None,
+) -> ToolResult | ToolError:
+    """
+    Update metadata on a SharePoint list item or OneDrive/SharePoint drive item.
+
+    **SharePoint List Items:** Provide site_id and list_id to update custom
+    column values on a list item. All custom columns can be updated.
+
+    **OneDrive/Drive Items:** Provide document_library_id to update drive item
+    properties. Only 'name' and 'description' fields can be updated.
+
+    **Context Requirements:**
+    - For SharePoint list items: Both site_id AND list_id are required
+    - For OneDrive/drive items: document_library_id is required
+    - Cannot specify both contexts simultaneously
+
+    **Examples:**
+    - SharePoint list item: Update a 'Status' column to 'Approved'
+    - Drive item: Rename a file or update its description
+
+    **Permissions:**
+    - Requires Sites.ReadWrite.All or Files.ReadWrite.All permission
+    """
+    if not item_id or not item_id.strip():
+        raise ToolError("Error: item_id is required.")
+    if not fields_to_update:
+        raise ToolError("Error: fields_to_update is required and cannot be empty.")
+
+    # Validate context parameters
+    has_sharepoint_context = site_id is not None and list_id is not None
+    has_partial_sharepoint_context = (site_id is not None) != (list_id is not None)
+    has_drive_context = document_library_id is not None
+
+    if has_partial_sharepoint_context:
+        raise ToolError(
+            "Error: For SharePoint list items, both site_id and list_id must be provided."
+        )
+
+    if has_sharepoint_context and has_drive_context:
+        raise ToolError(
+            "Error: Cannot specify both SharePoint (site_id + list_id) and OneDrive "
+            "(document_library_id) context. Choose one."
+        )
+
+    if not has_sharepoint_context and not has_drive_context:
+        raise ToolError(
+            "Error: Must specify either SharePoint context (site_id + list_id) or "
+            "OneDrive context (document_library_id)."
+        )
+
+    access_token = await get_microsoft_graph_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    try:
+        async with MicrosoftGraphClient(access_token=access_token) as client:
+            result = await client.update_item_metadata(
+                item_id=item_id.strip(),
+                fields_to_update=fields_to_update,
+                site_id=site_id,
+                list_id=list_id,
+                drive_id=document_library_id,
+            )
+    except MicrosoftGraphError as e:
+        logger.error(f"Microsoft Graph error updating metadata: {e}")
+        raise ToolError(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error updating metadata: {e}", exc_info=True)
+        raise ToolError(f"An unexpected error occurred while updating metadata: {str(e)}")
+
+    context_type = "sharepoint_list_item" if has_sharepoint_context else "drive_item"
+
+    # Build structured content similar to microsoft_create_file pattern
+    structured: dict[str, Any] = {
+        "item_id": item_id,
+        "context_type": context_type,
+        "fields_updated": list(fields_to_update.keys()),
+    }
+
+    # Add context-specific IDs for traceability
+    if has_sharepoint_context:
+        structured["site_id"] = site_id
+        structured["list_id"] = list_id
+    else:
+        structured["document_library_id"] = document_library_id
+
+    # Include relevant response data
+    if isinstance(result, dict):
+        # For drive items, include key properties if present
+        if has_drive_context:
+            if "id" in result:
+                structured["id"] = result["id"]
+            if "name" in result:
+                structured["name"] = result["name"]
+            if "webUrl" in result:
+                structured["webUrl"] = result["webUrl"]
+            if "description" in result:
+                structured["description"] = result.get("description")
+        # For list items, the response is the fields object itself
+        else:
+            structured["updated_fields"] = result
+
+    return ToolResult(
+        content=f"Metadata updated successfully for item '{item_id}'.",
+        structured_content=structured,
     )

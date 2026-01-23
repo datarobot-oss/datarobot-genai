@@ -174,3 +174,52 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
                 session,
                 test_name,
             )
+
+    @pytest.mark.skip(reason="Modifies real data in SharePoint/OneDrive - run manually")
+    async def test_microsoft_update_metadata_success(
+        self,
+        openai_llm_client: Any,
+    ) -> None:
+        """Test updating metadata on a SharePoint list item or drive item.
+
+        Note: This test modifies real data. It requires a valid item ID and
+        appropriate context (site_id + list_id for SharePoint, or document_library_id
+        for OneDrive). Run manually with proper test data.
+        """
+        # Example for drive item - update these values for your test environment
+        test_item_id = "YOUR_ITEM_ID"
+        test_drive_id = "YOUR_DRIVE_ID"
+        new_description = f"Updated by MCP E2E test - {uuid.uuid4().hex[:8]}"
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="microsoft_update_metadata",
+                    parameters={
+                        "item_id": test_item_id,
+                        "fields_to_update": {"description": new_description},
+                        "document_library_id": test_drive_id,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=[
+                "updated",
+            ],
+        )
+
+        prompt = (
+            f"Update the metadata of the item with ID `{test_item_id}` "
+            f"in drive `{test_drive_id}`. Set the description to `{new_description}`."
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_microsoft_update_metadata_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                openai_llm_client,
+                session,
+                test_name,
+            )

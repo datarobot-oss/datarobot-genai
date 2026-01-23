@@ -438,3 +438,207 @@ class TestMicrosoftGraphClientCreateFile:
                             conflict_behavior="fail" if status_code == 409 else "rename",
                         )
                     assert expected_msg in str(exc_info.value).lower()
+
+
+class TestMicrosoftGraphClientUpdateMetadata:
+    """Test MicrosoftGraphClient.update_item_metadata method."""
+
+    @pytest.fixture
+    def mock_access_token(self) -> str:
+        """Mock access token."""
+        return "test_access_token_123"
+
+    @pytest.fixture
+    def mock_list_item_fields_response(self) -> dict:
+        """Mock response for updated SharePoint list item fields."""
+        return {
+            "@odata.etag": '"abc123"',
+            "Title": "Updated Title",
+            "Status": "Approved",
+            "Priority": "High",
+        }
+
+    @pytest.fixture
+    def mock_drive_item_response(self) -> dict:
+        """Mock response for updated drive item."""
+        return {
+            "id": "item123",
+            "name": "renamed-document.docx",
+            "description": "Updated description",
+            "webUrl": "https://example.sharepoint.com/renamed-document.docx",
+            "size": 2048,
+            "createdDateTime": "2025-01-01T00:00:00Z",
+            "lastModifiedDateTime": "2025-01-15T12:00:00Z",
+        }
+
+    @pytest.mark.asyncio
+    async def test_update_list_item_metadata_success(
+        self, mock_access_token: str, mock_list_item_fields_response: dict
+    ) -> None:
+        """Test successful SharePoint list item metadata update."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with mock.patch.object(
+                client._client,
+                "patch",
+                return_value=make_response(200, json_data=mock_list_item_fields_response),
+            ) as mock_patch:
+                result = await client.update_item_metadata(
+                    item_id="item123",
+                    fields_to_update={"Status": "Approved", "Priority": "High"},
+                    site_id="site456",
+                    list_id="list789",
+                )
+
+                assert result == mock_list_item_fields_response
+                call_args = mock_patch.call_args
+                # Verify correct endpoint
+                assert "sites/site456/lists/list789/items/item123/fields" in call_args[0][0]
+                # Verify payload
+                assert call_args[1]["json"] == {"Status": "Approved", "Priority": "High"}
+
+    @pytest.mark.asyncio
+    async def test_update_drive_item_metadata_success(
+        self, mock_access_token: str, mock_drive_item_response: dict
+    ) -> None:
+        """Test successful OneDrive/drive item metadata update."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with mock.patch.object(
+                client._client,
+                "patch",
+                return_value=make_response(200, json_data=mock_drive_item_response),
+            ) as mock_patch:
+                result = await client.update_item_metadata(
+                    item_id="item123",
+                    fields_to_update={"name": "renamed-document.docx", "description": "Updated"},
+                    drive_id="drive456",
+                )
+
+                assert result == mock_drive_item_response
+                call_args = mock_patch.call_args
+                # Verify correct endpoint
+                assert "drives/drive456/items/item123" in call_args[0][0]
+                # Verify payload
+                assert call_args[1]["json"] == {
+                    "name": "renamed-document.docx",
+                    "description": "Updated",
+                }
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_empty_item_id_error(self, mock_access_token: str) -> None:
+        """Test validation error for empty item_id."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with pytest.raises(MicrosoftGraphError, match="item_id cannot be empty"):
+                await client.update_item_metadata(
+                    item_id="",
+                    fields_to_update={"Status": "Approved"},
+                    site_id="site456",
+                    list_id="list789",
+                )
+
+            with pytest.raises(MicrosoftGraphError, match="item_id cannot be empty"):
+                await client.update_item_metadata(
+                    item_id="   ",
+                    fields_to_update={"Status": "Approved"},
+                    site_id="site456",
+                    list_id="list789",
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_empty_fields_error(self, mock_access_token: str) -> None:
+        """Test validation error for empty fields_to_update."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with pytest.raises(MicrosoftGraphError, match="fields_to_update cannot be empty"):
+                await client.update_item_metadata(
+                    item_id="item123",
+                    fields_to_update={},
+                    site_id="site456",
+                    list_id="list789",
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_missing_context_error(self, mock_access_token: str) -> None:
+        """Test validation error when neither SharePoint nor drive context provided."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with pytest.raises(MicrosoftGraphError, match="Must specify either"):
+                await client.update_item_metadata(
+                    item_id="item123",
+                    fields_to_update={"Status": "Approved"},
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_both_contexts_error(self, mock_access_token: str) -> None:
+        """Test validation error when both SharePoint and drive context provided."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with pytest.raises(MicrosoftGraphError, match="Cannot specify both"):
+                await client.update_item_metadata(
+                    item_id="item123",
+                    fields_to_update={"Status": "Approved"},
+                    site_id="site456",
+                    list_id="list789",
+                    drive_id="drive000",
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_http_error_403(self, mock_access_token: str) -> None:
+        """Test HTTP 403 Forbidden error handling."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with mock.patch.object(
+                client._client,
+                "patch",
+                side_effect=httpx.HTTPStatusError(
+                    "Forbidden",
+                    request=httpx.Request("PATCH", "https://graph.microsoft.com/v1.0/test"),
+                    response=make_response(403),
+                ),
+            ):
+                with pytest.raises(MicrosoftGraphError) as exc_info:
+                    await client.update_item_metadata(
+                        item_id="item123",
+                        fields_to_update={"Status": "Approved"},
+                        site_id="site456",
+                        list_id="list789",
+                    )
+                assert "permission denied" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_http_error_404(self, mock_access_token: str) -> None:
+        """Test HTTP 404 Not Found error handling."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with mock.patch.object(
+                client._client,
+                "patch",
+                side_effect=httpx.HTTPStatusError(
+                    "Not Found",
+                    request=httpx.Request("PATCH", "https://graph.microsoft.com/v1.0/test"),
+                    response=make_response(404),
+                ),
+            ):
+                with pytest.raises(MicrosoftGraphError) as exc_info:
+                    await client.update_item_metadata(
+                        item_id="item123",
+                        fields_to_update={"Status": "Approved"},
+                        drive_id="drive456",
+                    )
+                assert "not found" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_http_error_409(self, mock_access_token: str) -> None:
+        """Test HTTP 409 Conflict error handling."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with mock.patch.object(
+                client._client,
+                "patch",
+                side_effect=httpx.HTTPStatusError(
+                    "Conflict",
+                    request=httpx.Request("PATCH", "https://graph.microsoft.com/v1.0/test"),
+                    response=make_response(409),
+                ),
+            ):
+                with pytest.raises(MicrosoftGraphError) as exc_info:
+                    await client.update_item_metadata(
+                        item_id="item123",
+                        fields_to_update={"Status": "Approved"},
+                        site_id="site456",
+                        list_id="list789",
+                    )
+                assert "conflict" in str(exc_info.value).lower()
