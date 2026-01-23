@@ -14,6 +14,7 @@
 
 import inspect
 import os
+import uuid
 from typing import Any
 
 import pytest
@@ -68,6 +69,50 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
                 prompt,
                 expectations_for_microsoft_graph_search_content_success,
                 llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(reason="Creates real files in OneDrive without cleanup - run manually")
+    async def test_microsoft_create_file_success(
+        self,
+        openai_llm_client: Any,
+    ) -> None:
+        """Test creating a new file in OneDrive.
+
+        Note: This test creates a real file in OneDrive. The file name includes
+        a UUID to ensure uniqueness and avoid conflicts. Files created by this test
+        will need to be manually cleaned up or will remain in the drive.
+        """
+        unique_filename = f"mcp-e2e-test-{uuid.uuid4().hex[:8]}.txt"
+        content = "This is a test file created by MCP E2E tests."
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="microsoft_create_file",
+                    parameters={
+                        "file_name": unique_filename,
+                        "content_text": content,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=[
+                unique_filename,
+                "created",
+            ],
+        )
+
+        prompt = f"Create a file named `{unique_filename}` with content `{content}` in my OneDrive."
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_microsoft_create_file_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                openai_llm_client,
                 session,
                 test_name,
             )
