@@ -344,3 +344,97 @@ class TestMicrosoftGraphClient:
                 entity_types = payload.get("requests", [{}])[0].get("entityTypes", [])
                 assert "site" in entity_types
                 assert "list" in entity_types
+
+
+class TestMicrosoftGraphClientCreateFile:
+    """Test MicrosoftGraphClient.create_file method."""
+
+    @pytest.fixture
+    def mock_access_token(self) -> str:
+        """Mock access token."""
+        return "test_access_token_123"
+
+    @pytest.fixture
+    def mock_created_file_response(self) -> dict:
+        """Mock response for a created file."""
+        return {
+            "id": "new_file_123",
+            "name": "report.txt",
+            "webUrl": "https://example.sharepoint.com/sites/test/Shared%20Documents/report.txt",
+            "size": 25,
+            "createdDateTime": "2025-01-14T12:00:00Z",
+            "lastModifiedDateTime": "2025-01-14T12:00:00Z",
+            "file": {"mimeType": "text/plain"},
+            "parentReference": {
+                "driveId": "drive123",
+                "id": "root",
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_create_file_success(
+        self, mock_access_token: str, mock_created_file_response: dict
+    ) -> None:
+        """Test successful file creation with URL encoding and correct API call."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with mock.patch.object(
+                client._client,
+                "put",
+                return_value=make_response(201, json_data=mock_created_file_response),
+            ) as mock_put:
+                result = await client.create_file(
+                    drive_id="drive123",
+                    file_name="report (2025).txt",
+                    content="This is the report content.",
+                    parent_folder_id="folder456",
+                )
+
+                assert result.id == "new_file_123"
+                assert result.name == "report.txt"
+                assert result.drive_id == "drive123"
+
+                call_args = mock_put.call_args
+                # Verify URL encoding and parent folder
+                assert "items/folder456:/report%20%282025%29.txt:/content" in call_args[0][0]
+                assert call_args[1]["headers"]["Content-Type"] == "text/plain"
+                assert b"This is the report content." in call_args[1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_create_file_validation_errors(self, mock_access_token: str) -> None:
+        """Test validation errors for empty drive_id and file_name."""
+        async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+            with pytest.raises(MicrosoftGraphError, match="drive_id cannot be empty"):
+                await client.create_file(drive_id="", file_name="report.txt", content="Content")
+
+            with pytest.raises(MicrosoftGraphError, match="file_name cannot be empty"):
+                await client.create_file(drive_id="drive123", file_name="", content="Content")
+
+    @pytest.mark.asyncio
+    async def test_create_file_http_errors(self, mock_access_token: str) -> None:
+        """Test HTTP error handling (403, 404, 409, 429)."""
+        error_cases = [
+            (403, "permission denied"),
+            (404, "not found"),
+            (409, "already exists"),
+            (429, "rate limit"),
+        ]
+
+        for status_code, expected_msg in error_cases:
+            async with MicrosoftGraphClient(access_token=mock_access_token) as client:
+                with mock.patch.object(
+                    client._client,
+                    "put",
+                    side_effect=httpx.HTTPStatusError(
+                        "Error",
+                        request=httpx.Request("PUT", "https://graph.microsoft.com/v1.0/test"),
+                        response=make_response(status_code),
+                    ),
+                ):
+                    with pytest.raises(MicrosoftGraphError) as exc_info:
+                        await client.create_file(
+                            drive_id="drive123",
+                            file_name="report.txt",
+                            content="Content",
+                            conflict_behavior="fail" if status_code == 409 else "rename",
+                        )
+                    assert expected_msg in str(exc_info.value).lower()

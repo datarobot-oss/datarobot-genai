@@ -196,3 +196,82 @@ async def microsoft_graph_search_content(
             "count": n,
         },
     )
+
+
+@dr_mcp_tool(
+    tags={
+        "microsoft",
+        "graph api",
+        "sharepoint",
+        "onedrive",
+        "document library",
+        "create",
+        "file",
+        "write",
+    }
+)
+async def microsoft_create_file(
+    *,
+    file_name: Annotated[str, "The name of the file to create (e.g., 'report.txt')."],
+    content_text: Annotated[str, "The raw text content to be stored in the file."],
+    document_library_id: Annotated[
+        str | None,
+        "The ID of the document library (Drive). If not provided, saves to personal OneDrive.",
+    ] = None,
+    parent_folder_id: Annotated[
+        str | None,
+        "ID of the parent folder. Defaults to 'root' (root of the drive).",
+    ] = "root",
+) -> ToolResult | ToolError:
+    """
+    Create a new text file in SharePoint or OneDrive.
+
+    **Personal OneDrive:** Just provide file_name and content_text.
+    The file saves to your personal OneDrive root folder.
+
+    **SharePoint:** Provide document_library_id to save to a specific
+    SharePoint site. Get the ID from microsoft_graph_search_content
+    results ('documentLibraryId' field).
+
+    **Conflict Resolution:** If a file with the same name exists,
+    it will be automatically renamed (e.g., 'report (1).txt').
+    """
+    if not file_name or not file_name.strip():
+        raise ToolError("Error: file_name is required.")
+    if not content_text:
+        raise ToolError("Error: content_text is required.")
+
+    access_token = await get_microsoft_graph_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    folder_id = parent_folder_id if parent_folder_id else "root"
+
+    async with MicrosoftGraphClient(access_token=access_token) as client:
+        # Auto-fetch personal OneDrive if no library specified
+        if document_library_id is None:
+            drive_id = await client.get_personal_drive_id()
+            is_personal_onedrive = True
+        else:
+            drive_id = document_library_id
+            is_personal_onedrive = False
+
+        created_file = await client.create_file(
+            drive_id=drive_id,
+            file_name=file_name.strip(),
+            content=content_text,
+            parent_folder_id=folder_id,
+            conflict_behavior="rename",
+        )
+
+    return ToolResult(
+        content=f"File '{created_file.name}' created successfully.",
+        structured_content={
+            "file_name": created_file.name,
+            "destination": "onedrive" if is_personal_onedrive else "sharepoint",
+            "driveId": drive_id,
+            "id": created_file.id,
+            "webUrl": created_file.web_url,
+            "parentFolderId": created_file.parent_folder_id,
+        },
+    )
