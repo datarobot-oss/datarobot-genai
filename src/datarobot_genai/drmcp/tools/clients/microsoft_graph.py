@@ -548,6 +548,7 @@ class MicrosoftGraphClient:
         document_library_id: str,
         recipient_emails: list[str],
         role: Literal["read", "write"],
+        send_invitation: bool,
     ) -> None:
         """
         Share sharepoint / ondrive item using Microsoft Graph API.
@@ -559,6 +560,7 @@ class MicrosoftGraphClient:
             document_library_id: The ID of the document library containing the item.
             recipient_emails: A list of email addresses to invite.
             role: The role to assign.
+            send_invitation: Flag determining if recipients should be notified
 
         Returns
         -------
@@ -573,7 +575,7 @@ class MicrosoftGraphClient:
         payload = {
             "recipients": [{"email": email} for email in recipient_emails],
             "requireSignIn": True,
-            "sendInvitation": False,
+            "sendInvitation": send_invitation,
             "roles": [role],
         }
 

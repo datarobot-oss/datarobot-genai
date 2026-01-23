@@ -199,22 +199,24 @@ async def microsoft_graph_search_content(
     )
 
 
-@dr_mcp_tool(tags={"microsoft", "graph api", "sharepoint", "share"}, enabled=False)
+@dr_mcp_tool(tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False)
 async def microsoft_graph_share_item(
     *,
     file_id: Annotated[str, "The ID of the file or folder to share."],
     document_library_id: Annotated[str, "The ID of the document library containing the item."],
     recipient_emails: Annotated[list[str], "A list of email addresses to invite."],
     role: Annotated[Literal["read", "write"], "The role to assign: 'read' or 'write'."] = "read",
+    send_invitation: Annotated[
+        bool, "Flag determining if recipients should be notified. Default False"
+    ] = False,
 ) -> ToolResult | ToolError:
     """
-    Share a SharePoint or Onedrive file or folder with one or more users using Microsoft Graph.
+    Share a SharePoint or Onedrive file or folder with one or more users.
     It works with internal users or existing guest users in the
     tenant. It does NOT create new guest accounts and does NOT use the tenant-level
     /invitations endpoint.
 
-    Under the hood Microsoft Graph API is treating OneDrive and SharePoint
-     resources as driveItem.
+    Microsoft Graph API is treating OneDrive and SharePoint resources as driveItem.
 
     API Reference:
     - DriveItem Resource Type: https://learn.microsoft.com/en-us/graph/api/resources/driveitem
@@ -240,10 +242,8 @@ async def microsoft_graph_share_item(
                 document_library_id=document_library_id,
                 recipient_emails=recipient_emails,
                 role=role,
+                send_invitation=send_invitation,
             )
-    except MicrosoftGraphError as e:
-        logger.error(f"Microsoft Graph error while sharing item: {e}")
-        raise ToolError(str(e))
     except Exception as e:
         logger.error(
             f"Unexpected error while sharing item through Microsoft Graph: {e}",
