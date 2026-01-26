@@ -586,6 +586,102 @@ class MicrosoftGraphClient:
                 f"Microsoft Graph API error {response.status_code}: {response.text}"
             )
 
+    async def update_item_metadata(
+        self,
+        item_id: str,
+        fields_to_update: dict[str, Any],
+        site_id: str | None = None,
+        list_id: str | None = None,
+        drive_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Update metadata on a SharePoint list item or OneDrive/SharePoint drive item.
+
+        For SharePoint list items: Updates custom column values via the fields endpoint.
+        For drive items: Updates properties like name and description.
+
+        Args:
+            item_id: The ID of the item to update.
+            fields_to_update: Key-value pairs of metadata fields to modify.
+            site_id: For SharePoint list items - the site ID.
+            list_id: For SharePoint list items - the list ID.
+            drive_id: For OneDrive/drive items - the drive ID.
+
+        Returns
+        -------
+            The API response containing updated item data.
+
+        Raises
+        ------
+            MicrosoftGraphError: If validation fails or the API request fails.
+        """
+        if not item_id or not item_id.strip():
+            raise MicrosoftGraphError("item_id cannot be empty")
+        if not fields_to_update:
+            raise MicrosoftGraphError("fields_to_update cannot be empty")
+
+        # Determine the endpoint based on provided parameters
+        has_sharepoint_context = site_id is not None and list_id is not None
+        has_drive_context = drive_id is not None
+
+        if has_sharepoint_context and has_drive_context:
+            raise MicrosoftGraphError(
+                "Cannot specify both SharePoint (site_id + list_id) and OneDrive "
+                "(document_library_id) context. Choose one."
+            )
+
+        if not has_sharepoint_context and not has_drive_context:
+            raise MicrosoftGraphError(
+                "Must specify either SharePoint context (site_id + list_id) or "
+                "OneDrive context (document_library_id)."
+            )
+
+        try:
+            if has_sharepoint_context:
+                # PATCH /sites/{site-id}/lists/{list-id}/items/{item-id}/fields
+                url = f"{GRAPH_API_BASE}/sites/{site_id}/lists/{list_id}/items/{item_id}/fields"
+                response = await self._client.patch(url, json=fields_to_update)
+            else:
+                # Drive item: PATCH /drives/{drive-id}/items/{item-id}
+                url = f"{GRAPH_API_BASE}/drives/{drive_id}/items/{item_id}"
+                response = await self._client.patch(url, json=fields_to_update)
+
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise self._handle_update_metadata_error(e, item_id) from e
+
+    def _handle_update_metadata_error(
+        self,
+        error: httpx.HTTPStatusError,
+        item_id: str,
+    ) -> MicrosoftGraphError:
+        """Handle HTTP errors for metadata updates and return appropriate MicrosoftGraphError."""
+        status_code = error.response.status_code
+        error_msg = f"Failed to update metadata: HTTP {status_code}"
+
+        if status_code == 400:
+            try:
+                error_data = error.response.json()
+                api_message = error_data.get("error", {}).get("message", "Invalid request")
+                error_msg = f"Bad request updating metadata: {api_message}"
+            except Exception:
+                error_msg = "Bad request: invalid field names or values."
+        elif status_code == 401:
+            error_msg = "Authentication failed. Access token may be expired or invalid."
+        elif status_code == 403:
+            error_msg = (
+                f"Permission denied: you don't have permission to update item '{item_id}'. "
+                "Requires Sites.ReadWrite.All or Files.ReadWrite.All permission."
+            )
+        elif status_code == 404:
+            error_msg = f"Item '{item_id}' not found."
+        elif status_code == 409:
+            error_msg = f"Conflict: item '{item_id}' may have been modified concurrently."
+        elif status_code == 429:
+            error_msg = "Rate limit exceeded. Please try again later."
+
+        return MicrosoftGraphError(error_msg)
+
     async def __aenter__(self) -> "MicrosoftGraphClient":
         """Async context manager entry."""
         return self
