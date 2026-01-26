@@ -79,6 +79,15 @@ class MCPToolConfig(BaseSettings):
         description="Enable/disable Sharepoint tools",
     )
 
+    enable_github_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_GITHUB_TOOLS",
+            "ENABLE_GITHUB_TOOLS",
+        ),
+        description="Enable/disable GitHub tools",
+    )
+
     is_atlassian_oauth_provider_configured: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -125,15 +134,32 @@ class MCPToolConfig(BaseSettings):
             os.getenv("MICROSOFT_CLIENT_ID") and os.getenv("MICROSOFT_CLIENT_SECRET")
         )
 
+    is_github_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_GITHUB_OAUTH_PROVIDER_CONFIGURED",
+            "IS_GITHUB_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether GitHub OAuth provider is configured for GitHub integration",
+    )
+
+    @property
+    def is_github_oauth_configured(self) -> bool:
+        return self.is_github_oauth_provider_configured or bool(
+            os.getenv("GITHUB_CLIENT_ID") and os.getenv("GITHUB_CLIENT_SECRET")
+        )
+
     @field_validator(
         "enable_predictive_tools",
         "enable_jira_tools",
         "enable_confluence_tools",
         "enable_gdrive_tools",
         "enable_microsoft_graph_tools",
+        "enable_github_tools",
         "is_atlassian_oauth_provider_configured",
         "is_google_oauth_provider_configured",
         "is_microsoft_oauth_provider_configured",
+        "is_github_oauth_provider_configured",
         mode="before",
     )
     @classmethod

@@ -31,6 +31,7 @@ class ToolType(str, Enum):
     CONFLUENCE = "confluence"
     GDRIVE = "gdrive"
     MICROSOFT_GRAPH = "microsoft_graph"
+    GITHUB = "github"
 
 
 class ToolConfig(TypedDict):
@@ -79,6 +80,13 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="microsoft_graph",
         package_prefix="datarobot_genai.drmcp.tools.microsoft_graph",
         config_field_name="enable_microsoft_graph_tools",
+    ),
+    ToolType.GITHUB: ToolConfig(
+        name="github",
+        oauth_check=lambda config: config.tool_config.is_github_oauth_configured,
+        directory="github",
+        package_prefix="datarobot_genai.drmcp.tools.github",
+        config_field_name="enable_github_tools",
     ),
 }
 
