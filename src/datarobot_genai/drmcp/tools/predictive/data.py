@@ -35,9 +35,9 @@ async def upload_dataset_to_ai_catalog(
 ) -> ToolError | ToolResult:
     """Upload a dataset to the DataRobot AI Catalog / Data Registry."""
     if not file_path and not file_url:
-        return ToolError("Either file_path or file_url must be provided.")
+        raise ToolError("Either file_path or file_url must be provided.")
     if file_path and file_url:
-        return ToolError("Please provide either file_path or file_url, not both.")
+        raise ToolError("Please provide either file_path or file_url, not both.")
 
     # Get client
     client = get_sdk_client()
@@ -47,17 +47,17 @@ async def upload_dataset_to_ai_catalog(
         # Does file exist?
         if not os.path.exists(file_path):
             logger.error("File not found: %s", file_path)
-            return ToolError(f"File not found: {file_path}")
+            raise ToolError(f"File not found: {file_path}")
         catalog_item = client.Dataset.create_from_file(file_path)
     else:
         # Does URL exist?
         if file_url is None or not is_valid_url(file_url):
             logger.error("Invalid file URL: %s", file_url)
-            return ToolError(f"Invalid file URL: {file_url}")
+            raise ToolError(f"Invalid file URL: {file_url}")
         catalog_item = client.Dataset.create_from_url(file_url)
 
     if not catalog_item:
-        return ToolError("Failed to upload dataset.")
+        raise ToolError("Failed to upload dataset.")
 
     return ToolResult(
         content=f"Successfully uploaded dataset: {catalog_item.id}",

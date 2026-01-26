@@ -90,9 +90,14 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
         mock_client.Dataset.create_from_url.return_value = mock_catalog_item
         mock_get_client.return_value = mock_client
 
-        result = await data.upload_dataset_to_ai_catalog(file_url="https:notavalidurl/somefile.csv")
-        assert isinstance(result, ToolError)
-        assert str(result) == "Invalid file URL: https:notavalidurl/somefile.csv"
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in upload_dataset_to_ai_catalog: ToolError: "
+                "Invalid file URL: https:notavalidurl/somefile.csv"
+            ),
+        ):
+            await data.upload_dataset_to_ai_catalog(file_url="https:notavalidurl/somefile.csv")
 
 
 @pytest.mark.asyncio
@@ -100,9 +105,14 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     with (
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
     ):
-        result = await data.upload_dataset_to_ai_catalog()
-        assert isinstance(result, ToolError)
-        assert str(result) == "Either file_path or file_url must be provided."
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in upload_dataset_to_ai_catalog: ToolError: "
+                "Either file_path or file_url must be provided."
+            ),
+        ):
+            await data.upload_dataset_to_ai_catalog()
 
 
 @pytest.mark.asyncio
@@ -110,11 +120,16 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
     with (
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
     ):
-        result = await data.upload_dataset_to_ai_catalog(
-            file_path="somefile.csv", file_url="https://example.com/somefile.csv"
-        )
-        assert isinstance(result, ToolError)
-        assert str(result) == "Please provide either file_path or file_url, not both."
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in upload_dataset_to_ai_catalog: ToolError: "
+                "Please provide either file_path or file_url, not both."
+            ),
+        ):
+            await data.upload_dataset_to_ai_catalog(
+                file_path="somefile.csv", file_url="https://example.com/somefile.csv"
+            )
 
 
 @pytest.mark.asyncio
@@ -123,9 +138,11 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
         patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
         patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=False),
     ):
-        result = await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
-        assert isinstance(result, ToolError)
-        assert str(result) == "File not found: nofile.csv"
+        with pytest.raises(
+            ToolError,
+            match="Error in upload_dataset_to_ai_catalog: ToolError: File not found: nofile.csv",
+        ):
+            await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
 
 
 @pytest.mark.asyncio

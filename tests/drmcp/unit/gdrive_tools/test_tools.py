@@ -15,8 +15,8 @@ from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveError
 from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFile
@@ -24,7 +24,9 @@ from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFileContent
 from datarobot_genai.drmcp.tools.clients.gdrive import PaginatedResult
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_find_contents
+from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_manage_access
 from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_read_content
+from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_update_metadata
 
 
 @pytest.fixture
@@ -221,7 +223,7 @@ class TestGdriveReadContent:
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive read content -- empty file_id raises error."""
-        with pytest.raises(MCPError, match="file_id.*cannot be empty"):
+        with pytest.raises(ToolError, match="file_id.*cannot be empty"):
             await gdrive_read_content(file_id="")
 
     @pytest.mark.asyncio
@@ -230,7 +232,7 @@ class TestGdriveReadContent:
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive read content -- whitespace file_id raises error."""
-        with pytest.raises(MCPError, match="file_id.*cannot be empty"):
+        with pytest.raises(ToolError, match="file_id.*cannot be empty"):
             await gdrive_read_content(file_id="   ")
 
     @pytest.mark.asyncio
@@ -243,7 +245,7 @@ class TestGdriveReadContent:
             "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.side_effect = GoogleDriveError("File with ID 'nonexistent' not found.")
-            with pytest.raises(MCPError, match="not found"):
+            with pytest.raises(ToolError, match="not found"):
                 await gdrive_read_content(file_id="nonexistent")
 
     @pytest.mark.asyncio
@@ -259,7 +261,7 @@ class TestGdriveReadContent:
                 "Binary files are not supported for reading. "
                 "File 'photo.jpg' has MIME type 'image/jpeg'."
             )
-            with pytest.raises(MCPError, match="Binary files are not supported"):
+            with pytest.raises(ToolError, match="Binary files are not supported"):
                 await gdrive_read_content(file_id="img123")
 
 
@@ -380,7 +382,7 @@ class TestGdriveCreateFile:
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive create file -- empty name raises error."""
-        with pytest.raises(MCPError, match="name.*cannot be empty"):
+        with pytest.raises(ToolError, match="name.*cannot be empty"):
             await gdrive_create_file(name="", mime_type="text/plain")
 
     @pytest.mark.asyncio
@@ -389,7 +391,7 @@ class TestGdriveCreateFile:
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive create file -- whitespace name raises error."""
-        with pytest.raises(MCPError, match="name.*cannot be empty"):
+        with pytest.raises(ToolError, match="name.*cannot be empty"):
             await gdrive_create_file(name="   ", mime_type="text/plain")
 
     @pytest.mark.asyncio
@@ -398,7 +400,7 @@ class TestGdriveCreateFile:
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive create file -- empty mime_type raises error."""
-        with pytest.raises(MCPError, match="mime_type.*cannot be empty"):
+        with pytest.raises(ToolError, match="mime_type.*cannot be empty"):
             await gdrive_create_file(name="file.txt", mime_type="")
 
     @pytest.mark.asyncio
@@ -411,7 +413,206 @@ class TestGdriveCreateFile:
             "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
         ) as mock:
             mock.side_effect = GoogleDriveError("Parent folder not found.")
-            with pytest.raises(MCPError, match="Parent folder not found"):
+            with pytest.raises(ToolError, match="Parent folder not found"):
                 await gdrive_create_file(
                     name="file.txt", mime_type="text/plain", parent_id="nonexistent"
                 )
+
+
+class TestGdriveManageAccess:
+    """Gdrive manage access tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_gdrive_add_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
+        """Gdrive add role -- happy path."""
+        new_permission_id = "dummy_permission_id"
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+        ) as mock:
+            mock.return_value = new_permission_id
+            tool_result = await gdrive_manage_access(
+                file_id="dummy_file_id", action="add", role="reader", email_address="dummy@user.com"
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert (
+            "Successfully added role 'reader' for 'dummy@user.com' "
+            "for gdrive file 'dummy_file_id'. New permission id 'dummy_permission_id'."
+            in content[0].text
+        )
+        assert structured_content["affectedFileId"] == "dummy_file_id"
+        assert structured_content["newPermissionId"] == new_permission_id
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
+        """Gdrive update role -- happy path."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+        ) as mock:
+            permission_id = "dummy_permission_id"
+            mock.return_value = permission_id
+            tool_result = await gdrive_manage_access(
+                file_id="dummy_file_id",
+                action="update",
+                role="reader",
+                permission_id=permission_id,
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert (
+            "Successfully updated role 'reader' (permission 'dummy_permission_id') "
+            "for gdrive file 'dummy_file_id'." in content[0].text
+        )
+        assert structured_content["affectedFileId"] == "dummy_file_id"
+
+    @pytest.mark.asyncio
+    async def test_gdrive_remove_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
+        """Gdrive remove role -- happy path."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+        ) as mock:
+            permission_id = "dummy_permission_id"
+            mock.return_value = permission_id
+            tool_result = await gdrive_manage_access(
+                file_id="dummy_file_id", action="remove", permission_id=permission_id
+            )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert (
+            "Successfully removed permission 'dummy_permission_id' for gdrive file 'dummy_file_id'."
+            in content[0].text
+        )
+        assert structured_content["affectedFileId"] == "dummy_file_id"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "function_kwargs,error_message",
+        [
+            ({"file_id": "", "action": "add"}, "file_id.*cannot be empty"),
+            (
+                {"file_id": "dummy_file_id", "action": "add", "email_address": ""},
+                "email_address.*is required for action 'add'",
+            ),
+            (
+                {"file_id": "dummy_file_id", "action": "update", "permission_id": ""},
+                "permission_id.*is required for action.*update",
+            ),
+            (
+                {"file_id": "dummy_file_id", "action": "remove", "permission_id": ""},
+                "permission_id.*is required for action.*remove",
+            ),
+            (
+                {
+                    "file_id": "dummy_file_id",
+                    "action": "add",
+                    "email_address": "dummy@email.com",
+                    "role": "",
+                },
+                "role.*is required for action.*add",
+            ),
+            (
+                {
+                    "file_id": "dummy_file_id",
+                    "action": "update",
+                    "permission_id": "dummy_permission_id",
+                    "role": "",
+                },
+                "role.*is required for action.*update",
+            ),
+        ],
+    )
+    async def test_gdrive_manage_access_input_validation(
+        self,
+        get_gdrive_access_token_mock: None,
+        function_kwargs: dict,
+        error_message: str,
+    ) -> None:
+        """Gdrive manage access -- input validation."""
+        with pytest.raises(ToolError, match=error_message):
+            await gdrive_manage_access(**function_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_gdrive_manage_access_when_error_in_client(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive manage access -- error in client."""
+        error_msg = "Dummy Drive API Error."
+        with pytest.raises(ToolError, match=error_msg):
+            with patch(
+                "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+            ) as mock:
+                mock.side_effect = GoogleDriveError(error_msg)
+                await gdrive_manage_access(
+                    file_id="dummy_file_id",
+                    action="add",
+                    email_address="dummy@email.com",
+                    role="reader",
+                )
+
+
+@pytest.fixture
+def gdrive_client_update_file_metadata_mock() -> Iterator[GoogleDriveFile]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.update_file_metadata"
+    ) as mock:
+        updated_file = GoogleDriveFile(
+            id="file_123",
+            name="Updated File.txt",
+            mime_type="text/plain",
+            starred=True,
+            trashed=False,
+        )
+        mock.return_value = updated_file
+        yield updated_file
+
+
+@pytest.fixture
+def gdrive_client_update_file_metadata_error_mock() -> Iterator[None]:
+    with patch(
+        "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.update_file_metadata"
+    ) as mock:
+        mock.side_effect = GoogleDriveError("File not found.")
+        yield
+
+
+class TestGdriveUpdateMetadata:
+    """Gdrive update metadata tool tests."""
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_metadata_happy_path(
+        self,
+        get_gdrive_access_token_mock: None,
+        gdrive_client_update_file_metadata_mock: GoogleDriveFile,
+    ) -> None:
+        """Gdrive update metadata -- happy path with multiple updates."""
+        tool_result = await gdrive_update_metadata(
+            file_id="file_123", new_name="Updated File.txt", starred=True, trash=False
+        )
+
+        content, structured_content = tool_result.to_mcp_result()
+        assert "Successfully updated file 'Updated File.txt'" in content[0].text
+        assert "renamed to 'Updated File.txt'" in content[0].text
+        assert "starred" in content[0].text
+        assert structured_content["id"] == "file_123"
+        assert structured_content["name"] == "Updated File.txt"
+        assert structured_content["starred"] is True
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_metadata_empty_file_id(
+        self,
+        get_gdrive_access_token_mock: None,
+    ) -> None:
+        """Gdrive update metadata -- empty file_id raises error."""
+        with pytest.raises(ToolError, match="file_id.*cannot be empty"):
+            await gdrive_update_metadata(file_id="", new_name="New.txt")
+
+    @pytest.mark.asyncio
+    async def test_gdrive_update_metadata_when_error_in_client(
+        self,
+        get_gdrive_access_token_mock: None,
+        gdrive_client_update_file_metadata_error_mock: None,
+    ) -> None:
+        """Gdrive update metadata -- error in client."""
+        with pytest.raises(ToolError, match="not found"):
+            await gdrive_update_metadata(file_id="nonexistent", new_name="New.txt")

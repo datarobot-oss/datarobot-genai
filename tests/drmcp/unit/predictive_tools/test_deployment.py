@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 from dotenv import load_dotenv
+from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.tools.predictive import deployment
@@ -38,8 +38,10 @@ async def test_list_deployments_success() -> None:
         mock_client.Deployment.list.return_value = [mock_dep1, mock_dep2]
         mock_get_client.return_value = mock_client
         result = await deployment.list_deployments()
-        assert "1: dep1" in result
-        assert "2: dep2" in result
+        assert "1: dep1" in result.content[0].text
+        assert "2: dep2" in result.content[0].text
+        assert result.structured_content["deployments"]["1"] == "dep1"
+        assert result.structured_content["deployments"]["2"] == "dep2"
 
 
 @pytest.mark.asyncio
@@ -51,7 +53,8 @@ async def test_list_deployments_empty() -> None:
         mock_client.Deployment.list.return_value = []
         mock_get_client.return_value = mock_client
         result = await deployment.list_deployments()
-        assert "No deployments found." in result
+        assert "No deployments found." in result.content[0].text
+        assert result.structured_content["deployments"] == []
 
 
 @pytest.mark.asyncio
@@ -60,7 +63,7 @@ async def test_list_deployments_error() -> None:
         "datarobot_genai.drmcp.tools.predictive.deployment.get_sdk_client",
         side_effect=Exception("fail"),
     ):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await deployment.list_deployments()
         assert "Error in list_deployments: Exception: fail" == str(exc_info.value)
 
@@ -75,9 +78,10 @@ async def test_get_model_info_from_deployment_success() -> None:
         mock_deployment.model = {"project_id": "pid", "model_id": "mid"}
         mock_client.Deployment.get.return_value = mock_deployment
         mock_get_client.return_value = mock_client
-        result = await deployment.get_model_info_from_deployment("dep_id")
+        result = await deployment.get_model_info_from_deployment(deployment_id="dep_id")
         mock_client.Deployment.get.assert_called_once_with("dep_id")
-        assert "project_id" in result
+        assert "project_id" in result.content[0].text
+        assert result.structured_content["project_id"] == "pid"
 
 
 @pytest.mark.asyncio
@@ -90,8 +94,8 @@ async def test_get_model_info_from_deployment_not_found() -> None:
             "404 client error: {'message': 'Not Found'}"
         )
         mock_get_client.return_value = mock_client
-        with pytest.raises(Exception) as exc_info:
-            await deployment.get_model_info_from_deployment("dep_id")
+        with pytest.raises(ToolError) as exc_info:
+            await deployment.get_model_info_from_deployment(deployment_id="dep_id")
         assert (
             "Error in get_model_info_from_deployment: Exception: 404 client error: "
             "{'message': 'Not Found'}" == str(exc_info.value)
@@ -104,8 +108,8 @@ async def test_get_model_info_from_deployment_error() -> None:
         "datarobot_genai.drmcp.tools.predictive.deployment.get_sdk_client",
         side_effect=Exception("fail"),
     ):
-        with pytest.raises(Exception) as exc_info:
-            await deployment.get_model_info_from_deployment("dep_id")
+        with pytest.raises(ToolError) as exc_info:
+            await deployment.get_model_info_from_deployment(deployment_id="dep_id")
         assert "Error in get_model_info_from_deployment: Exception: fail" == str(exc_info.value)
 
 
@@ -120,10 +124,11 @@ async def test_deploy_model_success() -> None:
         mock_deployment = MagicMock(id="dep123")
         mock_client.Deployment.create_from_learning_model.return_value = mock_deployment
         mock_get_client.return_value = mock_client
-        result_json = await deployment.deploy_model("model123", "Test Deployment", "desc")
-        result = json.loads(result_json)
-        assert result["deployment_id"] == "dep123"
-        assert result["label"] == "Test Deployment"
+        result = await deployment.deploy_model(
+            model_id="model123", label="Test Deployment", description="desc"
+        )
+        assert result.structured_content["deployment_id"] == "dep123"
+        assert result.structured_content["label"] == "Test Deployment"
 
 
 @pytest.mark.asyncio
@@ -134,10 +139,9 @@ async def test_deploy_model_no_prediction_servers() -> None:
         mock_client = MagicMock()
         mock_client.PredictionServer.list.return_value = []
         mock_get_client.return_value = mock_client
-        result_json = await deployment.deploy_model("model123", "Test Deployment")
-        result = json.loads(result_json)
-        assert "error" in result
-        assert "No prediction servers available" in result["error"]
+        with pytest.raises(ToolError) as exc_info:
+            await deployment.deploy_model(model_id="model123", label="Test Deployment")
+        assert "No prediction servers available" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -148,10 +152,9 @@ async def test_deploy_model_error() -> None:
         mock_client = MagicMock()
         mock_client.PredictionServer.list.side_effect = Exception("fail servers")
         mock_get_client.return_value = mock_client
-        result_json = await deployment.deploy_model("model123", "Test Deployment")
-        result = json.loads(result_json)
-        assert "error" in result
-        assert "fail servers" in result["error"]
+        with pytest.raises(ToolError) as exc_info:
+            await deployment.deploy_model(model_id="model123", label="Test Deployment")
+        assert "fail servers" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

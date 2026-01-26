@@ -22,9 +22,9 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.core.constants import MAX_INLINE_SIZE
-from datarobot_genai.drmcp.core.exceptions import MCPError
 from datarobot_genai.drmcp.tools.predictive import predict_realtime
 from datarobot_genai.drmcp.tools.predictive.predict_realtime import make_output_settings
 from datarobot_genai.drmcp.tools.predictive.predict_realtime import predict_by_ai_catalog_rt
@@ -376,7 +376,7 @@ async def test_predict_timeseries_regression_series_id_validation_error(
     patch_realtime_dependencies["mock_read_csv"].return_value = df
 
     # Test with non-existent series_id_column
-    with pytest.raises(MCPError) as exc_info:
+    with pytest.raises(ToolError) as exc_info:
         await predict_realtime.predict_realtime(
             deployment_id="regression_dep",
             file_path="data.csv",

@@ -82,7 +82,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
     )
     async def test_predict_realtime_file_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_realtime_file_success: ETETestExpectations,
         deployment_id: str,
         classification_predict_file_path: Path,
@@ -99,7 +99,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_realtime_file_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -115,7 +115,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
     )
     async def test_predict_by_ai_catalog_rt_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_by_ai_catalog_rt_success: ETETestExpectations,
         deployment_id: str,
         classification_predict_dataset: Any,
@@ -132,7 +132,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_by_ai_catalog_rt_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

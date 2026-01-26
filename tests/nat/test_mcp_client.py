@@ -79,7 +79,7 @@ class _FakeMCPClient(MCPBaseClient):
 
 
 async def test_datarobot_mcp_client():
-    with patch("datarobot_genai.nat.datarobot_mcp_client.MCPStdioClient") as mock_client:
+    with patch("nat.plugins.mcp.client_base.MCPStdioClient") as mock_client:
         fake_tools = {"a": _FakeTool("a", "da"), "b": _FakeTool("b", "db")}
         mock_client.return_value = _FakeMCPClient(
             tools=fake_tools, command="python", args=["server.py"]

@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from crewai import LLM
+from langchain_openai import ChatOpenAI
+from llama_index.llms.litellm import LiteLLM
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
 
-from datarobot_genai.nat.datarobot_llm_clients import DataRobotChatOpenAI
-from datarobot_genai.nat.datarobot_llm_clients import DataRobotLiteLLM
+import datarobot_genai.nat.datarobot_llm_clients  # noqa: F401
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
@@ -31,7 +32,7 @@ async def test_datarobot_llm_gateway_langchain():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, DataRobotChatOpenAI)
+        assert isinstance(llm, ChatOpenAI)
 
 
 async def test_datarobot_llm_gateway_crewai():
@@ -51,7 +52,7 @@ async def test_datarobot_llm_gateway_llamaindex():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
-        assert isinstance(llm, DataRobotLiteLLM)
+        assert isinstance(llm, LiteLLM)
 
 
 async def test_datarobot_llm_deployment_langchain():
@@ -59,7 +60,7 @@ async def test_datarobot_llm_deployment_langchain():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, DataRobotChatOpenAI)
+        assert isinstance(llm, ChatOpenAI)
 
 
 async def test_datarobot_llm_deployment_crewai():
@@ -75,7 +76,7 @@ async def test_datarobot_llm_deployment_llamaindex():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
-        assert isinstance(llm, DataRobotLiteLLM)
+        assert isinstance(llm, LiteLLM)
 
 
 async def test_datarobot_nim_langchain():
@@ -83,7 +84,7 @@ async def test_datarobot_nim_langchain():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, DataRobotChatOpenAI)
+        assert isinstance(llm, ChatOpenAI)
 
 
 async def test_datarobot_nim_crewai():
@@ -99,7 +100,7 @@ async def test_datarobot_nim_llamaindex():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
-        assert isinstance(llm, DataRobotLiteLLM)
+        assert isinstance(llm, LiteLLM)
 
 
 async def test_datarobot_llm_component_langchain_use_gateway():
@@ -107,7 +108,7 @@ async def test_datarobot_llm_component_langchain_use_gateway():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, DataRobotChatOpenAI)
+        assert isinstance(llm, ChatOpenAI)
 
 
 async def test_datarobot_llm_component_crewai():
@@ -123,4 +124,4 @@ async def test_datarobot_llm_component_llamaindex():
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
-        assert isinstance(llm, DataRobotLiteLLM)
+        assert isinstance(llm, LiteLLM)

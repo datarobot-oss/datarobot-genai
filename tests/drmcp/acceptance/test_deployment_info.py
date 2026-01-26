@@ -135,7 +135,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
     )
     async def test_get_deployment_features_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_deployment_features_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
@@ -148,7 +148,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_deployment_features_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -165,7 +165,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
     )
     async def test_generate_prediction_data_template_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_generate_prediction_data_template_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
@@ -180,7 +180,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_generate_prediction_data_template_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -203,7 +203,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
     )
     async def test_validate_prediction_data_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_validate_prediction_data_success: ETETestExpectations,
         deployment_id: str,
         diabetes_scoring_small_file_path: str,
@@ -220,7 +220,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_validate_prediction_data_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -237,7 +237,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
     )
     async def test_validate_prediction_data_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_validate_prediction_data_failure: ETETestExpectations,
         deployment_id: str,
         nonexistent_file_path: str,
@@ -254,7 +254,7 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_validate_prediction_data_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

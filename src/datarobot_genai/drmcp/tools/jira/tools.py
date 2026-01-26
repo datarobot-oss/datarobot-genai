@@ -72,14 +72,8 @@ async def jira_get_issue(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with JiraClient(access_token) as client:
-            issue = await client.get_jira_issue(issue_key)
-    except Exception as e:
-        logger.error(f"Unexpected error while getting Jira issue: {e}")
-        raise ToolError(
-            f"An unexpected error occurred while getting Jira issue '{issue_key}': {str(e)}"
-        )
+    async with JiraClient(access_token) as client:
+        issue = await client.get_jira_issue(issue_key)
 
     return ToolResult(
         content=f"Successfully retrieved details for issue '{issue_key}'.",
@@ -118,17 +112,13 @@ async def jira_create_issue(
                 f"Unexpected issue type `{issue_type}`. Possible values are {possible_issue_types}."
             )
 
-    try:
-        async with JiraClient(access_token) as client:
-            issue_key = await client.create_jira_issue(
-                project_key=project_key,
-                summary=summary,
-                issue_type_id=issue_type_id,
-                description=description,
-            )
-    except Exception as e:
-        logger.error(f"Unexpected error while creating Jira issue: {e}")
-        raise ToolError(f"An unexpected error occurred while creating Jira issue: {str(e)}")
+    async with JiraClient(access_token) as client:
+        issue_key = await client.create_jira_issue(
+            project_key=project_key,
+            summary=summary,
+            issue_type_id=issue_type_id,
+            description=description,
+        )
 
     return ToolResult(
         content=f"Successfully created issue '{issue_key}'.",
@@ -179,14 +169,10 @@ async def jira_update_issue(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with JiraClient(access_token) as client:
-            updated_fields = await client.update_jira_issue(
-                issue_key=issue_key, fields=fields_to_update
-            )
-    except Exception as e:
-        logger.error(f"Unexpected error while updating Jira issue: {e}")
-        raise ToolError(f"An unexpected error occurred while updating Jira issue: {str(e)}")
+    async with JiraClient(access_token) as client:
+        updated_fields = await client.update_jira_issue(
+            issue_key=issue_key, fields=fields_to_update
+        )
 
     updated_fields_str = ",".join(updated_fields)
     return ToolResult(
@@ -226,12 +212,8 @@ async def jira_transition_issue(
                 f"Possible values are {available_transitions_str}."
             )
 
-    try:
-        async with JiraClient(access_token) as client:
-            await client.transition_jira_issue(issue_key=issue_key, transition_id=transition_id)
-    except Exception as e:
-        logger.error(f"Unexpected error while transitioning Jira issue: {e}")
-        raise ToolError(f"An unexpected error occurred while transitioning Jira issue: {str(e)}")
+    async with JiraClient(access_token) as client:
+        await client.transition_jira_issue(issue_key=issue_key, transition_id=transition_id)
 
     return ToolResult(
         content=f"Successfully transitioned issue '{issue_key}' to status '{transition_name}'.",

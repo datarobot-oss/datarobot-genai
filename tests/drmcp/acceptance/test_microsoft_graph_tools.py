@@ -14,6 +14,7 @@
 
 import inspect
 import os
+import uuid
 from typing import Any
 
 import pytest
@@ -53,7 +54,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
     )
     async def test_microsoft_graph_search_content_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_microsoft_graph_search_content_success: ETETestExpectations,
         prompt_template: str,
     ) -> None:
@@ -67,6 +68,108 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_microsoft_graph_search_content_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(reason="Creates real files in OneDrive without cleanup - run manually")
+    async def test_microsoft_create_file_success(
+        self,
+        openai_llm_client: Any,
+    ) -> None:
+        """Test creating a new file in OneDrive.
+
+        Note: This test creates a real file in OneDrive. The file name includes
+        a UUID to ensure uniqueness and avoid conflicts. Files created by this test
+        will need to be manually cleaned up or will remain in the drive.
+        """
+        unique_filename = f"mcp-e2e-test-{uuid.uuid4().hex[:8]}.txt"
+        content = "This is a test file created by MCP E2E tests."
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="microsoft_create_file",
+                    parameters={
+                        "file_name": unique_filename,
+                        "content_text": content,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=[
+                unique_filename,
+                "created",
+            ],
+        )
+
+        prompt = f"Create a file named `{unique_filename}` with content `{content}` in my OneDrive."
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_microsoft_create_file_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                openai_llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(
+        reason="Share real files in Sharepoint/OneDrive without cleanup - run manually"
+    )
+    async def test_microsoft_microsoft_graph_share_item_success(
+        self,
+        openai_llm_client: Any,
+    ) -> None:
+        """Test sharing a file in OneDrive/Sharepoint.
+
+        Note: This test shares a real file.
+        Files shared by this test should be manually cleaned up.
+        """
+        # Note: Below variables are placeholders. You should manually change them
+        # to correctly test bevaviour.
+        file_id = "dummy_file_id"  # Adjust manually
+        document_library_id = "dummy_document_library_id"  # Adjust manually
+        recipient_email = "dummy@user.com"  # Adjust manually
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="microsoft_graph_share_item",
+                    parameters={
+                        "file_id": file_id,
+                        "document_library_id": document_library_id,
+                        "recipient_emails": [recipient_email],
+                        "role": "read",
+                        "send_invitation": False,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=[
+                "shared",
+            ],
+        )
+
+        prompt = (
+            f"Share OneDrive file `{file_id}` "
+            f"from document library `{document_library_id}` "
+            f"to {recipient_email} as reader."
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_microsoft_microsoft_graph_share_item_success"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
                 openai_llm_client,
                 session,
                 test_name,

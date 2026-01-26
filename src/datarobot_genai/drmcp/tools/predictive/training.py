@@ -19,6 +19,7 @@ import logging
 from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Annotated
+from typing import Any
 
 import pandas as pd
 from fastmcp.exceptions import ToolError
@@ -56,6 +57,36 @@ class DatasetInsight:
     missing_data_summary: dict[str, float]
 
 
+def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFrame]:
+    """Fetch dataset and return it with its dataframe, with proper error handling.
+
+    Args:
+        client: DataRobot SDK client instance
+        dataset_id: The ID of the dataset to fetch
+
+    Returns
+    -------
+        Tuple of (dataset object, dataframe)
+
+    Raises
+    ------
+        ToolError: If dataset is not found (404) or other error occurs
+    """
+    try:
+        dataset = client.Dataset.get(dataset_id)
+        return dataset, dataset.get_as_dataframe()
+    except Exception as e:
+        error_str = str(e)
+        # Check if it's a 404 error (dataset not found)
+        if "404" in error_str or "Not Found" in error_str:
+            raise ToolError(
+                f"Dataset '{dataset_id}' not found. Please verify the dataset ID exists "
+                "and you have access to it."
+            )
+        # For other errors, provide context
+        raise ToolError(f"Failed to retrieve dataset '{dataset_id}': {error_str}")
+
+
 @dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
 async def analyze_dataset(
     *,
@@ -63,11 +94,10 @@ async def analyze_dataset(
 ) -> ToolError | ToolResult:
     """Analyze a dataset to understand its structure and potential use cases."""
     if not dataset_id:
-        return ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided")
 
     client = get_sdk_client()
-    dataset = client.Dataset.get(dataset_id)
-    df = dataset.get_as_dataframe()
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Analyze dataset structure
     numerical_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
@@ -116,15 +146,14 @@ async def suggest_use_cases(
 ) -> ToolError | ToolResult:
     """Analyze a dataset and suggest potential machine learning use cases."""
     if not dataset_id:
-        return ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided")
 
     client = get_sdk_client()
-    dataset = client.Dataset.get(dataset_id)
-    df = dataset.get_as_dataframe()
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
-    insights_json = await analyze_dataset(dataset_id)
-    insights = json.loads(insights_json)
+    insights_result = await analyze_dataset(dataset_id=dataset_id)
+    insights = insights_result.structured_content
 
     suggestions = []
     for target_col in insights["potential_targets"]:
@@ -148,15 +177,14 @@ async def get_exploratory_insights(
 ) -> ToolError | ToolResult:
     """Generate exploratory data insights for a dataset."""
     if not dataset_id:
-        return ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided")
 
     client = get_sdk_client()
-    dataset = client.Dataset.get(dataset_id)
-    df = dataset.get_as_dataframe()
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
-    insights_json = await analyze_dataset(dataset_id)
-    insights = json.loads(insights_json)
+    insights_result = await analyze_dataset(dataset_id=dataset_id)
+    insights = insights_result.structured_content
 
     eda_insights = {
         "dataset_summary": {
@@ -481,9 +509,9 @@ async def start_autopilot(
 
     if not project_id:
         if not dataset_url and not dataset_id:
-            return ToolError("Either dataset_url or dataset_id must be provided")
+            raise ToolError("Either dataset_url or dataset_id must be provided")
         if dataset_url and dataset_id:
-            return ToolError("Please provide either dataset_url or dataset_id, not both")
+            raise ToolError("Please provide either dataset_url or dataset_id, not both")
 
         if dataset_url:
             dataset = client.Dataset.create_from_url(dataset_url)
@@ -497,7 +525,7 @@ async def start_autopilot(
         project = client.Project.get(project_id)
 
     if not target:
-        return ToolError("Target variable must be specified")
+        raise ToolError("Target variable must be specified")
 
     try:
         # Start modeling
@@ -517,7 +545,7 @@ async def start_autopilot(
         )
 
     except Exception as e:
-        return ToolError(
+        raise ToolError(
             content=json.dumps(
                 {
                     "error": f"Failed to start Autopilot: {str(e)}",
@@ -546,9 +574,9 @@ async def get_model_roc_curve(
 ) -> ToolError | ToolResult:
     """Get detailed ROC curve for a specific model."""
     if not project_id:
-        return ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided")
     if not model_id:
-        return ToolError("Model ID must be provided")
+        raise ToolError("Model ID must be provided")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)
@@ -587,7 +615,7 @@ async def get_model_roc_curve(
             structured_content={"data": roc_data},
         )
     except Exception as e:
-        return ToolError(f"Failed to get ROC curve: {str(e)}")
+        raise ToolError(f"Failed to get ROC curve: {str(e)}")
 
 
 @dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
@@ -598,9 +626,9 @@ async def get_model_feature_impact(
 ) -> ToolError | ToolResult:
     """Get detailed feature impact for a specific model."""
     if not project_id:
-        return ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided")
     if not model_id:
-        return ToolError("Model ID must be provided")
+        raise ToolError("Model ID must be provided")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)
@@ -631,9 +659,9 @@ async def get_model_lift_chart(
 ) -> ToolError | ToolResult:
     """Get detailed lift chart for a specific model."""
     if not project_id:
-        return ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided")
     if not model_id:
-        return ToolError("Model ID must be provided")
+        raise ToolError("Model ID must be provided")
 
     client = get_sdk_client()
     project = client.Project.get(project_id)

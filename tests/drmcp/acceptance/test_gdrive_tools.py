@@ -100,7 +100,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_find_contents_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_gdrive_list_files_success: ETETestExpectations,
         gdrive_folder_id: str,
         list_files_no_of_results: int,
@@ -116,7 +116,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_list_files_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -130,7 +130,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_read_content_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_gdrive_read_content_success: ETETestExpectations,
         gdrive_pdf_file_id: str,
         prompt_template: str,
@@ -143,7 +143,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_gdrive_read_content_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -158,7 +158,7 @@ class TestGdriveToolsE2E(ToolBaseE2E):
     )
     async def test_gdrive_create_file_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         prompt_template: str,
     ) -> None:
         expectations = ETETestExpectations(
@@ -181,7 +181,92 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt_template,
                 expectations,
-                openai_llm_client,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(reason="Modifies real files in Google Drive - run manually")
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            "Please rename the Google Drive file with ID '{file_id}' to 'renamed-test-file.txt' "
+            "and star it."
+        ],
+    )
+    async def test_gdrive_update_metadata_success(
+        self,
+        llm_client: Any,
+        prompt_template: str,
+    ) -> None:
+        # Note: Replace with a real file ID when running manually
+        test_file_id = "test_file_id_placeholder"
+        prompt = prompt_template.format(file_id=test_file_id)
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="gdrive_update_metadata",
+                    parameters={
+                        "file_id": test_file_id,
+                        "new_name": "renamed-test-file.txt",
+                        "starred": True,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=["renamed", "starred"],
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_gdrive_update_metadata_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.skip(reason="Modifies real files in Google Drive - run manually")
+    @pytest.mark.parametrize(
+        "prompt_template",
+        ["Please share the Google Drive file with ID '{file_id}' to '{email}' as a reader."],
+    )
+    async def test_gdrive_manage_access_success(
+        self,
+        llm_client: Any,
+        prompt_template: str,
+    ) -> None:
+        # Note: Replace with a real file ID and email when running manually
+        test_file_id = "1pNg6bRCbsYlzfUJk5_2qaeMHflVfhCbJ"  # "test_file_id_placeholder"
+        test_email = "wojciech.wierzchowski@datarobot.com"  # "dummy@user.com"
+        prompt = prompt_template.format(file_id=test_file_id, email=test_email)
+
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="gdrive_manage_access",
+                    parameters={
+                        "file_id": test_file_id,
+                        "action": "add",
+                        "role": "reader",
+                        "email_address": test_email,
+                    },
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=["successfully shared"],
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_gdrive_manage_access_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations,
+                llm_client,
                 session,
                 test_name,
             )

@@ -19,6 +19,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.tools.predictive import training
 
@@ -68,18 +69,20 @@ async def test_suggest_use_cases() -> None:
     )
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    # Mock analyze_dataset to return JSON string
-    mock_insights = json.dumps(
-        {
-            "total_columns": 4,
-            "total_rows": 3,
-            "numerical_columns": ["features"],
-            "categorical_columns": ["multi_target"],
-            "datetime_columns": [],
-            "text_columns": [],
-            "potential_targets": ["binary_target", "multi_target", "regression_target"],
-            "missing_data_summary": {},
-        }
+    # Mock analyze_dataset to return ToolResult
+    mock_insights_dict = {
+        "total_columns": 4,
+        "total_rows": 3,
+        "numerical_columns": ["features"],
+        "categorical_columns": ["multi_target"],
+        "datetime_columns": [],
+        "text_columns": [],
+        "potential_targets": ["binary_target", "multi_target", "regression_target"],
+        "missing_data_summary": {},
+    }
+    mock_insights = ToolResult(
+        content=json.dumps(mock_insights_dict, indent=2),
+        structured_content=mock_insights_dict,
     )
 
     with (
@@ -109,18 +112,20 @@ async def test_get_exploratory_insights() -> None:
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    # Mock analyze_dataset to return JSON string
-    mock_insights = json.dumps(
-        {
-            "total_columns": 2,
-            "total_rows": 3,
-            "numerical_columns": ["features", "target"],
-            "categorical_columns": [],
-            "datetime_columns": [],
-            "text_columns": [],
-            "potential_targets": ["target"],
-            "missing_data_summary": {},
-        }
+    # Mock analyze_dataset to return ToolResult
+    mock_insights_dict = {
+        "total_columns": 2,
+        "total_rows": 3,
+        "numerical_columns": ["features", "target"],
+        "categorical_columns": [],
+        "datetime_columns": [],
+        "text_columns": [],
+        "potential_targets": ["target"],
+        "missing_data_summary": {},
+    }
+    mock_insights = ToolResult(
+        content=json.dumps(mock_insights_dict, indent=2),
+        structured_content=mock_insights_dict,
     )
 
     with (
@@ -296,20 +301,57 @@ async def test_start_autopilot_validation() -> None:
     """Test validation of input parameters for start_autopilot."""
     # Test missing dataset info for new project
     with patch("datarobot_genai.drmcp.tools.predictive.training.get_sdk_client"):
-        result = await training.start_autopilot(target="target")
-        assert isinstance(result, ToolError)
-        assert "Either dataset_url or dataset_id must be provided" in str(result)
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in start_autopilot: ToolError: "
+                "Either dataset_url or dataset_id must be provided"
+            ),
+        ):
+            await training.start_autopilot(target="target")
 
         # Test conflicting dataset inputs
-        result = await training.start_autopilot(
-            target="target",
-            dataset_url="http://test.com/data.csv",
-            dataset_id="test_dataset_id",
-        )
-        assert isinstance(result, ToolError)
-        assert "Please provide either dataset_url or dataset_id, not both" in str(result)
+        with pytest.raises(
+            ToolError,
+            match=(
+                "Error in start_autopilot: ToolError: "
+                "Please provide either dataset_url or dataset_id, not both"
+            ),
+        ):
+            await training.start_autopilot(
+                target="target",
+                dataset_url="http://test.com/data.csv",
+                dataset_id="test_dataset_id",
+            )
 
         # Test missing target
-        result = await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
-        assert isinstance(result, ToolError)
-        assert "Target variable must be specified" in str(result)
+        with pytest.raises(
+            ToolError,
+            match="Error in start_autopilot: ToolError: Target variable must be specified",
+        ):
+            await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
+
+
+@pytest.mark.asyncio
+async def test_suggest_use_cases_dataset_not_found() -> None:
+    """Test that suggest_use_cases provides a clear error message when dataset is not found."""
+
+    # Create a mock ClientError that matches the DataRobot SDK error format
+    class MockClientError(Exception):
+        def __init__(self, message: str, status_code: int = 404):
+            self.message = message
+            self.status_code = status_code
+            super().__init__(f"{status_code} client error: {message}")
+
+    with patch("datarobot_genai.drmcp.tools.predictive.training.get_sdk_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.Dataset.get.side_effect = MockClientError(
+            "{'message': 'Not Found'}", status_code=404
+        )
+        mock_get_client.return_value = mock_client
+
+        with pytest.raises(
+            ToolError,
+            match=r"Dataset 'nonexistent_dataset_id' not found",
+        ):
+            await training.suggest_use_cases(dataset_id="nonexistent_dataset_id")
