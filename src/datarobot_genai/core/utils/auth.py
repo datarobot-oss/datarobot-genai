@@ -14,6 +14,7 @@
 import logging
 import os
 import warnings
+from collections.abc import Sequence
 from typing import Any
 from typing import Protocol
 
@@ -28,7 +29,6 @@ from datarobot.auth.session import AuthCtx
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import get_authorization_context
-from mypyc.ir.ops import Sequence
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
