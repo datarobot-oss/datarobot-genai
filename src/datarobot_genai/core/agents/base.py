@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
+from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
 from typing import cast
@@ -175,9 +176,10 @@ class UsageMetrics(TypedDict):
 
 
 # Canonical return type for DRUM-compatible invoke implementations
-InvokeReturn = (
-    AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]
-    | tuple[str, MultiTurnSample | None, UsageMetrics]
+# Using string annotation to allow lazy import of MultiTurnSample
+InvokeReturn: TypeAlias = (
+    "AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]"
+    " | tuple[str, MultiTurnSample | None, UsageMetrics]"
 )
 
 
