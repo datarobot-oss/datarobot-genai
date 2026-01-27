@@ -19,7 +19,6 @@ import json
 import os
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
 from typing import TypeAlias
@@ -29,11 +28,9 @@ from typing import cast
 
 from ag_ui.core import Event
 from openai.types.chat import CompletionCreateParams
+from ragas import MultiTurnSample
 
 from datarobot_genai.core.utils.urls import get_api_base
-
-if TYPE_CHECKING:
-    from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
 
@@ -115,9 +112,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Create a simple MultiTurnSample from a list of generic events/messages."""
         if not events:
             return None
-        # Lazy import to reduce memory overhead when ragas is not used
-        from ragas import MultiTurnSample
-
         return MultiTurnSample(user_input=events)
 
 
@@ -176,10 +170,9 @@ class UsageMetrics(TypedDict):
 
 
 # Canonical return type for DRUM-compatible invoke implementations
-# Using string annotation to allow lazy import of MultiTurnSample
 InvokeReturn: TypeAlias = (
-    "AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]"
-    " | tuple[str, MultiTurnSample | None, UsageMetrics]"
+    AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]
+    | tuple[str, MultiTurnSample | None, UsageMetrics]
 )
 
 
