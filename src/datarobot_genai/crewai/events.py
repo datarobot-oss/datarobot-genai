@@ -16,12 +16,14 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+from typing import TYPE_CHECKING
 from typing import Any
 
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
-from ragas.messages import ToolCall
-from ragas.messages import ToolMessage
+if TYPE_CHECKING:
+    from ragas.messages import AIMessage
+    from ragas.messages import HumanMessage
+    from ragas.messages import ToolCall
+    from ragas.messages import ToolMessage
 
 # Resolve crewai symbols at runtime to avoid mypy issues with untyped packages
 try:
@@ -65,6 +67,12 @@ class CrewAIEventListener:
         self.messages: list[HumanMessage | AIMessage | ToolMessage] = []
 
     def setup_listeners(self, crewai_event_bus: Any) -> None:
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas.messages import AIMessage
+        from ragas.messages import HumanMessage
+        from ragas.messages import ToolCall
+        from ragas.messages import ToolMessage
+
         @crewai_event_bus.on(CrewKickoffStartedEvent)
         def on_crew_execution_started(_: Any, event: Any) -> None:
             self.messages.append(

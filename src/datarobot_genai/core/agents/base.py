@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import abc
 import json
 import os
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
 from typing import TypedDict
@@ -25,9 +28,11 @@ from typing import cast
 
 from ag_ui.core import Event
 from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.utils.urls import get_api_base
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
 
@@ -109,6 +114,9 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Create a simple MultiTurnSample from a list of generic events/messages."""
         if not events:
             return None
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+
         return MultiTurnSample(user_input=events)
 
 
