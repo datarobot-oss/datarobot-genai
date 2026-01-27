@@ -187,6 +187,9 @@ fixable = [
     "I001",   # isort import order within functions
     "PLC0415",# pylint import-outside-toplevel for controlled local imports
 ]
+"src/datarobot_genai/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
+]
 
 [tool.ruff.lint.isort]
 force-single-line = true

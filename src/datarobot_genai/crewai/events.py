@@ -22,7 +22,6 @@ from typing import Any
 if TYPE_CHECKING:
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
-    from ragas.messages import ToolCall
     from ragas.messages import ToolMessage
 
 # Resolve crewai symbols at runtime to avoid mypy issues with untyped packages

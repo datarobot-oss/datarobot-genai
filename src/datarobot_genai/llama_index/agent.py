@@ -22,9 +22,6 @@ from llama_index.llms.litellm import LiteLLM
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
-    from ragas.messages import AIMessage
-    from ragas.messages import HumanMessage
-    from ragas.messages import ToolMessage
 
 
 class DataRobotLiteLLM(LiteLLM):
