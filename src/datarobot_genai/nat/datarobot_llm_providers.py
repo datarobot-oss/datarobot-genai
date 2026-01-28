@@ -105,6 +105,11 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         default="datarobot-deployed-llm",
     )
 
+    headers: dict[str, str] | None = Field(
+        description="Additional headers send to LLM deployment.",
+        default=None,
+    )
+
 
 @register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
 async def datarobot_llm_deployment(
