@@ -167,7 +167,7 @@ async def datarobot_llm_deployment_langchain(
     config["model"] = config["model"].removeprefix("datarobot/")
 
     if llm_config.headers:
-        config["default_headers"] = {}
+        config["default_headers"] = llm_config.headers
 
     client = _create_datarobot_chat_openai(config)
     yield langchain_patch_llm_based_on_config(client, config)
