@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.2.41"
+version = "0.2.42"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -186,6 +186,9 @@ fixable = [
     "E402",   # module-import-not-at-top-of-file: allow local imports in smoke script
     "I001",   # isort import order within functions
     "PLC0415",# pylint import-outside-toplevel for controlled local imports
+]
+"src/datarobot_genai/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
 ]
 
 [tool.ruff.lint.isort]

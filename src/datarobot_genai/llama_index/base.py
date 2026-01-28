@@ -25,11 +25,11 @@ from __future__ import annotations
 import abc
 import inspect
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import Any
 
 from llama_index.core.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -40,6 +40,9 @@ from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_events
 from .mcp import load_mcp_tools
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):

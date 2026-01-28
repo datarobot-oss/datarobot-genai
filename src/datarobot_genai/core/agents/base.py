@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import abc
 import json
 import os
@@ -19,6 +21,7 @@ from collections.abc import AsyncGenerator
 from collections.abc import Mapping
 from typing import Any
 from typing import Generic
+from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
 from typing import cast
@@ -98,7 +101,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         return get_api_base(self.api_base, deployment_id)
 
     @abc.abstractmethod
-    async def invoke(self, completion_create_params: CompletionCreateParams) -> "InvokeReturn":
+    async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
 
     @classmethod
@@ -167,7 +170,7 @@ class UsageMetrics(TypedDict):
 
 
 # Canonical return type for DRUM-compatible invoke implementations
-InvokeReturn = (
+InvokeReturn: TypeAlias = (
     AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]
     | tuple[str, MultiTurnSample | None, UsageMetrics]
 )
