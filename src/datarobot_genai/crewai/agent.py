@@ -11,14 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from crewai import LLM
-from ragas import MultiTurnSample
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
-from ragas.messages import ToolMessage
 
 from datarobot_genai.core.utils.urls import get_api_base
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
+    from ragas.messages import AIMessage
+    from ragas.messages import HumanMessage
+    from ragas.messages import ToolMessage
 
 
 def build_llm(
@@ -39,4 +44,7 @@ def create_pipeline_interactions_from_messages(
 ) -> MultiTurnSample | None:
     if not messages:
         return None
+    # Lazy import to reduce memory overhead when ragas is not used
+    from ragas import MultiTurnSample
+
     return MultiTurnSample(user_input=messages)

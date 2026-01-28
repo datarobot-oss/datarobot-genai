@@ -28,6 +28,7 @@ import asyncio
 import json
 import threading
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import Any
 
 from crewai import Crew
@@ -38,7 +39,6 @@ from crewai.events.types.task_events import TaskCompletedEvent
 from crewai.events.types.task_events import TaskStartedEvent
 from crewai.tools import BaseTool
 from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -49,6 +49,9 @@ from datarobot_genai.core.agents.base import is_streaming
 
 from .agent import create_pipeline_interactions_from_messages
 from .mcp import mcp_tools_context
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):

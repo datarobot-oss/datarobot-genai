@@ -11,9 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import abc
 import logging
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
@@ -34,8 +37,6 @@ from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
-from ragas.integrations.langgraph import convert_to_ragas_messages
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -43,6 +44,9 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import is_streaming
 from datarobot_genai.langgraph.mcp import mcp_tools_context
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 
@@ -337,5 +341,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 if v is not None:
                     messages.extend(v.get("messages", []))
         messages = [m for m in messages if not isinstance(m, ToolMessage)]
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+        from ragas.integrations.langgraph import convert_to_ragas_messages
+
         ragas_trace = convert_to_ragas_messages(messages)
         return MultiTurnSample(user_input=ragas_trace)

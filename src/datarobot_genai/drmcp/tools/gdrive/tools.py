@@ -33,9 +33,7 @@ from datarobot_genai.drmcp.tools.clients.gdrive import get_gdrive_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(
-    tags={"google", "gdrive", "list", "search", "files", "find", "contents"}, enabled=False
-)
+@dr_mcp_tool(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
 async def gdrive_find_contents(
     *,
     page_size: Annotated[
@@ -317,7 +315,7 @@ async def gdrive_update_metadata(
     )
 
 
-@dr_mcp_tool(tags={"google", "gdrive", "manage", "access", "acl"})
+@dr_mcp_tool(tags={"google", "gdrive", "manage", "access", "acl"}, enabled=False)
 async def gdrive_manage_access(
     *,
     file_id: Annotated[str, "The ID of the file or folder."],

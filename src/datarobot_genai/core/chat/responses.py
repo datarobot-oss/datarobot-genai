@@ -14,6 +14,8 @@
 
 """OpenAI-compatible response helpers for chat interactions."""
 
+from __future__ import annotations
+
 import asyncio
 import queue
 import time
@@ -24,6 +26,7 @@ from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypeVar
 
@@ -38,9 +41,11 @@ from openai.types.chat import ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents import default_usage_metrics
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 
 class CustomModelChatResponse(ChatCompletion):

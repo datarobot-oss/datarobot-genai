@@ -11,9 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import Any
 
 from nat.builder.context import Context
@@ -23,10 +26,6 @@ from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepType
 from nat.utils.type_utils import StrPath
 from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
-from ragas.messages import ToolMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -36,13 +35,22 @@ from datarobot_genai.core.agents.base import is_streaming
 from datarobot_genai.core.mcp.common import MCPConfig
 from datarobot_genai.nat.helpers import load_workflow
 
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
+    from ragas.messages import AIMessage
+    from ragas.messages import HumanMessage
+
 logger = logging.getLogger(__name__)
 
 
 def convert_to_ragas_messages(
     steps: list[IntermediateStep],
-) -> list[HumanMessage | AIMessage | ToolMessage]:
-    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage | ToolMessage:
+) -> list[HumanMessage | AIMessage]:
+    # Lazy import to reduce memory overhead when ragas is not used
+    from ragas.messages import AIMessage
+    from ragas.messages import HumanMessage
+
+    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage:
         if step.event_type == IntermediateStepType.LLM_START:
             return HumanMessage(content=_parse(step.data.input))
         elif step.event_type == IntermediateStepType.LLM_END:
@@ -78,6 +86,9 @@ def create_pipeline_interactions_from_steps(
 ) -> MultiTurnSample | None:
     if not steps:
         return None
+    # Lazy import to reduce memory overhead when ragas is not used
+    from ragas import MultiTurnSample
+
     ragas_trace = convert_to_ragas_messages(steps)
     return MultiTurnSample(user_input=ragas_trace)
 
