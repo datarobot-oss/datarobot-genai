@@ -39,14 +39,13 @@ if TYPE_CHECKING:
     from ragas import MultiTurnSample
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
-    from ragas.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
 
 
 def convert_to_ragas_messages(
     steps: list[IntermediateStep],
-) -> list[HumanMessage | AIMessage | ToolMessage]:
+) -> list[HumanMessage | AIMessage]:
     # Lazy import to reduce memory overhead when ragas is not used
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
