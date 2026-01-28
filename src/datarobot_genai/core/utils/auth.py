@@ -389,3 +389,13 @@ class AsyncOAuthTokenProvider:
         identity = self._get_identity(provider_type)
         token_data = await self._retriever.refresh_access_token(identity)
         return token_data.access_token
+
+
+def prepare_identity_header(forwarded_headers: dict[str, str]) -> dict[str, str]:
+    identity_header_name = "X-DataRobot-Identity-Token"
+
+    for _name, _value in forwarded_headers.items():
+        if _name.lower() == identity_header_name.lower():
+            return {identity_header_name: _value}
+
+    return {}
