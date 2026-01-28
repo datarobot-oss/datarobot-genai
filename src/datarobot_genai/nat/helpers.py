@@ -47,6 +47,7 @@ def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> 
     config_yaml = yaml_load(config_file)
 
     add_headers_to_datarobot_mcp_auth(config_yaml, headers)
+    add_headers_to_datarobot_llm_deployment(config_yaml, headers)
 
     # Validate configuration adheres to NAT schemas
     validated_nat_config = validate_schema(config_yaml, Config)
@@ -61,6 +62,24 @@ def add_headers_to_datarobot_mcp_auth(config_yaml: dict, headers: dict[str, str]
                 auth_config = authentication[auth_name]
                 if auth_config.get("_type") == "datarobot_mcp_auth":
                     auth_config["headers"] = headers
+
+
+def add_headers_to_datarobot_llm_deployment(config_yaml: dict, headers: dict[str, str] | None) -> None:
+    identity_header_name = "X-DataRobot-Identity-Token"
+
+    datarobot_identity_token = None
+    if headers:
+        for header_name, header_value in headers.items():
+            if header_name.lower() == identity_header_name.lower():
+                datarobot_identity_token = header_value
+                break
+
+    if datarobot_identity_token:
+        if llms := config_yaml.get("llms"):
+            for llm_name in llms:
+                llm_config = llms[llm_name]
+                if llm_config.get("_type") == "datarobot-llm-deployment":
+                    llm_config["headers"] = {identity_header_name: datarobot_identity_token}
 
 
 @asynccontextmanager
