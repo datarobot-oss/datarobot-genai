@@ -165,7 +165,6 @@ async def datarobot_llm_deployment_langchain(
     )
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
-
     if llm_config.headers:
         config["default_headers"] = llm_config.headers
 
@@ -189,7 +188,6 @@ async def datarobot_llm_deployment_crewai(
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
-
     if llm_config.headers:
         config["extra_headers"] = llm_config.headers
 
@@ -212,7 +210,6 @@ async def datarobot_llm_deployment_llamaindex(
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
     client = _create_datarobot_litellm(config)
-
     if llm_config.headers:
         config["????"] = llm_config.headers
 
@@ -282,9 +279,11 @@ async def datarobot_llm_component_langchain(
         _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
     )
 
-    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    config = llm_config.model_dump(exclude={"type", "thinking", "headers"}, by_alias=True, exclude_none=True)
     if config["use_datarobot_llm_gateway"]:
         config["base_url"] = config["base_url"] + "/genai/llmgw"
+    elif llm_config.headers:
+        config["default_headers"] = llm_config.headers
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
     config.pop("use_datarobot_llm_gateway")
@@ -300,13 +299,15 @@ async def datarobot_llm_component_crewai(
 ) -> AsyncGenerator[LLM]:
     from crewai import LLM  # noqa: PLC0415
 
-    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    config = llm_config.model_dump(exclude={"type", "thinking", "headers"}, by_alias=True, exclude_none=True)
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     if config["use_datarobot_llm_gateway"]:
         config["base_url"] = config["base_url"].removesuffix("/api/v2")
     else:
         config["api_base"] = config.pop("base_url") + "/chat/completions"
+        if llm_config.headers:
+            config["extra_headers"] = llm_config.headers
     config.pop("use_datarobot_llm_gateway")
     client = LLM(**config)
     yield _patch_llm_based_on_config(client, config)
@@ -318,13 +319,15 @@ async def datarobot_llm_component_crewai(
 async def datarobot_llm_component_llamaindex(
     llm_config: DataRobotLLMComponentModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
-    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    config = llm_config.model_dump(exclude={"type", "thinking", "headers"}, by_alias=True, exclude_none=True)
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     if config["use_datarobot_llm_gateway"]:
         config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
     else:
         config["api_base"] = config.pop("base_url") + "/chat/completions"
+        if llm_config.headers:
+            config["????"] = llm_config.headers
     config.pop("use_datarobot_llm_gateway")
     client = _create_datarobot_litellm(config)
     yield _patch_llm_based_on_config(client, config)
