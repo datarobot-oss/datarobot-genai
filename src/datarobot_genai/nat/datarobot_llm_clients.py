@@ -200,7 +200,7 @@ async def datarobot_llm_deployment_crewai(
 @register_llm_client(
     config_type=DataRobotLLMDeploymentModelConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
 )
-async def datarobot_llm_deployment_llamaindex_a(
+async def datarobot_llm_deployment_llamaindex(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
     config = llm_config.model_dump(
@@ -212,6 +212,10 @@ async def datarobot_llm_deployment_llamaindex_a(
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
     client = _create_datarobot_litellm(config)
+
+    if llm_config.headers:
+        config["????"] = llm_config.headers
+
     yield _patch_llm_based_on_config(client, config)
 
 
