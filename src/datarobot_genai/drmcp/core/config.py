@@ -76,7 +76,16 @@ class MCPToolConfig(BaseSettings):
             RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_MICROSOFT_GRAPH_TOOLS",
             "ENABLE_MICROSOFT_GRAPH_TOOLS",
         ),
-        description="Enable/disable Sharepoint tools",
+        description="Enable/disable Microsoft Graph (Sharepoint/Onedrive) tools",
+    )
+
+    enable_perplexity_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PERPLEXITY_TOOLS",
+            "ENABLE_PERPLEXITY_TOOLS",
+        ),
+        description="Enable/disable Perplexity tools",
     )
 
     is_atlassian_oauth_provider_configured: bool = Field(
