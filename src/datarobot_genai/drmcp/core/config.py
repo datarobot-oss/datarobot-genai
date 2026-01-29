@@ -76,7 +76,7 @@ class MCPToolConfig(BaseSettings):
             RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_MICROSOFT_GRAPH_TOOLS",
             "ENABLE_MICROSOFT_GRAPH_TOOLS",
         ),
-        description="Enable/disable Microsoft Graph (Sharepoint/Onedrive) tools",
+        description="Enable/disable Microsoft Graph (Sharepoint/OneDrive) tools",
     )
 
     enable_perplexity_tools: bool = Field(
