@@ -14,6 +14,7 @@
 
 """GitHub MCP client for proxying tool calls to GitHub's remote MCP server."""
 
+import json
 import logging
 from typing import Any
 
@@ -82,19 +83,27 @@ class GitHubMCPClient:
     - Remote URL: https://api.githubcopilot.com/mcp/
     """
 
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str, toolsets: list[str] | None = None):
         """
         Initialize GitHub MCP client with access token.
 
         Args:
             access_token: OAuth access token for GitHub API
+            toolsets: Optional list of toolsets to request (e.g., ["all"] or ["repos", "issues"]).
+                     These are sent via the X-MCP-Toolsets header.
         """
         self.access_token = access_token
+        self._toolsets = toolsets
+
+        headers: dict[str, str] = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        if toolsets:
+            headers["X-MCP-Toolsets"] = ",".join(toolsets)
+
         self._client = httpx.AsyncClient(
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             timeout=60.0,  # Longer timeout for MCP operations
         )
         self._request_id = 0
@@ -103,6 +112,78 @@ class GitHubMCPClient:
         """Generate the next request ID for JSON-RPC calls."""
         self._request_id += 1
         return str(self._request_id)
+
+    @staticmethod
+    def _parse_response(response: httpx.Response) -> dict[str, Any]:
+        """Parse response, handling both JSON and SSE (Server-Sent Events) formats.
+
+        The GitHub MCP server may return responses as either standard JSON or
+        as SSE (text/event-stream) format. This method handles both cases.
+
+        Args:
+            response: The HTTP response to parse
+
+        Returns
+        -------
+            Parsed JSON response as a dictionary
+
+        Raises
+        ------
+            GitHubMCPError: If SSE response contains no data or parsing fails
+        """
+        content_type = response.headers.get("content-type", "")
+
+        if "text/event-stream" in content_type:
+            # Parse SSE format: look for lines starting with "data: "
+            for line in response.text.splitlines():
+                if line.startswith("data: "):
+                    try:
+                        return json.loads(line[6:])
+                    except json.JSONDecodeError as e:
+                        raise GitHubMCPError(f"Failed to parse SSE data: {e}") from e
+            raise GitHubMCPError("SSE response contained no data")
+
+        # Standard JSON response
+        return response.json()
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """
+        List all available tools from the GitHub MCP server.
+
+        Returns
+        -------
+            List of tool definitions with name, description, and inputSchema
+
+        Raises
+        ------
+            GitHubMCPError: If the request fails
+        """
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_request_id(),
+            "method": "tools/list",
+            "params": {},
+        }
+
+        try:
+            response = await self._client.post(GITHUB_MCP_SERVER_URL, json=payload)
+            response.raise_for_status()
+            result = self._parse_response(response)
+
+            # Check for JSON-RPC error
+            if "error" in result:
+                error = result["error"]
+                error_message = error.get("message", "Unknown error")
+                error_code = error.get("code", "")
+                raise GitHubMCPError(f"GitHub MCP error ({error_code}): {error_message}")
+
+            return result.get("result", {}).get("tools", [])
+
+        except httpx.HTTPStatusError as e:
+            raise self._handle_http_error(e, "Failed to list tools") from e
+        except httpx.RequestError as e:
+            logger.error(f"Request error listing GitHub MCP tools: {e}")
+            raise GitHubMCPError(f"Network error listing GitHub MCP tools: {e}") from e
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
@@ -133,7 +214,7 @@ class GitHubMCPClient:
         try:
             response = await self._client.post(GITHUB_MCP_SERVER_URL, json=payload)
             response.raise_for_status()
-            result = response.json()
+            result = self._parse_response(response)
 
             # Check for JSON-RPC error
             if "error" in result:

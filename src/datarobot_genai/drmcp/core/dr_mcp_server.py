@@ -23,6 +23,8 @@ from typing import Any
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 
+from datarobot_genai.drmcp.tools.github.register import register_github_tools
+
 from .auth import initialize_oauth_middleware
 from .config import get_config
 from .credentials import get_credentials
@@ -38,6 +40,7 @@ from .server_life_cycle import BaseServerLifecycle
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
 from .tool_config import TOOL_CONFIGS
+from .tool_config import ToolType
 from .tool_config import is_tool_enabled
 
 
@@ -139,9 +142,12 @@ class DataRobotMCPServer:
                     "No AWS credentials found, skipping memory manager initialization"
                 )
 
-        # Load static tools modules
+        # Load static tools modules (except GitHub which uses dynamic registration)
         base_dir = os.path.dirname(os.path.dirname(__file__))
         for tool_type, tool_config in TOOL_CONFIGS.items():
+            # Skip GitHub - it uses dynamic registration via register_github_tools()
+            if tool_type == ToolType.GITHUB:
+                continue
             if is_tool_enabled(tool_type, self._config):
                 _import_modules_from_dir(
                     os.path.join(base_dir, "tools", tool_config["directory"]),
@@ -212,6 +218,12 @@ class DataRobotMCPServer:
             if self._config.mcp_server_register_dynamic_prompts_on_startup:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
+
+            # Register GitHub tools from manifest (if enabled)
+            if is_tool_enabled(ToolType.GITHUB, self._config):
+                self._logger.info("Registering GitHub tools from manifest...")
+                tool_count = register_github_tools()
+                self._logger.info(f"Registered {tool_count} GitHub tools")
 
             # Execute pre-server start actions
             asyncio.run(self._lifecycle.pre_server_start(self._mcp))
