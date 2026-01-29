@@ -3,8 +3,8 @@
 from datarobot_genai.core.mcp.common import MCPConfig
 
 from .agent import DataRobotLiteLLM
+from .agent import LlamaIndexAgent
 from .agent import create_pipeline_interactions_from_events
-from .base import LlamaIndexAgent
 from .mcp import load_mcp_tools
 
 __all__ = [

@@ -17,7 +17,7 @@ This package provides:
 - BaseAgent: common initialization for agent env/config fields
 - Common helpers: make_system_prompt, extract_user_prompt_content
 - Framework utilities (optional extras):
-  - crewai: build_llm, create_pipeline_interactions_from_messages
+  - crewai: create_pipeline_interactions_from_messages
   - langgraph: create_pipeline_interactions_from_events
   - llamaindex: DataRobotLiteLLM, create_pipeline_interactions_from_events
 """

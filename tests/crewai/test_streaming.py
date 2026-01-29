@@ -22,7 +22,7 @@ from ragas import MultiTurnSample
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.crewai.base import CrewAIAgent
+from datarobot_genai.crewai.agent import CrewAIAgent
 
 
 class _Crew:
