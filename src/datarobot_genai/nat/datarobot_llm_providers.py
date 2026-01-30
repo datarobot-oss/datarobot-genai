@@ -59,6 +59,11 @@ class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-co
     )
     use_datarobot_llm_gateway: bool = config.use_datarobot_llm_gateway
 
+    headers: dict[str, str] | None = Field(
+        description="Additional headers send to LLM deployment.",
+        default=None,
+    )
+
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
 async def datarobot_llm_component(
@@ -103,6 +108,11 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         serialization_alias="model",
         description="The model name to pass through to the deployment.",
         default="datarobot-deployed-llm",
+    )
+
+    headers: dict[str, str] | None = Field(
+        description="Additional headers send to LLM deployment.",
+        default=None,
     )
 
 

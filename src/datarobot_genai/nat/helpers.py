@@ -25,6 +25,8 @@ from nat.utils.data_models.schema_validator import validate_schema
 from nat.utils.io.yaml_tools import yaml_load
 from nat.utils.type_utils import StrPath
 
+from datarobot_genai.core.utils.auth import prepare_identity_header
+
 
 def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:
     """
@@ -47,6 +49,7 @@ def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> 
     config_yaml = yaml_load(config_file)
 
     add_headers_to_datarobot_mcp_auth(config_yaml, headers)
+    add_headers_to_datarobot_llm_deployment(config_yaml, headers)
 
     # Validate configuration adheres to NAT schemas
     validated_nat_config = validate_schema(config_yaml, Config)
@@ -61,6 +64,21 @@ def add_headers_to_datarobot_mcp_auth(config_yaml: dict, headers: dict[str, str]
                 auth_config = authentication[auth_name]
                 if auth_config.get("_type") == "datarobot_mcp_auth":
                     auth_config["headers"] = headers
+
+
+def add_headers_to_datarobot_llm_deployment(
+    config_yaml: dict, headers: dict[str, str] | None
+) -> None:
+    if not headers:
+        return
+
+    config_types_to_update = ("datarobot-llm-deployment", "datarobot-llm-component")
+    if identity_header := prepare_identity_header(headers):
+        if llms := config_yaml.get("llms"):
+            for llm_name in llms:
+                llm_config = llms[llm_name]
+                if llm_config.get("_type") in config_types_to_update:
+                    llm_config["headers"] = identity_header
 
 
 @asynccontextmanager
