@@ -66,7 +66,9 @@ def add_headers_to_datarobot_mcp_auth(config_yaml: dict, headers: dict[str, str]
                     auth_config["headers"] = headers
 
 
-def add_headers_to_datarobot_llm_deployment(config_yaml: dict, headers: dict[str, str] | None) -> None:
+def add_headers_to_datarobot_llm_deployment(
+    config_yaml: dict, headers: dict[str, str] | None
+) -> None:
     if not headers:
         return
 

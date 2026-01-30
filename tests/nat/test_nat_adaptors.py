@@ -67,7 +67,7 @@ async def test_datarobot_llm_deployment_langchain_with_identity_token():
     llm_config = DataRobotLLMDeploymentModelConfig(
         temperature=0.0,
         api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -88,7 +88,7 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
     llm_config = DataRobotLLMDeploymentModelConfig(
         temperature=0.0,
         api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -111,7 +111,7 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
     llm_config = DataRobotLLMDeploymentModelConfig(
         temperature=0.0,
         api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -156,8 +156,7 @@ async def test_datarobot_llm_component_langchain_use_gateway():
 
 async def test_datarobot_llm_component_langchain_with_identity_token():
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        api_key="some_token", headers={"X-DataRobot-Identity-Token": "identity-token-123"}
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -176,8 +175,7 @@ async def test_datarobot_llm_component_crewai():
 
 async def test_datarobot_llm_component_crewai_with_identity_token():
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        api_key="some_token", headers={"X-DataRobot-Identity-Token": "identity-token-123"}
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -198,8 +196,7 @@ async def test_datarobot_llm_component_llamaindex():
 
 async def test_datarobot_llm_component_llamaindex_with_identity_token():
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        api_key="some_token", headers={"X-DataRobot-Identity-Token": "identity-token-123"}
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
