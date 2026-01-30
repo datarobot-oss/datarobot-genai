@@ -53,6 +53,7 @@ def test_config_defaults() -> None:
         assert config.tool_config.enable_jira_tools is False
         assert config.tool_config.enable_confluence_tools is False
         assert config.tool_config.enable_microsoft_graph_tools is False
+        assert config.tool_config.enable_perplexity_tools is False
 
         # OAuth provider configuration defaults
         assert config.tool_config.is_atlassian_oauth_provider_configured is False
@@ -115,6 +116,7 @@ class TestToolConfiguration:
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
             assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
 
             config_module._config = None
 
@@ -126,6 +128,7 @@ class TestToolConfiguration:
             ("enable_confluence_tools", "ENABLE_CONFLUENCE_TOOLS"),
             ("enable_gdrive_tools", "ENABLE_GDRIVE_TOOLS"),
             ("enable_microsoft_graph_tools", "ENABLE_MICROSOFT_GRAPH_TOOLS"),
+            ("enable_perplexity_tools", "ENABLE_PERPLEXITY_TOOLS"),
         ],
     )
     def test_tool_enablement_via_env_var(self, tool_name: str, env_var: str) -> None:
