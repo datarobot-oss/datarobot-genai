@@ -31,6 +31,7 @@ class ToolType(str, Enum):
     CONFLUENCE = "confluence"
     GDRIVE = "gdrive"
     MICROSOFT_GRAPH = "microsoft_graph"
+    TAVILY = "tavily"
 
 
 class ToolConfig(TypedDict):
@@ -79,6 +80,13 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="microsoft_graph",
         package_prefix="datarobot_genai.drmcp.tools.microsoft_graph",
         config_field_name="enable_microsoft_graph_tools",
+    ),
+    ToolType.TAVILY: ToolConfig(
+        name="tavily",
+        oauth_check=None,
+        directory="tavily",
+        package_prefix="datarobot_genai.drmcp.tools.tavily",
+        config_field_name="enable_tavily_tools",
     ),
 }
 
