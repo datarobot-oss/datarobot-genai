@@ -13,11 +13,11 @@
 # limitations under the License.
 
 import logging
-import os
 from typing import Any
 from typing import Literal
 
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_headers
 from perplexity import AsyncPerplexity
 from perplexity.types import search_create_response
 from pydantic import BaseModel
@@ -36,7 +36,8 @@ MAX_TOKENS_PER_PAGE_DEFAULT: int = 2048
 
 async def get_perplexity_access_token() -> str | ToolError:
     """
-    Get Perplexity OAuth access token with error handling.
+    Get Perplexity API key from HTTP headers.
+
     At the moment of creating this fn. Perplexity does not support OAuth.
     It allows only API-KEY authorized flow.
 
@@ -53,32 +54,20 @@ async def get_perplexity_access_token() -> str | ToolError:
         # Use token
         ```
     """
-    perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
-    if not perplexity_api_key:
-        logger.warning("Empty access token received")
-        return ToolError(
-            "Received empty access token. Please supply PERPLEXITY_API_KEY env variable."
-        )
-    return perplexity_api_key
+    try:
+        headers = get_http_headers()
 
-    # At the moment of creating this fn. Perplexity does not support OAuth.
-    # try:
-    #     access_token = await get_access_token("perplexity")
-    #     if not access_token:
-    #         logger.warning("Empty access token received")
-    #         return ToolError("Received empty access token. Please complete the OAuth flow.")
-    #     return access_token
-    # except OAuthServiceClientErr as e:
-    #     logger.error(f"OAuth client error: {e}", exc_info=True)
-    #     return ToolError(
-    #         "Could not obtain access token for Perplexity. Make sure the OAuth "
-    #         "permission was granted for the application to act on your behalf."
-    #     )
-    # except Exception as e:
-    #     logger.error(f"Unexpected error obtaining access token: {e}", exc_info=True)
-    #     return ToolError(
-    #         "An unexpected error occurred while obtaining access token for Perplexity."
-    #     )
+        if api_key := headers.get("x-perplexity-api-key"):
+            return api_key
+
+        logger.warning("Perplexity API key not found in headers.")
+        return ToolError(
+            "Perplexity API key not found in headers. "
+            "Please provide it via 'x-perplexity-api-key' header."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error obtaining Perplexity API key: {e}.", exc_info=e)
+        return ToolError("An unexpected error occured while obtaining Perplexity API key.")
 
 
 class PerplexityError(Exception):

@@ -60,10 +60,7 @@ async def perplexity_search(
         f"(default {MAX_TOKENS_PER_PAGE_DEFAULT}).",
     ] = MAX_TOKENS_PER_PAGE_DEFAULT,
 ) -> ToolResult:
-    """
-    Perplexity web search tool combining multi-query research, content extraction control,
-    and server-side filtering for high-performance results gathering.
-    """
+    """Perplexity web search tool combining multi-query research and content extraction control."""
     if not query:
         raise ToolError("Argument validation error: query cannot be empty.")
     if query and isinstance(query, str) and not query.strip():

@@ -149,6 +149,7 @@ class MCPToolConfig(BaseSettings):
         "enable_confluence_tools",
         "enable_gdrive_tools",
         "enable_microsoft_graph_tools",
+        "enable_perplexity_tools",
         "enable_tavily_tools",
         "is_atlassian_oauth_provider_configured",
         "is_google_oauth_provider_configured",
