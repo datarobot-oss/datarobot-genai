@@ -202,17 +202,17 @@ async def datarobot_llm_deployment_llamaindex(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
     config = llm_config.model_dump(
-        exclude={"type", "thinking"},
+        exclude={"type", "thinking", "headers"},
         by_alias=True,
         exclude_none=True,
     )
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url") + "/chat/completions"
-    client = _create_datarobot_litellm(config)
     if llm_config.headers:
-        config["????"] = llm_config.headers
+        config["additional_kwargs"] = {"extra_headers": llm_config.headers}
 
+    client = _create_datarobot_litellm(config)
     yield _patch_llm_based_on_config(client, config)
 
 
@@ -327,7 +327,7 @@ async def datarobot_llm_component_llamaindex(
     else:
         config["api_base"] = config.pop("base_url") + "/chat/completions"
         if llm_config.headers:
-            config["????"] = llm_config.headers
+            config["additional_kwargs"] = {"extra_headers": llm_config.headers}
     config.pop("use_datarobot_llm_gateway")
     client = _create_datarobot_litellm(config)
     yield _patch_llm_based_on_config(client, config)
