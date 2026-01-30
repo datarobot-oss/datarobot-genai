@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-import datarobot_genai.crewai.base as base_mod
+import datarobot_genai.crewai.agent as agent_mod
 
 
 @pytest.fixture
@@ -35,4 +35,4 @@ def mock_mcp_context(monkeypatch: Any) -> None:
     def _ctx_factory(**_: Any) -> Any:
         return _Ctx()
 
-    monkeypatch.setattr(base_mod, "mcp_tools_context", _ctx_factory, raising=True)
+    monkeypatch.setattr(agent_mod, "mcp_tools_context", _ctx_factory, raising=True)

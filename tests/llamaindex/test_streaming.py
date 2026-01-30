@@ -21,9 +21,9 @@ from typing import cast
 
 import pytest
 
-import datarobot_genai.llama_index.base as base_mod
+import datarobot_genai.llama_index.agent as agent_mod
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.llama_index.base import LlamaIndexAgent
+from datarobot_genai.llama_index.agent import LlamaIndexAgent
 
 
 class _Handler:
@@ -78,7 +78,7 @@ async def test_llama_index_streaming_yields_deltas_and_terminal_chunk(monkeypatc
         return {"ok": True}
 
     monkeypatch.setattr(
-        base_mod,
+        agent_mod,
         "create_pipeline_interactions_from_events",
         fake_cpie,
         raising=True,
