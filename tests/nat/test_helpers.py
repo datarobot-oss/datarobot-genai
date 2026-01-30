@@ -17,7 +17,8 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
-from datarobot_genai.nat.helpers import add_headers_to_datarobot_mcp_auth, add_headers_to_datarobot_llm_deployment
+from datarobot_genai.nat.helpers import add_headers_to_datarobot_llm_deployment
+from datarobot_genai.nat.helpers import add_headers_to_datarobot_mcp_auth
 from datarobot_genai.nat.helpers import load_config
 from datarobot_genai.nat.helpers import load_workflow
 
@@ -78,7 +79,7 @@ def test_add_headers_to_datarobot_mcp_auth(config, headers, expected):
                 "llms": {
                     "datarobot_llm": {
                         "_type": "datarobot-llm-component",
-                        "headers": {"X-DataRobot-Identity-Token": "identity-123"}
+                        "headers": {"X-DataRobot-Identity-Token": "identity-123"},
                     }
                 }
             },
@@ -90,7 +91,7 @@ def test_add_headers_to_datarobot_mcp_auth(config, headers, expected):
                 "llms": {
                     "datarobot_llm": {
                         "_type": "datarobot-llm-deployment",
-                        "headers": {"X-DataRobot-Identity-Token": "identity-123"}
+                        "headers": {"X-DataRobot-Identity-Token": "identity-123"},
                     }
                 }
             },
@@ -99,7 +100,7 @@ def test_add_headers_to_datarobot_mcp_auth(config, headers, expected):
             {
                 "llms": {
                     "datarobot_llm_1": {"_type": "datarobot-llm-deployment"},
-                    "datarobot_llm_2": {"_type": "datarobot-llm-component"}
+                    "datarobot_llm_2": {"_type": "datarobot-llm-component"},
                 }
             },
             {"X-DataRobot-Identity-Token": "identity-123"},
@@ -107,12 +108,12 @@ def test_add_headers_to_datarobot_mcp_auth(config, headers, expected):
                 "llms": {
                     "datarobot_llm_1": {
                         "_type": "datarobot-llm-deployment",
-                        "headers": {"X-DataRobot-Identity-Token": "identity-123"}
+                        "headers": {"X-DataRobot-Identity-Token": "identity-123"},
                     },
                     "datarobot_llm_2": {
                         "_type": "datarobot-llm-component",
-                        "headers": {"X-DataRobot-Identity-Token": "identity-123"}
-                    }
+                        "headers": {"X-DataRobot-Identity-Token": "identity-123"},
+                    },
                 }
             },
         ),
