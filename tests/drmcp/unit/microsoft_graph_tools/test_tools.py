@@ -97,8 +97,6 @@ class TestMicrosoftGraphSearchContent:
         """Test successful content search."""
         result = await microsoft_graph_search_content(search_query="test query")
 
-        assert result.content[0].text.startswith("Successfully searched Microsoft Graph")
-        assert "2 result(s)" in result.content[0].text
         assert result.structured_content["query"] == "test query"
         assert result.structured_content["count"] == 2
         assert len(result.structured_content["results"]) == 2
@@ -286,11 +284,6 @@ class TestMicrosoftGraphShareItem:
             role="read",
         )
 
-        assert result.content[0].text == (
-            "Successfully shared file dummy_file_id "
-            "from document library dummy_document_library_id "
-            "with 2 recipients with 'read' role."
-        )
         assert result.structured_content["fileId"] == "dummy_file_id"
         assert result.structured_content["documentLibraryId"] == "dummy_document_library_id"
         assert result.structured_content["recipientEmails"] == ["dummy@user.com", "dummy2@user.com"]
@@ -445,7 +438,6 @@ class TestMicrosoftCreateFile:
             document_library_id="drive123",
         )
 
-        assert "created successfully" in result.content[0].text
         assert result.structured_content["destination"] == "sharepoint"
         assert result.structured_content["driveId"] == "drive123"
 
@@ -464,7 +456,6 @@ class TestMicrosoftCreateFile:
             content_text="My notes",
         )
 
-        assert "created successfully" in result.content[0].text
         assert result.structured_content["destination"] == "onedrive"
         assert result.structured_content["driveId"] == "personal_drive_123"
 

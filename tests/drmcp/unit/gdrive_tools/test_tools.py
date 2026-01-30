@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 from collections.abc import Iterator
 from unittest.mock import patch
 
@@ -86,15 +87,13 @@ class TestGdriveListFiles:
         tool_result = await gdrive_find_contents(fields=["id", "name"])
 
         content, structured_content = tool_result.to_mcp_result()
-        assert (
-            content[0].text == "Successfully listed 2 files. "
-            f"Next page token needed to fetch more data: {gdrive_next_page_token}"
-        )
-        assert structured_content == {
+        expected = {
             "files": [{"id": file.id, "name": file.name} for file in gdrive_files],
             "count": len(gdrive_files),
             "nextPageToken": gdrive_next_page_token,
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_gdrive_find_contents_when_no_more_pages_happy_path(
@@ -107,12 +106,13 @@ class TestGdriveListFiles:
         tool_result = await gdrive_find_contents(fields=["id", "name"])
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully listed 2 files. There're no more pages."
-        assert structured_content == {
+        expected = {
             "files": [{"id": file.id, "name": file.name} for file in gdrive_files],
             "count": len(gdrive_files),
             "nextPageToken": None,
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
 
 class TestGdriveReadContent:
@@ -152,10 +152,9 @@ class TestGdriveReadContent:
         tool_result = await gdrive_read_content(file_id="doc123")
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "Successfully retrieved content of 'My Document'" in content[0].text
-        assert "text/markdown" in content[0].text
-        # Should show export info since was_exported is True
-        assert "exported from" in content[0].text
+        text_data = json.loads(content[0].text)
+        assert text_data["id"] == "doc123"
+        assert text_data["mimeType"] == "text/markdown"
         assert structured_content["id"] == "doc123"
         assert structured_content["name"] == "My Document"
         assert structured_content["mimeType"] == "text/markdown"
@@ -164,6 +163,7 @@ class TestGdriveReadContent:
         assert structured_content["wasExported"] is True
         assert structured_content["size"] == 1024
         assert structured_content["webViewLink"] == "https://docs.google.com/document/d/doc123/edit"
+        assert structured_content["wasExported"] is True
 
     @pytest.mark.asyncio
     async def test_gdrive_read_content_csv_file(
@@ -187,7 +187,7 @@ class TestGdriveReadContent:
             tool_result = await gdrive_read_content(file_id="sheet123")
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "text/csv" in content[0].text
+        assert json.loads(content[0].text)["mimeType"] == "text/csv"
         assert structured_content["content"] == "Name,Age\nAlice,30"
         assert structured_content["wasExported"] is True
 
@@ -213,8 +213,7 @@ class TestGdriveReadContent:
             tool_result = await gdrive_read_content(file_id="txt123")
 
         content, structured_content = tool_result.to_mcp_result()
-        # Should NOT show export info since was_exported is False
-        assert "exported from" not in content[0].text
+        assert json.loads(content[0].text)["wasExported"] is False
         assert structured_content["wasExported"] is False
 
     @pytest.mark.asyncio
@@ -309,7 +308,7 @@ class TestGdriveCreateFile:
             tool_result = await gdrive_create_file(name="My New File.txt", mime_type="text/plain")
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "Successfully created file 'My New File.txt'" in content[0].text
+        assert json.loads(content[0].text) == structured_content
         assert structured_content["id"] == "new_file_123"
         assert structured_content["name"] == "My New File.txt"
         assert structured_content["mimeType"] == "text/plain"
@@ -333,7 +332,7 @@ class TestGdriveCreateFile:
             )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "with initial content" in content[0].text
+        assert json.loads(content[0].text)["id"] == "new_file_123"
         assert structured_content["id"] == "new_file_123"
 
     @pytest.mark.asyncio
@@ -354,7 +353,7 @@ class TestGdriveCreateFile:
             )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "Successfully created file 'My New Document'" in content[0].text
+        assert json.loads(content[0].text)["mimeType"] == "application/vnd.google-apps.document"
         assert structured_content["mimeType"] == "application/vnd.google-apps.document"
 
     @pytest.mark.asyncio
@@ -373,7 +372,7 @@ class TestGdriveCreateFile:
             )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "Successfully created folder 'My New Folder'" in content[0].text
+        assert json.loads(content[0].text)["mimeType"] == GOOGLE_DRIVE_FOLDER_MIME
         assert structured_content["mimeType"] == GOOGLE_DRIVE_FOLDER_MIME
 
     @pytest.mark.asyncio
@@ -435,11 +434,8 @@ class TestGdriveManageAccess:
             )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert (
-            "Successfully added role 'reader' for 'dummy@user.com' "
-            "for gdrive file 'dummy_file_id'. New permission id 'dummy_permission_id'."
-            in content[0].text
-        )
+        assert json.loads(content[0].text)["affectedFileId"] == "dummy_file_id"
+        assert json.loads(content[0].text)["newPermissionId"] == new_permission_id
         assert structured_content["affectedFileId"] == "dummy_file_id"
         assert structured_content["newPermissionId"] == new_permission_id
 
@@ -459,10 +455,7 @@ class TestGdriveManageAccess:
             )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert (
-            "Successfully updated role 'reader' (permission 'dummy_permission_id') "
-            "for gdrive file 'dummy_file_id'." in content[0].text
-        )
+        assert json.loads(content[0].text)["affectedFileId"] == "dummy_file_id"
         assert structured_content["affectedFileId"] == "dummy_file_id"
 
     @pytest.mark.asyncio
@@ -478,10 +471,7 @@ class TestGdriveManageAccess:
             )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert (
-            "Successfully removed permission 'dummy_permission_id' for gdrive file 'dummy_file_id'."
-            in content[0].text
-        )
+        assert json.loads(content[0].text)["affectedFileId"] == "dummy_file_id"
         assert structured_content["affectedFileId"] == "dummy_file_id"
 
     @pytest.mark.asyncio
@@ -591,9 +581,8 @@ class TestGdriveUpdateMetadata:
         )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "Successfully updated file 'Updated File.txt'" in content[0].text
-        assert "renamed to 'Updated File.txt'" in content[0].text
-        assert "starred" in content[0].text
+        assert json.loads(content[0].text)["name"] == "Updated File.txt"
+        assert json.loads(content[0].text)["starred"] is True
         assert structured_content["id"] == "file_123"
         assert structured_content["name"] == "Updated File.txt"
         assert structured_content["starred"] is True

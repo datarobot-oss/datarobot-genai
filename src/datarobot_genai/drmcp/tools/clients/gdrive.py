@@ -351,6 +351,8 @@ class GoogleDriveClient:
             "pageSize": page_size,
             "fields": DEFAULT_FIELDS,
             "orderBy": DEFAULT_ORDER,
+            "supportsAllDrives": "true",
+            "includeItemsFromAllDrives": "true",
         }
         if page_token:
             params["pageToken"] = page_token

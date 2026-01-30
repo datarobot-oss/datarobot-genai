@@ -82,10 +82,12 @@ def expectations_for_get_project_dataset_by_name_failure(
                     "project_id": classification_project_id,
                     "dataset_name": nonexistent_dataset_name,
                 },
-                result=(
-                    f"Dataset with name containing '{nonexistent_dataset_name}' not found in "
-                    f"project {classification_project_id}."
-                ),
+                result={
+                    "error": (
+                        f"Dataset with name containing '{nonexistent_dataset_name}' not found in "
+                        f"project {classification_project_id}."
+                    )
+                },
             ),
         ],
         llm_response_content_contains_expectations=[

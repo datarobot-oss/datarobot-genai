@@ -95,7 +95,6 @@ async def get_deployment_info(
         }
 
     return ToolResult(
-        content=json.dumps(result, indent=2),
         structured_content=result,
     )
 
@@ -179,21 +178,6 @@ async def generate_prediction_data_template(
     # Create DataFrame
     df = pd.DataFrame(template_data)
 
-    # Add metadata comments
-    result = f"# Prediction Data Template for Deployment: {deployment_id}\n"
-    result += f"# Model Type: {features_info['model_type']}\n"
-    result += f"# Target: {features_info['target']} (Type: {features_info['target_type']})\n"
-
-    if "time_series_config" in features_info:
-        ts = features_info["time_series_config"]
-        result += f"# Time Series: datetime_column={ts['datetime_column']}, "
-        result += f"forecast_window=[{ts['forecast_window_start']}, {ts['forecast_window_end']}]\n"
-        if ts["series_id_columns"]:
-            result += f"# Multiseries ID Columns: {', '.join(ts['series_id_columns'])}\n"
-
-    result += f"# Total Features: {features_info['total_features']}\n"
-    result += df.to_csv(index=False)
-
     # Build structured content with template data and metadata
     structured_content = {
         "deployment_id": deployment_id,
@@ -208,7 +192,6 @@ async def generate_prediction_data_template(
         structured_content["time_series_config"] = features_info["time_series_config"]
 
     return ToolResult(
-        content=str(result),
         structured_content=structured_content,
     )
 
@@ -342,7 +325,6 @@ async def validate_prediction_data(
     }
 
     return ToolResult(
-        content=json.dumps(validation_report, indent=2),
         structured_content=validation_report,
     )
 
@@ -380,6 +362,5 @@ async def get_deployment_features(
         result["target_type"] = info["target_type"]
 
     return ToolResult(
-        content=json.dumps(result, indent=2),
         structured_content=result,
     )

@@ -33,7 +33,7 @@ def expectations_for_upload_dataset_to_ai_catalog_success(
             ToolCallTestExpectations(
                 name="upload_dataset_to_ai_catalog",
                 parameters={"file_path": str(diabetes_scoring_small_file_path)},
-                result="Content: Successfully uploaded dataset: ",
+                result={"dataset_id": "", "dataset_version_id": "", "dataset_name": ""},
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -54,7 +54,7 @@ def expectations_for_upload_dataset_to_ai_catalog_success_from_url() -> ETETestE
                 parameters={
                     "file_url": "https://s3.amazonaws.com/datarobot_public_datasets/10k_diabetes.csv"
                 },
-                result="Content: Successfully uploaded dataset: ",
+                result={"dataset_id": "", "dataset_version_id": "", "dataset_name": ""},
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -96,7 +96,7 @@ def expectations_for_list_ai_catalog_items_success() -> ETETestExpectations:
             ToolCallTestExpectations(
                 name="list_ai_catalog_items",
                 parameters={},
-                result="AI Catalog items, here are the details:",
+                result={"datasets": {}, "count": 0},
             )
         ],
         llm_response_content_contains_expectations=[

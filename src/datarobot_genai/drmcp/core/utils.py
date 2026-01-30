@@ -18,7 +18,11 @@ from urllib.parse import urlparse
 
 import boto3
 from fastmcp.resources import HttpResource
+from fastmcp.tools import Tool
 from fastmcp.tools.tool import ToolResult
+from mcp.types import Prompt as MCPPrompt
+from mcp.types import Resource as MCPResource
+from mcp.types import Tool as MCPTool
 from pydantic import BaseModel
 
 from .constants import MAX_INLINE_SIZE
@@ -136,3 +140,109 @@ def is_valid_url(url: str) -> bool:
     """Check if a URL is valid."""
     result = urlparse(url)
     return all([result.scheme, result.netloc])
+
+
+def get_prompt_tags(prompt: MCPPrompt) -> set[str]:
+    """
+    Extract tags from a prompt.
+
+    Args:
+        prompt: MCP protocol Prompt
+
+    Returns
+    -------
+        Set of tag strings, empty set if no tags found
+    """
+    # MCPPrompt has tags in meta._fastmcp.tags (as a list)
+    if not (prompt.meta and isinstance(prompt.meta, dict)):
+        return set()
+
+    fastmcp_meta = prompt.meta.get("_fastmcp")
+    if not (fastmcp_meta and isinstance(fastmcp_meta, dict)):
+        return set()
+
+    tags = fastmcp_meta.get("tags")
+    return set(tags) if tags else set()
+
+
+def get_resource_tags(resource: MCPResource) -> set[str]:
+    """
+    Extract tags from a resource.
+
+    Args:
+        resource: MCP protocol Resource
+
+    Returns
+    -------
+        Set of tag strings, empty set if no tags found
+    """
+    # MCPResource has tags in meta._fastmcp.tags (as a list)
+    if not (resource.meta and isinstance(resource.meta, dict)):
+        return set()
+
+    fastmcp_meta = resource.meta.get("_fastmcp")
+    if not (fastmcp_meta and isinstance(fastmcp_meta, dict)):
+        return set()
+
+    tags = fastmcp_meta.get("tags")
+    return set(tags) if tags else set()
+
+
+def get_tool_tags(tool: Tool | MCPTool) -> set[str]:
+    """
+    Extract tags from a tool, handling both FastMCP Tool and MCP protocol Tool types.
+
+    Args:
+        tool: Either a FastMCP Tool or MCP protocol Tool
+
+    Returns
+    -------
+        Set of tag strings, empty set if no tags found
+    """
+    if isinstance(tool, Tool):
+        # FastMCP Tool has tags directly as a set
+        return getattr(tool, "tags", None) or set()
+
+    # MCPTool has tags in meta._fastmcp.tags (as a list)
+    if not (tool.meta and isinstance(tool.meta, dict)):
+        return set()
+
+    fastmcp_meta = tool.meta.get("_fastmcp")
+    if not (fastmcp_meta and isinstance(fastmcp_meta, dict)):
+        return set()
+
+    tags = fastmcp_meta.get("tags")
+    return set(tags) if tags else set()
+
+
+def filter_tools_by_tags(
+    *,
+    tools: list[Tool | MCPTool],
+    tags: list[str] | None = None,
+    match_all: bool = False,
+) -> list[Tool | MCPTool]:
+    """
+    Filter tools by tags.
+
+    Args:
+        tools: List of tools to filter
+        tags: List of tags to filter by. If None, returns all tools
+        match_all: If True, tool must have all specified tags. If False, tool must have at least
+            one tag.
+
+    Returns
+    -------
+        List of tools that match the tag criteria
+    """
+    if not tags:
+        return tools
+
+    # Convert tags to set for O(1) lookup instead of O(n)
+    tags_set = set(tags)
+
+    return [
+        tool
+        for tool in tools
+        if (tool_tags := get_tool_tags(tool))
+        and (tags_set.issubset(tool_tags) if match_all else tags_set & tool_tags)
+    ]

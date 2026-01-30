@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 from collections.abc import Iterator
 from unittest.mock import patch
 
@@ -94,8 +95,7 @@ class TestConfluenceGetPage:
         tool_result = await confluence_get_page(page_id_or_title=page_id)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully retrieved page 'Test Page'."
-        assert structured_content == {
+        expected = {
             "page_id": "12345",
             "title": "Test Page",
             "space_id": "67890",
@@ -103,6 +103,8 @@ class TestConfluenceGetPage:
             "body": "<p>Test content</p>",
             "version": 1,
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_get_page_by_title_happy_path(
@@ -117,7 +119,7 @@ class TestConfluenceGetPage:
         tool_result = await confluence_get_page(page_id_or_title=page_title, space_key=space_key)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully retrieved page 'Test Page'."
+        assert json.loads(content[0].text)["title"] == "Test Page"
         assert structured_content["title"] == "Test Page"
         assert structured_content["space_key"] == "TEST"
 
@@ -195,11 +197,9 @@ class TestConfluenceAddComment:
         tool_result = await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Comment added successfully to page ID 12345."
-        assert structured_content == {
-            "comment_id": "98765",
-            "page_id": "12345",
-        }
+        expected = {"comment_id": "98765", "page_id": "12345"}
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_add_comment_empty_page_id(
@@ -294,8 +294,7 @@ class TestConfluenceSearch:
         tool_result = await confluence_search(cql_query=cql_query)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully executed CQL query and retrieved 2 result(s)."
-        assert structured_content == {
+        expected = {
             "data": [
                 {
                     "id": "12345",
@@ -320,6 +319,8 @@ class TestConfluenceSearch:
             ],
             "count": 2,
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_search_when_error_in_client(
@@ -389,7 +390,7 @@ class TestConfluenceSearchIncludeBody:
         tool_result = await confluence_search(cql_query=cql_query, include_body=True)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully executed CQL query and retrieved 2 result(s)."
+        assert json.loads(content[0].text)["count"] == 2
         # Verify body field is added with full content
         assert structured_content["data"][0]["body"] == "<p>Full body content from page fetch</p>"
         # excerpt should still be there
@@ -466,13 +467,9 @@ class TestConfluenceUpdatePage:
         )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert "12345" in content[0].text
-        assert "updated successfully" in content[0].text
-        assert "version 6" in content[0].text
-        assert structured_content == {
-            "updated_page_id": "12345",
-            "new_version": 6,
-        }
+        expected = {"updated_page_id": "12345", "new_version": 6}
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_update_page_empty_page_id(

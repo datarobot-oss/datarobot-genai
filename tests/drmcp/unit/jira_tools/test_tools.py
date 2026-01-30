@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 from collections.abc import Iterator
 from unittest.mock import patch
 
@@ -208,8 +209,7 @@ class TestJiraSearchIssues:
         tool_result = await jira_search_issues(jql_query=jql_query)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully executed JQL query and retrieved 1 issue(s)."
-        assert structured_content == {
+        expected = {
             "data": [
                 {
                     "id": "123",
@@ -224,6 +224,8 @@ class TestJiraSearchIssues:
             ],
             "count": 1,
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_jira_search_issues_when_error_in_client(
@@ -249,8 +251,7 @@ class TestJiraGetIssue:
         tool_result = await jira_get_issue(issue_key=issue_key)
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully retrieved details for issue 'PROJ-123'."
-        assert structured_content == {
+        expected = {
             "id": "123",
             "key": "PROJ-123",
             "status": "In Progress",
@@ -260,6 +261,8 @@ class TestJiraGetIssue:
             "assigneeEmailAddress": "dummy@assignee.com",
             "reporterEmailAddress": "dummy@reporter.com",
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_jira_get_issue_when_error_in_client(
@@ -293,11 +296,9 @@ class TestJiraCreateIssue:
         )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully created issue 'PROJ-123'."
-        assert structured_content == {
-            "newIssueKey": "PROJ-123",
-            "projectKey": "PROJ",
-        }
+        expected = {"newIssueKey": "PROJ-123", "projectKey": "PROJ"}
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_jira_create_issue_when_not_existing_issue_type(
@@ -377,11 +378,9 @@ class TestJiraUpdateIssue:
         )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully updated issue 'PROJ-123'. Fields modified: summary."
-        assert structured_content == {
-            "updatedIssueKey": "PROJ-123",
-            "fields": jira_client_update_issue_mock,
-        }
+        expected = {"updatedIssueKey": "PROJ-123", "fields": jira_client_update_issue_mock}
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_jira_update_issue_when_error_in_client(
@@ -414,12 +413,13 @@ class TestJiraTransitionIssue:
         )
 
         content, structured_content = tool_result.to_mcp_result()
-        assert content[0].text == "Successfully transitioned issue 'PROJ-123' to status 'Closed'."
-        assert structured_content == {
+        expected = {
             "transitionedIssueKey": "PROJ-123",
             "newStatusName": "Closed",
             "newStatusId": "2",
         }
+        assert json.loads(content[0].text) == expected
+        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_jira_transition_issue_when_not_existing_transitions_name(

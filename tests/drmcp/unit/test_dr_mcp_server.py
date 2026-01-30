@@ -21,7 +21,7 @@ from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.dr_mcp_server import DataRobotMCPServer
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.default import Metadata
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
@@ -315,7 +315,7 @@ class TestDataRobotMCPServer:
 
 def test_mcp_server_capabilities():
     """Server should declare required MCP capabilities."""
-    mcp = TaggedFastMCP()
+    mcp = DataRobotMCP()
     DataRobotMCPServer(mcp)
 
     opts = mcp._mcp_server.create_initialization_options()

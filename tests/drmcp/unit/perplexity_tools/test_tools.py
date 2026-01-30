@@ -80,10 +80,6 @@ class TestPerplexitySearch:
         """Test successful search with single query."""
         result = await perplexity_search(query="test query")
 
-        assert result.content[0].text.startswith(
-            "Successfully executed search for query 'test query'."
-        )
-        assert "2 result(s)" in result.content[0].text
         assert result.structured_content["count"] == 2
         assert len(result.structured_content["results"]) == 2
         assert result.structured_content["results"][0]["url"] == "https://foo.com"
@@ -105,10 +101,6 @@ class TestPerplexitySearch:
         """Test successful search with list of queries."""
         result = await perplexity_search(query=["test query 1", "test query 2"])
 
-        assert result.content[0].text.startswith(
-            "Successfully executed search for queries 'test query 1, test query 2'."
-        )
-        assert "2 result(s)" in result.content[0].text
         assert result.structured_content["count"] == 2
         assert len(result.structured_content["results"]) == 2
         assert result.structured_content["results"][0]["url"] == "https://foo.com"
@@ -135,10 +127,6 @@ class TestPerplexitySearch:
             max_tokens_per_page=1000,
         )
 
-        assert result.content[0].text.startswith(
-            "Successfully executed search for query 'test query'."
-        )
-        assert "2 result(s)" in result.content[0].text
         assert result.structured_content["count"] == 2
         assert len(result.structured_content["results"]) == 2
         assert result.structured_content["results"][0]["url"] == "https://foo.com"

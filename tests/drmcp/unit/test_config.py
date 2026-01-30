@@ -19,7 +19,7 @@ import pytest
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 
 def test_config_defaults() -> None:
@@ -92,7 +92,7 @@ class TestDuplicateBehavior:
             # shared across tests.
             config = MCPServerConfig()
 
-            test_mcp = TaggedFastMCP(
+            test_mcp = DataRobotMCP(
                 name=config.mcp_server_name,
                 on_duplicate_tools=config.tool_registration_duplicate_behavior,
                 on_duplicate_prompts=config.prompt_registration_duplicate_behavior,

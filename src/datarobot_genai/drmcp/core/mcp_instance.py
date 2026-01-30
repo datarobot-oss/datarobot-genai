@@ -25,7 +25,6 @@ from fastmcp.prompts.prompt import Prompt
 from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool
 from mcp.types import AnyFunction
-from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
@@ -36,8 +35,6 @@ from .logging import log_execution
 from .memory_management.manager import MemoryManager
 from .memory_management.manager import get_memory_manager
 from .telemetry import trace_execution
-from .tool_filter import filter_tools_by_tags
-from .tool_filter import list_all_tags
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +77,8 @@ async def get_agent_and_storage_ids(
     return agent_id, storage_id
 
 
-class TaggedFastMCP(FastMCP):
-    """Extended FastMCP that supports tags, deployments and other annotations directly in the
-    tool decorator.
-    """
+class DataRobotMCP(FastMCP):
+    """Extended FastMCP that supports DataRobot specific features like deployments and prompts."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -117,45 +112,6 @@ class TaggedFastMCP(FastMCP):
                 "No active MCP context for notification. "
                 "In stateless mode, clients will see changes on next request."
             )
-
-    async def list_tools(
-        self, tags: list[str] | None = None, match_all: bool = False
-    ) -> list[MCPTool]:
-        """
-        List all available tools, optionally filtered by tags.
-
-        Args:
-            tags: Optional list of tags to filter by. If None, returns all tools.
-            match_all: If True, tool must have all specified tags (AND logic).
-                      If False, tool must have at least one tag (OR logic).
-                      Only used when tags is provided.
-
-        Returns
-        -------
-            List of MCPTool objects that match the tag criteria.
-        """
-        # Get all tools from the parent class
-        all_tools = await super()._list_tools_mcp()
-
-        # If no tags specified, return all tools
-        if not tags:
-            return all_tools
-
-        # Filter tools by tags
-        filtered_tools = filter_tools_by_tags(list(all_tools), tags, match_all)
-
-        return filtered_tools  # type: ignore[return-value]
-
-    async def get_all_tags(self) -> list[str]:
-        """
-        Get all unique tags from all registered tools.
-
-        Returns
-        -------
-            List of all unique tags sorted alphabetically.
-        """
-        all_tools = await self._list_tools_mcp()
-        return list_all_tags(list(all_tools))
 
     async def get_deployment_mapping(self) -> dict[str, str]:
         """
@@ -279,10 +235,10 @@ class TaggedFastMCP(FastMCP):
             )
 
 
-# Create the tagged MCP instance
+# Create the DataRobot MCP instance
 mcp_server_configs: MCPServerConfig = get_config()
 
-mcp = TaggedFastMCP(
+mcp = DataRobotMCP(
     name=mcp_server_configs.mcp_server_name,
     on_duplicate_tools=mcp_server_configs.tool_registration_duplicate_behavior,
     on_duplicate_prompts=mcp_server_configs.prompt_registration_duplicate_behavior,
@@ -446,7 +402,7 @@ async def register_tools(
         await mcp.set_deployment_mapping(deployment_id, tool_name)
 
     # Verify tool is registered
-    tools = await mcp.list_tools()
+    tools = await mcp._list_tools_mcp()
     if not any(tool.name == tool_name for tool in tools):
         raise RuntimeError(f"Tool {tool_name} was not registered successfully")
     logger.info(f"Registered tools: {len(tools)}")

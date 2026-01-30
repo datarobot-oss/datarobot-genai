@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import logging
 from typing import Annotated
 
@@ -33,11 +32,6 @@ async def list_projects() -> ToolResult:
     projects = {p.id: p.project_name for p in projects}
 
     return ToolResult(
-        content=(
-            json.dumps(projects, indent=2)
-            if projects
-            else json.dumps({"message": "No projects found."}, indent=2)
-        ),
         structured_content=projects,
     )
 
@@ -48,7 +42,7 @@ async def get_project_dataset_by_name(
     project_id: Annotated[str, "The ID of the DataRobot project."] | None = None,
     dataset_name: Annotated[str, "The name of the dataset to find (e.g., 'training', 'holdout')."]
     | None = None,
-) -> ToolError | ToolResult:
+) -> ToolResult:
     """Get a dataset ID by name for a given project.
 
     The dataset ID and the dataset type (source or prediction) as a string, or an error message.
@@ -70,21 +64,11 @@ async def get_project_dataset_by_name(
     for ds in all_datasets:
         if dataset_name.lower() in ds["dataset"].name.lower():
             return ToolResult(
-                content=(
-                    json.dumps(
-                        {
-                            "dataset_id": ds["dataset"].id,
-                            "dataset_type": ds["type"],
-                        },
-                        indent=2,
-                    )
-                ),
                 structured_content={
                     "dataset_id": ds["dataset"].id,
                     "dataset_type": ds["type"],
                 },
             )
-    return ToolResult(
-        content=f"Dataset with name containing '{dataset_name}' not found in project {project_id}.",
-        structured_content={},
+    raise ToolError(
+        f"Dataset with name containing '{dataset_name}' not found in project {project_id}."
     )

@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.tools.predictive import project
 
@@ -44,9 +45,8 @@ async def test_list_projects_empty() -> None:
         mock_client.Project.list.return_value = []
         mock_get_client.return_value = mock_client
         result = await project.list_projects()
-        assert hasattr(result, "content")
-        # content is a list of TextContent objects, get the text from the first one
-        assert "No projects found." in result.content[0].text
+        assert hasattr(result, "structured_content")
+        assert result.structured_content == {}
 
 
 @pytest.mark.asyncio
@@ -89,14 +89,12 @@ async def test_get_project_dataset_by_name_not_found() -> None:
         mock_project.get_dataset.return_value = None
         mock_client.Project.get.return_value = mock_project
         mock_get_client.return_value = mock_client
-        result = await project.get_project_dataset_by_name(
-            project_id="pid", dataset_name="training"
-        )
-        assert hasattr(result, "content")
-        # content is a list of TextContent objects, get the text from the first one
+        with pytest.raises(ToolError) as exc_info:
+            await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
         assert (
-            "Dataset with name containing 'training' not found in project pid."
-            in result.content[0].text
+            str(exc_info.value)
+            == "Error in get_project_dataset_by_name: ToolError: Dataset with name "
+            "containing 'training' not found in project pid."
         )
 
 

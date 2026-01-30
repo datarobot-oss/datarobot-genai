@@ -41,7 +41,6 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
         result = await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
         mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
         assert isinstance(result, ToolResult)
-        assert result.content[0].text == "Successfully uploaded dataset: 12345"
         assert result.structured_content == {
             "dataset_id": "12345",
             "dataset_version_id": None,
@@ -69,7 +68,6 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
             "https://example.com/somefile.csv"
         )
         assert isinstance(result, ToolResult)
-        assert result.content[0].text == "Successfully uploaded dataset: 12345"
         assert result.structured_content == {
             "dataset_id": "12345",
             "dataset_version_id": None,
@@ -174,9 +172,6 @@ async def test_list_ai_catalog_items_success() -> None:
         mock_get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
-        # Access text from TextContent object
-        content_text = result.content[0].text
-        assert "Found 2 AI Catalog items" in content_text
         assert result.structured_content["count"] == 2
         # datasets is now a dict mapping id to name
         assert result.structured_content["datasets"]["1"] == "ds1"
@@ -191,8 +186,6 @@ async def test_list_ai_catalog_items_empty() -> None:
         mock_get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
-        # Access text from TextContent object
-        assert "No AI Catalog items found." in result.content[0].text
         assert result.structured_content["datasets"] == []
 
 

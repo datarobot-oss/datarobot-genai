@@ -23,6 +23,7 @@ import pytest
 from botocore.exceptions import ClientError
 from fastmcp.prompts import Prompt
 
+from datarobot_genai import __version__ as drmcp_genai_version
 from datarobot_genai.drmcp.core.memory_management.manager import MemoryStorage
 from datarobot_genai.drmcp.core.routes import register_routes
 
@@ -77,25 +78,6 @@ class TestRoutesCoverage:
 
         # Test that health endpoint is registered
         assert "/" in registered_routes
-
-    def test_tags_endpoint_registration(self):
-        """Test that tags endpoint is registered."""
-        # Create a mock that captures the route registration
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test that tags endpoint is registered
-        assert "/tags" in registered_routes
 
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     def test_memory_manager_routes_registration(self, mock_get_memory_manager):
@@ -184,62 +166,6 @@ class TestRoutesCoverage:
         response = await health_handler(self.mock_request)
         assert response.status_code == 200
         assert "healthy" in response.body.decode()
-
-    @pytest.mark.asyncio
-    async def test_tags_endpoint_success_execution(self):
-        """Test tags endpoint success execution."""
-        # Mock the MCP to have get_all_tags method
-        self.mock_mcp.get_all_tags = AsyncMock(return_value=["tag1", "tag2", "tag3"])
-
-        # Create a mock that captures the route registration
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test the tags endpoint
-        tags_handler = registered_routes.get("/tags")
-        assert tags_handler is not None
-
-        response = await tags_handler(self.mock_request)
-        assert response.status_code == 200
-        assert "tags" in response.body.decode()
-
-    @pytest.mark.asyncio
-    async def test_tags_endpoint_exception_execution(self):
-        """Test tags endpoint exception execution."""
-        # Mock the MCP to raise an exception
-        self.mock_mcp.get_all_tags = AsyncMock(side_effect=Exception("Test error"))
-
-        # Create a mock that captures the route registration
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test the tags endpoint
-        tags_handler = registered_routes.get("/tags")
-        assert tags_handler is not None
-
-        response = await tags_handler(self.mock_request)
-        assert response.status_code == 500
-        assert "error" in response.body.decode()
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.routes.register_tool_for_deployment_id")
@@ -694,51 +620,6 @@ class TestRoutesSimpleFinal:
         assert response.body == b'{"status":"healthy","message":"DataRobot MCP Server is running"}'
 
     @pytest.mark.asyncio
-    async def test_tags_endpoint_success_execution(self):
-        """Test tags endpoint success execution."""
-        self.mock_mcp.get_all_tags = AsyncMock(return_value=["tag1", "tag2"])
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-        register_routes(self.mock_mcp)
-
-        tags_handler = registered_routes.get("/tags")
-        response = await tags_handler(self.mock_request)
-        assert response.status_code == 200
-        assert (
-            b'{"tags":["tag1","tag2"],"count":2,"message":"All available tags retrieved successfully"}'  # noqa: E501
-            == response.body
-        )
-
-    @pytest.mark.asyncio
-    async def test_tags_endpoint_exception_execution(self):
-        """Test tags endpoint exception execution."""
-        self.mock_mcp.get_all_tags = AsyncMock(side_effect=Exception("Test error"))
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-        register_routes(self.mock_mcp)
-
-        tags_handler = registered_routes.get("/tags")
-        response = await tags_handler(self.mock_request)
-        assert response.status_code == 500
-        assert b'{"error":"Failed to retrieve tags: Test error"}' == response.body
-
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.routes.get_registered_tool_deployments")
     async def test_list_deployments_endpoint_execution(self, mock_get_deployments):
         """Test list deployments endpoint execution."""
@@ -1048,3 +929,375 @@ class TestPromptTemplateRoutes:
         response = await refresh_handler(self.mock_request)
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
         assert b"Failed to refresh prompt template" in response.body
+
+
+class TestMetadataRoute:
+    """Test cases for metadata route handler in routes.py."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.mock_mcp = Mock()
+        self.mock_request = Mock()
+        self.mock_request.path_params = {}
+        self.mock_request.json = AsyncMock()
+
+        # This dictionary will store the handlers registered by custom_route
+        self.registered_routes: dict[tuple[str, str], Callable] = {}
+
+        def mock_custom_route(route_path: str, methods: list[str]):
+            def decorator(handler: Callable):
+                for method in methods:
+                    self.registered_routes[(method, route_path)] = handler
+                return handler
+
+            return decorator
+
+        self.mock_mcp.custom_route = mock_custom_route
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.get_config")
+    @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
+    async def test_metadata_route_success(
+        self,
+        mock_get_tool_tags: Mock,
+        mock_get_prompt_tags: Mock,
+        mock_get_resource_tags: Mock,
+        mock_get_config: Mock,
+    ):
+        """Test metadata route success execution."""
+        # Create mock tools
+        mock_tool1 = Mock()
+        mock_tool1.name = "tool1"
+        mock_tool2 = Mock()
+        mock_tool2.name = "tool2"
+
+        # Create mock prompts
+        mock_prompt1 = Mock()
+        mock_prompt1.name = "prompt1"
+        mock_prompt2 = Mock()
+        mock_prompt2.name = "prompt2"
+
+        # Create mock resources
+        mock_resource1 = Mock()
+        mock_resource1.name = "resource1"
+        mock_resource2 = Mock()
+        mock_resource2.name = "resource2"
+
+        # Setup mocks on self.mock_mcp
+        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[mock_prompt1, mock_prompt2])
+        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[mock_resource1, mock_resource2])
+
+        mock_get_tool_tags.side_effect = (
+            lambda tool: {"tag1", "tag2"} if tool == mock_tool1 else {"tag3"}
+        )
+        mock_get_prompt_tags.side_effect = (
+            lambda prompt: {"prompt_tag1"} if prompt == mock_prompt1 else set()
+        )
+        mock_get_resource_tags.side_effect = (
+            lambda resource: {"resource_tag1"} if resource == mock_resource1 else set()
+        )
+
+        # Create mock config
+        mock_config = Mock()
+        mock_config.mcp_server_name = "test-server"
+        mock_config.mcp_server_port = 8080
+        mock_config.mcp_server_log_level = "INFO"
+        mock_config.app_log_level = "DEBUG"
+        mock_config.mount_path = "/"
+        mock_config.mcp_server_register_dynamic_tools_on_startup = False
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = True
+        mock_config.tool_registration_allow_empty_schema = False
+        mock_config.tool_registration_duplicate_behavior = "warn"
+        mock_config.prompt_registration_duplicate_behavior = "replace"
+
+        # Create mock tool_config (all ToolType config_field_name values to avoid Mock in JSON)
+        mock_tool_config = Mock()
+        mock_tool_config.enable_predictive_tools = True
+        mock_tool_config.enable_jira_tools = False
+        mock_tool_config.enable_confluence_tools = False
+        mock_tool_config.enable_gdrive_tools = False
+        mock_tool_config.enable_microsoft_graph_tools = False
+        mock_tool_config.enable_perplexity_tools = False
+        mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.is_atlassian_oauth_configured = False
+        mock_tool_config.is_google_oauth_configured = False
+        mock_tool_config.is_microsoft_oauth_configured = False
+
+        mock_config.tool_config = mock_tool_config
+        mock_get_config.return_value = mock_config
+
+        register_routes(self.mock_mcp)
+
+        metadata_handler = self.registered_routes["GET", "/metadata"]
+        response = await metadata_handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK
+        response_data = json.loads(response.body.decode("utf-8"))
+
+        # Verify structure
+        assert "tools" in response_data
+        assert "prompts" in response_data
+        assert "resources" in response_data
+        assert "config" in response_data
+
+        # Verify tools
+        assert response_data["tools"]["count"] == 2
+        assert len(response_data["tools"]["items"]) == 2
+        assert response_data["tools"]["items"][0]["name"] == "tool1"
+        assert sorted(response_data["tools"]["items"][0]["tags"]) == ["tag1", "tag2"]
+        assert response_data["tools"]["items"][1]["name"] == "tool2"
+        assert sorted(response_data["tools"]["items"][1]["tags"]) == ["tag3"]
+
+        # Verify prompts
+        assert response_data["prompts"]["count"] == 2
+        assert len(response_data["prompts"]["items"]) == 2
+        assert response_data["prompts"]["items"][0]["name"] == "prompt1"
+        assert sorted(response_data["prompts"]["items"][0]["tags"]) == ["prompt_tag1"]
+        assert response_data["prompts"]["items"][1]["name"] == "prompt2"
+        assert sorted(response_data["prompts"]["items"][1]["tags"]) == []
+
+        # Verify resources
+        assert response_data["resources"]["count"] == 2
+        assert len(response_data["resources"]["items"]) == 2
+        assert response_data["resources"]["items"][0]["name"] == "resource1"
+        assert sorted(response_data["resources"]["items"][0]["tags"]) == ["resource_tag1"]
+        assert response_data["resources"]["items"][1]["name"] == "resource2"
+        assert sorted(response_data["resources"]["items"][1]["tags"]) == []
+
+        # Verify config
+        config = response_data["config"]
+        assert config["server"]["name"] == "test-server"
+        assert config["server"]["port"] == 8080
+        assert config["server"]["log_level"] == "INFO"
+        assert config["server"]["app_log_level"] == "DEBUG"
+        assert config["server"]["mount_path"] == "/"
+        assert config["server"]["drmcp_genai_version"] == drmcp_genai_version
+        assert config["features"]["register_dynamic_tools_on_startup"] is False
+        assert config["features"]["register_dynamic_prompts_on_startup"] is True
+        assert config["features"]["tool_registration_allow_empty_schema"] is False
+        assert config["features"]["tool_registration_duplicate_behavior"] == "warn"
+        assert config["features"]["prompt_registration_duplicate_behavior"] == "replace"
+
+        # Verify tool_config
+        assert "tool_config" in config
+        assert "predictive" in config["tool_config"]
+        assert "jira" in config["tool_config"]
+        assert "confluence" in config["tool_config"]
+        assert "gdrive" in config["tool_config"]
+        assert "microsoft_graph" in config["tool_config"]
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.get_config")
+    @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
+    async def test_metadata_route_empty_lists(
+        self,
+        mock_get_tool_tags: Mock,
+        mock_get_prompt_tags: Mock,
+        mock_get_resource_tags: Mock,
+        mock_get_config: Mock,
+    ):
+        """Test metadata route with empty lists."""
+        # Setup mocks with empty lists
+        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
+        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
+        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+
+        # Create mock config
+        mock_config = Mock()
+        mock_config.mcp_server_name = "test-server"
+        mock_config.mcp_server_port = 8080
+        mock_config.mcp_server_log_level = "INFO"
+        mock_config.app_log_level = "DEBUG"
+        mock_config.mount_path = "/"
+        mock_config.mcp_server_register_dynamic_tools_on_startup = False
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = False
+        mock_config.tool_registration_allow_empty_schema = False
+        mock_config.tool_registration_duplicate_behavior = "error"
+        mock_config.prompt_registration_duplicate_behavior = "ignore"
+
+        mock_tool_config = Mock()
+        mock_tool_config.enable_predictive_tools = False
+        mock_tool_config.enable_jira_tools = False
+        mock_tool_config.enable_confluence_tools = False
+        mock_tool_config.enable_gdrive_tools = False
+        mock_tool_config.enable_microsoft_graph_tools = False
+        mock_tool_config.enable_perplexity_tools = False
+        mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.is_atlassian_oauth_configured = False
+        mock_tool_config.is_google_oauth_configured = False
+        mock_tool_config.is_microsoft_oauth_configured = False
+
+        mock_config.tool_config = mock_tool_config
+        mock_get_config.return_value = mock_config
+
+        register_routes(self.mock_mcp)
+
+        metadata_handler = self.registered_routes["GET", "/metadata"]
+        response = await metadata_handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK
+        response_data = json.loads(response.body.decode("utf-8"))
+
+        # Verify empty lists
+        assert response_data["tools"]["count"] == 0
+        assert response_data["tools"]["items"] == []
+        assert response_data["prompts"]["count"] == 0
+        assert response_data["prompts"]["items"] == []
+        assert response_data["resources"]["count"] == 0
+        assert response_data["resources"]["items"] == []
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.get_config")
+    @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
+    async def test_metadata_route_with_oauth_tools(
+        self,
+        mock_get_tool_tags: Mock,
+        mock_get_prompt_tags: Mock,
+        mock_get_resource_tags: Mock,
+        mock_get_config: Mock,
+    ):
+        """Test metadata route with OAuth-enabled tools."""
+        # Setup mocks with empty lists
+        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
+        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
+        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+
+        # Create mock config with OAuth-enabled tools
+        mock_config = Mock()
+        mock_config.mcp_server_name = "test-server"
+        mock_config.mcp_server_port = 8080
+        mock_config.mcp_server_log_level = "INFO"
+        mock_config.app_log_level = "DEBUG"
+        mock_config.mount_path = "/"
+        mock_config.mcp_server_register_dynamic_tools_on_startup = False
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = False
+        mock_config.tool_registration_allow_empty_schema = False
+        mock_config.tool_registration_duplicate_behavior = "warn"
+        mock_config.prompt_registration_duplicate_behavior = "warn"
+
+        mock_tool_config = Mock()
+        mock_tool_config.enable_predictive_tools = False
+        mock_tool_config.enable_jira_tools = True  # OAuth required
+        mock_tool_config.enable_confluence_tools = True  # OAuth required
+        mock_tool_config.enable_gdrive_tools = True  # OAuth required
+        mock_tool_config.enable_microsoft_graph_tools = True  # OAuth required
+        mock_tool_config.enable_perplexity_tools = False
+        mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.is_atlassian_oauth_configured = True
+        mock_tool_config.is_google_oauth_configured = True
+        mock_tool_config.is_microsoft_oauth_configured = True
+
+        mock_config.tool_config = mock_tool_config
+        mock_get_config.return_value = mock_config
+
+        register_routes(self.mock_mcp)
+
+        metadata_handler = self.registered_routes["GET", "/metadata"]
+        response = await metadata_handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK
+        response_data = json.loads(response.body.decode("utf-8"))
+
+        # Verify OAuth tool configs (enabled from config; oauth_configured from OAuth check)
+        tool_config = response_data["config"]["tool_config"]
+        assert tool_config["jira"]["enabled"] is True
+        assert tool_config["jira"]["oauth_required"] is True
+        assert tool_config["jira"]["oauth_configured"] is True
+        assert tool_config["confluence"]["enabled"] is True
+        assert tool_config["confluence"]["oauth_required"] is True
+        assert tool_config["confluence"]["oauth_configured"] is True
+        assert tool_config["gdrive"]["enabled"] is True
+        assert tool_config["gdrive"]["oauth_required"] is True
+        assert tool_config["gdrive"]["oauth_configured"] is True
+        assert tool_config["microsoft_graph"]["enabled"] is True
+        assert tool_config["microsoft_graph"]["oauth_required"] is True
+        assert tool_config["microsoft_graph"]["oauth_configured"] is True
+
+    @pytest.mark.asyncio
+    async def test_metadata_route_error_scenario(self):
+        """Test metadata route when error occurs."""
+        # Setup mock to raise exception
+        self.mock_mcp._list_tools_mcp = AsyncMock(side_effect=ValueError("Test error"))
+
+        register_routes(self.mock_mcp)
+
+        metadata_handler = self.registered_routes["GET", "/metadata"]
+        response = await metadata_handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        response_data = json.loads(response.body.decode("utf-8"))
+        assert "error" in response_data
+        assert "Failed to retrieve metadata" in response_data["error"]
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.get_config")
+    @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
+    async def test_metadata_route_tool_config_oauth_not_configured(
+        self,
+        mock_get_tool_tags: Mock,
+        mock_get_prompt_tags: Mock,
+        mock_get_resource_tags: Mock,
+        mock_get_config: Mock,
+    ):
+        """Test metadata route with OAuth-required tools but OAuth not configured."""
+        # Setup mocks with empty lists
+        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
+        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
+        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+
+        # Create mock config with OAuth-required tools but OAuth not configured
+        mock_config = Mock()
+        mock_config.mcp_server_name = "test-server"
+        mock_config.mcp_server_port = 8080
+        mock_config.mcp_server_log_level = "INFO"
+        mock_config.app_log_level = "DEBUG"
+        mock_config.mount_path = "/"
+        mock_config.mcp_server_register_dynamic_tools_on_startup = False
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = False
+        mock_config.tool_registration_allow_empty_schema = False
+        mock_config.tool_registration_duplicate_behavior = "warn"
+        mock_config.prompt_registration_duplicate_behavior = "warn"
+
+        mock_tool_config = Mock()
+        mock_tool_config.enable_predictive_tools = False
+        mock_tool_config.enable_jira_tools = True  # OAuth required but not configured
+        mock_tool_config.enable_confluence_tools = True  # OAuth required but not configured
+        mock_tool_config.enable_gdrive_tools = False
+        mock_tool_config.enable_microsoft_graph_tools = False
+        mock_tool_config.enable_perplexity_tools = False
+        mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.is_atlassian_oauth_configured = False  # OAuth not configured
+        mock_tool_config.is_google_oauth_configured = False
+        mock_tool_config.is_microsoft_oauth_configured = False
+
+        mock_config.tool_config = mock_tool_config
+        mock_get_config.return_value = mock_config
+
+        register_routes(self.mock_mcp)
+
+        metadata_handler = self.registered_routes["GET", "/metadata"]
+        response = await metadata_handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK
+        response_data = json.loads(response.body.decode("utf-8"))
+
+        # Verify tool config (enabled from config only; oauth_configured from OAuth check)
+        tool_config = response_data["config"]["tool_config"]
+        assert tool_config["jira"]["enabled"] is True
+        assert tool_config["jira"]["oauth_required"] is True
+        assert tool_config["jira"]["oauth_configured"] is False
+        assert tool_config["confluence"]["enabled"] is True
+        assert tool_config["confluence"]["oauth_required"] is True
+        assert tool_config["confluence"]["oauth_configured"] is False
+        assert tool_config["predictive"]["enabled"] is False
+        assert tool_config["predictive"]["oauth_required"] is False
+        assert tool_config["predictive"]["oauth_configured"] is None

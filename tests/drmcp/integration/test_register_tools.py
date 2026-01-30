@@ -43,7 +43,7 @@ class TestMCPRegisterToolsIntegration:
         async def test_tool() -> dict[str, int]:
             return tool_output
 
-        initial_tools = await mcp.list_tools()
+        initial_tools = await mcp._list_tools_mcp()
         assert all(tool.name != "test_tool" for tool in initial_tools)
 
         # Register the tool
@@ -69,7 +69,7 @@ class TestMCPRegisterToolsIntegration:
         async def tagged_tool(ctx: Context[ServerSession, dict[str, Any]]) -> str:
             return "tagged_response"
 
-        initial_tools = await mcp.list_tools()
+        initial_tools = await mcp._list_tools_mcp()
         assert all(tool.name != "tagged_tool" for tool in initial_tools)
 
         test_tags = {"test", "integration"}
@@ -81,7 +81,7 @@ class TestMCPRegisterToolsIntegration:
         )
 
         # Verify tool is registered with correct tags
-        tools = await mcp.list_tools()
+        tools = await mcp._list_tools_mcp()
         assert any(tool.name == "tagged_tool" for tool in tools)
 
         # Verify tool tags
@@ -102,7 +102,7 @@ class TestMCPRegisterToolsIntegration:
             return "should_not_be_callable"
 
         # Verify tool is NOT registered (enabled=False should exclude it)
-        tools = await mcp.list_tools()
+        tools = await mcp._list_tools_mcp()
         assert all(tool.name != "disabled_tool" for tool in tools)
 
     async def test_dr_mcp_tool_with_custom_meta(self) -> None:
@@ -114,7 +114,7 @@ class TestMCPRegisterToolsIntegration:
             return "meta_response"
 
         # Verify tool is registered with custom meta
-        tools = await mcp.list_tools()
+        tools = await mcp._list_tools_mcp()
         registered_tool = next((t for t in tools if t.name == "tool_with_meta"), None)
         assert registered_tool is not None
         assert registered_tool.meta is not None

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -81,7 +80,6 @@ async def test_suggest_use_cases() -> None:
         "missing_data_summary": {},
     }
     mock_insights = ToolResult(
-        content=json.dumps(mock_insights_dict, indent=2),
         structured_content=mock_insights_dict,
     )
 
@@ -124,7 +122,6 @@ async def test_get_exploratory_insights() -> None:
         "missing_data_summary": {},
     }
     mock_insights = ToolResult(
-        content=json.dumps(mock_insights_dict, indent=2),
         structured_content=mock_insights_dict,
     )
 

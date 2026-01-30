@@ -19,7 +19,8 @@ A reusable library for building Model Context Protocol (MCP) servers with DataRo
 """
 
 # Export main server components
-from datarobot_genai.drmcp.test_utils.clients.openai import OpenAILLMMCPClient
+from datarobot_genai.drmcp.core.utils import filter_tools_by_tags
+from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_mcp_server_url
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_headers
@@ -66,11 +67,12 @@ __all__ = [
     "extract_datarobot_runtime_param_payload",
     "extract_datarobot_dict_runtime_param_payload",
     "extract_datarobot_credential_runtime_param_payload",
+    "filter_tools_by_tags",
     # Test utilities
     "get_dr_mcp_server_url",
     "get_headers",
     "ete_test_mcp_session",
-    "OpenAILLMMCPClient",
+    "DRLLMGatewayMCPClient",
     "ETETestExpectations",
     "ToolBaseE2E",
     "ToolCallTestExpectations",

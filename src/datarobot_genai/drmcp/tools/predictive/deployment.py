@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import logging
 from typing import Annotated
 
@@ -32,12 +31,10 @@ async def list_deployments() -> ToolResult:
     deployments = client.Deployment.list()
     if not deployments:
         return ToolResult(
-            content="No deployments found.",
             structured_content={"deployments": []},
         )
     deployments_dict = {d.id: d.label for d in deployments}
     return ToolResult(
-        content="\n".join(f"{d.id}: {d.label}" for d in deployments),
         structured_content={"deployments": deployments_dict},
     )
 
@@ -54,10 +51,6 @@ async def get_model_info_from_deployment(
     client = get_sdk_client()
     deployment = client.Deployment.get(deployment_id)
     return ToolResult(
-        content=(
-            f"Retrieved model info for deployment {deployment_id}, here are the details:\n"
-            f"{json.dumps(deployment.model, indent=2)}"
-        ),
         structured_content=deployment.model,
     )
 
@@ -87,7 +80,6 @@ async def deploy_model(
             default_prediction_server_id=prediction_servers[0].id,
         )
         return ToolResult(
-            content=f"Created deployment {deployment.id} with label {label}",
             structured_content={
                 "deployment_id": deployment.id,
                 "label": label,

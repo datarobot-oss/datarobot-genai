@@ -240,6 +240,9 @@ async def predict_realtime(
     else:
         raise ValueError("Either file_path or dataset must be provided.")
 
+    # Normalize column names: strip leading/trailing whitespace
+    df.columns = df.columns.str.strip()
+
     if series_id_column and series_id_column not in df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 

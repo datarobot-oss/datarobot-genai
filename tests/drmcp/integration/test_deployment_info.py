@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from typing import Any
 
 import pytest
@@ -44,7 +45,7 @@ class TestMCPDeploymentInfoIntegration:
             assert isinstance(result_content, TextContent)
             assert "error" not in result_content.text.lower()
 
-            # Test generate_prediction_data_template
+            # Test generate_prediction_data_template (returns JSON structured content)
             result = await session.call_tool(
                 "generate_prediction_data_template",
                 {"deployment_id": deployment_id, "n_rows": 3},
@@ -54,12 +55,12 @@ class TestMCPDeploymentInfoIntegration:
             )
             result_content = result.content[0]
             assert isinstance(result_content, TextContent)
-            empty_lines = ",\n" * 3
-            assert result_content.text == (
-                f"# Prediction Data Template for Deployment: {deployment_id}\n"
-                "# Model Type: Keras Text Convolutional Neural Network Classifier\n"
-                "# Target: sentiment (Type: Multiclass)\n"
-                "# Total Features: 2\n"
-                "text_review,product_category\n"
-                f"{empty_lines}"
-            )
+            data = json.loads(result_content.text)
+            assert data["deployment_id"] == deployment_id
+            assert "Keras Text Convolutional Neural Network Classifier" in data["model_type"]
+            assert data["target"] == "sentiment"
+            assert data["total_features"] == 2
+            assert "template_data" in data
+            assert len(data["template_data"]) == 3
+            assert "text_review" in data["template_data"][0]
+            assert "product_category" in data["template_data"][0]

@@ -67,7 +67,6 @@ async def confluence_get_page(
             page_response = await client.get_page_by_title(page_id_or_title, space_key)
 
     return ToolResult(
-        content=f"Successfully retrieved page '{page_response.title}'.",
         structured_content=page_response.as_flat_dict(),
     )
 
@@ -115,7 +114,6 @@ async def confluence_create_page(
         )
 
     return ToolResult(
-        content=f"New page '{title}' created successfully in space '{space_key}'.",
         structured_content={"new_page_id": page_response.page_id, "title": page_response.title},
     )
 
@@ -151,7 +149,6 @@ async def confluence_add_comment(
         )
 
     return ToolResult(
-        content=f"Comment added successfully to page ID {page_id}.",
         structured_content={
             "comment_id": comment_response.comment_id,
             "page_id": page_id,
@@ -212,7 +209,6 @@ async def confluence_search(
 
     n = len(results)
     return ToolResult(
-        content=f"Successfully executed CQL query and retrieved {n} result(s).",
         structured_content={"data": data, "count": n},
     )
 
@@ -267,7 +263,6 @@ async def confluence_update_page(
         )
 
     return ToolResult(
-        content=f"Page ID {page_id} updated successfully to version {page_response.version}.",
         structured_content={
             "updated_page_id": page_response.page_id,
             "new_version": page_response.version,
