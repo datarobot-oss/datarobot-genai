@@ -79,6 +79,15 @@ class MCPToolConfig(BaseSettings):
         description="Enable/disable Sharepoint tools",
     )
 
+    enable_tavily_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_TAVILY_TOOLS",
+            "ENABLE_TAVILY_TOOLS",
+        ),
+        description="Enable/disable Tavily search tools",
+    )
+
     is_atlassian_oauth_provider_configured: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -131,6 +140,7 @@ class MCPToolConfig(BaseSettings):
         "enable_confluence_tools",
         "enable_gdrive_tools",
         "enable_microsoft_graph_tools",
+        "enable_tavily_tools",
         "is_atlassian_oauth_provider_configured",
         "is_google_oauth_provider_configured",
         "is_microsoft_oauth_provider_configured",
