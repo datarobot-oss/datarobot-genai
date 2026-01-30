@@ -104,14 +104,10 @@ async def perplexity_search(
             max_tokens_per_page=max_tokens_per_page,
         )
 
-    query_txt = f"query '{query}'" if isinstance(query, str) else f"queries '{', '.join(query)}'"
-    n = len(results)
-
     return ToolResult(
-        content=f"Successfully executed search for {query_txt}. Found {n} result(s).",
         structured_content={
             "results": results,
-            "count": n,
+            "count": len(results),
             "metadata": {
                 "queriesExecuted": len(query) if isinstance(query, list) else 1,
                 "filtersApplied": {"domains": search_domain_filter, "recency": recency},

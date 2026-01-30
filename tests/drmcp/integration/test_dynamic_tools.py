@@ -23,7 +23,7 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
     register_tools_of_datarobot_deployments,
 )
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
@@ -282,7 +282,7 @@ async def test_get_mcp_tool_metadata(
 async def test_dynamic_tool_registration(sdk_client, mock_api_responses) -> None:
     await register_tools_of_datarobot_deployments()
 
-    tool_names = {tool.name for tool in await mcp.list_tools()}
+    tool_names = {tool.name for tool in await mcp._list_tools_mcp()}
 
     assert "dynamic_tool_ok" in tool_names, "`dynamic_tool_ok` is missing."
     assert "dynamic_tool_error" not in tool_names, "`dynamic_tool_error` should not be registered."
@@ -290,7 +290,7 @@ async def test_dynamic_tool_registration(sdk_client, mock_api_responses) -> None
 
 @pytest.mark.asyncio
 async def test_mcp_mapping_methods():
-    mcp = TaggedFastMCP()
+    mcp = DataRobotMCP()
 
     # Mock the remove_tool method to avoid actual tool removal,
     # as the actual tool was not registered. This is just to test the

@@ -28,13 +28,13 @@ from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
     register_prompt_from_prompt_template_id_and_version,
 )
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 
 @pytest_asyncio.fixture
-async def mcp_server() -> AsyncIterator[TaggedFastMCP]:
+async def mcp_server() -> AsyncIterator[DataRobotMCP]:
     """Create a separate MCP instance for testing."""
-    test_mcp = TaggedFastMCP()
+    test_mcp = DataRobotMCP()
 
     # Patch the mcp import in controllers, register modules, and mcp_instance
     with (
@@ -122,7 +122,7 @@ class TestPromptTemplatesAdd:
     """Tests for prompt templates add/update functionality."""
 
     @pytest.mark.asyncio
-    async def test_add_prompt_templates(self, mcp_server: TaggedFastMCP, dr_lib_mock: None) -> None:
+    async def test_add_prompt_templates(self, mcp_server: DataRobotMCP, dr_lib_mock: None) -> None:
         """Test add prompt template."""
         # Check if there's no data at the beginning
         existing_prompts = await mcp_server.get_prompt_mapping()
@@ -140,7 +140,7 @@ class TestPromptTemplatesAdd:
 
     @pytest.mark.asyncio
     async def test_add_prompt_template_when_does_not_exist(
-        self, mcp_server: TaggedFastMCP, dr_lib_mock_empty: None
+        self, mcp_server: DataRobotMCP, dr_lib_mock_empty: None
     ) -> None:
         """Test add prompt template when does not exist in DR."""
         # Check if there's no data at the beginning
@@ -158,7 +158,7 @@ class TestPromptTemplatesAdd:
 
     @pytest.mark.asyncio
     async def test_update_prompt_template(
-        self, mcp_server: TaggedFastMCP, dr_lib_mock: None
+        self, mcp_server: DataRobotMCP, dr_lib_mock: None
     ) -> None:
         """Test update prompt template."""
         # Check if there's no data at the beginning
@@ -179,7 +179,7 @@ class TestPromptTemplatesListing:
     """Tests for prompt templates listing functionality."""
 
     @pytest.mark.asyncio
-    async def test_get_registered_prompt_templates(self, mcp_server: TaggedFastMCP) -> None:
+    async def test_get_registered_prompt_templates(self, mcp_server: DataRobotMCP) -> None:
         """Test listing registered prompt templates when data exist."""
         # Setup - add test prompts directly to MCP
         await mcp_server.set_prompt_mapping("pt1", "ptv1.1", "abc")
@@ -196,7 +196,7 @@ class TestPromptTemplatesListing:
         assert internal_mappings == expected_mappings
 
     @pytest.mark.asyncio
-    async def test_get_registered_prompt_templates_when_empty(self, mcp_server: TaggedFastMCP):
+    async def test_get_registered_prompt_templates_when_empty(self, mcp_server: DataRobotMCP):
         """Test listing registered prompt templates when no data exist."""
         # Verify MCP internal state consistency
         internal_mappings = await mcp_server.get_prompt_mapping()
@@ -207,7 +207,7 @@ class TestPromptTemplatesDeletion:
     """Tests for prompt templates deletion functionality."""
 
     @pytest.mark.asyncio
-    async def test_delete_registered_prompt_template(self, mcp_server: TaggedFastMCP) -> None:
+    async def test_delete_registered_prompt_template(self, mcp_server: DataRobotMCP) -> None:
         """Test delete registered prompt template."""
         # Setup - add test prompts directly to MCP
         await mcp_server.set_prompt_mapping("pt1", "ptv1.1", "abc")
@@ -221,7 +221,7 @@ class TestPromptTemplatesDeletion:
         assert internal_mappings == {}
 
     @pytest.mark.asyncio
-    async def test_delete_not_existing_prompt_template(self, mcp_server: TaggedFastMCP):
+    async def test_delete_not_existing_prompt_template(self, mcp_server: DataRobotMCP):
         """Test delete not existing prompt template."""
         # Setup - add test prompts directly to MCP
         await mcp_server.set_prompt_mapping("pt1", "ptv1.1", "abc")
@@ -242,7 +242,7 @@ class TestPromptTemplatesRefresh:
 
     @pytest.mark.asyncio
     async def test_refresh_prompt_templates(
-        self, mcp_server: TaggedFastMCP, dr_lib_mock_for_refresh: None
+        self, mcp_server: DataRobotMCP, dr_lib_mock_for_refresh: None
     ) -> None:
         """
         Test refresh prompt templates.

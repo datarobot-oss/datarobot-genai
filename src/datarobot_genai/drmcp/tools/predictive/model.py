@@ -93,33 +93,17 @@ async def get_best_model(
     best_model = leaderboard[0]
     logger.info(f"Found best model {best_model.id} for project {project_id}")
 
-    metric_info = ""
     metric_value = None
 
     if metric and best_model.metrics and metric in best_model.metrics:
         metric_value = best_model.metrics[metric].get("validation")
-        if metric_value is not None:
-            metric_info = f" with {metric}: {metric_value:.2f}"
 
     # Include full metrics in the response
     best_model_dict = model_to_dict(best_model)
     best_model_dict["metric"] = metric
     best_model_dict["metric_value"] = metric_value
 
-    # Format metrics for human-readable content
-    metrics_text = ""
-    if best_model.metrics:
-        metrics_list = []
-        for metric_name, metric_data in best_model.metrics.items():
-            if isinstance(metric_data, dict) and "validation" in metric_data:
-                val = metric_data["validation"]
-                if val is not None:
-                    metrics_list.append(f"{metric_name}: {val:.4f}")
-        if metrics_list:
-            metrics_text = "\nPerformance metrics:\n" + "\n".join(f"  - {m}" for m in metrics_list)
-
     return ToolResult(
-        content=f"Best model: {best_model.model_type}{metric_info}{metrics_text}",
         structured_content={
             "project_id": project_id,
             "best_model": best_model_dict,
@@ -148,7 +132,6 @@ async def score_dataset_with_model(
     job = model.score(dataset_url)
 
     return ToolResult(
-        content=f"Scoring job started: {job.id}",
         structured_content={
             "scoring_job_id": job.id,
             "project_id": project_id,
@@ -172,10 +155,6 @@ async def list_models(
     models = project.get_models()
 
     return ToolResult(
-        content=(
-            f"Found {len(models)} models in project {project_id}, here are the details:\n"
-            f"{json.dumps(models, indent=2, cls=ModelEncoder)}"
-        ),
         structured_content={
             "project_id": project_id,
             "models": [model_to_dict(model) for model in models],
