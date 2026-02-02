@@ -83,7 +83,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Return the list of MCP tools available to this agent.
 
         Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``build_crewai_workflow``.
+        workflow construction inside ``crew``.
         """
         return self._mcp_tools
 

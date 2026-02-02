@@ -43,7 +43,7 @@ class _Agent(CrewAIAgent):
     def tasks(self) -> list[Any]:
         return []
 
-    def build_crewai_workflow(self) -> Any:
+    def crew(self) -> Any:
         return _Crew()
 
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -94,7 +94,7 @@ async def test_crewai_streaming_with_pipeline_interactions(mock_mcp_context: Any
             super().__init__()
             self.event_listener = _EventListener()
 
-        def build_crewai_workflow(self) -> Any:
+        def crew(self) -> Any:
             return _CrewWithUsage()
 
     agent = _AgentWithListener()
