@@ -17,7 +17,7 @@ import pytest
 from mcp import McpError
 
 from datarobot_genai.drmcp import integration_test_mcp_session
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 
 @pytest.mark.asyncio
@@ -161,7 +161,7 @@ class TestMCPDRPromptManagementIntegration:
 
 @pytest.mark.asyncio
 async def test_mcp_prompts_mapping_methods():
-    mcp = TaggedFastMCP()
+    mcp = DataRobotMCP()
 
     await mcp.set_prompt_mapping("id_1", "v_id_1", "prompt_1")
     await mcp.set_prompt_mapping("id_2", "v_id_2", "prompt_2")

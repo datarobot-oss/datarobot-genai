@@ -33,7 +33,10 @@ def expectations_for_get_best_model_success(
             ToolCallTestExpectations(
                 name="get_best_model",
                 parameters={"project_id": classification_project_id},
-                result="Best model: Keras Text Convolutional Neural Network Classifier",
+                result={
+                    "project_id": "",
+                    "best_model": {"id": "", "model_type": "", "metrics": {}},
+                },
             ),
         ],
         llm_response_content_contains_expectations=[

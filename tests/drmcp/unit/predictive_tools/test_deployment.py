@@ -38,8 +38,6 @@ async def test_list_deployments_success() -> None:
         mock_client.Deployment.list.return_value = [mock_dep1, mock_dep2]
         mock_get_client.return_value = mock_client
         result = await deployment.list_deployments()
-        assert "1: dep1" in result.content[0].text
-        assert "2: dep2" in result.content[0].text
         assert result.structured_content["deployments"]["1"] == "dep1"
         assert result.structured_content["deployments"]["2"] == "dep2"
 
@@ -53,7 +51,6 @@ async def test_list_deployments_empty() -> None:
         mock_client.Deployment.list.return_value = []
         mock_get_client.return_value = mock_client
         result = await deployment.list_deployments()
-        assert "No deployments found." in result.content[0].text
         assert result.structured_content["deployments"] == []
 
 

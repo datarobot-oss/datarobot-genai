@@ -18,20 +18,28 @@ from botocore.exceptions import ClientError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from datarobot_genai import __version__
+
+from .config import get_config
 from .dynamic_prompts.controllers import delete_registered_prompt_template
 from .dynamic_prompts.controllers import refresh_registered_prompt_template
 from .dynamic_prompts.controllers import register_prompt_from_prompt_template_id_and_version
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
-from .mcp_instance import TaggedFastMCP
+from .mcp_instance import DataRobotMCP
 from .memory_management.manager import get_memory_manager
 from .routes_utils import prefix_mount_path
+from .tool_config import TOOL_CONFIGS
+from .tool_config import ToolType
+from .utils import get_prompt_tags
+from .utils import get_resource_tags
+from .utils import get_tool_tags
 
 logger = getLogger(__name__)
 
 
-def register_routes(mcp: TaggedFastMCP) -> None:
+def register_routes(mcp: DataRobotMCP) -> None:
     """Register all routes with the MCP server."""
 
     @mcp.custom_route(prefix_mount_path("/"), methods=["GET"])
@@ -44,26 +52,113 @@ def register_routes(mcp: TaggedFastMCP) -> None:
             },
         )
 
-    # Custom endpoint to get all tags
-    @mcp.custom_route(prefix_mount_path("/tags"), methods=["GET"])
-    async def handle_tags(_: Request) -> JSONResponse:
+    @mcp.custom_route(prefix_mount_path("/metadata"), methods=["GET"])
+    async def get_metadata(_: Request) -> JSONResponse:
+        """Get metadata about tools, prompts, resources, and system configuration."""
         try:
-            # TaggedFastMCP extends FastMCP with get_all_tags
-            tags = await mcp.get_all_tags()  # type: ignore[attr-defined]
+            # Get tools with tags
+            tools = await mcp._list_tools_mcp()
+            tools_metadata = [
+                {
+                    "name": tool.name,
+                    "tags": sorted(list(get_tool_tags(tool))),
+                }
+                for tool in tools
+            ]
+
+            # Get prompts with tags
+            prompts = await mcp._list_prompts_mcp()
+            prompts_metadata = [
+                {
+                    "name": prompt.name,
+                    "tags": sorted(list(get_prompt_tags(prompt))),
+                }
+                for prompt in prompts
+            ]
+
+            # Get resources with tags
+            resources = await mcp._list_resources_mcp()
+            resources_metadata = [
+                {
+                    "name": resource.name,
+                    "tags": sorted(list(get_resource_tags(resource))),
+                }
+                for resource in resources
+            ]
+
+            # Get safe configuration details
+            config = get_config()
+
+            # Build tool config status
+            tool_config_status = {}
+            for tool_type in ToolType:
+                tool_config = TOOL_CONFIGS[tool_type]
+                is_enabled = getattr(config.tool_config, tool_config["config_field_name"], False)
+                oauth_check_fn = tool_config["oauth_check"]
+                oauth_required = oauth_check_fn is not None
+                oauth_configured = None
+                if oauth_required and oauth_check_fn is not None:
+                    oauth_configured = oauth_check_fn(config)
+
+                tool_config_status[tool_type.value] = {
+                    "enabled": is_enabled,
+                    "oauth_required": oauth_required,
+                    "oauth_configured": oauth_configured,
+                }
+
+            # Safe config details (excluding sensitive information)
+            safe_config = {
+                "server": {
+                    "name": config.mcp_server_name,
+                    "port": config.mcp_server_port,
+                    "log_level": config.mcp_server_log_level,
+                    "app_log_level": config.app_log_level,
+                    "mount_path": config.mount_path,
+                    "drmcp_genai_version": __version__,
+                },
+                "features": {
+                    "register_dynamic_tools_on_startup": (
+                        config.mcp_server_register_dynamic_tools_on_startup
+                    ),
+                    "register_dynamic_prompts_on_startup": (
+                        config.mcp_server_register_dynamic_prompts_on_startup
+                    ),
+                    "tool_registration_allow_empty_schema": (
+                        config.tool_registration_allow_empty_schema
+                    ),
+                    "tool_registration_duplicate_behavior": (
+                        config.tool_registration_duplicate_behavior
+                    ),
+                    "prompt_registration_duplicate_behavior": (
+                        config.prompt_registration_duplicate_behavior
+                    ),
+                },
+                "tool_config": tool_config_status,
+            }
+
             return JSONResponse(
                 status_code=HTTPStatus.OK,
                 content={
-                    "tags": tags,
-                    "count": len(tags),
-                    "message": "All available tags retrieved successfully",
+                    "tools": {
+                        "items": tools_metadata,
+                        "count": len(tools_metadata),
+                    },
+                    "prompts": {
+                        "items": prompts_metadata,
+                        "count": len(prompts_metadata),
+                    },
+                    "resources": {
+                        "items": resources_metadata,
+                        "count": len(resources_metadata),
+                    },
+                    "config": safe_config,
                 },
             )
         except Exception as e:
+            logger.exception("Failed to retrieve metadata")
             return JSONResponse(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                content={
-                    "error": f"Failed to retrieve tags: {str(e)}",
-                },
+                content={"error": f"Failed to retrieve metadata: {str(e)}"},
             )
 
     memory_manager = get_memory_manager()

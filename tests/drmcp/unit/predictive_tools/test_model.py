@@ -39,10 +39,12 @@ async def test_get_best_model_success() -> None:
         mock_get_client.return_value = mock_client
 
         result = await model.get_best_model(project_id="pid", metric="AUC")
-        assert hasattr(result, "content")
+        assert hasattr(result, "structured_content")
+        assert result.structured_content["project_id"] == "pid"
+        assert result.structured_content["best_model"]["model_type"] == "XGBoost"
+        expected_auc = 0.9
         assert (
-            result.content[0].text
-            == "Best model: XGBoost with AUC: 0.90\nPerformance metrics:\n  - AUC: 0.9000"
+            result.structured_content["best_model"]["metrics"]["AUC"]["validation"] == expected_auc
         )
 
 
@@ -103,8 +105,8 @@ async def test_score_dataset_with_model_success() -> None:
         mock_client.Project.get.assert_called_once_with("pid")
         mock_client.Model.get.assert_called_once_with(mock_project, "mid")
         mock_model.score.assert_called_once_with("url")
-        assert hasattr(result, "content")
-        assert "Scoring job started: jobid" in result.content[0].text
+        assert hasattr(result, "structured_content")
+        assert result.structured_content["scoring_job_id"] == "jobid"
 
 
 @pytest.mark.asyncio
