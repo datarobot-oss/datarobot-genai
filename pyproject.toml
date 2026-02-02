@@ -192,6 +192,10 @@ fixable = [
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
 ]
+"tests/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow imports in test functions
+    "PLR2004",# magic-value-comparison: allow magic values in test assertions
+]
 
 [tool.ruff.lint.isort]
 force-single-line = true
