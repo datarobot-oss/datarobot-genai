@@ -14,7 +14,6 @@
 
 """Tools for analyzing datasets and suggesting ML use cases."""
 
-import json
 import logging
 from dataclasses import asdict
 from dataclasses import dataclass
@@ -134,7 +133,6 @@ async def analyze_dataset(
     insights_dict = asdict(insights)
 
     return ToolResult(
-        content=json.dumps(insights_dict, indent=2),
         structured_content=insights_dict,
     )
 
@@ -164,7 +162,6 @@ async def suggest_use_cases(
     suggestions.sort(key=lambda x: x["confidence"], reverse=True)
 
     return ToolResult(
-        content=json.dumps(suggestions, indent=2),
         structured_content={"use_case_suggestions": suggestions},
     )
 
@@ -255,7 +252,6 @@ async def get_exploratory_insights(
                 )
 
     return ToolResult(
-        content=json.dumps(eda_insights, indent=2),
         structured_content=eda_insights,
     )
 
@@ -540,22 +536,11 @@ async def start_autopilot(
         }
 
         return ToolResult(
-            content=json.dumps(result, indent=2),
             structured_content=result,
         )
 
     except Exception as e:
-        raise ToolError(
-            content=json.dumps(
-                {
-                    "error": f"Failed to start Autopilot: {str(e)}",
-                    "project_id": project.id if project else None,
-                    "target": target,
-                    "mode": mode,
-                },
-                indent=2,
-            )
-        )
+        raise ToolError(f"Failed to start Autopilot: {str(e)}")
 
 
 @dr_mcp_tool(tags={"prediction", "training", "read", "model", "evaluation"})
@@ -611,7 +596,6 @@ async def get_model_roc_curve(
         }
 
         return ToolResult(
-            content=json.dumps({"data": roc_data}, indent=2),
             structured_content={"data": roc_data},
         )
     except Exception as e:
@@ -638,7 +622,6 @@ async def get_model_feature_impact(
     feature_impact = model.get_or_request_feature_impact()
 
     return ToolResult(
-        content=json.dumps({"data": feature_impact}, indent=2),
         structured_content={"data": feature_impact},
     )
 
@@ -684,6 +667,5 @@ async def get_model_lift_chart(
     }
 
     return ToolResult(
-        content=json.dumps({"data": lift_chart_data}, indent=2),
         structured_content={"data": lift_chart_data},
     )

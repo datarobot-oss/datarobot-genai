@@ -32,7 +32,7 @@ def expectations_for_get_deployment_features_success(
             ToolCallTestExpectations(
                 name="get_deployment_features",
                 parameters={"deployment_id": deployment_id},
-                result="total_features",
+                result={"total_features": 0, "features": []},
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -57,7 +57,14 @@ def expectations_for_generate_prediction_data_template_success(
                     "deployment_id": deployment_id,
                     "n_rows": 5,
                 },
-                result=f"# Prediction Data Template for Deployment: {deployment_id}",
+                result={
+                    "deployment_id": "",
+                    "model_type": "",
+                    "target": "",
+                    "target_type": "",
+                    "total_features": 0,
+                    "template_data": [],
+                },
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -82,7 +89,7 @@ def expectations_for_validate_prediction_data_success(
                     "deployment_id": deployment_id,
                     "file_path": str(diabetes_scoring_small_file_path),
                 },
-                result='"status": "valid"',
+                result={"status": "valid"},
             ),
         ],
         llm_response_content_contains_expectations=[

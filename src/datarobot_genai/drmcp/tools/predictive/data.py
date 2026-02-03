@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import logging
 import os
 from typing import Annotated
@@ -60,7 +59,6 @@ async def upload_dataset_to_ai_catalog(
         raise ToolError("Failed to upload dataset.")
 
     return ToolResult(
-        content=f"Successfully uploaded dataset: {catalog_item.id}",
         structured_content={
             "dataset_id": catalog_item.id,
             "dataset_version_id": catalog_item.version_id,
@@ -78,21 +76,15 @@ async def list_ai_catalog_items() -> ToolResult:
     if not datasets:
         logger.info("No AI Catalog items found")
         return ToolResult(
-            content="No AI Catalog items found.",
             structured_content={"datasets": []},
         )
 
     datasets_dict = {ds.id: ds.name for ds in datasets}
-    datasets_count = len(datasets)
 
     return ToolResult(
-        content=(
-            f"Found {datasets_count} AI Catalog items, here are the details:\n"
-            f"{json.dumps(datasets_dict, indent=2)}"
-        ),
         structured_content={
             "datasets": datasets_dict,
-            "count": datasets_count,
+            "count": len(datasets),
         },
     )
 

@@ -22,7 +22,6 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
-from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drmcp.tools.clients.gdrive import LIMIT
 from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
 from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS
@@ -64,13 +63,15 @@ async def gdrive_find_contents(
 ) -> ToolResult:
     """
     Search or list files in the user's Google Drive with pagination and filtering support.
-    Use this tool to discover file names and IDs for use with other tools.
+    Use this tool to discover GDrive file names and IDs for use with other tools.
 
     Limit must be bigger than or equal to page size and it must be multiplication of page size.
-    Ex.
-        page size = 10 limit = 50
-        page size = 3 limit = 3
-        page size = 12 limit = 36
+
+    Examples
+    --------
+        - page size = 10 limit = 50
+        - page size = 3 limit = 3
+        - page size = 12 limit = 36
     """
     access_token = await get_gdrive_access_token()
     if isinstance(access_token, ToolError):
@@ -88,13 +89,8 @@ async def gdrive_find_contents(
 
     filtered_fields = set(fields).intersection(SUPPORTED_FIELDS) if fields else SUPPORTED_FIELDS
     number_of_files = len(data.files)
-    next_page_info = (
-        f"Next page token needed to fetch more data: {data.next_page_token}"
-        if data.next_page_token
-        else "There're no more pages."
-    )
+
     return ToolResult(
-        content=f"Successfully listed {number_of_files} files. {next_page_info}",
         structured_content={
             "files": [
                 file.model_dump(by_alias=True, include=filtered_fields) for file in data.files
@@ -117,8 +113,7 @@ async def gdrive_read_content(
     ] = None,
 ) -> ToolResult:
     """
-    Retrieve the content of a specific file by its ID. Google Workspace files are
-    automatically exported to LLM-readable formats (Push-Down).
+    Retrieve the content of a specific Google drive file by its ID.
 
     Usage:
         - Basic: gdrive_read_content(file_id="1ABC123def456")
@@ -148,15 +143,7 @@ async def gdrive_read_content(
     async with GoogleDriveClient(access_token) as client:
         file_content = await client.read_file_content(file_id, target_format)
 
-    export_info = ""
-    if file_content.was_exported:
-        export_info = f" (exported from {file_content.original_mime_type})"
-
     return ToolResult(
-        content=(
-            f"Successfully retrieved content of '{file_content.name}' "
-            f"({file_content.mime_type}){export_info}."
-        ),
         structured_content=file_content.as_flat_dict(),
     )
 
@@ -228,13 +215,7 @@ async def gdrive_create_file(
             initial_content=initial_content,
         )
 
-    file_type = "folder" if mime_type == GOOGLE_DRIVE_FOLDER_MIME else "file"
-    content_info = ""
-    if initial_content and mime_type != GOOGLE_DRIVE_FOLDER_MIME:
-        content_info = " with initial content"
-
     return ToolResult(
-        content=f"Successfully created {file_type} '{created_file.name}'{content_info}.",
         structured_content=created_file.as_flat_dict(),
     )
 
@@ -295,22 +276,7 @@ async def gdrive_update_metadata(
             trashed=trash,
         )
 
-    changes: list[str] = []
-    if new_name is not None:
-        changes.append(f"renamed to '{new_name}'")
-    if starred is True:
-        changes.append("starred")
-    elif starred is False:
-        changes.append("unstarred")
-    if trash is True:
-        changes.append("moved to trash")
-    elif trash is False:
-        changes.append("restored from trash")
-
-    changes_description = ", ".join(changes)
-
     return ToolResult(
-        content=f"Successfully updated file '{updated_file.name}': {changes_description}.",
         structured_content=updated_file.as_flat_dict(),
     )
 
@@ -386,17 +352,6 @@ async def gdrive_manage_access(
     # Build response
     structured_content = {"affectedFileId": file_id}
     if action == "add":
-        content = (
-            f"Successfully added role '{role}' for '{email_address}' for gdrive file '{file_id}'. "
-            f"New permission id '{permission_id}'."
-        )
         structured_content["newPermissionId"] = permission_id
-    elif action == "update":
-        content = (
-            f"Successfully updated role '{role}' (permission '{permission_id}') "
-            f"for gdrive file '{file_id}'."
-        )
-    else:  # action == "remove":
-        content = f"Successfully removed permission '{permission_id}' for gdrive file '{file_id}'."
 
-    return ToolResult(content=content, structured_content=structured_content)
+    return ToolResult(structured_content=structured_content)

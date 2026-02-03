@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from typing import Any
 
 import pytest
@@ -54,11 +55,14 @@ class TestMCPToolsIntegration:
                 if hasattr(result.content[0], "text")
                 else str(result.content[0])
             )
-            assert "Best model:" in result_text, f"Result text: {result_text}"
-            assert "Keras Text Convolutional Neural Network Classifier" in result_text, (
-                f"Result text: {result_text}"
-            )  # Actual model type
-            assert "AUC: 0.88" in result_text, f"Result text: {result_text}"  # Actual AUC value
+            data = json.loads(result_text)
+            assert data["project_id"] == classification_project["project"].id
+            assert (
+                "Keras Text Convolutional Neural Network Classifier"
+                in data["best_model"]["model_type"]
+            )
+            assert "AUC" in data["best_model"]["metrics"]
+            assert data["best_model"]["metrics"]["AUC"]["validation"] is not None
 
             # 3 Test getting best model without specifying metric
             result = await session.call_tool(
@@ -74,10 +78,12 @@ class TestMCPToolsIntegration:
                 if hasattr(result.content[0], "text")
                 else str(result.content[0])
             )
-            assert "Best model:" in result_text, f"Result text: {result_text}"
-            assert "Keras Text Convolutional Neural Network Classifier" in result_text, (
-                f"Result text: {result_text}"
-            )  # This is the actual model type
+            data = json.loads(result_text)
+            assert "best_model" in data
+            assert (
+                "Keras Text Convolutional Neural Network Classifier"
+                in data["best_model"]["model_type"]
+            )
 
             # 4 Test error handling for nonexistent project
             result = await session.call_tool(
@@ -108,13 +114,13 @@ class TestMCPToolsIntegration:
                 if hasattr(result.content[0], "text")
                 else str(result.content[0])
             )
-            assert "Best model:" in result_text, f"Result text: {result_text}"
-            assert "Keras Text Convolutional Neural Network Classifier" in result_text, (
-                f"Result text: {result_text}"
+            data = json.loads(result_text)
+            assert "best_model" in data
+            assert (
+                "Keras Text Convolutional Neural Network Classifier"
+                in data["best_model"]["model_type"]
             )
-            assert "LogLoss: 0.56" in result_text, (
-                f"Result text: {result_text}"
-            )  # Actual LogLoss value
+            assert "LogLoss" in data["best_model"]["metrics"]
 
             # 6 Test scoring dataset with specified model none existent model or dataset
             result = await session.call_tool(

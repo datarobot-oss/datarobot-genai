@@ -52,8 +52,7 @@ class TestTavilySearch:
             mock.return_value = mock_response
             result = await tavily_search(query="test query")
 
-        content, structured = result.to_mcp_result()
-        assert "Successfully searched" in content[0].text
+        _, structured = result.to_mcp_result()
         assert structured["resultCount"] == 1
 
     @pytest.mark.asyncio
@@ -71,8 +70,6 @@ class TestTavilySearch:
             mock.return_value = mock_response
             result = await tavily_search(query="test", include_images=True, include_answer=True)
 
-        content, structured = result.to_mcp_result()
-        assert "AI-generated answer" in content[0].text
-        assert "1 images" in content[0].text
+        _, structured = result.to_mcp_result()
         assert structured["answer"] == "AI summary"
         assert len(structured["images"]) == 1

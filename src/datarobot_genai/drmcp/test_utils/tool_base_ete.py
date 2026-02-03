@@ -39,6 +39,17 @@ class ETETestExpectations(BaseModel):
 SHOULD_NOT_BE_EMPTY = "SHOULD_NOT_BE_EMPTY"
 
 
+def _extract_content_when_structured_empty(tool_result: str) -> dict[str, str] | None:
+    r"""When Content is present but Structured content is empty, return {"error": content}."""
+    if "Content: " not in tool_result:
+        return None
+    content_part = tool_result.split("Content: ", 1)[1]
+    if "\nStructured content: " in content_part:
+        content_part = content_part.split("\nStructured content: ", 1)[0]
+    content_part = content_part.strip()
+    return {"error": content_part} if content_part else None
+
+
 def _extract_structured_content(tool_result: str) -> Any:
     r"""
     Extract and parse structured content from tool result string.
@@ -49,7 +60,9 @@ def _extract_structured_content(tool_result: str) -> Any:
     Structured content can be:
     1. A JSON object with a "result" key: {"result": "..."} or {"result": "{...}"}
     2. A direct JSON object: {"key": "value", ...}
-    3. Empty or missing
+    3. Empty or missing — when Content is present but Structured content is empty
+       (e.g. tool errors), returns {"error": content} so dict expectations can validate.
+    4. None if neither valid structured content nor Content is available
 
     Args:
         tool_result: The tool result string
@@ -58,33 +71,35 @@ def _extract_structured_content(tool_result: str) -> Any:
     -------
         Parsed structured content, or None if not available
     """
-    # Early returns for invalid inputs
-    if not tool_result or "Structured content: " not in tool_result:
-        return None
-
-    structured_part = tool_result.split("Structured content: ", 1)[1].strip()
-    # Parse JSON, return None on failure or empty structured_part
-    if not structured_part:
-        return None
-    try:
-        structured_data = json.loads(structured_part)
-    except json.JSONDecodeError:
-        return None
-
-    # If structured data has a "result" key, extract and parse that
-    if isinstance(structured_data, dict) and "result" in structured_data:
-        result_value = structured_data["result"]
-        # If result is a JSON string (starts with { or [), try to parse it
-        if isinstance(result_value, str) and result_value.strip().startswith(("{", "[")):
+    result: Any = None
+    if not tool_result:
+        pass
+    elif "Structured content: " in tool_result:
+        structured_part = tool_result.split("Structured content: ", 1)[1].strip()
+        if not structured_part:
+            result = _extract_content_when_structured_empty(tool_result)
+        else:
             try:
-                parsed_result = json.loads(result_value)
+                structured_data = json.loads(structured_part)
             except json.JSONDecodeError:
-                parsed_result = result_value  # Return string as-is if parsing fails
-            return parsed_result
-        return result_value  # Return result value directly
-
-    # If it's a direct JSON object (not wrapped in {"result": ...}), return it as-is
-    return structured_data
+                pass
+            else:
+                if isinstance(structured_data, dict) and "result" in structured_data:
+                    result_value = structured_data["result"]
+                    if isinstance(result_value, str) and result_value.strip().startswith(
+                        ("{", "[")
+                    ):
+                        try:
+                            result = json.loads(result_value)
+                        except json.JSONDecodeError:
+                            result = result_value
+                    else:
+                        result = result_value
+                else:
+                    result = structured_data
+    else:
+        result = _extract_content_when_structured_empty(tool_result)
+    return result
 
 
 def _check_dict_has_keys(

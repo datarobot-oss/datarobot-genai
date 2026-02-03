@@ -19,21 +19,17 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.drmcp.core.dr_mcp_server import DataRobotMCPServer
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.telemetry import _set_otel_attributes
 from datarobot_genai.drmcp.core.telemetry import get_trace_id
 from datarobot_genai.drmcp.core.telemetry import initialize_telemetry
-from datarobot_genai.drmcp.core.tool_filter import filter_tools_by_tags
-from datarobot_genai.drmcp.core.tool_filter import get_tool_tags
-from datarobot_genai.drmcp.core.tool_filter import get_tools_by_tag
-from datarobot_genai.drmcp.core.tool_filter import list_all_tags
 
 
 @pytest.mark.asyncio
 async def test_tagged_tool_decorator() -> None:
     """Test that the mcp.tool decorator properly applies tags."""
-    mcp = TaggedFastMCP(name="test")
+    mcp = DataRobotMCP(name="test")
 
     @mcp.tool(tags={"test", "example"})
     def test_function() -> str:
@@ -52,7 +48,7 @@ async def test_tagged_tool_decorator() -> None:
 @pytest.mark.asyncio
 async def test_tagged_tool_with_additional_annotations() -> None:
     """Test that mcp.tool can handle additional annotations."""
-    mcp = TaggedFastMCP(name="test")
+    mcp = DataRobotMCP(name="test")
 
     @mcp.tool(tags={"test"}, annotations={"title": "Test Tool", "readOnlyHint": True})
     def test_function() -> str:
@@ -73,7 +69,7 @@ async def test_tagged_tool_with_additional_annotations() -> None:
 @pytest.mark.asyncio
 async def test_tool_without_tags() -> None:
     """Test that tools work without tags."""
-    mcp = TaggedFastMCP(name="test")
+    mcp = DataRobotMCP(name="test")
 
     @mcp.tool()
     def test_function() -> str:
@@ -85,175 +81,6 @@ async def test_tool_without_tags() -> None:
     tool = list(tools.values())[0]
     # Should work fine without annotations
     assert tool.name == "test_function"
-
-
-def test_filter_tools_by_tags() -> None:
-    """Test filtering tools by tags."""
-    # Create mock tools with annotations
-    tool1 = Mock()
-    tool1.annotations = Mock()
-    tool1.annotations.tags = ["deployment", "management"]
-
-    tool2 = Mock()
-    tool2.annotations = Mock()
-    tool2.annotations.tags = ["model", "info"]
-
-    tool3 = Mock()
-    tool3.annotations = Mock()
-    tool3.annotations.tags = ["deployment", "model"]
-
-    tools = [tool1, tool2, tool3]
-
-    # Test filtering by single tag
-    deployment_tools = filter_tools_by_tags(list(tools), ["deployment"])
-    assert len(deployment_tools) == 2
-    assert tool1 in deployment_tools
-    assert tool3 in deployment_tools
-
-    # Test filtering by multiple tags (any match)
-    model_tools = filter_tools_by_tags(list(tools), ["model", "management"])
-    assert len(model_tools) == 3  # All tools match at least one tag
-
-    # Test filtering by multiple tags (all match)
-    deployment_model_tools = filter_tools_by_tags(
-        list(tools), ["deployment", "model"], match_all=True
-    )
-    assert len(deployment_model_tools) == 1
-    assert tool3 in deployment_model_tools
-
-
-def test_get_tool_tags() -> None:
-    """Test getting tags from a tool."""
-    tool = Mock()
-    tool.annotations = Mock()
-    tool.annotations.tags = ["deployment", "management"]
-
-    tags = get_tool_tags(tool)
-    assert tags == ["deployment", "management"]
-
-
-def test_get_tool_tags_no_annotations() -> None:
-    """Test getting tags from a tool without annotations."""
-    tool = Mock()
-    tool.annotations = None
-
-    tags = get_tool_tags(tool)
-    assert tags == []
-
-
-def test_list_all_tags() -> None:
-    """Test listing all unique tags from tools."""
-    tool1 = Mock()
-    tool1.annotations = Mock()
-    tool1.annotations.tags = ["deployment", "management"]
-
-    tool2 = Mock()
-    tool2.annotations = Mock()
-    tool2.annotations.tags = ["model", "info"]
-
-    tool3 = Mock()
-    tool3.annotations = Mock()
-    tool3.annotations.tags = ["deployment", "model"]
-
-    tools = [tool1, tool2, tool3]
-
-    all_tags = list_all_tags(list(tools))
-    expected_tags = ["deployment", "info", "management", "model"]
-    assert all_tags == expected_tags
-
-
-def test_get_tools_by_tag() -> None:
-    """Test getting tools by a specific tag."""
-    tool1 = Mock()
-    tool1.annotations = Mock()
-    tool1.annotations.tags = ["deployment", "management"]
-
-    tool2 = Mock()
-    tool2.annotations = Mock()
-    tool2.annotations.tags = ["model", "info"]
-
-    tool3 = Mock()
-    tool3.annotations = Mock()
-    tool3.annotations.tags = ["deployment", "model"]
-
-    tools = [tool1, tool2, tool3]
-
-    deployment_tools = get_tools_by_tag(list(tools), "deployment")
-    assert len(deployment_tools) == 2
-    assert tool1 in deployment_tools
-    assert tool3 in deployment_tools
-
-
-@pytest.mark.asyncio
-async def test_list_tools_filtering() -> None:
-    """Test the enhanced list_tools method with tag filtering."""
-    mcp = TaggedFastMCP(name="test")
-
-    @mcp.tool(tags={"data", "read"})
-    async def read_file(file_path: str) -> str:
-        return f"Reading file: {file_path}"
-
-    @mcp.tool(tags={"data", "write"})
-    async def write_file(file_path: str, content: str) -> str:
-        return f"Writing to file: {file_path}"
-
-    @mcp.tool(tags={"model", "train"})
-    async def train_model(dataset: str) -> str:
-        return f"Training model on dataset: {dataset}"
-
-    @mcp.tool(tags={"model", "deployment"})
-    async def deploy_model(model_id: str) -> str:
-        return f"Deploying model {model_id}"
-
-    # Test getting all tools
-    all_tools = await mcp.list_tools()
-    assert len(all_tools) == 4
-
-    # Test filtering by single tag
-    data_tools = await mcp.list_tools(tags=["data"])
-    assert len(data_tools) == 2
-    tool_names = [tool.name for tool in data_tools]
-    assert "read_file" in tool_names
-    assert "write_file" in tool_names
-
-    # Test filtering by multiple tags (OR logic)
-    model_tools = await mcp.list_tools(tags=["model"])
-    assert len(model_tools) == 2
-    tool_names = [tool.name for tool in model_tools]
-    assert "train_model" in tool_names
-    assert "deploy_model" in tool_names
-
-    # Test filtering by multiple tags (AND logic)
-    model_deployment_tools = await mcp.list_tools(tags=["model", "deployment"], match_all=True)
-    assert len(model_deployment_tools) == 1
-    assert model_deployment_tools[0].name == "deploy_model"
-
-    # Test filtering with no matches
-    no_tools = await mcp.list_tools(tags=["nonexistent"])
-    assert len(no_tools) == 0
-
-
-@pytest.mark.asyncio
-async def test_get_all_tags() -> None:
-    """Test the get_all_tags method."""
-    mcp = TaggedFastMCP(name="test")
-
-    @mcp.tool(tags={"data", "read"})
-    async def read_file(file_path: str) -> str:
-        return f"Reading file: {file_path}"
-
-    @mcp.tool(tags={"data", "write"})
-    async def write_file(file_path: str, content: str) -> str:
-        return f"Writing to file: {file_path}"
-
-    @mcp.tool(tags={"model", "train"})
-    async def train_model(dataset: str) -> str:
-        return f"Training model on dataset: {dataset}"
-
-    # Test getting all tags
-    all_tags = await mcp.get_all_tags()
-    expected_tags = ["data", "model", "read", "train", "write"]
-    assert all_tags == expected_tags
 
 
 def test_main_module() -> None:
