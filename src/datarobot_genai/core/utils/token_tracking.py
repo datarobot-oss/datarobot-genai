@@ -53,7 +53,7 @@ _NEWLINE_PATTERN = re.compile(r"[\n\r\t]")
 # Threshold for switching to sampling-based estimation (10 MB)
 _SAMPLING_THRESHOLD = 10 * 1024 * 1024
 _SAMPLE_SIZE = 100_000  # Size of each sample chunk
-_SAMPLE_COUNT = 10  # Number of samples to take
+_SAMPLE_COUNT = 12  # Number of samples to take
 
 # CJK Unicode ranges for special tokenization handling
 # These scripts don't use spaces between words, so each character ≈ 1-2 tokens
