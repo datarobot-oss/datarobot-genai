@@ -109,7 +109,7 @@ def chat_entrypoint(
     )
     # Keep only allowed headers from the forwarded_headers.
     incoming_headers = kwargs.get("headers", {}) or {}
-    allowed_headers = {"x-datarobot-api-token", "x-datarobot-api-key"}
+    allowed_headers = {"x-datarobot-api-token", "x-datarobot-api-key", "x-datarobot-identity-token"}
     forwarded_headers = {k: v for k, v in incoming_headers.items() if k.lower() in allowed_headers}
     completion_create_params["forwarded_headers"] = forwarded_headers
 
