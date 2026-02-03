@@ -21,10 +21,10 @@ from typing import Literal
 
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.component_ref import AuthenticationRef
-from nat.plugins.mcp.client_base import AuthAdapter
-from nat.plugins.mcp.client_base import MCPStreamableHTTPClient
-from nat.plugins.mcp.client_config import MCPServerConfig
-from nat.plugins.mcp.client_impl import MCPClientConfig
+from nat.plugins.mcp.client.client_base import AuthAdapter
+from nat.plugins.mcp.client.client_base import MCPStreamableHTTPClient
+from nat.plugins.mcp.client.client_config import MCPServerConfig
+from nat.plugins.mcp.client.client_impl import MCPClientConfig
 from pydantic import Field
 from pydantic import HttpUrl
 
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     import httpx
     from nat.authentication.interfaces import AuthProviderBase
     from nat.builder.builder import Builder
-    from nat.plugins.mcp.client_impl import MCPFunctionGroup
+    from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +154,13 @@ async def datarobot_mcp_client_function_group(
     Returns:
         The function group
     """
-    from nat.plugins.mcp.client_base import MCPSSEClient  # noqa: PLC0415
-    from nat.plugins.mcp.client_base import MCPStdioClient  # noqa: PLC0415
-    from nat.plugins.mcp.client_impl import MCPFunctionGroup  # noqa: PLC0415
-    from nat.plugins.mcp.client_impl import mcp_apply_tool_alias_and_description  # noqa: PLC0415
-    from nat.plugins.mcp.client_impl import mcp_session_tool_function  # noqa: PLC0415
+    from nat.plugins.mcp.client.client_base import MCPSSEClient  # noqa: PLC0415
+    from nat.plugins.mcp.client.client_base import MCPStdioClient  # noqa: PLC0415
+    from nat.plugins.mcp.client.client_impl import MCPFunctionGroup  # noqa: PLC0415
+    from nat.plugins.mcp.client.client_impl import (
+        mcp_apply_tool_alias_and_description,  # noqa: PLC0415
+    )
+    from nat.plugins.mcp.client.client_impl import mcp_session_tool_function  # noqa: PLC0415
 
     # Resolve auth provider if specified
     auth_provider = None
