@@ -15,11 +15,14 @@
 import json
 import logging
 import uuid
+from typing import Annotated
 from typing import Any
 
 import datarobot as dr
+from fastmcp.exceptions import ToolError
 from fastmcp.resources import HttpResource
 from fastmcp.resources import ResourceManager
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_credentials
 from datarobot_genai.drmcp.core.clients import get_sdk_client
@@ -32,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def _handle_prediction_resource(
     job: Any, bucket: str, key: str, deployment_id: str, input_desc: str
-) -> str:
+) -> ToolResult:
     s3_url = generate_presigned_url(bucket, key)
     resource_manager = ResourceManager()
     resource = HttpResource(
@@ -42,11 +45,13 @@ def _handle_prediction_resource(
         mime_type="text/csv",
     )
     resource_manager.add_resource(resource)
-    return (
-        f"Finished Batch Prediction job ID {job.id} for deployment ID {deployment_id}. "
-        f"{input_desc} Results uploaded to {s3_url}. "
-        f"Job status: {job.status} and you can find the job on the DataRobot UI at "
-        f"/deployments/batch-jobs. "
+    return ToolResult(
+        structured_content={
+            "job_id": job.id,
+            "deployment_id": deployment_id,
+            "input_desc": input_desc,
+            "s3_url": s3_url,
+        },
     )
 
 
@@ -91,11 +96,11 @@ def make_output_settings(cred: Any) -> tuple[dict[str, Any], str, str]:
 
 def wait_for_preds_and_cache_results(
     job: Any, bucket: str, key: str, deployment_id: str, input_desc: str, timeout: int
-) -> str:
+) -> ToolError | ToolResult:
     job.wait_for_completion(timeout)
     if job.status in ["ERROR", "FAILED", "ABORTED"]:
         logger.error(f"Job failed with status {job.status}")
-        return f"Job failed with status {job.status}"
+        return ToolError(f"Job failed with status {job.status}")
     return _handle_prediction_resource(job, bucket, key, deployment_id, input_desc)
 
 
@@ -132,12 +137,14 @@ async def predict_by_file_path(
     )
 
 
-@dr_mcp_tool(tags={"prediction", "scoring", "batch"})
+@dr_mcp_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_ai_catalog(
-    deployment_id: str,
-    dataset_id: str,
-    timeout: int = 600,
-) -> str:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
+    | None = None,
+    dataset_id: Annotated[str, "The ID of the AI Catalog dataset to use for prediction"]
+    | None = None,
+    timeout: Annotated[int, "Timeout in seconds for the batch prediction job"] | None = 600,
+) -> ToolError | ToolResult:
     """
     Make predictions using a DataRobot deployment and an AI Catalog dataset using the DataRobot
     Python SDK.
@@ -152,6 +159,11 @@ async def predict_by_ai_catalog(
     -------
         A string summary of the batch prediction job and download link if available.
     """
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+    if not dataset_id:
+        raise ToolError("Dataset ID must be provided")
+    effective_timeout = 600 if timeout is None else timeout
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
@@ -164,38 +176,40 @@ async def predict_by_ai_catalog(
         output_settings=output_settings,  # type: ignore[arg-type]
     )
     return wait_for_preds_and_cache_results(
-        job, bucket, key, deployment_id, f"Scoring dataset {dataset_id}.", timeout
+        job, bucket, key, deployment_id, f"Scoring dataset {dataset_id}.", effective_timeout
     )
 
 
-@dr_mcp_tool(tags={"prediction", "scoring", "batch"})
+@dr_mcp_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_from_project_data(
-    deployment_id: str,
-    project_id: str,
-    dataset_id: str | None = None,
-    partition: str | None = None,
-    timeout: int = 600,
-) -> str:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
+    | None = None,
+    project_id: Annotated[str, "The ID of the DataRobot project to use for prediction"]
+    | None = None,
+    dataset_id: Annotated[
+        str, "The ID of the external dataset, usually stored in AI Catalog, to use for prediction"
+    ]
+    | None = None,
+    partition: Annotated[
+        str,
+        "The partition of the DataRobot dataset to use ('holdout', 'validation', 'allBacktest')",
+    ]
+    | None = None,
+    timeout: Annotated[int, "Timeout in seconds for the batch prediction job"] | None = 600,
+) -> ToolError | ToolResult:
     """
     Make predictions using a DataRobot deployment using the training data associated with the
     project that created the deployment.
     Use this tool to score holdout, validation, or allBacktest partitions of the training data.
     Can request a specific partition of the data, or use an external dataset (with dataset_id)
     stored in AI Catalog.
-    Args:
-        deployment_id: (Required)The ID of the DataRobot deployment to use for prediction.
-        project_id: (Required) The ID of the DataRobot project to use for prediction. Can be found
-         by using the get_model_info_from_deployment tool.
-        dataset_id: (Optional) The ID of the external dataset, ususally stored in AI Catalog, to
-            use for prediction.
-        partition: (Optional)The partition of the DataRobot dataset to use for prediction, could be
-            'holdout', 'validation', or 'allBacktest'.
-        timeout: (Optional) Timeout in seconds for the batch prediction job (default 600).
-
-    Returns
-    -------
-        A string summary of the batch prediction job and download link if available.
     """
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+    if not project_id:
+        raise ToolError("Project ID must be provided")
+    effective_timeout = 600 if timeout is None else timeout
+
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     intake_settings: dict[str, Any] = {
         "type": "dss",
@@ -211,7 +225,7 @@ async def predict_from_project_data(
         output_settings=output_settings,  # type: ignore[arg-type]
     )
     return wait_for_preds_and_cache_results(
-        job, bucket, key, deployment_id, f"Scoring project {project_id}.", timeout
+        job, bucket, key, deployment_id, f"Scoring project {project_id}.", effective_timeout
     )
 
 
@@ -246,7 +260,7 @@ async def get_prediction_explanations(
         return json.dumps(
             {"explanations": explanations, "ui_panel": ["prediction-distribution"]},
             indent=2,
-        )
+        ).replace("'", "'")
     except Exception as e:
         logger.error(f"Error in get_prediction_explanations: {type(e).__name__}: {e}")
         return json.dumps(
