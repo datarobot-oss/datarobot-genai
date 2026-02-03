@@ -131,7 +131,7 @@ async def perplexity_think(
     json_schema: Annotated[
         dict | None, "Optional JSON Schema to enforce structured output for data extraction."
     ] = None,
-):
+) -> ToolResult:
     """Conversational AI for reasoning, research, and structured data extraction.
     Deep Research: Use the sonar-deep-research model for thorough reports
         and multi-step investigation.
