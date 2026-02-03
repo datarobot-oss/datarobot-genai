@@ -117,6 +117,7 @@ def test_chat_entrypoint_keeps_allowed_headers() -> None:
         headers = {
             "x-datarobot-api-key": "scoped-token-123",  # Should be kept
             "x-datarobot-api-token": "scoped-token-456",  # Should be kept
+            "x-datarobot-identity-token": "identity-token-123",  # Should be kept
             "x-custom-header": "custom-value",  # Should be filtered
             "Authorization": "Bearer user-provided-token",  # Should be filtered
             "authorization": "Bearer another-token",  # Should be filtered
@@ -140,6 +141,8 @@ def test_chat_entrypoint_keeps_allowed_headers() -> None:
         assert forwarded_headers["x-datarobot-api-key"] == "scoped-token-123"
         assert "x-datarobot-api-token" in forwarded_headers
         assert forwarded_headers["x-datarobot-api-token"] == "scoped-token-456"
+        assert "x-datarobot-identity-token" in forwarded_headers
+        assert forwarded_headers["x-datarobot-identity-token"] == "identity-token-123"
         # Verify other headers are filtered out
         assert "x-custom-header" not in forwarded_headers
         assert "Authorization" not in forwarded_headers
@@ -170,6 +173,7 @@ def test_chat_entrypoint_only_allows_specific_headers() -> None:
         headers = {
             "x-datarobot-api-key": "scoped-token-123",
             "x-datarobot-api-token": "scoped-token-456",
+            "x-datarobot-identity-token": "identity-token-123",
         }
 
         resp = chat_entrypoint(
@@ -184,9 +188,10 @@ def test_chat_entrypoint_only_allows_specific_headers() -> None:
 
         # Verify both allowed headers are present
         forwarded_headers = captured_params.get("forwarded_headers", {})
-        assert len(forwarded_headers) == 2
+        assert len(forwarded_headers) == 3
         assert forwarded_headers["x-datarobot-api-key"] == "scoped-token-123"
         assert forwarded_headers["x-datarobot-api-token"] == "scoped-token-456"
+        assert forwarded_headers["x-datarobot-identity-token"] == "identity-token-123"
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
         try:
