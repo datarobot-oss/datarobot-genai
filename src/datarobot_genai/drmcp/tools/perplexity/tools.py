@@ -115,3 +115,46 @@ async def perplexity_search(
             },
         },
     )
+
+
+@dr_mcp_tool(tags={"perplexity", "think", "research", "answer"})
+async def perplexity_think(
+    *,
+    prompt: Annotated[str, "The research prompt or instruction."],
+    model: Annotated[
+        Literal["sonar", "sonar-reasoning-pro", "sonar-deep-research"],
+        "Select capability: "
+        "'sonar' (fast ask), "
+        "'sonar-reasoning-pro' (complex logic),"
+        "'sonar-deep-research' (comprehensive reports).",
+    ] = "sonar",
+    json_schema: Annotated[
+        dict | None, "Optional JSON Schema to enforce structured output for data extraction."
+    ] = None,
+) -> ToolResult:
+    """Conversational AI for reasoning, research, and structured data extraction.
+    Deep Research: Use the sonar-deep-research model for thorough reports
+        and multi-step investigation.
+    Reasoning: Use sonar-reasoning-pro for complex analytical tasks.
+    Structured Extraction: Use the response_format parameter with a JSON Schema
+        to ensure machine-readable data
+    Documentation: https://docs.perplexity.ai/guides/structured-outputs .
+    """
+    if not prompt or not prompt.strip():
+        raise ToolError("Argument validation error: prompt cannot be empty.")
+
+    access_token = await get_perplexity_access_token()
+    if isinstance(access_token, ToolError):
+        raise access_token
+
+    async with PerplexityClient(access_token=access_token) as perplexity_client:
+        result = await perplexity_client.think(prompt=prompt, model=model, json_schema=json_schema)
+
+    return ToolResult(
+        structured_content={
+            "model": model,
+            "citations": result.citations,
+            "usage": result.usage.as_flat_dict() if result.usage else None,
+            "content": result.answer,
+        },
+    )
