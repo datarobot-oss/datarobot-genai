@@ -117,7 +117,6 @@ async def datarobot_llm_gateway_langchain(
         exclude={"type", "thinking", "api_type"},
         by_alias=True,
         exclude_none=True,
-        exclude_unset=True,
     )
     config["base_url"] = config["base_url"] + "/genai/llmgw"
     config["stream_options"] = {"include_usage": True}
@@ -134,7 +133,11 @@ async def datarobot_llm_gateway_crewai(
 ) -> AsyncGenerator[LLM]:
     from crewai import LLM  # noqa: PLC0415
 
-    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
+
+    config = llm_config.model_dump(
+        exclude={"type", "thinking", "api_type"}, by_alias=True, exclude_none=True
+    )
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["base_url"] = config["base_url"].removesuffix("/api/v2")
@@ -148,7 +151,10 @@ async def datarobot_llm_gateway_crewai(
 async def datarobot_llm_gateway_llamaindex(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
-    config = llm_config.model_dump(exclude={"type", "thinking"}, by_alias=True, exclude_none=True)
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
+    config = llm_config.model_dump(
+        exclude={"type", "thinking", "api_type"}, by_alias=True, exclude_none=True
+    )
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
     config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
@@ -172,7 +178,6 @@ async def datarobot_llm_deployment_langchain(
         exclude={"type", "thinking", "headers", "api_type"},
         by_alias=True,
         exclude_none=True,
-        exclude_unset=True,
     )
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
@@ -191,8 +196,10 @@ async def datarobot_llm_deployment_crewai(
 ) -> AsyncGenerator[LLM]:
     from crewai import LLM  # noqa: PLC0415
 
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
+
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers"},
+        exclude={"type", "thinking", "headers", "api_type"},
         by_alias=True,
         exclude_none=True,
     )
@@ -212,8 +219,9 @@ async def datarobot_llm_deployment_crewai(
 async def datarobot_llm_deployment_llamaindex(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers"},
+        exclude={"type", "thinking", "headers", "api_type"},
         by_alias=True,
         exclude_none=True,
     )
@@ -235,8 +243,10 @@ async def datarobot_nim_langchain(
         _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
     )
 
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
+
     config = llm_config.model_dump(
-        exclude={"type", "thinking"},
+        exclude={"type", "thinking", "api_type"},
         by_alias=True,
         exclude_none=True,
     )
@@ -252,8 +262,10 @@ async def datarobot_nim_crewai(
 ) -> AsyncGenerator[LLM]:
     from crewai import LLM  # noqa: PLC0415
 
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
+
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "max_retries"},
+        exclude={"type", "thinking", "max_retries", "api_type"},
         by_alias=True,
         exclude_none=True,
     )
@@ -268,8 +280,9 @@ async def datarobot_nim_crewai(
 async def datarobot_nim_llamaindex(
     llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
     config = llm_config.model_dump(
-        exclude={"type", "thinking"},
+        exclude={"type", "thinking", "api_type"},
         by_alias=True,
         exclude_none=True,
     )
@@ -296,7 +309,6 @@ async def datarobot_llm_component_langchain(
         exclude={"type", "thinking", "headers", "api_type"},
         by_alias=True,
         exclude_none=True,
-        exclude_unset=True,
     )
     if config["use_datarobot_llm_gateway"]:
         config["base_url"] = config["base_url"] + "/genai/llmgw"
@@ -317,8 +329,10 @@ async def datarobot_llm_component_crewai(
 ) -> AsyncGenerator[LLM]:
     from crewai import LLM  # noqa: PLC0415
 
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
+
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers"}, by_alias=True, exclude_none=True
+        exclude={"type", "thinking", "headers", "api_type"}, by_alias=True, exclude_none=True
     )
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
@@ -339,8 +353,9 @@ async def datarobot_llm_component_crewai(
 async def datarobot_llm_component_llamaindex(
     llm_config: DataRobotLLMComponentModelConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers"}, by_alias=True, exclude_none=True
+        exclude={"type", "thinking", "headers", "api_type"}, by_alias=True, exclude_none=True
     )
     if not config["model"].startswith("datarobot/"):
         config["model"] = "datarobot/" + config["model"]
