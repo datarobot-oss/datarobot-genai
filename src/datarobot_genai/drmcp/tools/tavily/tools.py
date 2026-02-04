@@ -205,16 +205,13 @@ async def tavily_extract(
         )
 
     results = [TavilyExtractResult.from_tavily_sdk(r) for r in response.get("results", [])]
-    result_count = len(results)
-    url_count = len([urls] if isinstance(urls, str) else urls)
 
     structured_content: dict = {
         "results": [r.as_flat_dict() for r in results],
-        "resultCount": result_count,
+        "resultCount": len(results),
         "responseTime": response.get("response_time", 0.0),
     }
 
     return ToolResult(
-        content=(f"Successfully extracted content from {result_count} of {url_count} URL(s)."),
         structured_content=structured_content,
     )
