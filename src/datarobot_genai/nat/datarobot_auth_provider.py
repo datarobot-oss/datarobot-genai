@@ -23,6 +23,7 @@ from nat.cli.register_workflow import register_auth_provider
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import HeaderCred
+from nat.data_models.common import SerializableSecretStr
 from pydantic import Field
 
 from datarobot_genai.core.mcp.common import MCPConfig
@@ -42,7 +43,7 @@ config = Config()
 
 
 class DataRobotAPIKeyAuthProviderConfig(APIKeyAuthProviderConfig, name="datarobot_api_key"):  # type: ignore[call-arg]
-    raw_key: str = Field(
+    raw_key: SerializableSecretStr = Field(
         description=(
             "Raw API token or credential to be injected into the request parameter. "
             "Used for 'bearer','x-api-key','custom', and other schemes. "

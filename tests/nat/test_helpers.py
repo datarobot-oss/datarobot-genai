@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
@@ -160,9 +161,11 @@ def test_load_config(config_yaml, headers, should_have_headers):
 
 async def test_load_workflow():
     with patch("datarobot_genai.nat.helpers.WorkflowBuilder"):
-        with patch("datarobot_genai.nat.helpers.load_config") as mock_load_config:
-            path = "some_path"
-            headers = {"h1": "v1"}
-            async with load_workflow(path, headers=headers) as workflow:
-                assert workflow
-                mock_load_config.assert_called_once_with("some_path", headers=headers)
+        with patch("datarobot_genai.nat.helpers.SessionManager") as mock_session_manager:
+            mock_session_manager.create = AsyncMock()
+            with patch("datarobot_genai.nat.helpers.load_config") as mock_load_config:
+                path = "some_path"
+                headers = {"h1": "v1"}
+                async with load_workflow(path, headers=headers) as workflow:
+                    assert workflow
+                    mock_load_config.assert_called_once_with("some_path", headers=headers)
