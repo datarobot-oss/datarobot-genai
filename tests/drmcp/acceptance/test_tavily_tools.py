@@ -77,3 +77,27 @@ class TestTavilyToolsE2E(ToolBaseE2E):
                 session,
                 test_name,
             )
+
+    async def test_tavily_map_success(self, llm_client: Any) -> None:
+        """Test basic Tavily map."""
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="tavily_map",
+                    parameters={"url": "https://docs.datarobot.com", "limit": 5},
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=["datarobot.com"],
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_tavily_map_success"
+            await self._run_test_with_expectations(
+                "Map 'https://docs.datarobot.com' website. Limit to 5 results.",
+                expectations,
+                llm_client,
+                session,
+                test_name,
+            )
