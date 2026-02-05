@@ -101,6 +101,39 @@ class TavilyImage(BaseModel):
         )
 
 
+class TavilyExtractResult(BaseModel):
+    """A single extraction result from Tavily Extract API."""
+
+    url: str
+    raw_content: str
+    images: list[TavilyImage] | None = None
+    favicon: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @classmethod
+    def from_tavily_sdk(cls, result: dict[str, Any]) -> "TavilyExtractResult":
+        """Create a TavilyExtractResult from Tavily SDK response data."""
+        images = None
+        if result.get("images"):
+            images = [TavilyImage.from_tavily_sdk(img) for img in result.get("images", [])]
+        return cls(
+            url=result.get("url", ""),
+            raw_content=result.get("raw_content", ""),
+            images=images,
+            favicon=result.get("favicon"),
+        )
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the extract result."""
+        data = self.model_dump(by_alias=True, exclude_none=True)
+        if self.images:
+            data["images"] = [
+                {"url": img.url, "description": img.description} for img in self.images
+            ]
+        return data
+
+
 class TavilyClient:
     """Client for interacting with Tavily Search API.
 
@@ -185,6 +218,74 @@ class TavilyClient:
             search_kwargs["time_range"] = time_range
 
         return await self._client.search(**search_kwargs)
+
+    async def extract(
+        self,
+        urls: str | list[str],
+        *,
+        query: str | None = None,
+        chunks_per_source: int = 3,
+        extract_depth: Literal["basic", "advanced"] = "basic",
+        format: Literal["markdown", "text"] = "markdown",
+        include_images: bool = False,
+        include_favicon: bool = False,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """
+        Extract content from URLs using Tavily Extract API.
+
+        Args:
+            urls: The URL or list of URLs to extract content from (max 20).
+            query: User intent for reranking extracted content chunks based on relevance.
+            chunks_per_source: Maximum number of 500-char snippets per URL (1-5, default 3).
+            extract_depth: Depth of extraction ("basic" or "advanced").
+            format: Format of extracted content ("markdown" or "text").
+            include_images: Whether to include images in results.
+            include_favicon: Whether to include favicon in results.
+            timeout: Request timeout in seconds (1.0-60.0, default 30.0).
+
+        Returns
+        -------
+            Dict with extraction results from Tavily API.
+
+        Raises
+        ------
+            ValueError: If validation fails.
+            TavilyInvalidAPIKeyError: If the API key is invalid.
+            TavilyUsageLimitExceededError: If usage limit is exceeded.
+            TavilyForbiddenError: If access is forbidden.
+            TavilyBadRequestError: If the request is malformed.
+        """
+        url_list = [urls] if isinstance(urls, str) else urls
+
+        # Validate inputs
+        if not url_list:
+            raise ValueError("urls cannot be empty.")
+        if len(url_list) > 20:
+            raise ValueError("Maximum number of URLs is 20.")
+        if chunks_per_source <= 0:
+            raise ValueError("chunks_per_source must be greater than 0.")
+        if chunks_per_source > 5:
+            raise ValueError("chunks_per_source must be smaller than or equal to 5.")
+        if timeout < 1.0 or timeout > 60.0:  # noqa: PLR2004
+            raise ValueError("timeout must be between 1.0 and 60.0 seconds.")
+
+        chunks_per_source = min(chunks_per_source, 5)
+
+        extract_kwargs: dict[str, Any] = {
+            "urls": url_list,
+            "extract_depth": extract_depth,
+            "format": format,
+            "include_images": include_images,
+            "include_favicon": include_favicon,
+            "timeout": timeout,
+        }
+
+        if query:
+            extract_kwargs["query"] = query
+            extract_kwargs["chunks_per_source"] = chunks_per_source
+
+        return await self._client.extract(**extract_kwargs)
 
     async def __aenter__(self) -> "TavilyClient":
         """Async context manager entry."""
