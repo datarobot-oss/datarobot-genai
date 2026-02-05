@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 from typing import Annotated
 
 from fastmcp.exceptions import ToolError
@@ -21,6 +22,12 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import (
+    MODEL_EXTENSIONS,
+    REQUIRED_FILES,
+    deploy_custom_model_impl,
+    find_model_file_in_folder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +52,7 @@ async def list_deployments() -> ToolResult:
 async def get_model_info_from_deployment(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
-) -> ToolError | ToolResult:
+) -> ToolResult:
     """Retrieve model info associated with a given deployment ID."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
@@ -64,7 +71,7 @@ async def deploy_model(
     model_id: Annotated[str, "The ID of the DataRobot model to deploy"] | None = None,
     label: Annotated[str, "The label/name for the deployment"] | None = None,
     description: Annotated[str, "Optional description for the deployment"] | None = None,
-) -> ToolError | ToolResult:
+) -> ToolResult:
     """Deploy a model by creating a new DataRobot deployment."""
     if not model_id:
         raise ToolError("Model ID must be provided")
@@ -91,3 +98,64 @@ async def deploy_model(
         )
     except Exception as e:
         raise ToolError(f"Error deploying model {model_id}: {type(e).__name__}: {e}")
+
+
+@dr_mcp_tool(tags={"predictive", "deployment", "write", "custom", "create"})
+async def deploy_custom_model(
+    *,
+    model_folder: Annotated[str, "Path to directory with custom.py, requirements.txt, and optionally a model file"] | None = None,
+    name: Annotated[str, "Custom model and deployment name"] | None = None,
+    target_type: Annotated[str, "Target type: Binary, Regression, or Multiclass"] | None = None,
+    target_name: Annotated[str, "Target column name"] | None = None,
+    model_file_path: Annotated[str, "Optional path to model file; if not set and none in folder, ToolError is raised"] | None = None,
+    positive_class_label: Annotated[str, "For binary: positive class label"] | None = None,
+    negative_class_label: Annotated[str, "For binary: negative class label"] | None = None,
+    class_labels: Annotated[list[str], "For multiclass: list of class labels"] | None = None,
+    deployment_label: Annotated[str, "Deployment label; defaults to name"] | None = None,
+    execution_environment_id: Annotated[str, "Optional execution environment ID"] | None = None,
+    description: Annotated[str, "Optional description"] | None = None,
+) -> ToolResult:
+    """Deploy a custom inference model (e.g. .pkl) to DataRobot MLOps. Requires a model file in the folder or model_file_path."""
+    if not model_folder:
+        raise ToolError("model_folder must be provided")
+    if not name:
+        raise ToolError("name must be provided")
+    if not target_type:
+        raise ToolError("target_type must be provided")
+    if not target_name:
+        raise ToolError("target_name must be provided")
+    model_folder = os.path.abspath(model_folder)
+    if not os.path.isdir(model_folder):
+        raise ToolError(f"model_folder is not a directory: {model_folder}")
+    for f in REQUIRED_FILES:
+        if not os.path.isfile(os.path.join(model_folder, f)):
+            raise ToolError(f"model_folder must contain {f}")
+    resolved_path: str | None = None
+    if model_file_path:
+        p = model_file_path if os.path.isabs(model_file_path) else os.path.join(model_folder, model_file_path)
+        if os.path.isfile(p):
+            resolved_path = p
+    if resolved_path is None:
+        resolved_path = find_model_file_in_folder(model_folder)
+    if resolved_path is None:
+        raise ToolError(
+            f"No model file ({', '.join(MODEL_EXTENSIONS)}) found in {model_folder}. "
+            "Add a model file to that folder or pass model_file_path."
+        )
+    try:
+        out = deploy_custom_model_impl(
+            model_folder=model_folder,
+            model_file_path=resolved_path,
+            name=name,
+            target_type=target_type,
+            target_name=target_name,
+            positive_class_label=positive_class_label,
+            negative_class_label=negative_class_label,
+            class_labels=class_labels,
+            deployment_label=deployment_label,
+            execution_environment_id=execution_environment_id,
+            description=description,
+        )
+        return ToolResult(structured_content=out)
+    except Exception as e:
+        raise ToolError(f"Deploy custom model failed: {type(e).__name__}: {e}")
