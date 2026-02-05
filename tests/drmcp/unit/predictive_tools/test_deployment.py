@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -187,3 +189,92 @@ async def test_deploy_model_error() -> None:
         with pytest.raises(ToolError) as exc_info:
             await deployment.deploy_model(model_id="model123", label="Test Deployment")
         assert "fail servers" in str(exc_info.value)
+
+
+def _custom_model_fixture_dir() -> str:
+    return str(Path(__file__).resolve().parent.parent.parent / "fixtures" / "custom_model")
+
+
+@pytest.mark.asyncio
+async def test_deploy_custom_model_validation_missing_model_folder() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await deployment.deploy_custom_model(
+            name="x", target_type="Binary", target_name="t"
+        )
+    assert "model_folder" in str(exc_info.value).lower() or "missing" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_deploy_custom_model_validation_missing_name() -> None:
+    folder = _custom_model_fixture_dir()
+    with pytest.raises(ToolError) as exc_info:
+        await deployment.deploy_custom_model(
+            model_folder=folder, target_type="Binary", target_name="t"
+        )
+    assert "name" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_deploy_custom_model_validation_folder_not_directory() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await deployment.deploy_custom_model(
+            model_folder="/nonexistent_path_12345",
+            name="x",
+            target_type="Binary",
+            target_name="t",
+        )
+    assert "not a directory" in str(exc_info.value) or "nonexistent" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_deploy_custom_model_mocked_success() -> None:
+    folder = _custom_model_fixture_dir()
+    model_file = os.path.join(folder, "custom.py")
+    out = {"deployment_id": "dep1", "label": "Test", "custom_model_id": "cm1", "custom_model_version_id": "v1", "registered_model_version_id": "rmv1"}
+    with patch(
+        "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
+        return_value=out,
+    ):
+        result = await deployment.deploy_custom_model(
+            model_folder=folder,
+            model_file_path=model_file,
+            name="Test",
+            target_type="Binary",
+            target_name="target",
+        )
+    assert result.structured_content["deployment_id"] == "dep1"
+    assert result.structured_content["label"] == "Test"
+    assert result.structured_content["custom_model_id"] == "cm1"
+
+
+@pytest.mark.asyncio
+async def test_deploy_custom_model_no_model_file_raises_tool_error() -> None:
+    folder = _custom_model_fixture_dir()
+    with pytest.raises(ToolError) as exc_info:
+        await deployment.deploy_custom_model(
+            model_folder=folder,
+            name="Test",
+            target_type="Binary",
+            target_name="target",
+        )
+    assert "model file" in str(exc_info.value).lower()
+    assert "model_file_path" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds() -> None:
+    folder = _custom_model_fixture_dir()
+    provided_path = os.path.join(folder, "custom.py")
+    out = {"deployment_id": "d", "label": "L"}
+    with patch(
+        "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
+        return_value=out,
+    ):
+        result = await deployment.deploy_custom_model(
+            model_folder=folder,
+            model_file_path=provided_path,
+            name="Test",
+            target_type="Binary",
+            target_name="target",
+        )
+    assert result.structured_content["deployment_id"] == "d"
