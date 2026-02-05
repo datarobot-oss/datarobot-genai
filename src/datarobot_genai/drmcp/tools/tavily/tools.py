@@ -26,9 +26,6 @@ from datarobot_genai.drmcp.tools.clients.tavily import MAX_CHUNKS_PER_SOURCE
 from datarobot_genai.drmcp.tools.clients.tavily import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.tavily import MAX_RESULTS_DEFAULT
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyClient
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractResult
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyImage
-from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResult
 from datarobot_genai.drmcp.tools.clients.tavily import get_tavily_access_token
 
 logger = logging.getLogger(__name__)
@@ -112,33 +109,10 @@ async def tavily_search(
             include_answer=include_answer,
         )
 
-    results = [TavilySearchResult.from_tavily_sdk(r) for r in response.get("results", [])]
-
-    images: list[TavilyImage] | None = None
-    if include_images and response.get("images"):
-        images = [TavilyImage.from_tavily_sdk(img) for img in response.get("images", [])]
-
-    result_count = len(results)
-    answer = response.get("answer")
-    response_time = response.get("response_time", 0.0)
-
-    structured_content: dict = {
-        "query": response.get("query", query),
-        "results": [r.as_flat_dict() for r in results],
-        "resultCount": result_count,
-        "responseTime": response_time,
-    }
-
-    if answer:
-        structured_content["answer"] = answer
-
-    if images:
-        structured_content["images"] = [
-            {"url": img.url, "description": img.description} for img in images
-        ]
-
     return ToolResult(
-        structured_content=structured_content,
+        structured_content=response.as_flat_dict(
+            include_images=include_images, include_answer=include_answer
+        )
     )
 
 
@@ -197,14 +171,30 @@ async def tavily_extract(
             format=format,
         )
 
-    results = [TavilyExtractResult.from_tavily_sdk(r) for r in response.get("results", [])]
+    return ToolResult(structured_content=response.as_flat_dict())
 
-    structured_content: dict = {
-        "results": [r.as_flat_dict() for r in results],
-        "resultCount": len(results),
-        "responseTime": response.get("response_time", 0.0),
-    }
 
-    return ToolResult(
-        structured_content=structured_content,
-    )
+@dr_mcp_tool(tags={"map", "tavily", "discovery"})
+async def tavily_map(
+    *,
+    url: Annotated[str, "The root URL to begin mapping."],
+    instructions: Annotated[
+        str | None, "Instructions to guide the mapper toward specific paths."
+    ] = None,
+    limit: Annotated[int, "Total links to process (default 50)."] = 50,
+    include_usage: Annotated[
+        bool, "Whether to include credit usage information in the response."
+    ] = False,
+) -> ToolResult:
+    """
+    Generate a structured map of a website to discover relevant sub-pages.
+    API documentation: https://docs.tavily.com/documentation/api-reference/endpoint/map .
+    """
+    api_key = await get_tavily_access_token()
+
+    async with TavilyClient(api_key) as client:
+        response = await client.map_(
+            url=url, instructions=instructions, limit=limit, include_usage=include_usage
+        )
+
+    return ToolResult(structured_content=response.as_flat_dict())

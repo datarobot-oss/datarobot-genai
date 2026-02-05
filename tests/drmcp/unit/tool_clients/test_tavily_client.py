@@ -20,9 +20,9 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyClient
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractResult
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyImage
-from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResult
+from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractResults
+from datarobot_genai.drmcp.tools.clients.tavily import TavilyMapResults
+from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResults
 from datarobot_genai.drmcp.tools.clients.tavily import get_tavily_access_token
 
 
@@ -50,46 +50,13 @@ class TestGetTavilyAccessToken:
                 await get_tavily_access_token()
 
 
-class TestTavilyModels:
-    """Tests for Tavily data models."""
-
-    def test_search_result_from_sdk(self) -> None:
-        """Test TavilySearchResult.from_tavily_sdk."""
-        result = TavilySearchResult.from_tavily_sdk(
-            {
-                "title": "Test",
-                "url": "https://example.com",
-                "content": "Content",
-                "score": 0.95,
-            }
-        )
-        assert result.title == "Test"
-        assert result.score == pytest.approx(0.95)
-
-    def test_image_from_string(self) -> None:
-        """Test TavilyImage.from_tavily_sdk with string URL."""
-        result = TavilyImage.from_tavily_sdk("https://example.com/img.jpg")
-        assert result.url == "https://example.com/img.jpg"
-        assert result.description is None
-
-    def test_image_from_dict(self) -> None:
-        """Test TavilyImage.from_tavily_sdk with dict."""
-        result = TavilyImage.from_tavily_sdk(
-            {
-                "url": "https://example.com/img.jpg",
-                "description": "A test image",
-            }
-        )
-        assert result.description == "A test image"
-
-
 class TestTavilyClient:
     """Tests for TavilyClient class."""
 
     @pytest.mark.asyncio
     async def test_search_calls_sdk(self) -> None:
         """Test that search calls the underlying SDK."""
-        mock_response = {"query": "test", "results": [], "response_time": 0.5}
+        mock_response = {"results": [], "response_time": 0.5}
 
         with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
@@ -99,7 +66,7 @@ class TestTavilyClient:
             async with TavilyClient("api-key") as client:
                 result = await client.search("test query")
 
-            assert result == mock_response
+            assert result == TavilySearchResults(**mock_response)
 
     @pytest.mark.asyncio
     async def test_search_validates_empty_query(self) -> None:
@@ -116,66 +83,6 @@ class TestTavilyClient:
                 await client.search("test", max_results=0)
 
 
-class TestTavilyExtractModels:
-    """Tests for Tavily Extract data models."""
-
-    def test_extract_result_from_sdk(self) -> None:
-        """Test TavilyExtractResult.from_tavily_sdk."""
-        result = TavilyExtractResult.from_tavily_sdk(
-            {
-                "url": "https://example.com",
-                "raw_content": "# Example\n\nThis is content.",
-                "favicon": "https://example.com/favicon.ico",
-            }
-        )
-        assert result.url == "https://example.com"
-        assert result.raw_content == "# Example\n\nThis is content."
-        assert result.favicon == "https://example.com/favicon.ico"
-        assert result.images is None
-
-    def test_extract_result_from_sdk_with_images(self) -> None:
-        """Test TavilyExtractResult.from_tavily_sdk with images."""
-        result = TavilyExtractResult.from_tavily_sdk(
-            {
-                "url": "https://example.com",
-                "raw_content": "Content",
-                "images": [
-                    {"url": "https://example.com/img1.jpg", "description": "Image 1"},
-                    {"url": "https://example.com/img2.jpg"},
-                ],
-            }
-        )
-        assert result.images is not None
-        assert len(result.images) == 2
-        assert result.images[0].url == "https://example.com/img1.jpg"
-        assert result.images[0].description == "Image 1"
-        assert result.images[1].description is None
-
-    def test_extract_result_as_flat_dict(self) -> None:
-        """Test TavilyExtractResult.as_flat_dict."""
-        result = TavilyExtractResult(
-            url="https://example.com",
-            raw_content="Content",
-            favicon="https://example.com/favicon.ico",
-        )
-        flat = result.as_flat_dict()
-        assert flat["url"] == "https://example.com"
-        assert flat["raw_content"] == "Content"
-        assert flat["favicon"] == "https://example.com/favicon.ico"
-        assert "images" not in flat
-
-    def test_extract_result_as_flat_dict_with_images(self) -> None:
-        """Test TavilyExtractResult.as_flat_dict with images."""
-        result = TavilyExtractResult(
-            url="https://example.com",
-            raw_content="Content",
-            images=[TavilyImage(url="https://example.com/img.jpg", description="An image")],
-        )
-        flat = result.as_flat_dict()
-        assert "images" in flat
-        assert flat["images"] == [{"url": "https://example.com/img.jpg", "description": "An image"}]
-
-
 class TestTavilyClientExtract:
     """Tests for TavilyClient.extract method."""
 
@@ -184,7 +91,6 @@ class TestTavilyClientExtract:
         """Test that extract calls the underlying SDK."""
         mock_response = {
             "results": [{"url": "https://example.com", "raw_content": "Content"}],
-            "failed_results": [],
             "response_time": 1.5,
         }
 
@@ -196,13 +102,13 @@ class TestTavilyClientExtract:
             async with TavilyClient("api-key") as client:
                 result = await client.extract("https://example.com")
 
-            assert result == mock_response
+            assert result == TavilyExtractResults(**mock_response)
             mock_client.extract.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_extract_with_single_url(self) -> None:
         """Test extract converts single URL to list."""
-        mock_response = {"results": [], "failed_results": [], "response_time": 0.5}
+        mock_response = {"results": [], "response_time": 0.5}
 
         with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
@@ -218,7 +124,7 @@ class TestTavilyClientExtract:
     @pytest.mark.asyncio
     async def test_extract_with_query_includes_chunks_per_source(self) -> None:
         """Test extract includes chunks_per_source when query is provided."""
-        mock_response = {"results": [], "failed_results": [], "response_time": 0.5}
+        mock_response = {"results": [], "response_time": 0.5}
 
         with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
@@ -237,7 +143,7 @@ class TestTavilyClientExtract:
     @pytest.mark.asyncio
     async def test_extract_without_query_excludes_chunks_per_source(self) -> None:
         """Test extract excludes chunks_per_source when query is not provided."""
-        mock_response = {"results": [], "failed_results": [], "response_time": 0.5}
+        mock_response = {"results": [], "response_time": 0.5}
 
         with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
@@ -293,3 +199,43 @@ class TestTavilyClientExtract:
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="timeout must be between"):
                 await client.extract("https://example.com", timeout=120.0)
+
+
+class TestTavilyClientMap:
+    """Tests for TavilyClient.map_ method."""
+
+    @pytest.mark.asyncio
+    async def test_map_calls_sdk(self) -> None:
+        """Test that map calls the underlying SDK."""
+        mock_response = {
+            "results": ["https://example.com/url1", "https://example.com/url2"],
+            "usage": {"credits": 4},
+        }
+
+        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+            mock_client = MagicMock()
+            mock_client.map = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            async with TavilyClient("api-key") as client:
+                result = await client.map_(url="https://example.com", include_usage=True)
+
+            assert result == TavilyMapResults.from_tavily_sdk(mock_response)
+            mock_client.map.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "function_kwargs,error_message",
+        [
+            ({"url": ""}, "url.*cannot be empty"),
+            ({"url": "  "}, "url.*cannot be empty"),
+            ({"url": "https://example.com", "limit": -1}, "limit must be greater than 0"),
+            ({"url": "https://example.com", "limit": 201}, "limit must be less than 200"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_map_input_validations(self, function_kwargs: dict, error_message: str) -> None:
+        """Test that map calls the underlying SDK."""
+        with pytest.raises(ValueError, match=error_message):
+            async with TavilyClient("api-key") as client:
+                await client.map_(**function_kwargs)
