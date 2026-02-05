@@ -20,7 +20,6 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyClient
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractFailedResult
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractResult
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyImage
 from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResult
@@ -175,35 +174,6 @@ class TestTavilyExtractModels:
         flat = result.as_flat_dict()
         assert "images" in flat
         assert flat["images"] == [{"url": "https://example.com/img.jpg", "description": "An image"}]
-
-    def test_failed_result_from_sdk(self) -> None:
-        """Test TavilyExtractFailedResult.from_tavily_sdk."""
-        result = TavilyExtractFailedResult.from_tavily_sdk(
-            {
-                "url": "https://example.com/404",
-                "error": "Page not found",
-            }
-        )
-        assert result.url == "https://example.com/404"
-        assert result.error == "Page not found"
-
-    def test_failed_result_from_sdk_default_error(self) -> None:
-        """Test TavilyExtractFailedResult.from_tavily_sdk with missing error."""
-        result = TavilyExtractFailedResult.from_tavily_sdk(
-            {
-                "url": "https://example.com/error",
-            }
-        )
-        assert result.error == "Unknown error"
-
-    def test_failed_result_as_flat_dict(self) -> None:
-        """Test TavilyExtractFailedResult.as_flat_dict."""
-        result = TavilyExtractFailedResult(
-            url="https://example.com/404",
-            error="Page not found",
-        )
-        flat = result.as_flat_dict()
-        assert flat == {"url": "https://example.com/404", "error": "Page not found"}
 
 
 class TestTavilyClientExtract:
