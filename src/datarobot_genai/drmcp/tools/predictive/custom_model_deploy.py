@@ -154,7 +154,9 @@ def deploy_custom_model_impl(
     )
     label = deployment_label or name
     prediction_servers = client.PredictionServer.list()
-    ps_id = prediction_servers[0].id if prediction_servers else None
+    if not prediction_servers:
+        raise ValueError("No prediction servers available for deployment.")
+    ps_id = prediction_servers[0].id
     deployment = client.Deployment.create_from_registered_model_version(
         model_package_id=rmv.id,
         label=label,
