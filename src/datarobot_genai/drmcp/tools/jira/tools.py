@@ -53,10 +53,11 @@ async def jira_search_issues(
     async with JiraClient(access_token) as client:
         issues = await client.search_jira_issues(jql_query=jql_query, max_results=max_results)
 
-    n = len(issues)
     return ToolResult(
-        content=f"Successfully executed JQL query and retrieved {n} issue(s).",
-        structured_content={"data": [issue.as_flat_dict() for issue in issues], "count": n},
+        structured_content={
+            "data": [issue.as_flat_dict() for issue in issues],
+            "count": len(issues),
+        },
     )
 
 
@@ -76,7 +77,6 @@ async def jira_get_issue(
         issue = await client.get_jira_issue(issue_key)
 
     return ToolResult(
-        content=f"Successfully retrieved details for issue '{issue_key}'.",
         structured_content=issue.as_flat_dict(),
     )
 
@@ -121,7 +121,6 @@ async def jira_create_issue(
         )
 
     return ToolResult(
-        content=f"Successfully created issue '{issue_key}'.",
         structured_content={"newIssueKey": issue_key, "projectKey": project_key},
     )
 
@@ -174,9 +173,7 @@ async def jira_update_issue(
             issue_key=issue_key, fields=fields_to_update
         )
 
-    updated_fields_str = ",".join(updated_fields)
     return ToolResult(
-        content=f"Successfully updated issue '{issue_key}'. Fields modified: {updated_fields_str}.",
         structured_content={"updatedIssueKey": issue_key, "fields": updated_fields},
     )
 
@@ -216,7 +213,6 @@ async def jira_transition_issue(
         await client.transition_jira_issue(issue_key=issue_key, transition_id=transition_id)
 
     return ToolResult(
-        content=f"Successfully transitioned issue '{issue_key}' to status '{transition_name}'.",
         structured_content={
             "transitionedIssueKey": issue_key,
             "newStatusName": transition_name,

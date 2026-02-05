@@ -6,7 +6,6 @@
       "properties": {
         "model": {
           "type": "string",
-          "default": "unknown",
           "description": "The LLM model to use. If no explicit instructions are provided leave default."
         },
         "messages": {

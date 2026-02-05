@@ -25,15 +25,13 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_deployments_success(
-    deployment_id: str,
-) -> ETETestExpectations:
+def expectations_for_list_deployments_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
                 name="list_deployments",
                 parameters={},
-                result=f"{deployment_id}: ",
+                result={"deployments": {}},
             ),
         ],
         llm_response_content_contains_expectations=[

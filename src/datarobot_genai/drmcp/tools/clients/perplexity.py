@@ -13,15 +13,21 @@
 # limitations under the License.
 
 import logging
+from typing import Annotated
 from typing import Any
 from typing import Literal
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from perplexity import AsyncPerplexity
+from perplexity.types import ChatMessageInput
+from perplexity.types import StreamChunk
+from perplexity.types import UsageInfo
 from perplexity.types import search_create_response
+from perplexity.types.chat.completion_create_params import ResponseFormatResponseFormatJsonSchema
 from pydantic import BaseModel
 from pydantic import ConfigDict
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +83,63 @@ class PerplexityError(Exception):
         super().__init__(message)
 
 
+class _Cost(BaseModel):
+    input_tokens_cost: Annotated[float, Field(alias="inputTokensCost")]
+    output_tokens_cost: Annotated[float, Field(alias="outputTokensCost")]
+    total_cost: Annotated[float, Field(alias="totalCost")]
+    citation_tokens_cost: Annotated[float | None, Field(alias="citationTokensCost")] = None
+    reasoning_tokens_cost: Annotated[float | None, Field(alias="reasoningTokensCost")] = None
+    request_cost: Annotated[float | None, Field(alias="requestCost")] = None
+    search_queries_cost: Annotated[float | None, Field(alias="searchQueriesCost")] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class _UsageInfo(BaseModel):
+    completion_tokens: Annotated[int, Field(alias="completionTokens")]
+    cost: _Cost
+    prompt_tokens: Annotated[int, Field(alias="promptTokens")]
+    total_tokens: Annotated[int, Field(alias="totalTokens")]
+    citation_tokens: Annotated[int | None, Field(alias="citationTokens")] = None
+    num_search_queries: Annotated[int | None, Field(alias="numSearchQueries")] = None
+    reasoning_tokens: Annotated[int | None, Field(alias="reasoningTokens")] = None
+    search_context_size: Annotated[int | None, Field(alias="searchContextSize")] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @classmethod
+    def from_perplexity_sdk(cls, result: UsageInfo) -> "_UsageInfo":
+        """Create a UsageInfo from perplexity sdk."""
+        return cls(**result.model_dump())
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the usage info."""
+        return self.model_dump(by_alias=True)
+
+
+class PerplexityThinkResult(BaseModel):
+    usage: _UsageInfo | None
+    answer: str
+    citations: list[str]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @classmethod
+    def from_perplexity_sdk(cls, result: StreamChunk) -> "PerplexityThinkResult":
+        """Create a PerplexityThinkResult from perplexity sdk response data."""
+        return cls(
+            usage=_UsageInfo.from_perplexity_sdk(result.usage) if result.usage else None,
+            answer=result.choices[0].message.content,
+            citations=result.citations if result.citations else [],
+        )
+
+
 class PerplexitySearchResult(BaseModel):
     snippet: str
     title: str
     url: str
     date: str | None = None
-    last_updated: str | None = None
+    last_updated: Annotated[str | None, Field(alias="lastUpdated")] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -90,10 +147,6 @@ class PerplexitySearchResult(BaseModel):
     def from_perplexity_sdk(cls, result: search_create_response.Result) -> "PerplexitySearchResult":
         """Create a PerplexitySearchResult from perplexity sdk response data."""
         return cls(**result.model_dump())
-
-    def as_flat_dict(self) -> dict[str, Any]:
-        """Return a flat dictionary representation of the search result."""
-        return self.model_dump(by_alias=True)
 
 
 class PerplexityClient:
@@ -161,6 +214,44 @@ class PerplexityClient:
         return [
             PerplexitySearchResult.from_perplexity_sdk(result) for result in search_result.results
         ]
+
+    async def think(
+        self,
+        prompt: str,
+        model: Literal["sonar", "sonar-reasoning-pro", "sonar-deep-research"],
+        json_schema: dict | None = None,
+    ) -> PerplexityThinkResult:
+        """
+        Think using Perplexity.
+
+        Args:
+            prompt: The research prompt or instruction.
+            model: Select capability:
+                - 'sonar' (fast ask),
+                - 'sonar-reasoning-pro' (complex logic)
+                - 'sonar-deep-research' (comprehensive reports).
+            json_schema: Optional JSON Schema to enforce structured output for data extraction.
+
+        Returns
+        -------
+            Perplexity think result.
+        """
+        if not prompt or not prompt.strip():
+            raise PerplexityError("Error: prompt cannot be empty.")
+
+        response_format = None
+        if json_schema:
+            response_format = ResponseFormatResponseFormatJsonSchema(
+                type="json_schema", json_schema={"schema": json_schema}
+            )
+
+        result = await self._client.chat.completions.create(
+            messages=[ChatMessageInput(role="user", content=prompt)],
+            model=model,
+            response_format=response_format,
+        )
+
+        return PerplexityThinkResult.from_perplexity_sdk(result)
 
     async def __aenter__(self) -> "PerplexityClient":
         """Async context manager entry."""

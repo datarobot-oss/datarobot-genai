@@ -40,6 +40,16 @@ def search_domain_filter() -> str:
 
 
 @pytest.fixture(scope="session")
+def research_prompt() -> str:
+    return "What is DataRobot company doing?"
+
+
+@pytest.fixture(scope="session")
+def research_model() -> str:
+    return "sonar"
+
+
+@pytest.fixture(scope="session")
 def expectations_for_perplexity_search_success(
     search_query: str, search_no_of_results: int, search_domain_filter: str
 ) -> ETETestExpectations:
@@ -61,6 +71,22 @@ def expectations_for_perplexity_search_success(
             "DataRobot",
             "Platform",
         ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_perplexity_think_success(
+    research_prompt: str, research_model: int
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="perplexity_think",
+                parameters={"prompt": research_prompt, "model": research_model},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=["DataRobot is"],
     )
 
 
@@ -100,6 +126,35 @@ class TestPerplexityToolsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_perplexity_search_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            "Please prepare a research using perplexity. "
+            "I need to find out '{prompt}'. "
+            "Use model '{model}'."
+        ],
+    )
+    async def test_perplexity_think_success(
+        self,
+        llm_client: Any,
+        expectations_for_perplexity_think_success: ETETestExpectations,
+        research_prompt: str,
+        research_model: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(prompt=research_prompt, model=research_model)
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_perplexity_think_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_perplexity_think_success,
                 llm_client,
                 session,
                 test_name,

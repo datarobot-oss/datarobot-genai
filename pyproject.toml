@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.3.4"
+version = "0.3.6"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
@@ -191,6 +191,10 @@ fixable = [
 ]
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
+]
+"tests/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow imports in test functions
+    "PLR2004",# magic-value-comparison: allow magic values in test assertions
 ]
 
 [tool.ruff.lint.isort]

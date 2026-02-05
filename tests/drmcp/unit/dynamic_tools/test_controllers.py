@@ -29,7 +29,7 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
     register_tool_for_deployment_id,
 )
 from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 
 @pytest.fixture
@@ -71,9 +71,9 @@ def mock_config():
 @pytest_asyncio.fixture
 async def mcp_server():
     """Create a separate MCP instance for testing."""
-    test_mcp = TaggedFastMCP()
+    test_mcp = DataRobotMCP()
 
-    # Patch the mcp import in controllers, register modules, and mcp_instance
+    # Patch the mcp import in controllers and mcp_instance
     with (
         patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers.mcp", test_mcp),
         patch("datarobot_genai.drmcp.core.mcp_instance.mcp", test_mcp),
@@ -122,7 +122,7 @@ class TestToolRegistration:
         assert deployment_mappings == {deployment_id: "weather_tool"}
 
         # Verify tool registration in MCP
-        registered_tools = await mcp_server.list_tools()
+        registered_tools = await mcp_server._list_tools_mcp()
         assert len(registered_tools) == 1
         assert registered_tools[0].name == "weather_tool"
         assert registered_tools[0].description == "Get weather for cities"
@@ -158,7 +158,7 @@ class TestToolRegistration:
         assert deployment_mappings["deployment-456"] == "Another Tool"
 
         # Verify both tools are registered in MCP
-        registered_tools = await mcp_server.list_tools()
+        registered_tools = await mcp_server._list_tools_mcp()
         assert len(registered_tools) == 2
         tool_names = {tool.name for tool in registered_tools}
         assert tool_names == {"weather_tool", "Another Tool"}

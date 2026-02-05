@@ -254,11 +254,14 @@ class TestMCPRealtimePredictToolsIntegration:
             # Should have prediction columns
             assert "sales (actual)_PREDICTION" in df.columns
 
-            # Should have passthrough columns from input
+            # Should have passthrough columns from input (tool strips column names)
             input_df = pd.read_csv(predict_file)
             for col in input_df.columns:
-                if col != "sales":  # sales might not be in predictions
-                    assert col in df.columns, f"Passthrough column {col} missing from output"
+                col_stripped = col.strip()
+                if col_stripped != "sales":  # sales might not be in predictions
+                    assert col_stripped in df.columns, (
+                        f"Passthrough column {col_stripped} missing from output"
+                    )
 
     async def test_predict_realtime_time_series_with_explanations(
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
@@ -407,9 +410,9 @@ class TestMCPRealtimePredictToolsIntegration:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
-            # Read the input file to know what columns to expect
+            # Read the input file to know what columns to expect (tool strips column names)
             input_df = pd.read_csv(predict_file)
-            input_columns = set(input_df.columns)
+            input_columns = {col.strip() for col in input_df.columns}
 
             result = await session.call_tool(
                 "predict_realtime",

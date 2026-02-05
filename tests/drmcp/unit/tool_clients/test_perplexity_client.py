@@ -16,6 +16,9 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from perplexity.types import ChatMessageOutput
+from perplexity.types import Choice
+from perplexity.types import StreamChunk
 from perplexity.types import search_create_response
 
 from datarobot_genai.drmcp.tools.clients.perplexity import PerplexityClient
@@ -60,6 +63,23 @@ class TestPerplexityClient:
                     url="https://bar.com",
                 ),
             ],
+        )
+
+    @pytest.fixture
+    def mock_perplexity_sdk_think_results(self) -> StreamChunk:
+        """Mock Perplexity SDK think result."""
+        return StreamChunk(
+            id="dummy_id",
+            choices=[
+                Choice(
+                    index=0,
+                    delta=ChatMessageOutput(role="assistant", content="Answer"),
+                    message=ChatMessageOutput(role="assistant", content="Answer"),
+                )
+            ],
+            citations=["Citation 1", "Citation 2"],
+            created=0,
+            model="sonar",
         )
 
     @pytest.mark.asyncio
@@ -116,3 +136,39 @@ class TestPerplexityClient:
         async with PerplexityClient(mock_access_token) as client:
             with pytest.raises(PerplexityError, match=error_message):
                 await client.search(**function_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_think_success(
+        self,
+        mock_access_token: str,
+        mock_perplexity_sdk_think_results: StreamChunk,
+    ) -> None:
+        """Test search."""
+        with patch("datarobot_genai.drmcp.tools.clients.perplexity.AsyncPerplexity") as mock:
+            mock_sdk_client = mock.return_value
+            mock_sdk_client.close = AsyncMock()
+            mock_sdk_client.chat.completions.create = AsyncMock(
+                return_value=mock_perplexity_sdk_think_results
+            )
+
+            async with PerplexityClient(mock_access_token) as client:
+                result = await client.think(prompt="prompt", model="sonar")
+
+            assert result.answer == "Answer"
+            assert len(result.citations) == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "function_kwargs,error_message",
+        [
+            ({"prompt": "", "model": "sonar"}, "prompt.*cannot be empty"),
+            ({"prompt": " ", "model": "sonar"}, "prompt.*cannot be empty"),
+        ],
+    )
+    async def test_think_validation(
+        self, mock_access_token: str, function_kwargs: dict, error_message: str
+    ) -> None:
+        """Test think -- input validation."""
+        async with PerplexityClient(mock_access_token) as client:
+            with pytest.raises(PerplexityError, match=error_message):
+                await client.think(**function_kwargs)

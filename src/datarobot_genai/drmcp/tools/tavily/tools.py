@@ -34,7 +34,7 @@ from datarobot_genai.drmcp.tools.clients.tavily import get_tavily_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"search", "tavily", "web", "websearch"})
+@dr_mcp_tool(tags={"tavily", "search", "web", "websearch"})
 async def tavily_search(
     *,
     query: Annotated[str, "The search query to execute."],
@@ -122,9 +122,6 @@ async def tavily_search(
     answer = response.get("answer")
     response_time = response.get("response_time", 0.0)
 
-    answer_info = " with AI-generated answer" if answer else ""
-    image_info = f" and {len(images)} images" if images else ""
-
     structured_content: dict = {
         "query": response.get("query", query),
         "results": [r.as_flat_dict() for r in results],
@@ -141,10 +138,6 @@ async def tavily_search(
         ]
 
     return ToolResult(
-        content=(
-            f"Successfully searched for '{query}'. "
-            f"Found {result_count} results{answer_info}{image_info}."
-        ),
         structured_content=structured_content,
     )
 
