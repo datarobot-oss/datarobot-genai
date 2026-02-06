@@ -161,6 +161,7 @@ async def test_datarobot_llm_component_langchain_use_gateway():
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, ChatOpenAI)
 
+
 @pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
 async def test_datarobot_llm_component_langchain_with_identity_token(use_datarobot_llm_gateway):
     llm_config = DataRobotLLMComponentModelConfig(
@@ -218,6 +219,7 @@ async def test_datarobot_llm_component_llamaindex():
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
         assert isinstance(llm, LiteLLM)
+
 
 @pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
 async def test_datarobot_llm_component_llamaindex_with_identity_token(use_datarobot_llm_gateway):
