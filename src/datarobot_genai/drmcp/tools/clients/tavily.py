@@ -132,6 +132,7 @@ class TavilySearchResults(BaseModel):
             "resultCount": len(self.results),
             "responseTime": self.response_time,
         }
+
         if include_answer:
             response["answer"] = self.answer
         if include_images:
