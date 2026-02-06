@@ -16,8 +16,8 @@ from typing import Any
 from unittest.mock import patch
 
 from nat.builder.workflow_builder import WorkflowBuilder
-from nat.plugins.mcp.client_base import MCPBaseClient
-from nat.plugins.mcp.client_impl import MCPFunctionGroup
+from nat.plugins.mcp.client.client_base import MCPBaseClient
+from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 
 from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPClientConfig
@@ -79,7 +79,7 @@ class _FakeMCPClient(MCPBaseClient):
 
 
 async def test_datarobot_mcp_client():
-    with patch("nat.plugins.mcp.client_base.MCPStdioClient") as mock_client:
+    with patch("nat.plugins.mcp.client.client_base.MCPStdioClient") as mock_client:
         fake_tools = {"a": _FakeTool("a", "da"), "b": _FakeTool("b", "db")}
         mock_client.return_value = _FakeMCPClient(
             tools=fake_tools, command="python", args=["server.py"]

@@ -16,6 +16,8 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
+from nat.data_models.common import OptionalSecretStr
+from nat.data_models.common import SecretStr
 from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
 from pydantic import Field
@@ -42,8 +44,9 @@ config = Config()
 class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
-    api_key: str | None = Field(
-        default=config.datarobot_api_token, description="DataRobot API key."
+    api_key: OptionalSecretStr = Field(
+        default=SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None,
+        description="DataRobot API key.",
     )
     base_url: str | None = Field(
         default=config.datarobot_endpoint.rstrip("/")
@@ -77,8 +80,9 @@ async def datarobot_llm_component(
 class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gateway"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
-    api_key: str | None = Field(
-        default=config.datarobot_api_token, description="DataRobot API key."
+    api_key: OptionalSecretStr = Field(
+        default=SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None,
+        description="DataRobot API key.",
     )
     base_url: str | None = Field(
         default=config.datarobot_endpoint.rstrip("/"), description="DataRobot LLM gateway URL."
@@ -97,8 +101,9 @@ async def datarobot_llm_gateway(
 class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-deployment"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
-    api_key: str | None = Field(
-        default=config.datarobot_api_token, description="DataRobot API key."
+    api_key: OptionalSecretStr = Field(
+        default=SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None,
+        description="DataRobot API key.",
     )
     base_url: str | None = Field(
         default=config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
