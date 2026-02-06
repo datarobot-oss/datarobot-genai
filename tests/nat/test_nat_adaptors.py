@@ -97,9 +97,7 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
         assert isinstance(llm, LLM)
         assert llm.additional_params == {
             "max_retries": 10,
-            "extra_headers": {
-                "X-DataRobot-Identity-Token": "identity-token-123"
-            }
+            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
         }
 
 
@@ -124,9 +122,7 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
         assert llm.additional_kwargs == {
             "api_base": "https://app.datarobot.com/api/v2/deployments/None/chat/completions",
             "api_key": "some_token",
-            "extra_headers": {
-                "X-DataRobot-Identity-Token": "identity-token-123"
-            }
+            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
         }
 
 
@@ -207,9 +203,7 @@ async def test_datarobot_llm_component_crewai_with_identity_token(use_datarobot_
         else:
             assert llm.additional_params == {
                 "max_retries": 10,
-                "extra_headers": {
-                    "X-DataRobot-Identity-Token": "identity-token-123"
-                },
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
             }
 
 
@@ -242,7 +236,5 @@ async def test_datarobot_llm_component_llamaindex_with_identity_token(use_dataro
             assert llm.additional_kwargs == {
                 "api_base": "https://app.datarobot.com/api/v2/deployments/None/chat/completions",
                 "api_key": "some_token",
-                "extra_headers": {
-                    "X-DataRobot-Identity-Token": "identity-token-123"
-                }
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
             }
