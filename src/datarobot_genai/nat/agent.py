@@ -15,10 +15,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
 
+from ag_ui.core import Event
+from ag_ui.core import EventType
+from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from nat.builder.context import Context
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
@@ -125,6 +131,98 @@ def pull_intermediate_structured() -> asyncio.Future[list[IntermediateStep]]:
     return future
 
 
+async def stream_intermediate_steps() -> AsyncGenerator[IntermediateStep, None]:
+    """
+    Stream intermediate steps as they arrive from the NAT workflow.
+    Uses an async queue to bridge the callback-based subscription to an async generator.
+    """
+    queue: asyncio.Queue[IntermediateStep | Exception | None] = asyncio.Queue()
+    context = Context.get()
+    completed = False
+
+    def on_next_cb(item: IntermediateStep) -> None:
+        if not completed:
+            queue.put_nowait(item)
+
+    def on_error_cb(exc: Exception) -> None:
+        logger.error("Hit on_error in stream_intermediate_steps: %s", exc)
+        if not completed:
+            queue.put_nowait(exc)
+
+    def on_complete_cb() -> None:
+        logger.debug("Completed reading intermediate steps stream")
+        nonlocal completed
+        completed = True
+        queue.put_nowait(None)  # Sentinel to signal completion
+
+    # Subscribe with our callbacks.
+    context.intermediate_step_manager.subscribe(
+        on_next=on_next_cb, on_error=on_error_cb, on_complete=on_complete_cb
+    )
+
+    # Yield steps as they arrive
+    while True:
+        item = await queue.get()
+        if item is None:  # Sentinel indicating completion
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+
+def convert_intermediate_step_to_event(
+    step: IntermediateStep, message_id: str | None = None
+) -> Event | None:
+    """
+    Convert a NAT IntermediateStep to an ag_ui.core Event.
+
+    Args:
+        step: The intermediate step from NAT
+        message_id: Optional message ID to use for text message events
+
+    Returns
+    -------
+        An Event object or None if the step type doesn't map to an event
+    """
+    if step.event_type == IntermediateStepType.LLM_START:
+        # Generate a message ID if not provided
+        msg_id = message_id or str(uuid.uuid4())
+        return TextMessageStartEvent(
+            type=EventType.TEXT_MESSAGE_START,
+            message_id=msg_id,
+            role="assistant",
+        )
+    elif step.event_type == IntermediateStepType.LLM_NEW_TOKEN:
+        # For new tokens, extract the delta content if available
+        # Note: LLM_NEW_TOKEN may not always have data, as the actual content
+        # comes from result_stream. We emit the event to signal token arrival.
+        msg_id = message_id or str(uuid.uuid4())
+        delta = ""
+        if step.data:
+            if hasattr(step.data, "output") and step.data.output:
+                delta = str(step.data.output)
+            elif hasattr(step.data, "content") and step.data.content:
+                delta = str(step.data.content)
+            elif hasattr(step.data, "delta") and step.data.delta:
+                delta = str(step.data.delta)
+            elif hasattr(step.data, "chunk") and step.data.chunk:
+                delta = str(step.data.chunk)
+        # Emit event even if delta is empty to signal token arrival
+        return TextMessageChunkEvent(
+            type=EventType.TEXT_MESSAGE_CHUNK,
+            message_id=msg_id,
+            delta=delta,
+        )
+    elif step.event_type == IntermediateStepType.LLM_END:
+        msg_id = message_id or str(uuid.uuid4())
+        return TextMessageEndEvent(
+            type=EventType.TEXT_MESSAGE_END,
+            message_id=msg_id,
+        )
+    # Other event types (tool calls, etc.) can be added here as needed
+    return None
+
+
 class NatAgent(BaseAgent[None]):
     def __init__(
         self,
@@ -188,35 +286,100 @@ class NatAgent(BaseAgent[None]):
         if is_streaming(completion_create_params):
 
             async def stream_generator() -> AsyncGenerator[
-                tuple[str, MultiTurnSample | None, UsageMetrics], None
+                tuple[str | Event, MultiTurnSample | None, UsageMetrics], None
             ]:
-                default_usage_metrics: UsageMetrics = {
+                usage_metrics: UsageMetrics = {
                     "completion_tokens": 0,
                     "prompt_tokens": 0,
                     "total_tokens": 0,
                 }
+                steps: list[IntermediateStep] = []
+                message_id_map: dict[str, str] = {}  # Maps function_id to message_id
+                # Queue to collect events from intermediate steps
+                event_queue: asyncio.Queue[Event | None] = asyncio.Queue()
+
+                async def process_intermediate_steps() -> None:
+                    """Process intermediate steps and put events in the queue."""
+                    intermediate_stream = stream_intermediate_steps()
+                    try:
+                        async for step in intermediate_stream:
+                            steps.append(step)
+
+                            # Get or create message_id for this function
+                            function_id = (
+                                step.function_ancestry.function_id
+                                if step.function_ancestry
+                                else None
+                            )
+                            if function_id and function_id not in message_id_map:
+                                message_id_map[function_id] = str(uuid.uuid4())
+
+                            message_id = message_id_map.get(function_id) if function_id else None
+
+                            # Convert step to event
+                            event = convert_intermediate_step_to_event(step, message_id)
+                            if event:
+                                await event_queue.put(event)
+                    finally:
+                        # Signal completion
+                        await event_queue.put(None)
+
                 async with load_workflow(self.workflow_path, headers=headers) as workflow:
                     async with workflow.run(chat_request) as runner:
-                        intermediate_future = pull_intermediate_structured()
-                        async for result in runner.result_stream():
-                            if isinstance(result, ChatResponse):
-                                result_text = result.choices[0].message.content
-                            else:
-                                result_text = str(result)
+                        # Start processing intermediate steps in background
+                        intermediate_task = asyncio.create_task(process_intermediate_steps())
 
-                            yield (
-                                result_text,
-                                None,
-                                default_usage_metrics,
-                            )
+                        # Stream result chunks (text content) and events concurrently
+                        result_stream_done = False
+                        try:
+                            async for result in runner.result_stream():
+                                # Yield any available events first
+                                while True:
+                                    try:
+                                        event = event_queue.get_nowait()
+                                        if event is None:
+                                            # Stream completed, but continue processing results
+                                            result_stream_done = True
+                                            break
+                                        if hasattr(event, "delta"):
+                                            yield (event.delta, None, usage_metrics)
+                                    except asyncio.QueueEmpty:
+                                        break
 
-                        steps = await intermediate_future
+                                if result_stream_done:
+                                    break
+
+                                if isinstance(result, ChatResponse):
+                                    result_text = result.choices[0].message.content
+                                else:
+                                    result_text = str(result)
+
+                                if result_text:
+                                    yield (result_text, None, usage_metrics)
+                        except Exception:
+                            # If result stream fails, continue to process events
+                            pass
+
+                        # Wait for intermediate steps processing to complete
+                        await intermediate_task
+
+                        # Drain any remaining events
+                        while True:
+                            try:
+                                event = event_queue.get_nowait()
+                                if event is None:
+                                    break
+                                yield (event, None, usage_metrics)
+                            except asyncio.QueueEmpty:
+                                break
+
+                        # Calculate final usage metrics from all LLM_END steps (for accuracy)
                         llm_end_steps = [
                             step
                             for step in steps
                             if step.event_type == IntermediateStepType.LLM_END
                         ]
-                        usage_metrics: UsageMetrics = {
+                        final_usage_metrics: UsageMetrics = {
                             "completion_tokens": 0,
                             "prompt_tokens": 0,
                             "total_tokens": 0,
@@ -224,12 +387,14 @@ class NatAgent(BaseAgent[None]):
                         for step in llm_end_steps:
                             if step.usage_info:
                                 token_usage = step.usage_info.token_usage
-                                usage_metrics["total_tokens"] += token_usage.total_tokens
-                                usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
-                                usage_metrics["completion_tokens"] += token_usage.completion_tokens
+                                final_usage_metrics["total_tokens"] += token_usage.total_tokens
+                                final_usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
+                                final_usage_metrics["completion_tokens"] += (
+                                    token_usage.completion_tokens
+                                )
 
                         pipeline_interactions = create_pipeline_interactions_from_steps(steps)
-                        yield "", pipeline_interactions, usage_metrics
+                        yield "", pipeline_interactions, final_usage_metrics
 
             return stream_generator()
 
