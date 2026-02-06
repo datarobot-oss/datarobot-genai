@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 from crewai import LLM
 from langchain_openai import ChatOpenAI
 from llama_index.llms.litellm import LiteLLM
@@ -94,8 +95,9 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
-        assert llm.additional_params["extra_headers"] == {
-            "X-DataRobot-Identity-Token": "identity-token-123"
+        assert llm.additional_params == {
+            "max_retries": 10,
+            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
         }
 
 
@@ -117,8 +119,10 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
         assert isinstance(llm, LiteLLM)
-        assert llm.additional_kwargs["extra_headers"] == {
-            "X-DataRobot-Identity-Token": "identity-token-123"
+        assert llm.additional_kwargs == {
+            "api_base": "https://app.datarobot.com/api/v2/deployments/None/chat/completions",
+            "api_key": "some_token",
+            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
         }
 
 
@@ -154,15 +158,22 @@ async def test_datarobot_llm_component_langchain_use_gateway():
         assert isinstance(llm, ChatOpenAI)
 
 
-async def test_datarobot_llm_component_langchain_with_identity_token():
+@pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
+async def test_datarobot_llm_component_langchain_with_identity_token(use_datarobot_llm_gateway):
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token", headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        api_key="some_token",
+        use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, ChatOpenAI)
-        assert llm.default_headers == {"X-DataRobot-Identity-Token": "identity-token-123"}
+
+        if use_datarobot_llm_gateway:
+            assert llm.default_headers is None
+        else:
+            assert llm.default_headers == {"X-DataRobot-Identity-Token": "identity-token-123"}
 
 
 async def test_datarobot_llm_component_crewai():
@@ -173,17 +184,27 @@ async def test_datarobot_llm_component_crewai():
         assert isinstance(llm, LLM)
 
 
-async def test_datarobot_llm_component_crewai_with_identity_token():
+@pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
+async def test_datarobot_llm_component_crewai_with_identity_token(use_datarobot_llm_gateway):
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token", headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        api_key="some_token",
+        use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
-        assert llm.additional_params["extra_headers"] == {
-            "X-DataRobot-Identity-Token": "identity-token-123"
-        }
+
+        if use_datarobot_llm_gateway:
+            assert llm.additional_params == {
+                "max_retries": 10,
+            }
+        else:
+            assert llm.additional_params == {
+                "max_retries": 10,
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
+            }
 
 
 async def test_datarobot_llm_component_llamaindex():
@@ -194,14 +215,26 @@ async def test_datarobot_llm_component_llamaindex():
         assert isinstance(llm, LiteLLM)
 
 
-async def test_datarobot_llm_component_llamaindex_with_identity_token():
+@pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
+async def test_datarobot_llm_component_llamaindex_with_identity_token(use_datarobot_llm_gateway):
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token", headers={"X-DataRobot-Identity-Token": "identity-token-123"}
+        api_key="some_token",
+        use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
         assert isinstance(llm, LiteLLM)
-        assert llm.additional_kwargs["extra_headers"] == {
-            "X-DataRobot-Identity-Token": "identity-token-123"
-        }
+
+        if use_datarobot_llm_gateway:
+            assert llm.additional_kwargs == {
+                "api_base": "https://app.datarobot.com/api/v2/deployments/None",
+                "api_key": "some_token",
+            }
+        else:
+            assert llm.additional_kwargs == {
+                "api_base": "https://app.datarobot.com/api/v2/deployments/None/chat/completions",
+                "api_key": "some_token",
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
+            }
