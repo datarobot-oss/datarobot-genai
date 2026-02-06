@@ -101,3 +101,27 @@ class TestTavilyToolsE2E(ToolBaseE2E):
                 session,
                 test_name,
             )
+
+    async def test_tavily_crawl_success(self, llm_client: Any) -> None:
+        """Test basic Tavily crawl."""
+        expectations = ETETestExpectations(
+            tool_calls_expected=[
+                ToolCallTestExpectations(
+                    name="tavily_crawl",
+                    parameters={"url": "https://docs.datarobot.com"},
+                    result=SHOULD_NOT_BE_EMPTY,
+                ),
+            ],
+            llm_response_content_contains_expectations=["DataRobot"],
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_tavily_crawl_success"
+            await self._run_test_with_expectations(
+                "Crawl 'https://docs.datarobot.com' and summarize what pages you find.",
+                expectations,
+                llm_client,
+                session,
+                test_name,
+            )

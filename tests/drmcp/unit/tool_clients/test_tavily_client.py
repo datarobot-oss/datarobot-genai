@@ -20,6 +20,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyClient
+from datarobot_genai.drmcp.tools.clients.tavily import TavilyCrawlResults
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractResults
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyMapResults
 from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResults
@@ -233,9 +234,78 @@ class TestTavilyClientMap:
             ({"url": "https://example.com", "limit": 201}, "limit must be less than 200"),
         ],
     )
-    @pytest.mark.asyncio
     async def test_map_input_validations(self, function_kwargs: dict, error_message: str) -> None:
         """Test that map calls the underlying SDK."""
         with pytest.raises(ValueError, match=error_message):
             async with TavilyClient("api-key") as client:
                 await client.map_(**function_kwargs)
+
+
+class TestTavilyClientCrawl:
+    """Tests for TavilyClient.crawl method."""
+
+    @pytest.mark.asyncio
+    async def test_crawl_calls_sdk(self) -> None:
+        """Test that crawl calls the underlying SDK."""
+        mock_response = {
+            "base_url": "https://example.com",
+            "results": [{"url": "https://example.com/page1", "raw_content": "Content"}],
+            "response_time": 2.5,
+        }
+
+        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+            mock_client = MagicMock()
+            mock_client.crawl = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            async with TavilyClient("api-key") as client:
+                result = await client.crawl("https://example.com")
+
+            assert result == TavilyCrawlResults.from_tavily_sdk(mock_response)
+            mock_client.crawl.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_crawl_validates_empty_url(self) -> None:
+        """Test that empty url raises ValueError."""
+        async with TavilyClient("api-key") as client:
+            with pytest.raises(ValueError, match="url cannot be empty"):
+                await client.crawl("")
+
+    @pytest.mark.asyncio
+    async def test_crawl_validates_limit_range(self) -> None:
+        """Test that invalid limit raises ValueError."""
+        async with TavilyClient("api-key") as client:
+            with pytest.raises(ValueError, match="limit must be at least 1"):
+                await client.crawl("https://example.com", limit=0)
+            with pytest.raises(ValueError, match="limit must be at most 500"):
+                await client.crawl("https://example.com", limit=501)
+
+    @pytest.mark.asyncio
+    async def test_crawl_validates_max_depth_range(self) -> None:
+        """Test that invalid max_depth raises ValueError."""
+        async with TavilyClient("api-key") as client:
+            with pytest.raises(ValueError, match="max_depth must be at least 1"):
+                await client.crawl("https://example.com", max_depth=0)
+            with pytest.raises(ValueError, match="max_depth must be at most 5"):
+                await client.crawl("https://example.com", max_depth=6)
+
+    @pytest.mark.asyncio
+    async def test_crawl_with_optional_params(self) -> None:
+        """Test crawl includes optional params when provided."""
+        mock_response = {"base_url": "https://example.com", "results": [], "response_time": 0.5}
+
+        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+            mock_client = MagicMock()
+            mock_client.crawl = AsyncMock(return_value=mock_response)
+            mock_class.return_value = mock_client
+
+            async with TavilyClient("api-key") as client:
+                await client.crawl(
+                    "https://example.com",
+                    instructions="Find API documentation",
+                    exclude_paths=["/blog/.*"],
+                )
+
+            call_kwargs = mock_client.crawl.call_args[1]
+            assert call_kwargs["instructions"] == "Find API documentation"
+            assert call_kwargs["exclude_paths"] == ["/blog/.*"]
