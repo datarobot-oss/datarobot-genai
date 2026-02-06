@@ -125,6 +125,45 @@ def pull_intermediate_structured() -> asyncio.Future[list[IntermediateStep]]:
     return future
 
 
+async def stream_intermediate_steps() -> AsyncGenerator[IntermediateStep, None]:
+    """
+    Stream intermediate steps as they arrive from the NAT workflow.
+    Uses an async queue to bridge the callback-based subscription to an async generator.
+    """
+    queue: asyncio.Queue[IntermediateStep | Exception | None] = asyncio.Queue()
+    context = Context.get()
+    completed = False
+
+    def on_next_cb(item: IntermediateStep) -> None:
+        if not completed:
+            queue.put_nowait(item)
+
+    def on_error_cb(exc: Exception) -> None:
+        logger.error("Hit on_error in stream_intermediate_steps: %s", exc)
+        if not completed:
+            queue.put_nowait(exc)
+
+    def on_complete_cb() -> None:
+        logger.debug("Completed reading intermediate steps stream")
+        nonlocal completed
+        completed = True
+        queue.put_nowait(None)  # Sentinel to signal completion
+
+    # Subscribe with our callbacks.
+    context.intermediate_step_manager.subscribe(
+        on_next=on_next_cb, on_error=on_error_cb, on_complete=on_complete_cb
+    )
+
+    # Yield steps as they arrive
+    while True:
+        item = await queue.get()
+        if item is None:  # Sentinel indicating completion
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+
+
 class NatAgent(BaseAgent[None]):
     def __init__(
         self,
@@ -195,41 +234,84 @@ class NatAgent(BaseAgent[None]):
                     "prompt_tokens": 0,
                     "total_tokens": 0,
                 }
+                steps: list[IntermediateStep] = []
+                step_queue: asyncio.Queue[IntermediateStep | None] = asyncio.Queue()
+
+                async def process_intermediate_steps() -> None:
+                    intermediate_stream = stream_intermediate_steps()
+                    try:
+                        async for step in intermediate_stream:
+                            steps.append(step)
+                            if step:
+                                await step_queue.put(step)
+                    finally:
+                        await step_queue.put(None)
+
                 async with load_workflow(self.workflow_path, headers=headers) as workflow:
                     async with workflow.run(chat_request) as runner:
-                        intermediate_future = pull_intermediate_structured()
-                        async for result in runner.result_stream():
-                            if isinstance(result, ChatResponse):
-                                result_text = result.choices[0].message.content
-                            else:
-                                result_text = str(result)
+                        intermediate_task = asyncio.create_task(process_intermediate_steps())
+                        async for _ in runner.result_stream():
+                            while True:
+                                try:
+                                    step = step_queue.get_nowait()
+                                    if step is None:
+                                        break
+                                    if step.data:
+                                        output = None
+                                        if step.data.chunk:
+                                            output = step.data.chunk
+                                            yield step.data.chunk, None, default_usage_metrics
+                                        elif step.data.output:
+                                            output = step.data.output
+                                        if output:
+                                            if isinstance(output, list):
+                                                output = output[0]
+                                            if isinstance(output, ChatResponse):
+                                                output = output.choices[0].message.content
+                                            yield output, None, default_usage_metrics
+                                except asyncio.QueueEmpty:
+                                    break
 
-                            yield (
-                                result_text,
-                                None,
-                                default_usage_metrics,
-                            )
+                await intermediate_task
 
-                        steps = await intermediate_future
-                        llm_end_steps = [
-                            step
-                            for step in steps
-                            if step.event_type == IntermediateStepType.LLM_END
-                        ]
-                        usage_metrics: UsageMetrics = {
-                            "completion_tokens": 0,
-                            "prompt_tokens": 0,
-                            "total_tokens": 0,
-                        }
-                        for step in llm_end_steps:
-                            if step.usage_info:
-                                token_usage = step.usage_info.token_usage
-                                usage_metrics["total_tokens"] += token_usage.total_tokens
-                                usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
-                                usage_metrics["completion_tokens"] += token_usage.completion_tokens
+                while True:
+                    try:
+                        step = step_queue.get_nowait()
+                        if step is None:
+                            break
+                        if step.data:
+                            output = None
+                            if step.data.chunk:
+                                output = step.data.chunk
+                                yield step.data.chunk, None, default_usage_metrics
+                            elif step.data.output:
+                                output = step.data.output
+                            if output:
+                                if isinstance(output, list):
+                                    output = output[0]
+                                if isinstance(output, ChatResponse):
+                                    output = output.choices[0].message.content
+                                yield output, None, default_usage_metrics
+                    except asyncio.QueueEmpty:
+                        break
 
-                        pipeline_interactions = create_pipeline_interactions_from_steps(steps)
-                        yield "", pipeline_interactions, usage_metrics
+                llm_end_steps = [
+                    step for step in steps if step.event_type == IntermediateStepType.LLM_END
+                ]
+                usage_metrics: UsageMetrics = {
+                    "completion_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0,
+                }
+                for step in llm_end_steps:
+                    if step.usage_info:
+                        token_usage = step.usage_info.token_usage
+                        usage_metrics["total_tokens"] += token_usage.total_tokens
+                        usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
+                        usage_metrics["completion_tokens"] += token_usage.completion_tokens
+
+                pipeline_interactions = create_pipeline_interactions_from_steps(steps)
+                yield "", pipeline_interactions, usage_metrics
 
             return stream_generator()
 
