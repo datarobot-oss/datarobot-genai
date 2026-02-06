@@ -132,6 +132,7 @@ class TavilySearchResults(BaseModel):
             "resultCount": len(self.results),
             "responseTime": self.response_time,
         }
+
         if include_answer:
             response["answer"] = self.answer
         if include_images:
@@ -141,7 +142,7 @@ class TavilySearchResults(BaseModel):
 
 class _TavilyExtractResult(BaseModel):
     url: str
-    raw_content: str
+    raw_content: str = ""
     images: list[_TavilyImage] | None = None
     favicon: str | None = None
 
@@ -155,7 +156,7 @@ class _TavilyExtractResult(BaseModel):
             images = [_TavilyImage.from_tavily_sdk(img) for img in result.get("images", [])]
         return cls(
             url=result.get("url", ""),
-            raw_content=result.get("raw_content", ""),
+            raw_content=result.get("raw_content") or "",
             images=images,
             favicon=result.get("favicon"),
         )
@@ -218,6 +219,34 @@ class TavilyMapResults(BaseModel):
             "results": self.results,
             "usageCredits": self.usage.credits if self.usage else None,
             "count": len(self.results),
+        }
+
+
+class TavilyCrawlResults(BaseModel):
+    """Results from Tavily Crawl API."""
+
+    base_url: str
+    results: list[_TavilyExtractResult]
+    response_time: float = 0.0
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @classmethod
+    def from_tavily_sdk(cls, result: dict[str, Any]) -> "TavilyCrawlResults":
+        """Create a TavilyCrawlResults from Tavily SDK response data."""
+        return cls(
+            base_url=result.get("base_url", ""),
+            results=[_TavilyExtractResult.from_tavily_sdk(r) for r in result.get("results", [])],
+            response_time=result.get("response_time", 0.0),
+        )
+
+    def as_flat_dict(self) -> dict[str, Any]:
+        """Return a flat dictionary representation of the crawl result."""
+        return {
+            "baseUrl": self.base_url,
+            "results": [r.as_flat_dict() for r in self.results],
+            "resultCount": len(self.results),
+            "responseTime": self.response_time,
         }
 
 
@@ -418,6 +447,69 @@ class TavilyClient:
             include_usage=include_usage,
         )
         return TavilyMapResults.from_tavily_sdk(result)
+
+    async def crawl(
+        self,
+        url: str,
+        *,
+        instructions: str | None = None,
+        limit: int = 20,
+        max_depth: int = 1,
+        exclude_paths: list[str] | None = None,
+        include_images: bool = False,
+    ) -> TavilyCrawlResults:
+        """
+        Crawl a website using Tavily Crawl API.
+
+        Args:
+            url: The root URL to begin the traversal.
+            instructions: Natural language instructions for the crawler to filter relevant content.
+            limit: Total number of links to process (1-500, default 20).
+            max_depth: Maximum depth from base URL (1-5, default 1).
+            exclude_paths: Regex patterns to exclude URL paths.
+            include_images: Whether to include images found during crawl.
+
+        Returns
+        -------
+            TavilyCrawlResults
+
+        Raises
+        ------
+            ValueError: If validation fails.
+            TavilyInvalidAPIKeyError: If the API key is invalid.
+            TavilyUsageLimitExceededError: If usage limit is exceeded.
+            TavilyForbiddenError: If access is forbidden.
+            TavilyBadRequestError: If the request is malformed.
+        """
+        # Validate inputs
+        if not url:
+            raise ValueError("url cannot be empty.")
+        if isinstance(url, str) and not url.strip():
+            raise ValueError("url cannot be empty.")
+        if limit < 1:
+            raise ValueError("limit must be at least 1.")
+        if limit > 500:  # noqa: PLR2004
+            raise ValueError("limit must be at most 500.")
+        if max_depth < 1:
+            raise ValueError("max_depth must be at least 1.")
+        if max_depth > 5:  # noqa: PLR2004
+            raise ValueError("max_depth must be at most 5.")
+
+        crawl_kwargs: dict[str, Any] = {
+            "url": url,
+            "limit": limit,
+            "max_depth": max_depth,
+            "include_images": include_images,
+        }
+
+        if instructions:
+            crawl_kwargs["instructions"] = instructions
+
+        if exclude_paths:
+            crawl_kwargs["exclude_paths"] = exclude_paths
+
+        result = await self._client.crawl(**crawl_kwargs)
+        return TavilyCrawlResults.from_tavily_sdk(result)
 
     async def __aenter__(self) -> "TavilyClient":
         """Async context manager entry."""

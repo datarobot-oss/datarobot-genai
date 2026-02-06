@@ -198,3 +198,61 @@ async def tavily_map(
         )
 
     return ToolResult(structured_content=response.as_flat_dict())
+
+
+@dr_mcp_tool(tags={"crawl", "tavily", "web", "rag"})
+async def tavily_crawl(
+    *,
+    url: Annotated[str, "The root URL to begin the traversal."],
+    instructions: Annotated[
+        str | None,
+        "Natural language instructions for the crawler to filter relevant content.",
+    ] = None,
+    limit: Annotated[int, "Total number of links to process (1-500)."] = 20,
+    max_depth: Annotated[int, "Maximum depth from base URL (1-5)."] = 1,
+    exclude_paths: Annotated[
+        list[str] | None,
+        "Regex patterns to exclude URL paths (e.g., ['/blog/.*', '/archive/.*']).",
+    ] = None,
+    include_images: Annotated[bool, "Include images found during crawl."] = False,
+) -> ToolResult:
+    """
+    Crawl a website using Tavily Crawl API for Crawl-to-RAG workflows.
+
+    Use this tool to explore an entire site and retrieve relevant content based on
+    natural language instructions. Ideal for building knowledge bases, extracting
+    documentation, or gathering structured content from websites.
+
+    Usage:
+        - Basic crawl: tavily_crawl(url="https://docs.example.com")
+        - With instructions: tavily_crawl(
+            url="https://docs.example.com",
+            instructions="Find all API documentation pages"
+          )
+        - Deep crawl: tavily_crawl(url="https://example.com", max_depth=3, limit=100)
+        - Exclude paths: tavily_crawl(
+            url="https://example.com",
+            exclude_paths=["/blog/.*", "/archive/.*"]
+          )
+
+    Limits:
+        - limit: 1-500 (default 20)
+        - max_depth: 1-5 (default 1)
+
+    Note:
+        - Higher limits and depths consume more API credits
+        - Use instructions to filter for relevant content and reduce noise
+    """
+    api_key = await get_tavily_access_token()
+
+    async with TavilyClient(api_key) as client:
+        response = await client.crawl(
+            url=url,
+            instructions=instructions,
+            limit=limit,
+            max_depth=max_depth,
+            exclude_paths=exclude_paths,
+            include_images=include_images,
+        )
+
+    return ToolResult(structured_content=response.as_flat_dict())

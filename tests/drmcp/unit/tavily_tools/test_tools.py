@@ -17,8 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcp.tools.clients.tavily import TavilyCrawlResults
 from datarobot_genai.drmcp.tools.clients.tavily import TavilyMapResults
 from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResults
+from datarobot_genai.drmcp.tools.tavily.tools import tavily_crawl
 from datarobot_genai.drmcp.tools.tavily.tools import tavily_map
 from datarobot_genai.drmcp.tools.tavily.tools import tavily_search
 
@@ -119,3 +121,32 @@ class TestTavilyMap:
         assert structured["count"] == 2
         assert len(structured["results"]) == 2
         assert structured["usageCredits"] == 4
+
+
+class TestTavilyCrawl:
+    """Tests for tavily_crawl tool."""
+
+    @pytest.mark.asyncio
+    async def test_basic_crawl(self, mock_tavily_auth: None) -> None:
+        """Test basic crawl returns expected structure."""
+        mock_response = TavilyCrawlResults.from_tavily_sdk(
+            {
+                "base_url": "https://example.com",
+                "results": [
+                    {
+                        "url": "https://example.com/page1",
+                        "raw_content": "# Page 1\n\nContent here.",
+                    },
+                ],
+                "response_time": 2.5,
+            }
+        )
+
+        with patch("datarobot_genai.drmcp.tools.clients.tavily.TavilyClient.crawl") as mock:
+            mock.return_value = mock_response
+            result = await tavily_crawl(url="https://example.com")
+
+        _, structured = result.to_mcp_result()
+        assert structured["baseUrl"] == "https://example.com"
+        assert structured["resultCount"] == 1
+        assert structured["results"][0]["url"] == "https://example.com/page1"
