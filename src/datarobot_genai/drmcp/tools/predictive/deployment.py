@@ -103,11 +103,17 @@ async def deploy_model(
 @dr_mcp_tool(tags={"predictive", "deployment", "write", "custom", "create"})
 async def deploy_custom_model(
     *,
-    model_folder: Annotated[str, "Path to directory with custom.py, requirements.txt, and optionally a model file"] | None = None,
+    model_folder: Annotated[
+        str, "Path to directory with custom.py, requirements.txt, and optionally a model file"
+    ]
+    | None = None,
     name: Annotated[str, "Custom model and deployment name"] | None = None,
     target_type: Annotated[str, "Target type: Binary, Regression, or Multiclass"] | None = None,
     target_name: Annotated[str, "Target column name"] | None = None,
-    model_file_path: Annotated[str, "Optional path to model file; if not set and none in folder, ToolError is raised"] | None = None,
+    model_file_path: Annotated[
+        str, "Optional path to model file; if not set and none in folder, ToolError is raised"
+    ]
+    | None = None,
     positive_class_label: Annotated[str, "For binary: positive class label"] | None = None,
     negative_class_label: Annotated[str, "For binary: negative class label"] | None = None,
     class_labels: Annotated[list[str], "For multiclass: list of class labels"] | None = None,
@@ -132,7 +138,11 @@ async def deploy_custom_model(
             raise ToolError(f"model_folder must contain {f}")
     resolved_path: str | None = None
     if model_file_path:
-        p = model_file_path if os.path.isabs(model_file_path) else os.path.join(model_folder, model_file_path)
+        p = (
+            model_file_path
+            if os.path.isabs(model_file_path)
+            else os.path.join(model_folder, model_file_path)
+        )
         if os.path.isfile(p):
             resolved_path = p
     if resolved_path is None:
