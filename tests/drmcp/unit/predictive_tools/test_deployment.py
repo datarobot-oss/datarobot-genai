@@ -23,9 +23,7 @@ from dotenv import load_dotenv
 from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.tools.predictive import deployment
-from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import (
-    deploy_custom_model_impl,
-)
+from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import deploy_custom_model_impl
 
 
 def test_load_dotenv() -> None:
@@ -307,7 +305,8 @@ async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> 
         ) as mock_get_client:
             mock_client = MagicMock()
 
-            # Mock execution environment - needs to match the pattern in select_execution_environment
+            # Mock execution environment - must match
+            # the pattern in select_execution_environment
             mock_env = MagicMock()
             mock_env.id = "env123"
             mock_env.name = "[DataRobot] Python Scikit-Learn 3.11 Drop-In"
