@@ -121,7 +121,10 @@ async def deploy_custom_model(
     execution_environment_id: Annotated[str, "Optional execution environment ID"] | None = None,
     description: Annotated[str, "Optional description"] | None = None,
 ) -> ToolResult:
-    """Deploy a custom inference model (e.g. .pkl) to DataRobot MLOps. Requires a model file in the folder or model_file_path."""
+    """Deploy a custom inference model (e.g. .pkl) to DataRobot MLOps.
+
+    Requires a model file in the folder or model_file_path.
+    """
     if not model_folder:
         raise ToolError("model_folder must be provided")
     if not name:
