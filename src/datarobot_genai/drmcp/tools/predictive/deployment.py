@@ -20,12 +20,10 @@ from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
-from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import (
-    MODEL_EXTENSIONS,
-    REQUIRED_FILES,
-    deploy_custom_model_impl,
-    find_model_file_in_folder,
-)
+from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import MODEL_EXTENSIONS
+from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import REQUIRED_FILES
+from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import deploy_custom_model_impl
+from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import find_model_file_in_folder
 
 
 @dr_mcp_tool(tags={"predictive", "deployment", "read", "management", "list"})
@@ -114,7 +112,10 @@ async def deploy_custom_model(
     execution_environment_id: Annotated[str, "Optional execution environment ID"] | None = None,
     description: Annotated[str, "Optional description"] | None = None,
 ) -> ToolResult:
-    """Deploy a custom inference model (e.g. .pkl) to DataRobot MLOps. Requires a model file in the folder or model_file_path."""
+    """Deploy a custom inference model (e.g. .pkl) to DataRobot MLOps.
+
+    Requires a model file in the folder or model_file_path.
+    """
     if not model_folder:
         raise ToolError("model_folder must be provided")
     if not name:
