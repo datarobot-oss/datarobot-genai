@@ -29,4 +29,6 @@ MCP_CLI_OPTS: list[tuple[str, str | None, str | None]] = [
     ("microsoft_graph", None, "enable_microsoft_graph_tools"),
     ("jira", None, "enable_jira_tools"),
     ("confluence", None, "enable_confluence_tools"),
+    ("perplexity", None, "enable_perplexity_tools"),
+    ("tavily", None, "enable_tavily_tools"),
 ]

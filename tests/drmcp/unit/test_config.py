@@ -254,6 +254,10 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_predictive_tools is True
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_no_mcp_cli_configs_empty(self) -> None:
@@ -263,6 +267,11 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.mcp_server_register_dynamic_tools_on_startup is False
             assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_mcp_cli_configs_single_option_enables_root_field(self) -> None:
@@ -272,6 +281,13 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.mcp_server_register_dynamic_tools_on_startup is True
             assert config.mcp_server_register_dynamic_prompts_on_startup is False
+            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_mcp_cli_configs_single_option_enables_tool_field(self) -> None:
@@ -281,6 +297,10 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.tool_config.enable_gdrive_tools is True
             assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_mcp_cli_configs_multiple_options(self) -> None:
@@ -290,7 +310,7 @@ class TestMCPCLIConfigs:
             {
                 "MCP_CLI_CONFIGS": (
                     "dynamic_tools,dynamic_prompts,gdrive,jira,"
-                    "confluence,microsoft_graph,predictive"
+                    "confluence,microsoft_graph,predictive,perplexity,tavily"
                 )
             },
             clear=True,
@@ -304,6 +324,8 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_jira_tools is True
             assert config.tool_config.enable_confluence_tools is True
             assert config.tool_config.enable_microsoft_graph_tools is True
+            assert config.tool_config.enable_perplexity_tools is True
+            assert config.tool_config.enable_tavily_tools is True
             self._reset_config()
 
     def test_mcp_cli_configs_case_insensitive(self) -> None:
@@ -313,6 +335,10 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.tool_config.enable_gdrive_tools is True
             assert config.tool_config.enable_jira_tools is True
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_mcp_cli_configs_whitespace_stripped(self) -> None:
@@ -322,6 +348,10 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.tool_config.enable_gdrive_tools is True
             assert config.tool_config.enable_jira_tools is True
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_individual_env_takes_precedence_unprefixed(self) -> None:
@@ -335,6 +365,10 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is True
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_individual_env_takes_precedence_runtime_param_prefix(self) -> None:
@@ -347,6 +381,11 @@ class TestMCPCLIConfigs:
             self._reset_config()
             config = get_config()
             assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_individual_env_true_with_mcp_cli_configs(self) -> None:
@@ -360,6 +399,10 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.tool_config.enable_gdrive_tools is True
             assert config.tool_config.enable_jira_tools is True
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_option_not_in_mcp_cli_configs_never_overridden(self) -> None:
@@ -371,6 +414,8 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
             assert config.mcp_server_register_dynamic_prompts_on_startup is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_predictive_default_true_stays_true_when_in_mcp_cli_configs(self) -> None:
@@ -379,6 +424,12 @@ class TestMCPCLIConfigs:
             self._reset_config()
             config = get_config()
             assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_dynamic_prompts_override_when_in_mcp_cli_configs(self) -> None:
@@ -387,6 +438,13 @@ class TestMCPCLIConfigs:
             self._reset_config()
             config = get_config()
             assert config.mcp_server_register_dynamic_prompts_on_startup is True
+            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_individual_env_false_for_option_in_mcp_cli_configs_respected(self) -> None:
@@ -400,6 +458,10 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
     def test_mcp_cli_configs_value_comes_from_config_loading(self) -> None:
@@ -408,4 +470,10 @@ class TestMCPCLIConfigs:
             self._reset_config()
             config = get_config()
             assert config.mcp_cli_configs.strip().lower() == "gdrive,jira"
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is True
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.tool_config.enable_microsoft_graph_tools is False
+            assert config.tool_config.enable_perplexity_tools is False
+            assert config.tool_config.enable_tavily_tools is False
             self._reset_config()

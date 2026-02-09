@@ -334,8 +334,8 @@ class MCPServerConfig(BaseSettings):
             "MCP_CLI_CONFIGS",
         ),
         description="Comma-separated list of features to enable: dynamic_tools, dynamic_prompts, "
-        "predictive, gdrive, microsoft_graph, jira, confluence. Individual env vars (e.g. "
-        "ENABLE_PREDICTIVE_TOOLS) take precedence when set.",
+        "predictive, gdrive, microsoft_graph, jira, confluence, perplexity, tavily. "
+        "Individual env vars (e.g. ENABLE_PREDICTIVE_TOOLS) take precedence when set.",
     )
 
     tool_config: MCPToolConfig = Field(
