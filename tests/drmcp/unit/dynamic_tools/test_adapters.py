@@ -143,6 +143,7 @@ class TestDrumMetadataAdapter:
             pytest.param("binary", "/predictions", id="binary"),
             pytest.param("regression", "/predictions", id="regression"),
             pytest.param("multiclass", "/predictions", id="multiclass"),
+            pytest.param("multilabel", "/predictions", id="multilabel"),
             pytest.param("textgeneration", "/predictions", id="text_generation"),
             pytest.param("unstructured", "/predictionsUnstructured", id="unstructured"),
             pytest.param("vectordatabase", "/predictions", id="vector_database"),

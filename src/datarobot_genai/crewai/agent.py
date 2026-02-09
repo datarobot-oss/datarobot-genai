@@ -65,7 +65,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
     Subclasses should define the ``agents`` and ``tasks`` properties
-    and may override ``build_crewai_workflow`` to customize the workflow
+    and may override ``crew`` to customize the workflow
     construction.
     """
 
@@ -79,7 +79,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     def tasks(self) -> list[Any]:  # CrewAI Task list
         raise NotImplementedError
 
-    def build_crewai_workflow(self) -> Any:
+    def crew(self) -> Crew:
         """Create a CrewAI workflow instance.
 
         Default implementation constructs a Crew with provided agents and tasks.
@@ -156,7 +156,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     # Listener is optional best-effort; proceed without failing invoke
                     pass
 
-            crew = self.build_crewai_workflow()
+            crew = self.crew()
 
             if is_streaming(completion_create_params):
 

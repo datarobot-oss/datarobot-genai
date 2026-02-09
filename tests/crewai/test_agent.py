@@ -111,7 +111,7 @@ class MyAgent(CrewAIAgent):
         super().__init__(*args, **kwargs)
         self._crew_output = crew_output
 
-    def build_crewai_workflow(self) -> Any:
+    def crew(self) -> Any:
         return DummyCrew(self._crew_output)
 
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:

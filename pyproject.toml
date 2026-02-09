@@ -76,8 +76,7 @@ nat = [
   "anyio==4.11.0",
 ]
 pydanticai = [
-  "logfire>=4.6.0,<5.0.0",
-  "pydantic-ai>=1.0.5,<1.9.0",
+  "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
 ]
 drmcp = [
   "datarobot-asgi-middleware>=0.2.0,<1.0.0",
@@ -191,6 +190,10 @@ fixable = [
 ]
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
+]
+"tests/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow imports in test functions
+    "PLR2004",# magic-value-comparison: allow magic values in test assertions
 ]
 
 [tool.ruff.lint.isort]
