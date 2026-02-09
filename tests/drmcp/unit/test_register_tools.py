@@ -89,12 +89,12 @@ def mock_mcp() -> Generator[MagicMock, None, None]:
             registered_tools.append(tool)
             return tool
 
-        async def list_tools() -> list[Tool]:
-            """Mock list_tools that returns registered tools."""
+        async def _list_tools_mcp() -> list[Tool]:
+            """Mock _list_tools_mcp that returns registered tools."""
             return registered_tools
 
         mock_mcp.add_tool = MagicMock(side_effect=add_tool)
-        mock_mcp.list_tools = AsyncMock(side_effect=list_tools)
+        mock_mcp._list_tools_mcp = AsyncMock(side_effect=_list_tools_mcp)
         yield mock_mcp
 
 

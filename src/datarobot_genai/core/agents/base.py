@@ -30,6 +30,7 @@ from ag_ui.core import Event
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
+from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
 TTool = TypeVar("TTool")
@@ -74,6 +75,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self._mcp_tools: list[TTool] = []
         self._authorization_context = authorization_context or {}
         self._forwarded_headers: dict[str, str] = forwarded_headers or {}
+        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
 
     def set_mcp_tools(self, tools: list[TTool]) -> None:
         self._mcp_tools = tools

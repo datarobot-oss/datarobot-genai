@@ -24,7 +24,6 @@ from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url
 
@@ -126,10 +125,6 @@ async def microsoft_graph_search_content(
     - Documentation: https://learn.microsoft.com/en-us/graph/api/search-query
     - Search concepts: https://learn.microsoft.com/en-us/graph/search-concept-files
 
-    Permissions:
-    - Requires Sites.Read.All or Sites.Search.All permission
-    - include_hidden_content only works with delegated permissions
-    - region parameter is required for application permissions in multi-region environments
     """
     if not search_query:
         raise ToolError("Argument validation error: 'search_query' cannot be empty.")
@@ -173,12 +168,7 @@ async def microsoft_graph_search_content(
         }
         results.append(result_dict)
 
-    n = len(results)
     return ToolResult(
-        content=(
-            f"Successfully searched Microsoft Graph and retrieved {n} result(s) for "
-            f"'{search_query}' (from={from_offset}, size={size})."
-        ),
         structured_content={
             "query": search_query,
             "siteUrl": site_url,
@@ -186,7 +176,7 @@ async def microsoft_graph_search_content(
             "from": from_offset,
             "size": size,
             "results": results,
-            "count": n,
+            "count": len(results),
         },
     )
 
@@ -236,18 +226,12 @@ async def microsoft_graph_share_item(
             send_invitation=send_invitation,
         )
 
-    n = len(recipient_emails)
     return ToolResult(
-        content=(
-            f"Successfully shared file {file_id} "
-            f"from document library {document_library_id} "
-            f"with {n} recipients with '{role}' role."
-        ),
         structured_content={
             "fileId": file_id,
             "documentLibraryId": document_library_id,
             "recipientEmails": recipient_emails,
-            "n": n,
+            "n": len(recipient_emails),
             "role": role,
         },
     )
@@ -321,7 +305,6 @@ async def microsoft_create_file(
         )
 
     return ToolResult(
-        content=f"File '{created_file.name}' created successfully.",
         structured_content={
             "file_name": created_file.name,
             "destination": "onedrive" if is_personal_onedrive else "sharepoint",
@@ -387,8 +370,6 @@ async def microsoft_update_metadata(
     - SharePoint list item: Update a 'Status' column to 'Approved'
     - Drive item: Rename a file or update its description
 
-    **Permissions:**
-    - Requires Sites.ReadWrite.All or Files.ReadWrite.All permission
     """
     if not item_id or not item_id.strip():
         raise ToolError("Error: item_id is required.")
@@ -421,25 +402,16 @@ async def microsoft_update_metadata(
     if isinstance(access_token, ToolError):
         raise access_token
 
-    try:
-        async with MicrosoftGraphClient(access_token=access_token) as client:
-            result = await client.update_item_metadata(
-                item_id=item_id.strip(),
-                fields_to_update=fields_to_update,
-                site_id=site_id,
-                list_id=list_id,
-                drive_id=document_library_id,
-            )
-    except MicrosoftGraphError as e:
-        logger.error(f"Microsoft Graph error updating metadata: {e}")
-        raise ToolError(str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error updating metadata: {e}", exc_info=True)
-        raise ToolError(f"An unexpected error occurred while updating metadata: {str(e)}")
+    async with MicrosoftGraphClient(access_token=access_token) as client:
+        result = await client.update_item_metadata(
+            item_id=item_id.strip(),
+            fields_to_update=fields_to_update,
+            site_id=site_id,
+            list_id=list_id,
+            drive_id=document_library_id,
+        )
 
     context_type = "sharepoint_list_item" if has_sharepoint_context else "drive_item"
-
-    # Build structured content similar to microsoft_create_file pattern
     structured: dict[str, Any] = {
         "item_id": item_id,
         "context_type": context_type,
@@ -470,6 +442,5 @@ async def microsoft_update_metadata(
             structured["updated_fields"] = result
 
     return ToolResult(
-        content=f"Metadata updated successfully for item '{item_id}'.",
         structured_content=structured,
     )

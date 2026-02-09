@@ -79,7 +79,7 @@ def mock_middleware_context() -> MiddlewareContext:
 @pytest.fixture
 def mock_call_next() -> AsyncMock:
     """Create a mocked call_next function that returns a test result."""
-    expected_result = ToolResult(content="test_result")
+    expected_result = ToolResult(structured_content={"result": "test_result"})
     return AsyncMock(return_value=expected_result)
 
 
