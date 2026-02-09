@@ -106,23 +106,21 @@ def wait_for_preds_and_cache_results(
 
 @dr_mcp_tool(tags={"prediction", "scoring", "batch"})
 async def predict_by_file_path(
-    deployment_id: str,
-    file_path: str,
-    timeout: int = 600,
-) -> str:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
+    | None = None,
+    file_path: Annotated[str, "Path to a CSV file to use as input data."] | None = None,
+    timeout: Annotated[int, "Timeout in seconds for the batch prediction job"] | None = 600,
+) -> ToolError | ToolResult:
     """
     Make predictions using a DataRobot deployment and a local CSV file using the DataRobot Python
     SDK. Use this tool to score large amounts of data, for small amounts of data use the
     predict_realtime tool.
-    Args:
-        deployment_id: The ID of the DataRobot deployment to use for prediction.
-        file_path: Path to a CSV file to use as input data.
-        timeout: Timeout in seconds for the batch prediction job (default 300).
-
-    Returns
-    -------
-        A string summary of the batch prediction job and download link if available.
     """
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+    if not file_path:
+        raise ToolError("File path must be provided")
+
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     job = dr.BatchPredictionJob.score(
         deployment=deployment_id,
@@ -133,7 +131,7 @@ async def predict_by_file_path(
         output_settings=output_settings,  # type: ignore[arg-type]
     )
     return wait_for_preds_and_cache_results(
-        job, bucket, key, deployment_id, f"Scoring file {file_path}.", timeout
+        job, bucket, key, deployment_id, f"Scoring file {file_path}.", timeout or 600
     )
 
 
@@ -148,22 +146,13 @@ async def predict_by_ai_catalog(
     """
     Make predictions using a DataRobot deployment and an AI Catalog dataset using the DataRobot
     Python SDK.
-
     Use this tool when asked to score data stored in AI Catalog by dataset id.
-    Args:
-        deployment_id: The ID of the DataRobot deployment to use for prediction.
-        dataset_id: ID of an AI Catalog item to use as input data.
-        timeout: Timeout in seconds for the batch prediction job (default 300).
-
-    Returns
-    -------
-        A string summary of the batch prediction job and download link if available.
     """
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
-    effective_timeout = 600 if timeout is None else timeout
+
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
@@ -176,7 +165,7 @@ async def predict_by_ai_catalog(
         output_settings=output_settings,  # type: ignore[arg-type]
     )
     return wait_for_preds_and_cache_results(
-        job, bucket, key, deployment_id, f"Scoring dataset {dataset_id}.", effective_timeout
+        job, bucket, key, deployment_id, f"Scoring dataset {dataset_id}.", timeout or 600
     )
 
 
@@ -208,7 +197,6 @@ async def predict_from_project_data(
         raise ToolError("Deployment ID must be provided")
     if not project_id:
         raise ToolError("Project ID must be provided")
-    effective_timeout = 600 if timeout is None else timeout
 
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     intake_settings: dict[str, Any] = {
@@ -225,7 +213,7 @@ async def predict_from_project_data(
         output_settings=output_settings,  # type: ignore[arg-type]
     )
     return wait_for_preds_and_cache_results(
-        job, bucket, key, deployment_id, f"Scoring project {project_id}.", effective_timeout
+        job, bucket, key, deployment_id, f"Scoring project {project_id}.", timeout or 600
     )
 
 
