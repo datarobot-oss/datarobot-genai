@@ -104,7 +104,7 @@ def wait_for_preds_and_cache_results(
     return _handle_prediction_resource(job, bucket, key, deployment_id, input_desc)
 
 
-@dr_mcp_tool(tags={"prediction", "scoring", "batch"})
+@dr_mcp_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_file_path(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
