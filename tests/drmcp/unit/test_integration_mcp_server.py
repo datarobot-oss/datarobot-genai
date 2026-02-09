@@ -62,6 +62,7 @@ class TestIntegrationMCPServer:
             lifecycle=mock_lifecycle,
             additional_module_paths=mock_module_paths,
             transport="stdio",
+            load_native_mcp_tools=True,
         )
         mock_server.run.assert_called_once()
 
@@ -76,7 +77,10 @@ class TestIntegrationMCPServer:
 
         main()
 
-        mock_create_server.assert_called_once_with(transport="stdio")
+        mock_create_server.assert_called_once_with(
+            transport="stdio",
+            load_native_mcp_tools=True,
+        )
         mock_server.run.assert_called_once()
 
     def test_main_module_execution(self):

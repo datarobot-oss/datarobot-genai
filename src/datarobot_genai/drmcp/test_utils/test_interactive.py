@@ -26,26 +26,18 @@ the script will prompt you interactively.
 import asyncio
 import json
 import os
-import sys
 import traceback
-from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.context import RequestContext
 from mcp.types import ElicitRequestParams
 from mcp.types import ElicitResult
 
+from datarobot_genai.drmcp import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp import get_dr_mcp_server_url
 from datarobot_genai.drmcp import get_headers
-from datarobot_genai.drmcp.test_utils.clients.base import LLMResponse
-from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
-from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
-
-# Re-export for backwards compatibility
-__all__ = ["DRLLMGatewayMCPClient", "LLMResponse", "ToolCall", "test_mcp_interactive"]
 
 
 async def test_mcp_interactive() -> None:
@@ -189,17 +181,7 @@ async def test_mcp_interactive() -> None:
 
 
 if __name__ == "__main__":
-    # Ensure we're in the right directory
-    if not Path("src").exists():
-        print("❌ Error: Please run this script from the project root")
-        sys.exit(1)
-
-    # Load environment variables from .env file
-    print("📄 Loading environment variables...")
-    load_dotenv()
-
     print("🚀 Starting Interactive MCP Client Test")
-    print("Make sure the MCP server is running with: task drmcp-dev")
     print()
 
     asyncio.run(test_mcp_interactive())

@@ -19,12 +19,22 @@ Integration test MCP server.
 
 This server works standalone (base tools only) or detects and loads
 user modules if they exist in the project structure.
+
+When running under stdio there are no HTTP headers, so get_sdk_client() would
+raise. We patch it to fall back to credentials (from env) so integration tests
+can use DATAROBOT_API_TOKEN without injecting headers.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
+import datarobot as dr
+from datarobot.context import Context as DRContext
+
 from datarobot_genai.drmcp import create_mcp_server
+from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
+from datarobot_genai.drmcp.core.credentials import get_credentials
 
 # Import elicitation test tool to register it with the MCP server
 try:
@@ -83,8 +93,31 @@ def detect_user_modules() -> Any:
     return None
 
 
+def _patch_get_sdk_client_for_stdio() -> None:
+    """Patch get_sdk_client to fall back to credentials when no headers (stdio)."""
+    from datarobot_genai.drmcp.core import clients
+
+    def get_sdk_client_with_credentials_fallback() -> Any:
+        try:
+            return _original_get_sdk_client()
+        except ValueError:
+            creds = get_credentials()
+            token = creds.datarobot.application_api_token
+            if not token:
+                raise
+            dr.Client(token=token, endpoint=creds.datarobot.endpoint)
+            DRContext.use_case = None
+            return dr
+
+    clients.get_sdk_client = get_sdk_client_with_credentials_fallback
+
+
 def main() -> None:
     """Run the integration test MCP server."""
+    # Integration tests run with stdio (no HTTP headers); patch so tools get token from env
+    if os.environ.get("MCP_SERVER_NAME") == "integration":
+        _patch_get_sdk_client_for_stdio()
+
     # Try to detect and load user modules
     user_components = detect_user_modules()
 
@@ -97,10 +130,11 @@ def main() -> None:
             lifecycle=lifecycle,
             additional_module_paths=module_paths,
             transport="stdio",
+            load_native_mcp_tools=True,
         )
     else:
         # No user modules - create server with base tools only
-        server = create_mcp_server(transport="stdio")
+        server = create_mcp_server(transport="stdio", load_native_mcp_tools=True)
 
     server.run()
 

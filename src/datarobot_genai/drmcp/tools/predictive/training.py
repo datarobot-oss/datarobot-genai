@@ -24,8 +24,8 @@ import pandas as pd
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.core.clients import get_sdk_client
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 
 logger = logging.getLogger(__name__)
 

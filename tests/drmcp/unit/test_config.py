@@ -19,6 +19,7 @@ import pytest
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
+from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 
@@ -234,3 +235,177 @@ class TestToolConfiguration:
         with patch.dict(os.environ, {"MICROSOFT_CLIENT_ID": "test_id"}, clear=False):
             config = MCPServerConfig()
             assert config.tool_config.is_microsoft_oauth_configured is False
+
+
+class TestMCPCLIConfigs:
+    """Test MCP_CLI_CONFIGS override: only when option in list, at default, and env not set."""
+
+    def _reset_config(self) -> None:
+        config_module._config = None
+
+    def test_no_mcp_cli_configs_unset(self) -> None:
+        """When MCP_CLI_CONFIGS is unset, no overrides; all fields keep model defaults."""
+        with patch.dict(os.environ, {}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.mcp_cli_configs == ""
+            assert config.mcp_server_register_dynamic_tools_on_startup is False
+            assert config.mcp_server_register_dynamic_prompts_on_startup is False
+            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is False
+            self._reset_config()
+
+    def test_no_mcp_cli_configs_empty(self) -> None:
+        """When MCP_CLI_CONFIGS is empty string, no overrides."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": ""}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.mcp_server_register_dynamic_tools_on_startup is False
+            assert config.tool_config.enable_gdrive_tools is False
+            self._reset_config()
+
+    def test_mcp_cli_configs_single_option_enables_root_field(self) -> None:
+        """Option in MCP_CLI_CONFIGS with no individual env overrides root field to True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "dynamic_tools"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.mcp_server_register_dynamic_tools_on_startup is True
+            assert config.mcp_server_register_dynamic_prompts_on_startup is False
+            self._reset_config()
+
+    def test_mcp_cli_configs_single_option_enables_tool_field(self) -> None:
+        """Option in MCP_CLI_CONFIGS with no individual env overrides tool field to True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "gdrive"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is False
+            self._reset_config()
+
+    def test_mcp_cli_configs_multiple_options(self) -> None:
+        """Multiple options in MCP_CLI_CONFIGS each override their field to True when at default."""
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_CLI_CONFIGS": (
+                    "dynamic_tools,dynamic_prompts,gdrive,jira,"
+                    "confluence,microsoft_graph,predictive"
+                )
+            },
+            clear=True,
+        ):
+            self._reset_config()
+            config = get_config()
+            assert config.mcp_server_register_dynamic_tools_on_startup is True
+            assert config.mcp_server_register_dynamic_prompts_on_startup is True
+            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is True
+            assert config.tool_config.enable_confluence_tools is True
+            assert config.tool_config.enable_microsoft_graph_tools is True
+            self._reset_config()
+
+    def test_mcp_cli_configs_case_insensitive(self) -> None:
+        """MCP_CLI_CONFIGS option names are case-insensitive."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "GDRIVE,Jira"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is True
+            self._reset_config()
+
+    def test_mcp_cli_configs_whitespace_stripped(self) -> None:
+        """Whitespace around options in MCP_CLI_CONFIGS is stripped."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "  gdrive  ,  jira  "}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is True
+            self._reset_config()
+
+    def test_individual_env_takes_precedence_unprefixed(self) -> None:
+        """When individual env var is set, MCP_CLI_CONFIGS does not override that field."""
+        with patch.dict(
+            os.environ,
+            {"MCP_CLI_CONFIGS": "gdrive,jira", "ENABLE_GDRIVE_TOOLS": "false"},
+            clear=True,
+        ):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is False
+            assert config.tool_config.enable_jira_tools is True
+            self._reset_config()
+
+    def test_individual_env_takes_precedence_runtime_param_prefix(self) -> None:
+        """When MLOPS_RUNTIME_PARAM_* env is set, MCP_CLI_CONFIGS does not override that field."""
+        with patch.dict(
+            os.environ,
+            {"MCP_CLI_CONFIGS": "gdrive", "MLOPS_RUNTIME_PARAM_ENABLE_GDRIVE_TOOLS": "false"},
+            clear=True,
+        ):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is False
+            self._reset_config()
+
+    def test_individual_env_true_with_mcp_cli_configs(self) -> None:
+        """Env true for field not in list unchanged; when in list, env wins."""
+        with patch.dict(
+            os.environ,
+            {"MCP_CLI_CONFIGS": "jira", "ENABLE_GDRIVE_TOOLS": "true"},
+            clear=True,
+        ):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is True
+            self._reset_config()
+
+    def test_option_not_in_mcp_cli_configs_never_overridden(self) -> None:
+        """Options not in MCP_CLI_CONFIGS stay at default; only listed ones set True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "gdrive"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_gdrive_tools is True
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_confluence_tools is False
+            assert config.mcp_server_register_dynamic_prompts_on_startup is False
+            self._reset_config()
+
+    def test_predictive_default_true_stays_true_when_in_mcp_cli_configs(self) -> None:
+        """Predictive has default True; when in MCP_CLI_CONFIGS and no env, stays True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "predictive"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_predictive_tools is True
+            self._reset_config()
+
+    def test_dynamic_prompts_override_when_in_mcp_cli_configs(self) -> None:
+        """dynamic_prompts default False; when in MCP_CLI_CONFIGS and no env, becomes True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "dynamic_prompts"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.mcp_server_register_dynamic_prompts_on_startup is True
+            self._reset_config()
+
+    def test_individual_env_false_for_option_in_mcp_cli_configs_respected(self) -> None:
+        """ENABLE_JIRA_TOOLS=false with jira in MCP_CLI_CONFIGS: env wins (no override)."""
+        with patch.dict(
+            os.environ,
+            {"MCP_CLI_CONFIGS": "jira,gdrive", "ENABLE_JIRA_TOOLS": "false"},
+            clear=True,
+        ):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_jira_tools is False
+            assert config.tool_config.enable_gdrive_tools is True
+            self._reset_config()
+
+    def test_mcp_cli_configs_value_comes_from_config_loading(self) -> None:
+        """mcp_cli_configs is populated from env (MCP_CLI_CONFIGS) like other config fields."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "gdrive,jira"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.mcp_cli_configs.strip().lower() == "gdrive,jira"
+            self._reset_config()

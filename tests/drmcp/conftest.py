@@ -19,8 +19,20 @@ from unittest.mock import patch
 
 import datarobot as dr
 import pytest
+from datarobot.context import Context as DRContext
 
-from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.core.credentials import get_credentials
+
+
+def _make_dr_client() -> Any:
+    """Build DataRobot client from credentials (env). No HTTP context in pytest."""
+    creds = get_credentials()
+    token = creds.datarobot.application_api_token
+    if not token:
+        raise ValueError("Integration tests need DATAROBOT_API_TOKEN environment variable set.")
+    dr.Client(token=token, endpoint=creds.datarobot.endpoint)
+    DRContext.use_case = None
+    return dr
 
 
 @pytest.fixture(scope="session")
@@ -29,11 +41,14 @@ def test_data_dir() -> Path:
     return Path("tests/data")
 
 
-# Only used for fixtures, the tests use the MCP session directly
+# Only used for fixtures, the tests use the MCP session directly. No HTTP context in pytest,
+# so build the client from credentials (env). Patch get_sdk_client so code under test gets it too.
 @pytest.fixture(scope="session")
 def dr_client() -> Any:
     """Get DataRobot client for integration tests."""
-    return get_sdk_client()
+    client = _make_dr_client()
+    with patch("datarobot_genai.drmcp.core.clients.get_sdk_client", return_value=client):
+        yield client
 
 
 @pytest.fixture(scope="session")

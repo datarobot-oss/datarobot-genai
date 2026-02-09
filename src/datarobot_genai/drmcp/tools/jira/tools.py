@@ -19,7 +19,7 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drmcp.tools.clients.jira import JiraClient
 
