@@ -76,7 +76,7 @@ nat = [
   "anyio==4.11.0",
 ]
 pydanticai = [
-  "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
+  "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<2.0.0",
 ]
 drmcp = [
   "datarobot-asgi-middleware>=0.2.0,<1.0.0",
