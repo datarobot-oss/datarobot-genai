@@ -16,10 +16,11 @@ from collections.abc import AsyncGenerator
 from collections.abc import Iterator
 from typing import Any
 
-from datarobot_genai.core.chat import CustomModelChatResponse
-from datarobot_genai.core.chat import CustomModelStreamingResponse
 from datarobot_genai.core.custom_model import chat_entrypoint
 from datarobot_genai.core.custom_model import load_model
+
+from datarobot_genai.core.chat import CustomModelChatResponse
+from datarobot_genai.core.chat import CustomModelStreamingResponse
 
 
 class _DummyAgent:

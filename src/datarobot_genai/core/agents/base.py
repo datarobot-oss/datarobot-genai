@@ -18,16 +18,14 @@ import abc
 import json
 import os
 from collections.abc import AsyncGenerator
-from collections.abc import Mapping
 from typing import Any
 from typing import Generic
 from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
-from typing import cast
 
 from ag_ui.core import Event
-from openai.types.chat import CompletionCreateParams
+from ag_ui.core import RunAgentInput
 from ragas import MultiTurnSample
 
 from datarobot_genai.core.utils.auth import prepare_identity_header
@@ -103,7 +101,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         return get_api_base(self.api_base, deployment_id)
 
     @abc.abstractmethod
-    async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
+    async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
 
     @classmethod
@@ -118,14 +116,12 @@ class BaseAgent(Generic[TTool], abc.ABC):
 
 
 def extract_user_prompt_content(
-    completion_create_params: CompletionCreateParams | Mapping[str, Any],
+    run_agent_input: RunAgentInput,
 ) -> Any:
-    """Extract first user message content from OpenAI messages."""
-    params = cast(Mapping[str, Any], completion_create_params)
-    user_messages = [msg for msg in params.get("messages", []) if msg.get("role") == "user"]
+    """Extract first user message content from input."""
+    user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]
     # Get the last user message
-    user_prompt = user_messages[-1] if user_messages else {}
-    content = user_prompt.get("content", {})
+    content: str = user_messages[-1].content if user_messages else ""
     # Try converting prompt from json to a dict
     if isinstance(content, str):
         try:
@@ -171,11 +167,10 @@ class UsageMetrics(TypedDict):
     total_tokens: int
 
 
-# Canonical return type for DRUM-compatible invoke implementations
-InvokeReturn: TypeAlias = (
-    AsyncGenerator[tuple[str | Event, MultiTurnSample | None, UsageMetrics], None]
-    | tuple[str, MultiTurnSample | None, UsageMetrics]
-)
+# Canonical return type for all agent invoke implementations
+InvokeReturn: TypeAlias = AsyncGenerator[
+    tuple[str | Event, MultiTurnSample | None, UsageMetrics], None
+]
 
 
 def default_usage_metrics() -> UsageMetrics:
@@ -185,16 +180,3 @@ def default_usage_metrics() -> UsageMetrics:
         "prompt_tokens": 0,
         "total_tokens": 0,
     }
-
-
-def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str, Any]) -> bool:
-    """Return True when the request asks for streaming, False otherwise.
-
-    Accepts both pydantic types and plain dictionaries.
-    """
-    params = cast(Mapping[str, Any], completion_create_params)
-    value = params.get("stream", False)
-    # Handle non-bool truthy values defensively (e.g., "true")
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return bool(value)
