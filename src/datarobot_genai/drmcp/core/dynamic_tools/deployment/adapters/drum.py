@@ -30,6 +30,7 @@ class DrumTargetType(str, Enum):
     ANOMALY = "anomaly"
     UNSTRUCTURED = "unstructured"
     MULTICLASS = "multiclass"
+    MULTILABEL = "multilabel"
     TEXT_GENERATION = "textgeneration"
     GEO_POINT = "geopoint"
     VECTOR_DATABASE = "vectordatabase"
@@ -43,6 +44,7 @@ class DrumTargetType(str, Enum):
             DrumTargetType.REGRESSION,
             DrumTargetType.ANOMALY,
             DrumTargetType.MULTICLASS,
+            DrumTargetType.MULTILABEL,
             DrumTargetType.TEXT_GENERATION,
             DrumTargetType.GEO_POINT,
             DrumTargetType.VECTOR_DATABASE,
@@ -195,6 +197,7 @@ class DrumMetadataAdapter(MetadataBase):
             DrumTargetType.REGRESSION: predictions_endpoint,
             DrumTargetType.ANOMALY: predictions_endpoint,
             DrumTargetType.MULTICLASS: predictions_endpoint,
+            DrumTargetType.MULTILABEL: predictions_endpoint,
             DrumTargetType.TEXT_GENERATION: predictions_endpoint,
             DrumTargetType.GEO_POINT: predictions_endpoint,
             DrumTargetType.UNSTRUCTURED: "/predictionsUnstructured",
