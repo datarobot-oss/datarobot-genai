@@ -17,15 +17,17 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 import pandas as pd
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
+from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel
 
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
-from datarobot_genai.drmcp.core.utils import PredictionResponse
 from datarobot_genai.drmcp.core.utils import predictions_result_response
 from datarobot_genai.drmcp.tools.clients.s3 import get_s3_bucket_info
 
@@ -43,29 +45,25 @@ def make_output_settings() -> BucketInfo:
     return BucketInfo(bucket=bucket_info["bucket"], key=s3_key)
 
 
-@dr_mcp_tool(tags={"prediction", "realtime", "scoring"})
+@dr_mcp_tool(tags={"prediction", "realtime", "read", "scoring"})
 async def predict_by_ai_catalog_rt(
-    deployment_id: str,
-    dataset_id: str,
-    timeout: int = 600,
-) -> PredictionResponse:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
+    | None = None,
+    dataset_id: Annotated[str, "ID of an AI Catalog item to use as input data"] | None = None,
+    timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
+) -> ToolError | ToolResult:
     """
     Make real-time predictions using a DataRobot deployment and an AI Catalog dataset using the
     datarobot-predict library.
     Use this for fast results when your data is not huge (not gigabytes). Results larger than 1MB
     will be returned as a resource id and S3 URL; smaller results will be returned inline as a CSV
     string.
-
-    Args:
-        deployment_id: The ID of the DataRobot deployment to use for prediction.
-        dataset_id: ID of an AI Catalog item to use as input data.
-        timeout: Timeout in seconds for the prediction job (default 600).
-
-    Returns
-    -------
-        dict: {"type": "inline", "data": csv_str} for small results (<1MB), or {"type": "resource",
-        "resource_id": ..., "s3_url": ...} for large results (>=1MB).
     """
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+    if not dataset_id:
+        raise ToolError("Dataset ID must be provided")
+
     client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
 
@@ -94,36 +92,117 @@ async def predict_by_ai_catalog_rt(
         df = pd.read_csv(url)
 
     deployment = client.Deployment.get(deployment_id=deployment_id)
-    result = dr_predict(deployment, df, timeout=timeout)
+    result = dr_predict(deployment, df, timeout=timeout or 600)
     predictions = result.dataframe
     bucket_info = make_output_settings()
-    return predictions_result_response(
+    prediction_results = predictions_result_response(
         predictions,
         bucket_info.bucket,
         bucket_info.key,
         f"pred_{deployment_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         True,
     )
+    content = (
+        prediction_results.model_dump()
+        if hasattr(prediction_results, "model_dump")
+        else prediction_results
+        if isinstance(prediction_results, dict)
+        else prediction_results.__dict__
+    )
+    return ToolResult(structured_content=content)
 
 
-@dr_mcp_tool(tags={"prediction", "realtime", "scoring"})
+@dr_mcp_tool(tags={"prediction", "realtime", "read", "scoring"})
 async def predict_realtime(
-    deployment_id: str,
-    file_path: str | None = None,
-    dataset: str | None = None,
-    forecast_point: str | None = None,
-    forecast_range_start: str | None = None,
-    forecast_range_end: str | None = None,
-    series_id_column: str | None = None,
-    max_explanations: int | str = 0,
-    max_ngram_explanations: int | str | None = None,
-    threshold_high: float | None = None,
-    threshold_low: float | None = None,
-    passthrough_columns: str | None = None,
-    explanation_algorithm: str | None = None,
-    prediction_endpoint: str | None = None,
-    timeout: int = 600,
-) -> PredictionResponse:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
+    | None = None,
+    file_path: Annotated[
+        str,
+        """Path to a CSV file to use as input data. For time series with forecast_point,
+        must have at least 4 historical values within the feature derivation window.""",
+    ]
+    | None = None,
+    dataset: Annotated[
+        str,
+        """CSV or JSON string representing the input data.
+        If provided, this takes precedence over file_path.""",
+    ]
+    | None = None,
+    forecast_point: Annotated[
+        str,
+        """Date to start forecasting from (e.g., '2024-06-01').
+        If provided, triggers time series FORECAST mode. Uses most recent date if None.""",
+    ]
+    | None = None,
+    forecast_range_start: Annotated[
+        str,
+        """Start date for historical predictions (e.g., '2024-06-01').
+        Must be used with forecast_range_end for HISTORICAL mode.""",
+    ]
+    | None = None,
+    forecast_range_end: Annotated[
+        str,
+        """End date for historical predictions (e.g., '2024-06-07').
+        Must be used with forecast_range_start for HISTORICAL mode.""",
+    ]
+    | None = None,
+    series_id_column: Annotated[
+        str,
+        """Column name identifying different series (e.g., 'store_id', 'region').
+        Must exist in the input data.""",
+    ]
+    | None = None,
+    max_explanations: Annotated[
+        int,
+        """Number of prediction explanations to return per prediction.
+        - 0: No explanations (default)
+        - Positive integer: Specific number of explanations
+        - 'all': All available explanations (SHAP only)
+        Note: For SHAP, 0 means all explanations; for XEMP, 0 means none.""",
+    ]
+    | None = 0,
+    max_ngram_explanations: Annotated[
+        int,
+        """Maximum number of text explanations per prediction.
+        Recommended: 'all' for text models. None disables text explanations.""",
+    ]
+    | None = None,
+    threshold_high: Annotated[
+        float,
+        """Only compute explanations for predictions above this threshold (0.0-1.0).
+        Useful for focusing explanations on high-confidence predictions.""",
+    ]
+    | None = None,
+    threshold_low: Annotated[
+        float,
+        """Only compute explanations for predictions below this threshold (0.0-1.0).
+        Useful for focusing explanations on low-confidence predictions.""",
+    ]
+    | None = None,
+    passthrough_columns: Annotated[
+        str,
+        """Input columns to include in output alongside predictions.
+        - 'all': Include all input columns
+        - 'column1,column2': Comma-separated list of specific columns
+        - None: No passthrough columns (default)""",
+    ]
+    | None = None,
+    explanation_algorithm: Annotated[
+        str,
+        """Algorithm for computing explanations.
+        - 'shap': SHAP explanations (default for most models)
+        - 'xemp': XEMP explanations (faster, less accurate)
+        - None: Use deployment default""",
+    ]
+    | None = None,
+    prediction_endpoint: Annotated[
+        str,
+        """Override the prediction server endpoint URL.
+        Useful for custom prediction servers or Portable Prediction Server.""",
+    ]
+    | None = None,
+    timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
+) -> ToolError | ToolResult:
     """
     Make real-time predictions using a DataRobot deployment and a local CSV file or a dataset
     string.
@@ -144,85 +223,12 @@ async def predict_realtime(
     try to infer or ask for a reasonable value, using frequent values or domain knowledge if
     available.
     For less important features, you may leave them blank.
-
-    Args:
-        deployment_id: The ID of the DataRobot deployment to use for prediction.
-        file_path: Path to a CSV file to use as input data. For time series with forecast_point,
-                   must have at least 4 historical values within the feature derivation window.
-        dataset: (Optional) CSV or JSON string representing the input data. If provided, this
-            takes precedence over file_path.
-        forecast_point: (Time Series) Date to start forecasting from (e.g., "2024-06-01").
-                        If provided, triggers time series FORECAST mode. Uses most recent date if
-                        None.
-        forecast_range_start: (Time Series) Start date for historical predictions (e.g.,
-            "2024-06-01").
-                              Must be used with forecast_range_end for HISTORICAL mode.
-        forecast_range_end: (Time Series) End date for historical predictions (e.g., "2024-06-07").
-                            Must be used with forecast_range_start for HISTORICAL mode.
-        series_id_column: (Multiseries Time Series) Column name identifying different series
-                          (e.g., "store_id", "region"). Must exist in the input data.
-        max_explanations: Number of prediction explanations to return per prediction.
-                          - 0: No explanations (default)
-                          - Positive integer: Specific number of explanations
-                          - "all": All available explanations (SHAP only)
-                          Note: For SHAP, 0 means all explanations; for XEMP, 0 means none.
-        max_ngram_explanations: (Text Models) Maximum number of text explanations per prediction.
-                                Recommended: "all" for text models. None disables text explanations.
-        threshold_high: Only compute explanations for predictions above this threshold (0.0-1.0).
-                        Useful for focusing explanations on high-confidence predictions.
-        threshold_low: Only compute explanations for predictions below this threshold (0.0-1.0).
-                       Useful for focusing explanations on low-confidence predictions.
-        passthrough_columns: Input columns to include in output alongside predictions.
-                             - "all": Include all input columns
-                             - "column1,column2": Comma-separated list of specific columns
-                             - None: No passthrough columns (default)
-        explanation_algorithm: Algorithm for computing explanations.
-                               - "shap": SHAP explanations (default for most models)
-                               - "xemp": XEMP explanations (faster, less accurate)
-                               - None: Use deployment default
-        prediction_endpoint: Override the prediction server endpoint URL.
-                             Useful for custom prediction servers or Portable Prediction Server.
-        timeout: Request timeout in seconds (default 600).
-
-    Returns
-    -------
-        dict: Prediction response with the following structure:
-        - {"type": "inline", "data": "csv_string"} for results < 1MB
-        - {"type": "resource", "resource_id": "...", "s3_url": "..."} for results >= 1MB
-
-        The CSV data contains:
-        - Prediction columns (e.g., class probabilities, regression values)
-        - Explanation columns (if max_explanations > 0)
-        - Passthrough columns (if specified)
-        - Time series metadata (for forecasting: FORECAST_POINT, FORECAST_DISTANCE, etc.)
-
-    Examples
-    --------
-        # Regular binary classification
-        predict_realtime(deployment_id="abc123", file_path="data.csv")
-
-        # With SHAP explanations
-        predict_realtime(deployment_id="abc123", file_path="data.csv",
-                        max_explanations=10, explanation_algorithm="shap")
-
-        # Time series forecasting
-        predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
-                        forecast_point="2024-06-01")
-
-        # Multiseries time series
-        predict_realtime(deployment_id="abc123", file_path="multiseries.csv",
-                        forecast_point="2024-06-01", series_id_column="store_id")
-
-        # Historical time series predictions
-        predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
-                        forecast_range_start="2024-06-01",
-                        forecast_range_end="2024-06-07")
-
-        # Text model with explanations and passthrough
-        predict_realtime(deployment_id="abc123", file_path="text_data.csv",
-                        max_explanations="all", max_ngram_explanations="all",
-                        passthrough_columns="document_id,customer_id")
     """
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+    if not dataset and not file_path:
+        raise ToolError("Either dataset or file_path must be provided")
+
     # Load input data from dataset string or file_path
     if dataset is not None:
         # Try CSV first
@@ -301,10 +307,18 @@ async def predict_realtime(
     result = dr_predict(**predict_kwargs)
     predictions = result.dataframe
     bucket_info = make_output_settings()
-    return predictions_result_response(
+    prediction_results = predictions_result_response(
         predictions,
         bucket_info.bucket,
         bucket_info.key,
         f"pred_{deployment_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         max_explanations not in {0, "0"},
     )
+    content = (
+        prediction_results.model_dump()
+        if hasattr(prediction_results, "model_dump")
+        else prediction_results
+        if isinstance(prediction_results, dict)
+        else prediction_results.__dict__
+    )
+    return ToolResult(structured_content=content)
