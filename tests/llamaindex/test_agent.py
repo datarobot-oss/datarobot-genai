@@ -14,12 +14,23 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
+from llama_index.core.agent.workflow import AgentInput
+from llama_index.core.agent.workflow import AgentOutput
+from llama_index.core.agent.workflow import AgentStream
+from llama_index.core.agent.workflow import ToolCall
+from llama_index.core.agent.workflow import ToolCallResult
+from llama_index.core.agent.workflow.workflow_events import AgentWorkflowStartEvent
+from llama_index.core.llms import ChatMessage
+from llama_index.core.llms import MessageRole
+from llama_index.core.tools import ToolOutput
+from llama_index.core.tools import ToolSelection
+from ragas import MultiTurnSample
 
-from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.llama_index import agent as agent_mod
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
@@ -93,73 +104,120 @@ def test_create_pipeline_interactions_from_events_none() -> None:
 # --- Tests for LlamaIndexAgent ---
 
 
-@pytest.mark.asyncio
-async def test_llama_index_agent_invoke(monkeypatch: Any) -> None:
-    captured: dict[str, Any] = {}
-    captured["events"] = None
+@pytest.fixture
+def run_agent_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[UserMessage(content="{}", id="message_id")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
 
-    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
-        captured["events"] = events
-        return {"ok": True}
 
-    # Mock load_mcp_tools to return empty list
+@pytest.fixture
+def events() -> list[Any]:
+    return [
+        AgentWorkflowStartEvent(),
+        AgentInput(
+            input=[ChatMessage(content="{'input': 'say hello world'}", role=MessageRole.USER)],
+            current_agent_name="Agent 1",
+        ),
+        AgentStream(delta="Hello ", response="", current_agent_name="Agent 1"),
+        AgentStream(delta="World\n", response="", current_agent_name="Agent 1"),
+        AgentOutput(
+            response=ChatMessage(content="Hello World", role=MessageRole.ASSISTANT),
+            current_agent_name="Agent 1",
+        ),
+        AgentInput(
+            input=[
+                ChatMessage(content="{'input': 'say hello world'}", role=MessageRole.USER),
+                ChatMessage(content="Hello World", role=MessageRole.ASSISTANT),
+            ],
+            current_agent_name="Agent 2",
+        ),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="Agent 2",
+            tool_calls=[ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")],
+        ),
+        ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+        ToolCallResult(
+            tool_name="tool1",
+            tool_kwargs={"a": 1},
+            tool_id="tool1",
+            tool_output=ToolOutput(
+                tool_name="tool1",
+                content="Hello World",
+                raw_input={"a": 1},
+                raw_output="Hello World",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        AgentStream(delta="Hello ", response="", current_agent_name="Agent 2"),
+        AgentStream(delta="World Again\n", response="", current_agent_name="Agent 2"),
+        AgentOutput(
+            response=ChatMessage(content="Hello World Again", role=MessageRole.ASSISTANT),
+            current_agent_name="Agent 2",
+        ),
+    ]
+
+
+@pytest.fixture
+def workflow(events: list[Any]) -> Workflow:
+    return Workflow(events=events, state="S")
+
+
+@pytest.fixture
+def agent(workflow: Workflow) -> MyLlamaAgent:
+    forwarded_headers = {
+        "x-datarobot-api-key": "scoped-token-123",
+    }
+    return MyLlamaAgent(workflow, forwarded_headers=forwarded_headers)
+
+
+@pytest.fixture
+def mock_load_mcp_tools(monkeypatch: Any) -> None:
     async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
         return []
 
-    monkeypatch.setattr(
-        agent_mod,
-        "create_pipeline_interactions_from_events",
-        fake_create_pipeline_interactions,
-        raising=True,
-    )
     monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
 
-    workflow = Workflow(events=[{"e": 1}, {"e": 2}], state="S")
-    agent = MyLlamaAgent(workflow)
 
-    resp = await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
-    response_text, interactions, usage = cast(tuple[str, object, UsageMetrics], resp)
+@pytest.mark.usefixtures("mock_load_mcp_tools")
+async def test_llama_index_agent_invoke(
+    agent: MyLlamaAgent, run_agent_input: RunAgentInput
+) -> None:
+    # GIVEN: fake agent with fake workflow and some events
+    # WHEN: invoke the agent with a run agent input
+    resp = agent.invoke(run_agent_input)
 
-    assert response_text == "S:2"
-    assert interactions == {"ok": True}
-    assert captured["events"] == [{"e": 1}, {"e": 2}]
-    assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
-    assert agent.mcp_tools == []
+    # THEN: the response is an async generator
+    assert isinstance(resp, AsyncGenerator)
+    events = [event async for event in resp]
+
+    # THEN: the events are tuples of (delta, None, UsageMetrics)
+    deltas, pipeline_interactions, usage = zip(*events)
+
+    # THEN: the deltas are the expected deltas
+    assert deltas == ("Hello ", "World\n", "Hello ", "World Again\n", "")
+
+    # THEN: the last pipeline interaction is the expected pipeline interaction
+    assert isinstance(pipeline_interactions[-1], MultiTurnSample)
+
+    # THEN: the last usage is the expected usage
+    assert usage[-1] == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
 
-@pytest.mark.asyncio
-async def test_llama_index_agent_invoke_with_mcp_tools(monkeypatch: Any) -> None:
+async def test_llama_index_agent_invoke_with_mcp_tools(
+    monkeypatch: Any, agent: MyLlamaAgent, run_agent_input: RunAgentInput
+) -> None:
     """Test that MCP tools are loaded and available via mcp_tools property."""
+    # GIVEN: fake mcp tools
     mock_tools = [MagicMock(), MagicMock()]
-
-    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
-        return mock_tools
-
-    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
-        return {"ok": True}
-
-    monkeypatch.setattr(
-        agent_mod,
-        "create_pipeline_interactions_from_events",
-        fake_create_pipeline_interactions,
-        raising=True,
-    )
-    monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
-
-    workflow = Workflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow)
-
-    await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
-
-    # Verify MCP tools were loaded and are accessible
-    assert agent.mcp_tools == mock_tools
-    assert len(agent.mcp_tools) == 2
-
-
-@pytest.mark.asyncio
-async def test_llama_index_agent_passes_forwarded_headers_to_mcp(monkeypatch: Any) -> None:
-    """Test that LlamaIndex agent passes forwarded headers to MCP tools loading."""
-    mock_tools = [MagicMock()]
 
     mcp_calls = []
 
@@ -167,83 +225,18 @@ async def test_llama_index_agent_passes_forwarded_headers_to_mcp(monkeypatch: An
         mcp_calls.append(kwargs)
         return mock_tools
 
-    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
-        return {"ok": True}
-
-    monkeypatch.setattr(
-        agent_mod,
-        "create_pipeline_interactions_from_events",
-        fake_create_pipeline_interactions,
-        raising=True,
-    )
     monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
 
-    forwarded_headers = {
+    # WHEN: invoke the agent with a run agent input and get the events
+    gen = agent.invoke(run_agent_input)
+    [event async for event in gen]
+
+    # THEN: MCP tools were loaded and are accessible
+    assert agent.mcp_tools == mock_tools
+    assert len(agent.mcp_tools) == 2
+
+    # THEN: load_mcp_tools was called with forwarded headers
+    assert len(mcp_calls) == 1
+    assert mcp_calls[0]["forwarded_headers"] == {
         "x-datarobot-api-key": "scoped-token-123",
     }
-
-    workflow = Workflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow, forwarded_headers=forwarded_headers)
-
-    await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
-
-    # Verify load_mcp_tools was called with forwarded headers
-    assert len(mcp_calls) == 1
-    assert mcp_calls[0]["forwarded_headers"] == forwarded_headers
-
-
-@pytest.mark.asyncio
-async def test_llama_index_agent_invoke_branches(monkeypatch: Any) -> None:
-    captured: dict[str, Any] = {}
-    captured["events"] = None
-
-    def fake_create_pipeline_interactions(events: list[Any]) -> Any:  # noqa: ANN401
-        captured["events"] = events
-        return {"ok": True}
-
-    monkeypatch.setattr(
-        agent_mod,
-        "create_pipeline_interactions_from_events",
-        fake_create_pipeline_interactions,
-        raising=True,
-    )
-
-    # Build events to exercise additional non-streaming branches
-    agent_input_cls = type("AgentInput", (), {})
-    agent_output_cls = type("AgentOutput", (), {})
-    tool_call_cls = type("ToolCall", (), {})
-    tool_call_result_cls = type("ToolCallResult", (), {})
-
-    ai = agent_input_cls()
-    ai.input = "q"  # type: ignore[attr-defined]
-    ao = agent_output_cls()
-    ao.response = type("Resp", (), {"content": "c"})()  # type: ignore[attr-defined]
-    # Include dict-style tool call to hit dict name extraction path
-    ao.tool_calls = [{"tool_name": "t1"}]  # type: ignore[attr-defined]
-    tc = tool_call_cls()
-    tc.tool_name = "t2"
-    tc.tool_kwargs = {"a": 1}  # type: ignore[attr-defined]
-    tcr = tool_call_result_cls()
-    tcr.tool_name = "t2"
-    tcr.tool_output = "out"  # type: ignore[attr-defined]
-
-    events: list[Any] = [
-        type("Banner", (), {"current_agent_name": "beta"})(),
-        type("Delta", (), {"delta": "x"})(),
-        type("Text", (), {"text": "y"})(),
-        ai,
-        ao,
-        tc,
-        tcr,
-    ]
-
-    workflow = Workflow(events=events, state="S2")
-    agent = MyLlamaAgent(workflow)
-
-    resp = await agent.invoke({"model": "m", "messages": [{"role": "user", "content": "{}"}]})
-    response_text, interactions, usage = cast(tuple[str, object, UsageMetrics], resp)
-
-    assert response_text == "S2:7"
-    assert interactions == {"ok": True}
-    assert captured["events"] == events
-    assert usage == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}

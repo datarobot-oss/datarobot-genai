@@ -103,9 +103,9 @@ async def agent_chat_completion_wrapper(
     run_agent_input = convert_chat_completion_params_to_run_agent_input(chat_completion_params)
 
     if is_streaming(chat_completion_params):
-        return await agent.invoke(run_agent_input)
+        return agent.invoke(run_agent_input)
     else:
-        all_events = [event async for event in await agent.invoke(run_agent_input)]
+        all_events = [event async for event in agent.invoke(run_agent_input)]
         _, pipeline_interactions, usage_metrics = all_events[-1]
         final_response = ""
         for event, _, _ in all_events:

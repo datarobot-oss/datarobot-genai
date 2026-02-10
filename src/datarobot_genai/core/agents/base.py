@@ -101,7 +101,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         return get_api_base(self.api_base, deployment_id)
 
     @abc.abstractmethod
-    async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
+    def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
 
     @classmethod

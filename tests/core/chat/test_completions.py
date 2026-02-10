@@ -171,11 +171,8 @@ class TestAGUIAgent(BaseAgent):
             ),
         ]
 
-        async def generator():
-            for event in events:
-                yield event
-
-        return generator()
+        for event in events:
+            yield event
 
 
 async def test_agent_chat_completion_wrapper_streaming() -> None:
