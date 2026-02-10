@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
+import json
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Optional
@@ -28,7 +30,11 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.tools import BaseTool
+from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import BaseMessage
+from langchain_core.messages import HumanMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
@@ -48,6 +54,18 @@ logger = logging.getLogger(__name__)
 
 
 class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
+    """Base class for LangGraph-powered agents.
+
+    This class wires LangGraph workflows into the generic `BaseAgent` interface
+    and provides a default implementation for turning OpenAI-style chat inputs
+    into a `MessagesState` for the graph.
+    """
+
+    #: Maximum number of prior messages to include in the LangGraph history.
+    #: This acts as a safety limit to avoid unbounded context growth when
+    #: callers send very long transcripts. Subclasses may override.
+    MAX_HISTORY_MESSAGES: int = 50
+
     @property
     @abc.abstractmethod
     def workflow(self) -> StateGraph[MessagesState]:
@@ -64,21 +82,95 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
+    @staticmethod
+    def _stringify_message_content(content: Any) -> str:
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        try:
+            return json.dumps(content)
+        except TypeError:
+            return str(content)
+
+    def _convert_history_messages(self, run_agent_input: RunAgentInput) -> list[BaseMessage]:
+        """Convert prior turns into LangChain messages for LangGraph history.
+
+        We treat everything before the last user message (if any) as "history"
+        and append the current user turn via the `prompt_template` to preserve
+        existing single-turn behaviour.
+        """
+        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
+        if not raw_messages:
+            return []
+
+        # Find the index of the last user message, if any.
+        last_user_index = -1
+        for idx, message in enumerate(raw_messages):
+            if getattr(message, "role", None) == "user":
+                last_user_index = idx
+
+        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
+
+        # Keep only the most recent N messages in history to avoid unbounded growth.
+        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
+        if max_history and len(history_slice) > max_history:
+            history_slice = history_slice[-max_history:]
+
+        history_messages: list[BaseMessage] = []
+        for message in history_slice:
+            role = getattr(message, "role", None)
+            content = getattr(message, "content", None)
+            text = self._stringify_message_content(content)
+
+            if role in ("system", "developer"):
+                history_messages.append(SystemMessage(content=text))
+            elif role == "assistant":
+                history_messages.append(AIMessage(content=text))
+            elif role == "tool":
+                # ag-ui uses `toolCallId` (camelCase); keep best-effort compatibility.
+                tool_call_id = getattr(message, "toolCallId", None) or getattr(
+                    message, "tool_call_id", None
+                )
+                if tool_call_id:
+                    history_messages.append(
+                        ToolMessage(content=text, tool_call_id=str(tool_call_id))
+                    )
+                else:
+                    # If there is no tool_call_id, treat tool output as assistant context.
+                    history_messages.append(AIMessage(content=text))
+            elif role == "user":
+                history_messages.append(HumanMessage(content=text))
+            else:
+                # Fallback to user role to avoid silently dropping context.
+                history_messages.append(HumanMessage(content=text))
+
+        return history_messages
+
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+        """Convert AG-UI input into a LangGraph `Command`.
+
+        By default this:
+        - Preserves prior turns (up to ``MAX_HISTORY_MESSAGES``) as LangChain
+          messages so the workflow sees multi-turn context.
+        - Extracts the last user message content via `extract_user_prompt_content`
+          and feeds it through `prompt_template` to build the current turn.
+        """
+        history_messages = self._convert_history_messages(run_agent_input)
         user_prompt = extract_user_prompt_content(run_agent_input)
+        current_messages = self.prompt_template.invoke(user_prompt).to_messages()
         command = Command(  # type: ignore[var-annotated]
             update={
-                "messages": self.prompt_template.invoke(user_prompt).to_messages(),
+                "messages": history_messages + current_messages,
             },
         )
         return command
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        """Run the agent with the provided completion parameters.
+        """Run the agent with the provided input.
 
         Args:
-            completion_create_params: The completion request parameters including input topic and
-            settings.
+            run_agent_input: The agent run input.
 
         Returns
         -------
