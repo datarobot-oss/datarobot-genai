@@ -100,7 +100,7 @@ def wait_for_preds_and_cache_results(
     job.wait_for_completion(timeout)
     if job.status in ["ERROR", "FAILED", "ABORTED"]:
         logger.error(f"Job failed with status {job.status}")
-        return ToolError(f"Job failed with status {job.status}")
+        raise ToolError(f"Job failed with status {job.status}")
     return _handle_prediction_resource(job, bucket, key, deployment_id, input_desc)
 
 
