@@ -206,8 +206,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         # TODO: find a way to count usage
         yield "", pipeline_interactions, usage_metrics
 
+    @classmethod
     def create_pipeline_interactions_from_events(
-        self,
+        cls,
         events: list[Event] | None,
     ) -> MultiTurnSample | None:
         if not events:
