@@ -52,24 +52,6 @@ class DataRobotLiteLLM(LiteLLM):
         )
 
 
-def create_pipeline_interactions_from_events(
-    events: list[Event] | None,
-) -> MultiTurnSample | None:
-    if not events:
-        return None
-    # Lazy import to reduce memory overhead when ragas is not used
-    from ragas import MultiTurnSample
-    from ragas.integrations.llama_index import convert_to_ragas_messages
-    from ragas.messages import AIMessage
-    from ragas.messages import HumanMessage
-    from ragas.messages import ToolMessage
-
-    # convert_to_ragas_messages expects a list[Event]
-    ragas_trace = convert_to_ragas_messages(list(events))
-    ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
-    return MultiTurnSample(user_input=ragas_messages)
-
-
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
 
@@ -218,8 +200,26 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         # Run subclass-defined response extraction (not streamed) for completeness
         _ = self.extract_response_text(state, events)
 
-        pipeline_interactions = create_pipeline_interactions_from_events(events)
+        pipeline_interactions = self.create_pipeline_interactions_from_events(events)
         # Final empty chunk indicates end of stream, carrying interactions and usage
         # Usage is empty because llamaindex does not report it
         # TODO: find a way to count usage
         yield "", pipeline_interactions, usage_metrics
+
+    def create_pipeline_interactions_from_events(
+        self,
+        events: list[Event] | None,
+    ) -> MultiTurnSample | None:
+        if not events:
+            return None
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+        from ragas.integrations.llama_index import convert_to_ragas_messages
+        from ragas.messages import AIMessage
+        from ragas.messages import HumanMessage
+        from ragas.messages import ToolMessage
+
+        # convert_to_ragas_messages expects a list[Event]
+        ragas_trace = convert_to_ragas_messages(list(events))
+        ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
+        return MultiTurnSample(user_input=ragas_messages)

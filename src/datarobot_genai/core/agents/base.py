@@ -18,18 +18,22 @@ import abc
 import json
 import os
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
+from typing import Optional
 from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
 
@@ -169,7 +173,7 @@ class UsageMetrics(TypedDict):
 
 # Canonical return type for all agent invoke implementations
 InvokeReturn: TypeAlias = AsyncGenerator[
-    tuple[str | Event, MultiTurnSample | None, UsageMetrics], None
+    tuple[str | Event, Optional["MultiTurnSample"], UsageMetrics], None
 ]
 
 
