@@ -21,6 +21,7 @@ from typing import cast
 
 from ag_ui.core import RunAgentInput
 from llama_index.core.base.llms.types import LLMMetadata
+from llama_index.core.chat_engine.types import ChatMessage
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
 from llama_index.llms.litellm import LiteLLM
@@ -59,6 +60,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         super().__init__(*args, **kwargs)
         self._mcp_tools: list[Any] = []
 
+    #: Maximum number of prior messages to include in the LlamaIndex history.
+    #: This acts as a safety limit to avoid unbounded context growth when
+    #: callers send very long transcripts. Subclasses may override.
+    MAX_HISTORY_MESSAGES: int = 50
+
     def set_mcp_tools(self, tools: list[Any]) -> None:
         """Set MCP tools for this agent."""
         self._mcp_tools = tools
@@ -83,9 +89,44 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         raise NotImplementedError
 
     def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        """Create an input string for the workflow from the user prompt."""
+        """Create an input string for the workflow from the user prompt.
+
+        This uses the last user message as the primary request, and (when present)
+        prepends a plain-text summary of prior turns so the workflow can reason
+        over multi-turn context without changing LlamaIndex schemas.
+        """
         user_prompt_content = extract_user_prompt_content(run_agent_input)
-        return str(user_prompt_content)
+        current_text = str(user_prompt_content)
+
+        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
+        if not raw_messages:
+            return current_text
+
+        last_user_index = -1
+        for idx, message in enumerate(raw_messages):
+            if getattr(message, "role", None) == "user":
+                last_user_index = idx
+
+        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
+
+        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
+        if max_history and len(history_slice) > max_history:
+            history_slice = history_slice[-max_history:]
+
+        lines: list[str] = []
+        for message in history_slice:
+            role = getattr(message, "role", None) or "user"
+            content = getattr(message, "content", None)
+            text = "" if content is None else str(content)
+            if not text:
+                continue
+            lines.append(f"{role}: {text}")
+
+        if not lines:
+            return current_text
+
+        history_summary = "\n".join(lines)
+        return f"Conversation so far:\n{history_summary}\n\nUser's latest request:\n{current_text}"
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""

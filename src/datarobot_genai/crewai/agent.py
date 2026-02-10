@@ -53,12 +53,12 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
     Subclasses should define the ``agents`` and ``tasks`` properties
-    and may override ``crew`` to customize the workflow
-    construction.
+    and may override ``crew`` to customize the workflow construction.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    #: Maximum number of prior messages to include when building a plain-text
+    #: chat history summary for the Crew workflow inputs.
+    MAX_HISTORY_MESSAGES: int = 50
 
     @property
     @abc.abstractmethod
@@ -86,6 +86,38 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         by their CrewAI tasks.
         """
         raise NotImplementedError
+
+    def _build_history_summary(self, run_agent_input: RunAgentInput) -> str:
+        """Build a plain-text summary of prior turns for Crew inputs.
+
+        This takes all messages *before* the last user message as history,
+        truncates to ``MAX_HISTORY_MESSAGES``, and returns a newline-separated
+        transcript in the form ``role: content``.
+        """
+        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
+        if not raw_messages:
+            return ""
+
+        last_user_index = -1
+        for idx, message in enumerate(raw_messages):
+            if getattr(message, "role", None) == "user":
+                last_user_index = idx
+
+        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
+
+        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
+        if max_history and len(history_slice) > max_history:
+            history_slice = history_slice[-max_history:]
+
+        lines: list[str] = []
+        for message in history_slice:
+            role = getattr(message, "role", None) or "user"
+            content = getattr(message, "content", None)
+            text = "" if content is None else str(content)
+            if not text:
+                continue
+            lines.append(f"{role}: {text}")
+        return "\n".join(lines)
 
     @classmethod
     def create_pipeline_interactions_from_messages(
@@ -143,8 +175,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 crew = self.crew()
 
-                crew_output = await asyncio.to_thread(
-                    crew.kickoff,
-                    inputs=self.make_kickoff_inputs(user_prompt_content),
-                )
-            yield self._process_crew_output(crew_output, ragas_event_listener.messages)
+                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
+                kickoff_inputs.setdefault("chat_history", self._build_history_summary(run_agent_input))
+                crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
+
+                yield self._process_crew_output(crew_output, ragas_event_listener.messages)

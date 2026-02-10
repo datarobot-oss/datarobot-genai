@@ -136,10 +136,71 @@ class NatAgent(BaseAgent[None]):
             **kwargs,
         )
         self.workflow_path = workflow_path
+        self.workflow_path = workflow_path
+
+    MAX_HISTORY_MESSAGES: int = 50
+
+    def _build_history_summary(
+        self,
+        run_agent_input: RunAgentInput,
+    ) -> str:
+        """Build a plain-text summary of prior turns for NAT workflows.
+
+        This inspects the incoming ``RunAgentInput.messages`` list, takes all messages
+        *before* the last user message as history, truncates to the most
+        recent ``MAX_HISTORY_MESSAGES`` entries, and returns a newline-separated
+        transcript in the form ``role: content``.
+        """
+        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
+        if not raw_messages:
+            return ""
+
+        # Find the index of the last user message, if any.
+        last_user_index = -1
+        for idx, message in enumerate(raw_messages):
+            if getattr(message, "role", None) == "user":
+                last_user_index = idx
+
+        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
+
+        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
+        if max_history and len(history_slice) > max_history:
+            history_slice = history_slice[-max_history:]
+
+        lines: list[str] = []
+        for message in history_slice:
+            role = getattr(message, "role", None) or "user"
+            content = getattr(message, "content", None)
+            text = "" if content is None else str(content)
+            if not text:
+                continue
+
+            lines.append(f"{role}: {text}")
+
+        return "\n".join(lines)
 
     def make_chat_request(self, run_agent_input: RunAgentInput) -> ChatRequest:
+        """Create a NAT ChatRequest from the agent input.
+
+        By default this:
+        - Uses the last user message as the primary request.
+        - Prepends a plain-text summary of prior turns so the workflow can
+          reason over multi-turn context without changing NAT schemas.
+        """
         user_prompt_content = str(extract_user_prompt_content(run_agent_input))
-        return ChatRequest.from_string(user_prompt_content)
+        history_summary = self._build_history_summary(run_agent_input)
+
+        if history_summary:
+            combined = (
+                "Conversation so far:\n"
+                f"{history_summary}\n\n"
+                "User's latest request:\n"
+                f"{user_prompt_content}"
+            )
+        else:
+            combined = user_prompt_content
+
+        return ChatRequest.from_string(combined)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided completion parameters.

@@ -13,13 +13,16 @@
 # limitations under the License.
 
 # ruff: noqa: I001
-from typing import Any
 from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import patch
 
-from ag_ui.core import RunAgentInput, UserMessage
-from crewai import CrewOutput
 import pytest
+from ag_ui.core import AssistantMessage
+from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import UserMessage
+from crewai import CrewOutput
 from ragas import MultiTurnSample
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
@@ -174,3 +177,44 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
 
     # THEN usage is the expected usage
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
+
+
+async def test_invoke_includes_chat_history_in_kickoff_inputs(
+    patch_mcp_tools_context, mock_ragas_event_listener
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(TestCrew):
+        def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff(inputs=inputs)
+
+    out = CrewOutput(raw="agent result")
+    agent = TestAgent(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    assert captured_inputs["topic"] == "Follow-up"
+    history = captured_inputs["chat_history"]
+    assert isinstance(history, str)
+    assert "system: You are a helper." in history
+    assert "user: First question" in history
+    assert "assistant: First answer" in history
+    assert "user: Follow-up" not in history
+

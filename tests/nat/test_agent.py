@@ -20,7 +20,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
@@ -173,6 +175,35 @@ def test_init_with_additional_kwargs(workflow_path):
     # Verify that the extra parameters don't create attributes
     with pytest.raises(AttributeError):
         _ = agent.extra_param1
+
+
+def test_make_chat_request_includes_history(workflow_path):
+    """NatAgent.make_chat_request should include prior turns in the prompt text."""
+    agent = NatAgent(workflow_path=workflow_path)
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    chat_request = agent.make_chat_request(run_agent_input)
+    contents = [m.content for m in chat_request.messages]
+    assert len(contents) == 1
+    combined = contents[0]
+    assert "You are a helper." in combined
+    assert "First question" in combined
+    assert "First answer" in combined
+    assert combined.strip().endswith("Follow-up")
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
