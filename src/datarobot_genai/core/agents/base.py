@@ -116,6 +116,9 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Create a simple MultiTurnSample from a list of generic events/messages."""
         if not events:
             return None
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+
         return MultiTurnSample(user_input=events)
 
 

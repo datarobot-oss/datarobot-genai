@@ -15,6 +15,9 @@
 from typing import Any
 
 import pytest
+from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage
+from ag_ui.core import UserMessage
 from openai.types import CompletionCreateParams
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
@@ -52,41 +55,51 @@ def test_base_agent_litellm_api_base_normalization(monkeypatch: pytest.MonkeyPat
     assert api == "https://app.datarobot.com/api/v2/deployments/dep-123/chat/completions"
 
 
-def test_extract_user_prompt_content_no_user_messages() -> None:
+@pytest.fixture
+def run_agent_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+def test_extract_user_prompt_content_no_user_messages(run_agent_input: RunAgentInput) -> None:
     # GIVEN a completion create params with no user messages
-    params: dict[str, Any] = {"messages": []}
     # WHEN extracting the user prompt content
-    user_prompt = extract_user_prompt_content(params)
+    user_prompt = extract_user_prompt_content(run_agent_input)
     # THEN the user prompt is empty
-    assert user_prompt == {}
+    assert user_prompt == ""
 
 
-def test_extract_user_prompt_content_the_last_user_message() -> None:
-    # GIVEN a completion create params with multiple user messages
-    params: dict[str, Any] = {
-        "messages": [
-            {"role": "system", "content": "x"},
-            {"role": "user", "content": "ignored"},
-            {"role": "user", "content": {"foo": "bar"}},
-        ]
-    }
+def test_extract_user_prompt_content_the_last_user_message(run_agent_input: RunAgentInput) -> None:
+    # GIVEN a run agent input with multiple user messages
+    run_agent_input.messages = [
+        SystemMessage(content="x", id="message_0"),
+        UserMessage(content="ignored", id="message_1"),
+        UserMessage(content="something", id="message_2"),
+    ]
     # WHEN extracting the user prompt content
-    user_prompt = extract_user_prompt_content(params)
+    user_prompt = extract_user_prompt_content(run_agent_input)
     # THEN the user prompt is the last user message
-    assert user_prompt == {"foo": "bar"}
+    assert user_prompt == "something"
 
 
-def test_extract_user_prompt_content_the_last_user_message_is_a_json_string() -> None:
-    # GIVEN a completion create params with a user message that is a json string
-    params: dict[str, Any] = {
-        "messages": [
-            {"role": "system", "content": "x"},
-            {"role": "user", "content": "ignored"},
-            {"role": "user", "content": '{"foo": "bar"}'},
-        ]
-    }
+def test_extract_user_prompt_content_the_last_user_message_is_a_json_string(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a run agent input with a user message that is a json string
+    run_agent_input.messages = [
+        SystemMessage(content="x", id="message_0"),
+        UserMessage(content="ignored", id="message_1"),
+        UserMessage(content='{"foo": "bar"}', id="message_2"),
+    ]
     # WHEN extracting the user prompt content
-    user_prompt = extract_user_prompt_content(params)
+    user_prompt = extract_user_prompt_content(run_agent_input)
     # THEN the user prompt is the last user message
     assert user_prompt == {"foo": "bar"}
 
