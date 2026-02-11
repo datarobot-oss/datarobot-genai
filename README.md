@@ -28,7 +28,7 @@
 - Integrations: CrewAI, LangGraph, LlamaIndex, NAT, MCP
 
 ## Installation
-- Requires Python 3.10–3.12.
+- Requires Python 3.10–3.13.
 - Install:
 ```bash
 pip install --upgrade pip
@@ -45,12 +45,15 @@ pip install "datarobot-genai[crewai,langgraph,llamaindex]"
   Available extras include: `crewai`, `langgraph`, `llamaindex`, `nat`, `drmcp`, `pydanticai`.
 
 ## Development
-Prerequisites: Python 3.10–3.12, uv, Task CLI, pre-commit.
+Prerequisites: Python 3.10–3.13, uv, Task CLI, pre-commit.
 ```bash
 uv sync --all-extras --dev
 pre-commit install
 task test
 ```
+
+### Test pypi
+To build aqnd publish a dev version of a package, comment `dev build` on a PR.
 
 ## Publishing
 - PRs (same-repo): dev builds are auto-published to TestPyPI (`.devN`).
