@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.10', '3.11', '3.12' ]
+        python-version: [ '3.11', '3.12', '3.13' ]
     permissions:
       contents: read
       pull-requests: read
@@ -66,11 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.10', '3.11', '3.12' ]
+        python-version: [ '3.11', '3.12', '3.13' ]
         module: [ 'core', 'crewai', 'langgraph', 'llamaindex', 'drmcp', 'nat']
-        exclude:
-          - python-version: '3.10'
-            module: 'nat'
     permissions:
       contents: read
       pull-requests: read
@@ -116,6 +113,12 @@ jobs:
         run: |
           MODULE=${{ matrix.module }} task test-module
 
+      - name: Get Cover
+        uses: orgoro/coverage@v3.2
+        with:
+          coverageFile: py${{ matrix.python-version }}-module-${{ matrix.module }}/.coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -128,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.10', '3.11', '3.12' ]
+        python-version: [ '3.11', '3.12', '3.13' ]
     permissions:
       contents: read
       pull-requests: read
