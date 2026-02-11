@@ -113,12 +113,6 @@ jobs:
         run: |
           MODULE=${{ matrix.module }} task test-module
 
-      - name: Get Cover
-        uses: orgoro/coverage@v3.2
-        with:
-          coverageFile: py${{ matrix.python-version }}-module-${{ matrix.module }}/.coverage.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
