@@ -59,7 +59,7 @@ except Exception:
         )
 
 
-class CrewAIEventListener:
+class CrewAIRagasEventListener:
     """Collects CrewAI events into Ragas messages for pipeline interactions."""
 
     def __init__(self) -> None:

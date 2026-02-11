@@ -119,9 +119,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         return MultiTurnSample(user_input=events)
 
 
-def extract_user_prompt_content(
-    run_agent_input: RunAgentInput,
-) -> Any:
+def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
     """Extract first user message content from input."""
     user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]
     # Get the last user message
