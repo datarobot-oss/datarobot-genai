@@ -34,7 +34,6 @@ from ragas import MultiTurnSample
 from datarobot_genai.llama_index import agent as agent_mod
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
-from datarobot_genai.llama_index.agent import create_pipeline_interactions_from_events
 
 # --- Test helpers ---
 
@@ -98,7 +97,7 @@ def test_datarobot_litellm_metadata_properties() -> None:
 
 
 def test_create_pipeline_interactions_from_events_none() -> None:
-    assert create_pipeline_interactions_from_events(None) is None
+    assert LlamaIndexAgent.create_pipeline_interactions_from_events(None) is None
 
 
 # --- Tests for LlamaIndexAgent ---
