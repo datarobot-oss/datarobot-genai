@@ -37,6 +37,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
+from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -89,33 +90,21 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     def _build_history_summary(self, run_agent_input: RunAgentInput) -> str:
         """Build a plain-text summary of prior turns for Crew inputs.
 
-        This takes all messages *before* the last user message as history,
-        truncates to ``MAX_HISTORY_MESSAGES``, and returns a newline-separated
-        transcript in the form ``role: content``.
+        This uses the shared ``extract_history_messages`` helper to:
+        - Take all messages *before* the last user message as history
+        - Truncate to the most recent ``MAX_HISTORY_MESSAGES`` entries
+        - Normalize them into ``{role, content}`` dicts
+        and then renders a newline-separated transcript of the form
+        ``role: content``.
         """
-        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
-        if not raw_messages:
+        history = extract_history_messages(
+            {"messages": getattr(run_agent_input, "messages", []) or []},
+            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+        )
+        if not history:
             return ""
 
-        last_user_index = -1
-        for idx, message in enumerate(raw_messages):
-            if getattr(message, "role", None) == "user":
-                last_user_index = idx
-
-        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
-
-        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
-        if max_history and len(history_slice) > max_history:
-            history_slice = history_slice[-max_history:]
-
-        lines: list[str] = []
-        for message in history_slice:
-            role = getattr(message, "role", None) or "user"
-            content = getattr(message, "content", None)
-            text = "" if content is None else str(content)
-            if not text:
-                continue
-            lines.append(f"{role}: {text}")
+        lines = [f"{msg['role']}: {msg['content']}" for msg in history]
         return "\n".join(lines)
 
     @classmethod

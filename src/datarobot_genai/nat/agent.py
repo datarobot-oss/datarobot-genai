@@ -22,6 +22,8 @@ from ag_ui.core import RunAgentInput
 from nat.builder.context import Context
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import Message
+from nat.data_models.api_server import UserMessageContentRoleType
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepType
 from nat.utils.type_utils import StrPath
@@ -29,6 +31,7 @@ from nat.utils.type_utils import StrPath
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.mcp.common import MCPConfig
@@ -140,67 +143,54 @@ class NatAgent(BaseAgent[None]):
 
     MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
-    def _build_history_summary(
-        self,
-        run_agent_input: RunAgentInput,
-    ) -> str:
-        """Build a plain-text summary of prior turns for NAT workflows.
+    def _history_messages_from_input(self, run_agent_input: RunAgentInput) -> list[Message]:
+        """Build NAT ``Message`` history from the agent input."""
+        normalized = extract_history_messages(
+            {"messages": getattr(run_agent_input, "messages", []) or []},
+            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+        )
+        nat_messages: list[Message] = []
+        for msg in normalized:
+            role = msg["role"]
+            text = msg["content"]
 
-        This inspects the incoming ``RunAgentInput.messages`` list, takes all messages
-        *before* the last user message as history, truncates to the most
-        recent ``MAX_HISTORY_MESSAGES`` entries, and returns a newline-separated
-        transcript in the form ``role: content``.
-        """
-        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
-        if not raw_messages:
-            return ""
+            # Map OpenAI-style roles into NAT enum roles.
+            if role == "system":
+                nat_role = UserMessageContentRoleType.SYSTEM
+            elif role in ("assistant", "tool"):
+                # Tool outputs are treated as assistant context for the model.
+                nat_role = UserMessageContentRoleType.ASSISTANT
+            else:
+                # Fallback to user role to avoid silently dropping context.
+                nat_role = UserMessageContentRoleType.USER
 
-        # Find the index of the last user message, if any.
-        last_user_index = -1
-        for idx, message in enumerate(raw_messages):
-            if getattr(message, "role", None) == "user":
-                last_user_index = idx
+            nat_messages.append(Message(content=text, role=nat_role))
 
-        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
-
-        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
-        if max_history and len(history_slice) > max_history:
-            history_slice = history_slice[-max_history:]
-
-        lines: list[str] = []
-        for message in history_slice:
-            role = getattr(message, "role", None) or "user"
-            content = getattr(message, "content", None)
-            text = "" if content is None else str(content)
-            if not text:
-                continue
-
-            lines.append(f"{role}: {text}")
-
-        return "\n".join(lines)
+        return nat_messages
 
     def make_chat_request(self, run_agent_input: RunAgentInput) -> ChatRequest:
         """Create a NAT ChatRequest from the agent input.
 
         By default this:
         - Uses the last user message as the primary request.
-        - Prepends a plain-text summary of prior turns so the workflow can
-          reason over multi-turn context without changing NAT schemas.
+        - Preserves prior turns (up to ``MAX_HISTORY_MESSAGES``) as structured
+          NAT ``Message`` objects so the workflow can reason over multi-turn
+          context without changing NAT schemas.
         """
         user_prompt_content = str(extract_user_prompt_content(run_agent_input))
-        history_summary = self._build_history_summary(run_agent_input)
+        history_messages = self._history_messages_from_input(run_agent_input)
 
-        if history_summary:
-            combined = (
-                "Conversation so far:\n"
-                f"{history_summary}\n\n"
-                "User's latest request:\n"
-                f"{user_prompt_content}"
-            )
-        else:
-            combined = user_prompt_content
+        # No prior history: keep the original simple behaviour to avoid
+        # surprising existing workflows and tests.
+        if not history_messages:
+            return ChatRequest.from_string(user_prompt_content)
 
-        return ChatRequest.from_string(combined)
+        # Append the latest user turn as the final message.
+        history_messages.append(
+            Message(content=user_prompt_content, role=UserMessageContentRoleType.USER)
+        )
+
+        return ChatRequest(messages=history_messages)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided completion parameters.

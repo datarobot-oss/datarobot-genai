@@ -43,6 +43,7 @@ from langgraph.types import Command
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.langgraph.mcp import mcp_tools_context
@@ -93,49 +94,30 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def _convert_history_messages(self, run_agent_input: RunAgentInput) -> list[BaseMessage]:
         """Convert prior turns into LangChain messages for LangGraph history.
 
-        We treat everything before the last user message (if any) as "history"
-        and append the current user turn via the `prompt_template` to preserve
-        existing single-turn behaviour.
+        This delegates to ``extract_history_messages`` to identify and truncate
+        prior turns, then maps them into LangChain ``BaseMessage`` instances.
+
+        The final user message is handled separately via the prompt template so
+        that existing single-turn behaviour is preserved.
         """
-        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
-        if not raw_messages:
+        normalized = extract_history_messages(
+            {"messages": getattr(run_agent_input, "messages", []) or []},
+            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+        )
+        if not normalized:
             return []
 
-        # Find the index of the last user message, if any.
-        last_user_index = -1
-        for idx, message in enumerate(raw_messages):
-            if getattr(message, "role", None) == "user":
-                last_user_index = idx
-
-        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
-
-        # Keep only the most recent N messages in history to avoid unbounded growth.
-        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
-        if max_history and len(history_slice) > max_history:
-            history_slice = history_slice[-max_history:]
-
         history_messages: list[BaseMessage] = []
-        for message in history_slice:
-            role = getattr(message, "role", None)
-            content = getattr(message, "content", None)
-            text = self._stringify_message_content(content)
-
+        for msg in normalized:
+            role = msg["role"]
+            text = msg["content"]
             if role in ("system", "developer"):
                 history_messages.append(SystemMessage(content=text))
             elif role == "assistant":
                 history_messages.append(AIMessage(content=text))
             elif role == "tool":
-                # ag-ui uses `toolCallId` (camelCase); keep best-effort compatibility.
-                tool_call_id = getattr(message, "toolCallId", None) or getattr(
-                    message, "tool_call_id", None
-                )
-                if tool_call_id:
-                    history_messages.append(
-                        ToolMessage(content=text, tool_call_id=str(tool_call_id))
-                    )
-                else:
-                    # If there is no tool_call_id, treat tool output as assistant context.
-                    history_messages.append(AIMessage(content=text))
+                # Tool outputs are treated as assistant context for the model.
+                history_messages.append(AIMessage(content=text))
             elif role == "user":
                 history_messages.append(HumanMessage(content=text))
             else:

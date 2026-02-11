@@ -178,7 +178,7 @@ def test_init_with_additional_kwargs(workflow_path):
 
 
 def test_make_chat_request_includes_history(workflow_path):
-    """NatAgent.make_chat_request should include prior turns in the prompt text."""
+    """NatAgent.make_chat_request should include prior turns as structured messages."""
     agent = NatAgent(workflow_path=workflow_path)
 
     run_agent_input = RunAgentInput(
@@ -197,13 +197,15 @@ def test_make_chat_request_includes_history(workflow_path):
     )
 
     chat_request = agent.make_chat_request(run_agent_input)
-    contents = [m.content for m in chat_request.messages]
-    assert len(contents) == 1
-    combined = contents[0]
-    assert "You are a helper." in combined
-    assert "First question" in combined
-    assert "First answer" in combined
-    assert combined.strip().endswith("Follow-up")
+    messages = chat_request.messages
+    # Expect separate messages for system, first user, assistant, and latest user turns.
+    assert [m.role.value for m in messages] == ["system", "user", "assistant", "user"]
+    assert [m.content for m in messages] == [
+        "You are a helper.",
+        "First question",
+        "First answer",
+        "Follow-up",
+    ]
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")

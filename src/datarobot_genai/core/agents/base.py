@@ -137,6 +137,82 @@ def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
     return content
 
 
+class NormalizedHistoryMessage(TypedDict):
+    """Normalized representation of a single prior chat message.
+
+    This is intentionally minimal so that agent implementations can map it into
+    their framework-specific message types (LangChain, LlamaIndex, NAT, etc.)
+    without duplicating parsing and truncation logic.
+    """
+
+    role: str
+    content: str
+
+
+def extract_history_messages(
+    completion_create_params: CompletionCreateParams | Mapping[str, Any],
+    max_history: int,
+) -> list[NormalizedHistoryMessage]:
+    r"""Return normalized prior messages to use as chat history.
+
+    Behaviour:
+    - Considers ``completion_create_params['messages']`` in order.
+    - Identifies the last ``\"user\"`` message (if any).
+    - Treats everything *before* that last user message as history.
+    - Converts messages into ``{role, content}`` dicts with string content.
+    - Truncates to the most recent ``max_history`` entries.
+
+    Special cases:
+    - When there are no messages, returns an empty list.
+    - When ``max_history <= 0``, history is disabled and an empty list is returned.
+      This matches the documented semantics where 0 means "no history".
+    """
+    params = cast(Mapping[str, Any], completion_create_params)
+    raw_messages = list(params.get("messages", []))
+    if not raw_messages or max_history <= 0:
+        return []
+
+    # Find the index of the last user message, if any.
+    last_user_index = -1
+    for idx, message in enumerate(raw_messages):
+        role = getattr(message, "role", None)
+        if isinstance(message, Mapping):
+            role = message.get("role", role)
+        if role == "user":
+            last_user_index = idx
+
+    if last_user_index != -1:
+        history_slice = raw_messages[:last_user_index]
+    else:
+        history_slice = raw_messages
+
+    # Keep only the most recent N messages in history to avoid unbounded growth
+    # when callers provide long transcripts.
+    if max_history and len(history_slice) > max_history:
+        history_slice = history_slice[-max_history:]
+
+    history: list[NormalizedHistoryMessage] = []
+    for message in history_slice:
+        role = getattr(message, "role", None)
+        content = getattr(message, "content", None)
+        if isinstance(message, Mapping):
+            role = message.get("role", role)
+            content = message.get("content", content)
+
+        text = str(content) if content is not None else ""
+        if not text:
+            continue
+
+        history.append(
+            NormalizedHistoryMessage(
+                role=str(role or "user"),
+                content=text,
+            )
+        )
+
+    return history
+
+
 def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:
     """Build a system prompt with optional prefix and suffix.
 

@@ -241,6 +241,34 @@ def test_convert_input_message_truncates_history() -> None:
     # messages for the final user turn.
     assert len(all_messages) == max_history + 2
 
+def test_convert_input_message_zero_history_disables_history() -> None:
+    """When MAX_HISTORY_MESSAGES is 0, no prior turns are included."""
+    agent = SimpleLangGraphAgent()
+    agent.MAX_HISTORY_MESSAGES = 0
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Only the templated messages for the final user turn should remain.
+    assert len(all_messages) == 2
+    assert isinstance(all_messages[0], SystemMessage)
+    assert isinstance(all_messages[1], HumanMessage)
+
 
 async def test_langgraph_non_streaming(run_agent_input):
     # GIVEN a simple langgraph agent implementation

@@ -30,6 +30,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
+from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.config import get_max_history_messages_default
 
@@ -96,34 +97,15 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         current_text = str(user_prompt_content)
 
-        raw_messages = list(getattr(run_agent_input, "messages", []) or [])
-        if not raw_messages:
+        normalized = extract_history_messages(
+            {"messages": getattr(run_agent_input, "messages", []) or []},
+            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+        )
+        if not normalized:
             return current_text
 
-        last_user_index = -1
-        for idx, message in enumerate(raw_messages):
-            if getattr(message, "role", None) == "user":
-                last_user_index = idx
-
-        history_slice = raw_messages[:last_user_index] if last_user_index != -1 else raw_messages
-
-        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
-        if max_history and len(history_slice) > max_history:
-            history_slice = history_slice[-max_history:]
-
-        lines: list[str] = []
-        for message in history_slice:
-            role = getattr(message, "role", None) or "user"
-            content = getattr(message, "content", None)
-            text = "" if content is None else str(content)
-            if not text:
-                continue
-            lines.append(f"{role}: {text}")
-
-        if not lines:
-            return current_text
-
-        history_summary = "\n".join(lines)
+        history_lines = [f"{msg['role']}: {msg['content']}" for msg in normalized]
+        history_summary = "\n".join(history_lines)
         return f"Conversation so far:\n{history_summary}\n\nUser's latest request:\n{current_text}"
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
