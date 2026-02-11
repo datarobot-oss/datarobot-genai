@@ -21,7 +21,7 @@ from typing import cast
 
 from ag_ui.core import RunAgentInput
 from llama_index.core.base.llms.types import LLMMetadata
-from llama_index.core.chat_engine.types import ChatMessage
+from llama_index.core.llms import ChatMessage
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
 from llama_index.llms.litellm import LiteLLM
@@ -31,6 +31,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.config import get_max_history_messages_default
 
 from .mcp import load_mcp_tools
 
@@ -60,10 +61,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         super().__init__(*args, **kwargs)
         self._mcp_tools: list[Any] = []
 
-    #: Maximum number of prior messages to include in the LlamaIndex history.
-    #: This acts as a safety limit to avoid unbounded context growth when
-    #: callers send very long transcripts. Subclasses may override.
-    MAX_HISTORY_MESSAGES: int = 50
+    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
     def set_mcp_tools(self, tools: list[Any]) -> None:
         """Set MCP tools for this agent."""

@@ -30,6 +30,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.mcp.common import MCPConfig
 from datarobot_genai.nat.helpers import load_workflow
 
@@ -136,9 +137,8 @@ class NatAgent(BaseAgent[None]):
             **kwargs,
         )
         self.workflow_path = workflow_path
-        self.workflow_path = workflow_path
 
-    MAX_HISTORY_MESSAGES: int = 50
+    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
     def _build_history_summary(
         self,

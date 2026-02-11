@@ -39,6 +39,7 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
+from datarobot_genai.core.config import get_max_history_messages_default
 
 from .mcp import mcp_tools_context
 
@@ -56,9 +57,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     and may override ``crew`` to customize the workflow construction.
     """
 
-    #: Maximum number of prior messages to include when building a plain-text
-    #: chat history summary for the Crew workflow inputs.
-    MAX_HISTORY_MESSAGES: int = 50
+    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
     @property
     @abc.abstractmethod

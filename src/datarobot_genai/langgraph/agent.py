@@ -15,7 +15,6 @@ import abc
 import json
 import logging
 from collections.abc import AsyncGenerator
-from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Optional
@@ -45,6 +44,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 if TYPE_CHECKING:
@@ -61,10 +61,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     into a `MessagesState` for the graph.
     """
 
-    #: Maximum number of prior messages to include in the LangGraph history.
-    #: This acts as a safety limit to avoid unbounded context growth when
-    #: callers send very long transcripts. Subclasses may override.
-    MAX_HISTORY_MESSAGES: int = 50
+    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
     @property
     @abc.abstractmethod
