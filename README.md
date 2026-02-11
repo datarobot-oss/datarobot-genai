@@ -53,7 +53,7 @@ task test
 ```
 
 ### Test pypi
-To build aqnd publish a dev version of a package, comment `dev build` on a PR.
+To build and publish a dev version of a package, comment `dev build` on a PR.
 
 ## Publishing
 - PRs (same-repo): dev builds are auto-published to TestPyPI (`.devN`).
