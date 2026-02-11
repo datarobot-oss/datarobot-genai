@@ -150,16 +150,24 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             template_input: Any = dict(user_prompt)
             template_input.setdefault("chat_history", history_summary)
         else:
-            # When the prompt is a bare value, best-effort map it into the single
-            # input variable (if there is exactly one). Otherwise, fall back to
-            # the original behaviour where chat_history is not injected.
+            # When the prompt is a bare value, best-effort map it into the declared
+            # input variables. Known variable "chat_history" always receives the
+            # history summary; all other variables receive the raw user prompt.
             input_vars = getattr(self.prompt_template, "input_variables", [])
-            if isinstance(input_vars, list) and len(input_vars) == 1:
-                template_input = {
-                    input_vars[0]: user_prompt,
-                    "chat_history": history_summary,
-                }
+            try:
+                vars_list = list(input_vars)
+            except TypeError:
+                vars_list = []
+
+            if vars_list:
+                template_input = {}
+                for name in vars_list:
+                    if name == "chat_history":
+                        template_input[name] = history_summary
+                    else:
+                        template_input[name] = user_prompt
             else:
+                # No declared variables: preserve pre-history behaviour.
                 template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
