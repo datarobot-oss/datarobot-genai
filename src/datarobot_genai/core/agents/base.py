@@ -123,7 +123,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
 
 
 def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
-    """Extract first user message content from input."""
+    """Extract the last user message content from input."""
     user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]
     # Get the last user message
     content: str = user_messages[-1].content if user_messages else ""

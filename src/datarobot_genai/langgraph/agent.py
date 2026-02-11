@@ -82,9 +82,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         Returns
         -------
-            For streaming requests, returns a generator yielding tuples of (response_text,
-            pipeline_interactions, usage_metrics).
-            For non-streaming requests, returns a single tuple of (response_text,
+            Returns a generator yielding tuples of (response_text,
             pipeline_interactions, usage_metrics).
         """
         try:

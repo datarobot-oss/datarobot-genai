@@ -30,6 +30,7 @@ from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents import InvokeReturn
+from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import UsageMetrics
 
@@ -106,6 +107,9 @@ async def agent_chat_completion_wrapper(
         return agent.invoke(run_agent_input)
     else:
         final_response = ""
+        pipeline_interactions = None
+        usage_metrics = default_usage_metrics()
+
         async for delta, pipeline_interactions, usage_metrics in agent.invoke(run_agent_input):
             # When we work in non-streaming mode, we only send back the final message
             # It is because of limitation of completions interface we can not send back the
@@ -117,4 +121,5 @@ async def agent_chat_completion_wrapper(
             # Agents which are not AGUI agents will return strings with content
             if isinstance(delta, str):
                 final_response += delta
+
         return final_response, pipeline_interactions, usage_metrics
