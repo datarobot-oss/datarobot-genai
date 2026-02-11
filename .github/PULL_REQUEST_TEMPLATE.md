@@ -1,5 +1,5 @@
 <!--
-INFO: Comment "dev build" to build a dev package
+INFO: Comment "/build" to build a dev package
 -->
 
 # RATIONALE
