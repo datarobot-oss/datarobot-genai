@@ -226,30 +226,30 @@ async def predict_realtime(
 
     Examples
     --------
-    # Regular binary classification
-    predict_realtime(deployment_id="abc123", file_path="data.csv")
+        # Regular binary classification
+        predict_realtime(deployment_id="abc123", file_path="data.csv")
 
-    # With SHAP explanations
-    predict_realtime(deployment_id="abc123", file_path="data.csv",
-                    max_explanations=10, explanation_algorithm="shap")
+        # With SHAP explanations
+        predict_realtime(deployment_id="abc123", file_path="data.csv",
+                        max_explanations=10, explanation_algorithm="shap")
 
-    # Time series forecasting
-    predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
-                    forecast_point="2024-06-01")
+        # Time series forecasting
+        predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
+                        forecast_point="2024-06-01")
 
-    # Multiseries time series
-    predict_realtime(deployment_id="abc123", file_path="multiseries.csv",
-                    forecast_point="2024-06-01", series_id_column="store_id")
+        # Multiseries time series
+        predict_realtime(deployment_id="abc123", file_path="multiseries.csv",
+                        forecast_point="2024-06-01", series_id_column="store_id")
 
-    # Historical time series predictions
-    predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
-                    forecast_range_start="2024-06-01",
-                    forecast_range_end="2024-06-07")
+        # Historical time series predictions
+        predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
+                        forecast_range_start="2024-06-01",
+                        forecast_range_end="2024-06-07")
 
-    # Text model with explanations and passthrough
-    predict_realtime(deployment_id="abc123", file_path="text_data.csv",
-                    max_explanations="all", max_ngram_explanations="all",
-                    passthrough_columns="document_id,customer_id")
+        # Text model with explanations and passthrough
+        predict_realtime(deployment_id="abc123", file_path="text_data.csv",
+                        max_explanations="all", max_ngram_explanations="all",
+                        passthrough_columns="document_id,customer_id")
     """
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
