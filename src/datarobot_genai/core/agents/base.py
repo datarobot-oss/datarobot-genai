@@ -118,7 +118,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         prior messages are included. This is primarily intended for exposing a
         ``chat_history`` variable in prompts across different agent types.
         """
-        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
+        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 20)
         return build_history_summary(completion_create_params, max_history)
 
     @classmethod
@@ -150,16 +150,32 @@ def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
     return content
 
 
-class NormalizedHistoryMessage(TypedDict):
-    """Normalized representation of a single prior chat message.
-
-    This is intentionally minimal so that agent implementations can map it into
-    their framework-specific message types (LangChain, LlamaIndex, NAT, etc.)
-    without duplicating parsing and truncation logic.
-    """
+class _NormalizedHistoryMessageRequired(TypedDict):
+    """Required fields for a normalized prior chat message."""
 
     role: str
     content: str
+
+
+class NormalizedHistoryMessage(_NormalizedHistoryMessageRequired, total=False):
+    """Normalized representation of a single prior chat message.
+
+    This structure is intentionally minimal but preserves enough optional
+    metadata for tool-heavy agents to reconstruct richer history when needed.
+
+    Required fields:
+    - role: str
+    - content: str
+
+    Optional fields (best-effort, may be absent):
+    - tool_call_id: str | None
+    - name: str | None
+    - tool_calls: Any | None  # e.g. OpenAI-style tool_calls payload
+    """
+
+    tool_call_id: str | None
+    name: str | None
+    tool_calls: Any | None
 
 
 def extract_history_messages(
@@ -208,20 +224,36 @@ def extract_history_messages(
     for message in history_slice:
         role = getattr(message, "role", None)
         content = getattr(message, "content", None)
+        tool_call_id = getattr(message, "tool_call_id", None)
+        name = getattr(message, "name", None)
+        tool_calls = getattr(message, "tool_calls", None)
+
         if isinstance(message, Mapping):
             role = message.get("role", role)
             content = message.get("content", content)
+            tool_call_id = message.get("tool_call_id", tool_call_id)
+            name = message.get("name", name)
+            tool_calls = message.get("tool_calls", tool_calls)
 
         text = str(content) if content is not None else ""
         if not text:
             continue
 
-        history.append(
-            NormalizedHistoryMessage(
-                role=str(role or "user"),
-                content=text,
-            )
-        )
+        entry: NormalizedHistoryMessage = {
+            "role": str(role or "user"),
+            "content": text,
+        }
+
+        # Preserve optional tool metadata when present so downstream agents can
+        # reconstruct richer tool histories if desired.
+        if tool_call_id is not None:
+            entry["tool_call_id"] = str(tool_call_id)
+        if name is not None:
+            entry["name"] = str(name)
+        if tool_calls is not None:
+            entry["tool_calls"] = tool_calls
+
+        history.append(entry)
 
     return history
 

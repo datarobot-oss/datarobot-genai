@@ -91,7 +91,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         """Build a plain-text summary of prior turns for Crew inputs."""
         return build_history_summary(
             {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
         )
 
     @classmethod

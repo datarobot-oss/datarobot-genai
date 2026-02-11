@@ -104,7 +104,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         """
         normalized = extract_history_messages(
             {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
         )
         if not normalized:
             return []
@@ -140,7 +140,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         history_messages = self._convert_history_messages(run_agent_input)
         history_summary = build_history_summary(
             {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
         )
         user_prompt = extract_user_prompt_content(run_agent_input)
 

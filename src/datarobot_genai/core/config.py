@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_MAX_HISTORY_MESSAGES = 50
+DEFAULT_MAX_HISTORY_MESSAGES = 20
 
 
 def get_max_history_messages_default() -> int:

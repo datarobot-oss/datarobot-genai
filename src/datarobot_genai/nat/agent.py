@@ -147,7 +147,7 @@ class NatAgent(BaseAgent[None]):
         """Build NAT ``Message`` history from the agent input."""
         normalized = extract_history_messages(
             {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
         )
         nat_messages: list[Message] = []
         for msg in normalized:
