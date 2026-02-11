@@ -151,7 +151,20 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 crew = self.crew()
 
                 kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
-                kickoff_inputs.setdefault("chat_history", self._build_history_summary(run_agent_input))
+                history_summary = self._build_history_summary(run_agent_input)
+                # Ensure ``chat_history`` is always present and, when available,
+                # populated with the rendered summary of prior turns.
+                existing_history = kickoff_inputs.get("chat_history")
+                try:
+                    existing_history_text = str(existing_history or "")
+                except Exception:
+                    existing_history_text = ""
+
+                if history_summary and not existing_history_text.strip():
+                    kickoff_inputs["chat_history"] = history_summary
+                else:
+                    kickoff_inputs.setdefault("chat_history", "")
+
                 crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
 
                 yield self._process_crew_output(crew_output, ragas_event_listener.messages)
