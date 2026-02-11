@@ -33,12 +33,14 @@ tasks:
           fi
           echo "pytest path: tests/${MODULE}"
           PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
-          NAT_IGNORED_TESTS=tests/nat/integration
+          if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
+            NAT_IGNORED_TESTS=tests/nat
+          else
+            NAT_IGNORED_TESTS=tests/nat/integration
+          fi
           uv run pytest tests/${MODULE} \
             --junitxml=test_results/test-results.xml -vv -s \
-            --ignore=tests/drmcp/integration \
-            --ignore=tests/drmcp/acceptance \
-            --ignore=${NAT_IGNORED_TESTS}
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
     silent: true
 
   smoke-extras-none:
