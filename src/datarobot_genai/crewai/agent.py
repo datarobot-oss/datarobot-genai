@@ -36,8 +36,8 @@ from crewai.tools import BaseTool
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.base import build_history_summary
 from datarobot_genai.core.agents.base import default_usage_metrics
-from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -88,24 +88,11 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         raise NotImplementedError
 
     def _build_history_summary(self, run_agent_input: RunAgentInput) -> str:
-        """Build a plain-text summary of prior turns for Crew inputs.
-
-        This uses the shared ``extract_history_messages`` helper to:
-        - Take all messages *before* the last user message as history
-        - Truncate to the most recent ``MAX_HISTORY_MESSAGES`` entries
-        - Normalize them into ``{role, content}`` dicts
-        and then renders a newline-separated transcript of the form
-        ``role: content``.
-        """
-        history = extract_history_messages(
+        """Build a plain-text summary of prior turns for Crew inputs."""
+        return build_history_summary(
             {"messages": getattr(run_agent_input, "messages", []) or []},
             getattr(self, "MAX_HISTORY_MESSAGES", 50),
         )
-        if not history:
-            return ""
-
-        lines = [f"{msg['role']}: {msg['content']}" for msg in history]
-        return "\n".join(lines)
 
     @classmethod
     def create_pipeline_interactions_from_messages(

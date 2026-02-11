@@ -108,6 +108,19 @@ class BaseAgent(Generic[TTool], abc.ABC):
     def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
 
+    def build_history_summary(
+        self,
+        completion_create_params: CompletionCreateParams | Mapping[str, Any],
+    ) -> str:
+        """Instance helper to summarize prior turns as plain-text transcript.
+
+        Subclasses can override ``MAX_HISTORY_MESSAGES`` to control how many
+        prior messages are included. This is primarily intended for exposing a
+        ``chat_history`` variable in prompts across different agent types.
+        """
+        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 50)
+        return build_history_summary(completion_create_params, max_history)
+
     @classmethod
     def create_pipeline_interactions_from_events(
         cls,
@@ -211,6 +224,27 @@ def extract_history_messages(
         )
 
     return history
+
+
+def build_history_summary(
+    completion_create_params: CompletionCreateParams | Mapping[str, Any],
+    max_history: int,
+) -> str:
+    """Build a plain-text summary of prior turns for prompts.
+
+    This is a convenience helper around ``extract_history_messages`` that:
+    - Takes all messages *before* the last user message as history
+    - Truncates to the most recent ``max_history`` entries
+    - Normalizes them into ``{role, content}`` dicts
+    and then renders a newline-separated transcript of the form
+    ``role: content``.
+    """
+    history = extract_history_messages(completion_create_params, max_history)
+    if not history:
+        return ""
+
+    lines = [f"{msg['role']}: {msg['content']}" for msg in history]
+    return "\n".join(lines)
 
 
 def make_system_prompt(suffix: str = "", *, prefix: str | None = None) -> str:

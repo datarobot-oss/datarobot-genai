@@ -15,6 +15,7 @@ import abc
 import json
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Optional
@@ -43,6 +44,7 @@ from langgraph.types import Command
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.base import build_history_summary
 from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -136,8 +138,31 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
           and feeds it through `prompt_template` to build the current turn.
         """
         history_messages = self._convert_history_messages(run_agent_input)
+        history_summary = build_history_summary(
+            {"messages": getattr(run_agent_input, "messages", []) or []},
+            getattr(self, "MAX_HISTORY_MESSAGES", 50),
+        )
         user_prompt = extract_user_prompt_content(run_agent_input)
-        current_messages = self.prompt_template.invoke(user_prompt).to_messages()
+
+        # Prefer structured dict input when available so templates can access both
+        # the original fields (e.g. {topic}) and a plain-text {chat_history}.
+        if isinstance(user_prompt, Mapping):
+            template_input: Any = dict(user_prompt)
+            template_input.setdefault("chat_history", history_summary)
+        else:
+            # When the prompt is a bare value, best-effort map it into the single
+            # input variable (if there is exactly one). Otherwise, fall back to
+            # the original behaviour where chat_history is not injected.
+            input_vars = getattr(self.prompt_template, "input_variables", [])
+            if isinstance(input_vars, list) and len(input_vars) == 1:
+                template_input = {
+                    input_vars[0]: user_prompt,
+                    "chat_history": history_summary,
+                }
+            else:
+                template_input = user_prompt
+
+        current_messages = self.prompt_template.invoke(template_input).to_messages()
         command = Command(  # type: ignore[var-annotated]
             update={
                 "messages": history_messages + current_messages,
