@@ -45,7 +45,7 @@ def make_output_settings() -> BucketInfo:
     return BucketInfo(bucket=bucket_info["bucket"], key=s3_key)
 
 
-@dr_mcp_tool(tags={"prediction", "realtime", "read", "scoring"})
+@dr_mcp_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_by_ai_catalog_rt(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
@@ -112,7 +112,7 @@ async def predict_by_ai_catalog_rt(
     return ToolResult(structured_content=content)
 
 
-@dr_mcp_tool(tags={"prediction", "realtime", "read", "scoring"})
+@dr_mcp_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_realtime(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
@@ -223,6 +223,33 @@ async def predict_realtime(
     try to infer or ask for a reasonable value, using frequent values or domain knowledge if
     available.
     For less important features, you may leave them blank.
+
+    Examples
+    --------
+    # Regular binary classification
+    predict_realtime(deployment_id="abc123", file_path="data.csv")
+
+    # With SHAP explanations
+    predict_realtime(deployment_id="abc123", file_path="data.csv",
+                    max_explanations=10, explanation_algorithm="shap")
+
+    # Time series forecasting
+    predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
+                    forecast_point="2024-06-01")
+
+    # Multiseries time series
+    predict_realtime(deployment_id="abc123", file_path="multiseries.csv",
+                    forecast_point="2024-06-01", series_id_column="store_id")
+
+    # Historical time series predictions
+    predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
+                    forecast_range_start="2024-06-01",
+                    forecast_range_end="2024-06-07")
+
+    # Text model with explanations and passthrough
+    predict_realtime(deployment_id="abc123", file_path="text_data.csv",
+                    max_explanations="all", max_ngram_explanations="all",
+                    passthrough_columns="document_id,customer_id")
     """
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
