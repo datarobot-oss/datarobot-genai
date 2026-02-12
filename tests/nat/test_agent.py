@@ -178,7 +178,7 @@ def test_init_with_additional_kwargs(workflow_path):
 
 
 def test_make_chat_request_includes_history(workflow_path):
-    """NatAgent.make_chat_request should include prior turns as structured messages."""
+    """NatAgent.make_chat_request should include history only via `{chat_history}`."""
     agent = NatAgent(workflow_path=workflow_path)
 
     run_agent_input = RunAgentInput(
@@ -186,7 +186,9 @@ def test_make_chat_request_includes_history(workflow_path):
             AgSystemMessage(id="sys_1", content="You are a helper."),
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content="Follow-up"),
+            UserMessage(
+                id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"
+            ),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -197,15 +199,12 @@ def test_make_chat_request_includes_history(workflow_path):
     )
 
     chat_request = agent.make_chat_request(run_agent_input)
-    messages = chat_request.messages
-    # Expect separate messages for system, first user, assistant, and latest user turns.
-    assert [m.role.value for m in messages] == ["system", "user", "assistant", "user"]
-    assert [m.content for m in messages] == [
-        "You are a helper.",
-        "First question",
-        "First answer",
-        "Follow-up",
-    ]
+    text = chat_request.messages[0].content
+    assert "system: You are a helper." in text
+    assert "user: First question" in text
+    assert "assistant: First answer" in text
+    assert "{chat_history}" not in text
+    assert "Latest: Follow-up" in text
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")

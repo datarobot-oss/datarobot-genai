@@ -178,6 +178,39 @@ class NormalizedHistoryMessage(_NormalizedHistoryMessageRequired, total=False):
     tool_calls: Any | None
 
 
+def _get_message_field(message: Any, key: str, default: Any = None) -> Any:
+    """Best-effort field access for pydantic-like objects or dict messages."""
+    if isinstance(message, Mapping):
+        return message.get(key, default)
+    return getattr(message, key, default)
+
+
+def _summarize_tool_calls(tool_calls: Any) -> str:
+    """Render a minimal, stable summary for tool-call-only assistant messages."""
+    if not tool_calls:
+        return "[tool_calls]"
+
+    names: list[str] = []
+    if isinstance(tool_calls, list):
+        for tc in tool_calls:
+            name: Any = None
+            if isinstance(tc, Mapping):
+                fn = tc.get("function")
+                if isinstance(fn, Mapping):
+                    name = fn.get("name")
+                name = name or tc.get("name") or tc.get("tool_name")
+            else:
+                fn = getattr(tc, "function", None)
+                name = getattr(fn, "name", None) if fn is not None else None
+                name = name or getattr(tc, "name", None) or getattr(tc, "tool_name", None)
+            if name:
+                names.append(str(name))
+
+    if names:
+        return "[tool_calls] " + ", ".join(names)
+    return "[tool_calls]"
+
+
 def extract_history_messages(
     completion_create_params: CompletionCreateParams | Mapping[str, Any],
     max_history: int,
@@ -186,8 +219,9 @@ def extract_history_messages(
 
     Behaviour:
     - Considers ``completion_create_params['messages']`` in order.
-    - Identifies the last ``\"user\"`` message (if any).
-    - Treats everything *before* that last user message as history.
+    - If the *final* message is a ``"user"`` message, treats everything *before*
+      it as history (so the latest user turn can be handled separately).
+    - Otherwise treats all provided messages as history.
     - Converts messages into ``{role, content}`` dicts with string content.
     - Truncates to the most recent ``max_history`` entries.
 
@@ -201,19 +235,11 @@ def extract_history_messages(
     if not raw_messages or max_history <= 0:
         return []
 
-    # Find the index of the last user message, if any.
-    last_user_index = -1
-    for idx, message in enumerate(raw_messages):
-        role = getattr(message, "role", None)
-        if isinstance(message, Mapping):
-            role = message.get("role", role)
-        if role == "user":
-            last_user_index = idx
-
-    if last_user_index != -1:
-        history_slice = raw_messages[:last_user_index]
-    else:
-        history_slice = raw_messages
+    # Only exclude the final user message when it is actually the last message
+    # in the provided list. This avoids dropping trailing assistant/tool messages
+    # that some runtimes include after the last user message.
+    last_role = _get_message_field(raw_messages[-1], "role")
+    history_slice = raw_messages[:-1] if last_role == "user" else raw_messages
 
     # Keep only the most recent N messages in history to avoid unbounded growth
     # when callers provide long transcripts.
@@ -222,20 +248,24 @@ def extract_history_messages(
 
     history: list[NormalizedHistoryMessage] = []
     for message in history_slice:
-        role = getattr(message, "role", None)
-        content = getattr(message, "content", None)
-        tool_call_id = getattr(message, "tool_call_id", None)
-        name = getattr(message, "name", None)
-        tool_calls = getattr(message, "tool_calls", None)
-
-        if isinstance(message, Mapping):
-            role = message.get("role", role)
-            content = message.get("content", content)
-            tool_call_id = message.get("tool_call_id", tool_call_id)
-            name = message.get("name", name)
-            tool_calls = message.get("tool_calls", tool_calls)
+        role = _get_message_field(message, "role")
+        content = _get_message_field(message, "content")
+        tool_call_id = _get_message_field(message, "tool_call_id")
+        name = _get_message_field(message, "name")
+        tool_calls = _get_message_field(message, "tool_calls")
 
         text = str(content) if content is not None else ""
+        if not text and tool_calls is not None:
+            # Preserve assistant tool-call messages even when content is empty/None.
+            text = _summarize_tool_calls(tool_calls)
+        if not text and str(role or "") == "tool":
+            # Tool outputs should generally have content, but if they don't,
+            # keep a minimal placeholder so downstream adapters don't silently
+            # drop tool steps.
+            label = str(name) if name is not None else ""
+            if not label and tool_call_id is not None:
+                label = str(tool_call_id)
+            text = f"[tool] {label}".strip() if label else "[tool]"
         if not text:
             continue
 
@@ -265,7 +295,7 @@ def build_history_summary(
     """Build a plain-text summary of prior turns for prompts.
 
     This is a convenience helper around ``extract_history_messages`` that:
-    - Takes all messages *before* the last user message as history
+    - Uses the same history selection semantics as ``extract_history_messages``
     - Truncates to the most recent ``max_history`` entries
     - Normalizes them into ``{role, content}`` dicts
     and then renders a newline-separated transcript of the form

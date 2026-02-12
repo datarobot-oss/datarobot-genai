@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -49,6 +50,17 @@ if TYPE_CHECKING:
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
     from ragas.messages import ToolMessage
+
+
+def create_pipeline_interactions_from_messages(
+    messages: Sequence[HumanMessage | AIMessage | ToolMessage] | None,
+) -> MultiTurnSample | None:
+    if not messages:
+        return None
+    # Lazy import to reduce memory overhead when ragas is not used
+    from ragas import MultiTurnSample
+
+    return MultiTurnSample(user_input=messages)
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
@@ -151,20 +163,19 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 crew = self.crew()
 
                 kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
-                history_summary = self._build_history_summary(run_agent_input)
-                # Ensure ``chat_history`` is always present and, when available,
-                # populated with the rendered summary of prior turns.
-                existing_history = kickoff_inputs.get("chat_history")
-                try:
-                    existing_history_text = str(existing_history or "")
-                except Exception:
-                    existing_history_text = ""
+                # Chat history is opt-in: only populate it if the agent/template
+                # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
+                # in prompts).
+                if "chat_history" in kickoff_inputs:
+                    history_summary = self._build_history_summary(run_agent_input)
+                    existing_history = kickoff_inputs.get("chat_history")
+                    try:
+                        existing_history_text = str(existing_history or "")
+                    except Exception:
+                        existing_history_text = ""
 
-                if history_summary and not existing_history_text.strip():
-                    kickoff_inputs["chat_history"] = history_summary
-                else:
-                    kickoff_inputs.setdefault("chat_history", "")
+                    if history_summary and not existing_history_text.strip():
+                        kickoff_inputs["chat_history"] = history_summary
 
                 crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
-
                 yield self._process_crew_output(crew_output, ragas_event_listener.messages)

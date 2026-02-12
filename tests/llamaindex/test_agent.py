@@ -244,7 +244,7 @@ async def test_llama_index_agent_invoke_with_mcp_tools(
 
 
 def test_make_input_message_includes_history_summary() -> None:
-    """LlamaIndexAgent.make_input_message should include prior turns in summary."""
+    """By default, LlamaIndexAgent.make_input_message should NOT include history."""
     workflow = Workflow(events=[], state="S")
     agent = MyLlamaAgent(workflow)
 
@@ -265,14 +265,7 @@ def test_make_input_message_includes_history_summary() -> None:
 
     text = agent.make_input_message(run_agent_input)
 
-    # History summary should contain only prior turns, in order.
-    assert "Conversation so far:" in text
-    assert "system: You are a helper." in text
-    assert "user: First question" in text
-    assert "assistant: First answer" in text
-    # The latest user turn should appear only in the final section, not in history.
-    assert "user: Follow-up" not in text
-    assert text.strip().endswith("Follow-up")
+    assert text == "Follow-up"
 
 
 def test_make_input_message_zero_history_disables_summary() -> None:
@@ -298,3 +291,24 @@ def test_make_input_message_zero_history_disables_summary() -> None:
 
     text = agent.make_input_message(run_agent_input)
     assert text == "Follow-up"
+
+
+def test_make_input_message_replaces_chat_history_placeholder() -> None:
+    """History is injected only when `{chat_history}` placeholder is present."""
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow)
+    completion_create_params: Any = {
+        "model": "m",
+        "messages": [
+            {"role": "system", "content": "You are a helper."},
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "First answer"},
+            {"role": "user", "content": "History:\n{chat_history}\n\nLatest: Follow-up"},
+        ],
+    }
+
+    text = agent.make_input_message(completion_create_params)  # type: ignore[arg-type]
+    assert "system: You are a helper." in text
+    assert "user: First question" in text
+    assert "assistant: First answer" in text
+    assert "{chat_history}" not in text

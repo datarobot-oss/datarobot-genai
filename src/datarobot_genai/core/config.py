@@ -24,7 +24,8 @@ def get_max_history_messages_default() -> int:
 
     This can be overridden globally via the
     ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES`` environment variable.
-    Negative or invalid values fall back to the built-in default.
+    Invalid values fall back to the built-in default. Negative values are
+    treated as 0 (disable history).
     """
     raw = os.getenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES")
     if not raw:
@@ -35,5 +36,6 @@ def get_max_history_messages_default() -> int:
     except (TypeError, ValueError):
         return DEFAULT_MAX_HISTORY_MESSAGES
 
-    # Protect against negative values; 0 means "no history".
+    # 0 means "no history". Clamp negatives to 0 to allow "disable history"
+    # semantics via env var while preventing unbounded/undefined behavior.
     return max(0, value)

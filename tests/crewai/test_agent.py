@@ -176,7 +176,7 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
 
 
-async def test_invoke_includes_chat_history_in_kickoff_inputs(
+async def test_invoke_does_not_include_chat_history_by_default(
     patch_mcp_tools_context, mock_ragas_event_listener
 ) -> None:
     captured_inputs: dict[str, Any] = {}
@@ -193,12 +193,7 @@ async def test_invoke_includes_chat_history_in_kickoff_inputs(
     _ = [event async for event in agent.invoke(_run_input_with_history())]
 
     assert captured_inputs["topic"] == "Follow-up"
-    history = captured_inputs["chat_history"]
-    assert isinstance(history, str)
-    assert "system: You are a helper." in history
-    assert "user: First question" in history
-    assert "assistant: First answer" in history
-    assert "user: Follow-up" not in history
+    assert "chat_history" not in captured_inputs
 
 
 async def test_invoke_overwrites_blank_chat_history_placeholder(

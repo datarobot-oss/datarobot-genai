@@ -90,23 +90,22 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     def make_input_message(self, run_agent_input: RunAgentInput) -> str:
         """Create an input string for the workflow from the user prompt.
 
-        This uses the last user message as the primary request, and (when present)
-        prepends a plain-text summary of prior turns so the workflow can reason
-        over multi-turn context without changing LlamaIndex schemas.
+        Default implementation:
+        - Uses the last user message as the primary request.
+        - Does NOT include prior turns by default.
+        - History is opt-in: if the input string contains a `{chat_history}`
+          placeholder, it will be replaced with a rendered transcript of prior
+          turns (excluding the latest user message).
         """
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         current_text = str(user_prompt_content)
-
-        normalized = extract_history_messages(
-            {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
-        )
-        if not normalized:
+        if "{chat_history}" not in current_text:
             return current_text
 
-        history_lines = [f"{msg['role']}: {msg['content']}" for msg in normalized]
-        history_summary = "\n".join(history_lines)
-        return f"Conversation so far:\n{history_summary}\n\nUser's latest request:\n{current_text}"
+        history_summary = self.build_history_summary(
+            {"messages": getattr(run_agent_input, "messages", []) or []}
+        )
+        return current_text.replace("{chat_history}", history_summary)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""

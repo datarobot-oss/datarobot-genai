@@ -30,12 +30,7 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.tools import BaseTool
-from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
-from langchain_core.messages import BaseMessage
-from langchain_core.messages import HumanMessage
-from langchain_core.messages import SystemMessage
-from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
@@ -45,7 +40,6 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import build_history_summary
-from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.langgraph.mcp import mcp_tools_context
@@ -93,87 +87,57 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         except TypeError:
             return str(content)
 
-    def _convert_history_messages(self, run_agent_input: RunAgentInput) -> list[BaseMessage]:
-        """Convert prior turns into LangChain messages for LangGraph history.
-
-        This delegates to ``extract_history_messages`` to identify and truncate
-        prior turns, then maps them into LangChain ``BaseMessage`` instances.
-
-        The final user message is handled separately via the prompt template so
-        that existing single-turn behaviour is preserved.
-        """
-        normalized = extract_history_messages(
-            {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
-        )
-        if not normalized:
-            return []
-
-        history_messages: list[BaseMessage] = []
-        for msg in normalized:
-            role = msg["role"]
-            text = msg["content"]
-            if role in ("system", "developer"):
-                history_messages.append(SystemMessage(content=text))
-            elif role == "assistant":
-                history_messages.append(AIMessage(content=text))
-            elif role == "tool":
-                # Tool outputs are treated as assistant context for the model.
-                history_messages.append(AIMessage(content=text))
-            elif role == "user":
-                history_messages.append(HumanMessage(content=text))
-            else:
-                # Fallback to user role to avoid silently dropping context.
-                history_messages.append(HumanMessage(content=text))
-
-        return history_messages
-
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
         By default this:
-        - Preserves prior turns (up to ``MAX_HISTORY_MESSAGES``) as LangChain
-          messages so the workflow sees multi-turn context.
         - Extracts the last user message content via `extract_user_prompt_content`
           and feeds it through `prompt_template` to build the current turn.
+        - Includes prior turns only when the prompt template opts in via a
+          `{chat_history}` variable.
         """
-        history_messages = self._convert_history_messages(run_agent_input)
-        history_summary = build_history_summary(
-            {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
-        )
         user_prompt = extract_user_prompt_content(run_agent_input)
+
+        # Chat history is opt-in: the model only sees history when the prompt
+        # template declares/uses the `{chat_history}` variable.
+        input_vars = getattr(self.prompt_template, "input_variables", [])
+        try:
+            vars_list = list(input_vars)
+        except TypeError:
+            vars_list = []
+        uses_chat_history = "chat_history" in vars_list
+        history_summary = (
+            build_history_summary(
+                {"messages": getattr(run_agent_input, "messages", []) or []},
+                getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
+            )
+            if uses_chat_history
+            else ""
+        )
 
         # Prefer structured dict input when available so templates can access both
         # the original fields (e.g. {topic}) and a plain-text {chat_history}.
         if isinstance(user_prompt, Mapping):
             template_input: Any = dict(user_prompt)
             template_input.setdefault("chat_history", history_summary)
-        else:
+        elif vars_list:
             # When the prompt is a bare value, best-effort map it into the declared
             # input variables. Known variable "chat_history" always receives the
             # history summary; all other variables receive the raw user prompt.
-            input_vars = getattr(self.prompt_template, "input_variables", [])
-            try:
-                vars_list = list(input_vars)
-            except TypeError:
-                vars_list = []
-
-            if vars_list:
-                template_input = {}
-                for name in vars_list:
-                    if name == "chat_history":
-                        template_input[name] = history_summary
-                    else:
-                        template_input[name] = user_prompt
-            else:
-                # No declared variables: preserve pre-history behaviour.
-                template_input = user_prompt
+            template_input = {}
+            for name in vars_list:
+                if name == "chat_history":
+                    template_input[name] = history_summary
+                else:
+                    template_input[name] = user_prompt
+        else:
+            # No declared variables: preserve pre-history behaviour.
+            template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
         command = Command(  # type: ignore[var-annotated]
             update={
-                "messages": history_messages + current_messages,
+                "messages": current_messages,
             },
         )
         return command
