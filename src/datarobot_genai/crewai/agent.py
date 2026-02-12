@@ -30,7 +30,7 @@ from typing import Any
 
 from ag_ui.core import RunAgentInput
 from crewai import Crew
-from crewai.events.event_bus import CrewAIEventsBus
+from crewai.events import crewai_event_bus
 from crewai.tools import BaseTool
 
 from datarobot_genai.core.agents.base import BaseAgent
@@ -140,14 +140,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             # Set MCP tools for all agents if MCP is not configured this is effectively a no-op
             self.set_mcp_tools(mcp_tools)
 
-            # If an event bus is available register ragas event listener
-            if CrewAIEventsBus is not None:
-                self.ragas_event_listener.setup_listeners(CrewAIEventsBus)
+            with crewai_event_bus.scoped_handlers():
+                self.ragas_event_listener.setup_listeners(crewai_event_bus)
 
-            crew = self.crew()
+                crew = self.crew()
 
-            crew_output = await asyncio.to_thread(
-                crew.kickoff,
-                inputs=self.make_kickoff_inputs(user_prompt_content),
-            )
+                crew_output = await asyncio.to_thread(
+                    crew.kickoff,
+                    inputs=self.make_kickoff_inputs(user_prompt_content),
+                )
             yield self._process_crew_output(crew_output)

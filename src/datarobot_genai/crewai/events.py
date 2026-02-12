@@ -13,7 +13,6 @@
 # limitations under the License.
 from __future__ import annotations
 
-import importlib
 import json
 import logging
 from typing import TYPE_CHECKING
@@ -24,39 +23,12 @@ if TYPE_CHECKING:
     from ragas.messages import HumanMessage
     from ragas.messages import ToolMessage
 
-# Resolve crewai symbols at runtime to avoid mypy issues with untyped packages
-try:
-    _events_mod = importlib.import_module("crewai.events.event_types")
-    AgentExecutionCompletedEvent = getattr(_events_mod, "AgentExecutionCompletedEvent")
-    AgentExecutionStartedEvent = getattr(_events_mod, "AgentExecutionStartedEvent")
-    CrewKickoffStartedEvent = getattr(_events_mod, "CrewKickoffStartedEvent")
-    ToolUsageFinishedEvent = getattr(_events_mod, "ToolUsageFinishedEvent")
-    ToolUsageStartedEvent = getattr(_events_mod, "ToolUsageStartedEvent")
-
-    _bus_mod = importlib.import_module("crewai.events.event_bus")
-    CrewAIEventsBus = getattr(_bus_mod, "CrewAIEventsBus")
-
-    _base_mod = importlib.import_module("crewai.events.base_event_listener")
-    _RuntimeBaseEventListener = getattr(_base_mod, "BaseEventListener")
-except Exception:
-    try:  # pragma: no cover - compatibility for older crewai
-        _events_mod = importlib.import_module("crewai.utilities.events")
-        AgentExecutionCompletedEvent = getattr(_events_mod, "AgentExecutionCompletedEvent")
-        AgentExecutionStartedEvent = getattr(_events_mod, "AgentExecutionStartedEvent")
-        CrewKickoffStartedEvent = getattr(_events_mod, "CrewKickoffStartedEvent")
-        ToolUsageFinishedEvent = getattr(_events_mod, "ToolUsageFinishedEvent")
-        ToolUsageStartedEvent = getattr(_events_mod, "ToolUsageStartedEvent")
-
-        _bus_mod = importlib.import_module("crewai.utilities.events")
-        CrewAIEventsBus = getattr(_bus_mod, "CrewAIEventsBus")
-        _base_mod = importlib.import_module("crewai.utilities.events.base_event_listener")
-        _RuntimeBaseEventListener = getattr(_base_mod, "BaseEventListener")
-    except Exception:
-        raise ImportError(
-            "CrewAI is required for datarobot_genai.crewai.* modules. "
-            "Install with the CrewAI extra:\n"
-            "  install 'datarobot-genai[crewai]'"
-        )
+from crewai.events.event_bus import CrewAIEventsBus
+from crewai.events.event_types import AgentExecutionCompletedEvent
+from crewai.events.event_types import AgentExecutionStartedEvent
+from crewai.events.event_types import CrewKickoffStartedEvent
+from crewai.events.event_types import ToolUsageFinishedEvent
+from crewai.events.event_types import ToolUsageStartedEvent
 
 
 class CrewAIRagasEventListener:
@@ -66,7 +38,7 @@ class CrewAIRagasEventListener:
         self.messages: list[HumanMessage | AIMessage | ToolMessage] = []
         self.set_up_listeners = False
 
-    def setup_listeners(self, crewai_event_bus: Any) -> None:
+    def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
         # Lazy import to reduce memory overhead when ragas is not used
         from ragas.messages import AIMessage
         from ragas.messages import HumanMessage
