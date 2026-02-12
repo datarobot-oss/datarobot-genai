@@ -21,6 +21,8 @@ from unittest.mock import patch
 import pytest
 from ag_ui.core import BaseEvent
 from ag_ui.core import EventType
+from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import HumanMessage
@@ -31,14 +33,25 @@ from langgraph.graph.message import MessagesState
 from langgraph.graph.state import Command
 from langgraph.graph.state import StateGraph
 
-from datarobot_genai.core.chat.responses import CustomModelChatResponse
-from datarobot_genai.core.chat.responses import to_custom_model_chat_response
 from datarobot_genai.langgraph.agent import LangGraphAgent
 
 
 @pytest.fixture
 def authorization_context() -> dict[str, Any]:
     return {"user": {"id": "123", "name": "bar"}}
+
+
+@pytest.fixture
+def run_agent_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[UserMessage(content='{"topic": "AI"}', id="message_id")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
 
 
 class SimpleLangGraphAgent(LangGraphAgent):
@@ -167,65 +180,12 @@ class SimpleLangGraphAgent(LangGraphAgent):
         return {}
 
 
-async def test_langgraph_non_streaming():
+async def test_langgraph(run_agent_input):
     # GIVEN a simple langgraph agent implementation
     agent = SimpleLangGraphAgent()
 
-    # WHEN invoking the agent with a completion create params
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": '{"topic": "Artificial Intelligence"}'}],
-        "environment_var": True,
-    }
-    response_text, pipeline_interactions, usage_metrics = await agent.invoke(
-        completion_create_params
-    )
-
-    # THEN agent.workflow is called with expected arguments
-    expected_command = Command(
-        update={
-            "messages": [
-                SystemMessage(
-                    content="You are a helpful assistant. Tell user about Artificial Intelligence."
-                ),
-                HumanMessage(content="Hi, tell me about Artificial Intelligence."),
-            ]
-        }
-    )
-    agent.workflow.compile().astream.assert_called_once_with(
-        input=expected_command,
-        config={},
-        debug=True,
-        stream_mode=["updates", "messages"],
-        subgraphs=True,
-    )
-
-    # THEN the response is a custom model chat response
-    response = to_custom_model_chat_response(
-        response_text, pipeline_interactions, usage_metrics, model="test-model"
-    )
-    assert isinstance(response, CustomModelChatResponse)
-    # THEN the last message is the final message
-    assert response.choices[0].message.content == "Paris is the capital city of France."
-    # THEN the pipeline interactions are not None
-    assert response.pipeline_interactions is not None
-    assert response.usage.completion_tokens == 100
-    assert response.usage.prompt_tokens == 100
-    assert response.usage.total_tokens == 200
-
-
-async def test_langgraph_streaming():
-    # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent()
-
-    # WHEN invoking the agent with a completion create params
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-        "environment_var": True,
-        "stream": True,
-    }
-    streaming_response_iterator = await agent.invoke(completion_create_params)
+    # WHEN invoking the agent
+    streaming_response_iterator = agent.invoke(run_agent_input)
 
     # THEN the streaming response iterator returns the expected responses
     # Iterate directly over the async generator to avoid event loop conflicts
@@ -303,43 +263,10 @@ async def test_langgraph_streaming():
     assert usage_metrics["completion_tokens"] == 100
 
 
-async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_context):
+async def test_invoke_calls_mcp_tools_context_and_sets_tools_and_cleans_up(
+    authorization_context, run_agent_input
+):
     """Test that invoke method calls mcp_tools_context and sets tools correctly."""
-    # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent(authorization_context=authorization_context)
-
-    # Mock the mcp_tools_context to return mock tools
-    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-
-    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
-        # Configure the mock context manager
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_tools
-        mock_context_manager.__aexit__.return_value = None
-        mock_mcp_context.return_value = mock_context_manager
-
-        with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
-            # WHEN invoking the agent
-            completion_create_params = {
-                "model": "test-model",
-                "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-                "environment_var": True,
-            }
-
-            await agent.invoke(completion_create_params)
-
-            # THEN mcp_tools_context is called with correct parameters
-            mock_mcp_context.assert_called_once_with(
-                authorization_context=authorization_context,
-                forwarded_headers={},
-            )
-
-            # THEN set_mcp_tools is called with the tools from context
-            mock_set_mcp_tools.assert_called_once_with(mock_tools)
-
-
-async def test_invoke_passes_forwarded_headers_to_mcp_context(authorization_context):
-    """Test that invoke method passes forwarded headers to MCP context."""
     # GIVEN a simple langgraph agent with forwarded headers
     forwarded_headers = {
         "x-datarobot-api-key": "scoped-token-123",
@@ -358,88 +285,9 @@ async def test_invoke_passes_forwarded_headers_to_mcp_context(authorization_cont
         mock_context_manager.__aexit__.return_value = None
         mock_mcp_context.return_value = mock_context_manager
 
-        # WHEN invoking the agent
-        completion_create_params = {
-            "model": "test-model",
-            "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-            "environment_var": True,
-        }
-
-        await agent.invoke(completion_create_params)
-
-        # THEN mcp_tools_context is called with forwarded headers
-        mock_mcp_context.assert_called_once_with(
-            authorization_context=authorization_context,
-            forwarded_headers=forwarded_headers,
-        )
-
-
-async def test_invoke_streaming_passes_forwarded_headers_to_mcp_context(authorization_context):
-    """Test that streaming invoke method passes forwarded headers to MCP context."""
-    # GIVEN a simple langgraph agent with forwarded headers
-    forwarded_headers = {"x-datarobot-api-key": "scoped-token-456"}
-    agent = SimpleLangGraphAgent(
-        authorization_context=authorization_context, forwarded_headers=forwarded_headers
-    )
-
-    # Mock the mcp_tools_context to return mock tools
-    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-
-    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
-        # Configure the mock context manager
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_tools
-        mock_context_manager.__aexit__.return_value = None
-        mock_mcp_context.return_value = mock_context_manager
-
-        # WHEN invoking the agent with streaming
-        completion_create_params = {
-            "model": "test-model",
-            "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-            "environment_var": True,
-            "stream": True,
-        }
-
-        streaming_response_iterator = await agent.invoke(completion_create_params)
-
-        # WHEN consuming the streaming generator
-        items_consumed = 0
-        async for _ in streaming_response_iterator:
-            items_consumed += 1
-            # THEN mcp_tools_context is called with forwarded headers
-            if items_consumed == 1:
-                mock_mcp_context.assert_called_once_with(
-                    authorization_context=authorization_context,
-                    forwarded_headers=forwarded_headers,
-                )
-                break
-
-
-async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorization_context):
-    """Test that streaming invoke method uses async with correctly and cleans up context."""
-    # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent(authorization_context=authorization_context)
-
-    # Mock the mcp_tools_context to return mock tools
-    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-
-    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
-        # Configure the mock context manager
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_tools
-        mock_context_manager.__aexit__.return_value = None
-        mock_mcp_context.return_value = mock_context_manager
-
         with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
-            # WHEN invoking the agent with streaming
-            completion_create_params = {
-                "model": "test-model",
-                "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-                "environment_var": True,
-                "stream": True,
-            }
-
-            streaming_response_iterator = await agent.invoke(completion_create_params)
+            # WHEN invoking the agent
+            streaming_response_iterator = agent.invoke(run_agent_input)
 
             # THEN context is not entered yet (it's entered inside the generator)
             mock_context_manager.__aenter__.assert_not_called()
@@ -454,7 +302,7 @@ async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorizat
                     # Verify mcp_tools_context is called with correct parameters
                     mock_mcp_context.assert_called_once_with(
                         authorization_context=authorization_context,
-                        forwarded_headers={},
+                        forwarded_headers=forwarded_headers,
                     )
                     # Verify context is entered and tools are set
                     mock_context_manager.__aenter__.assert_called_once()

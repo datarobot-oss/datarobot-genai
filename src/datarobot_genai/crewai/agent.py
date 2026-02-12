@@ -25,21 +25,20 @@ from __future__ import annotations
 
 import abc
 import asyncio
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
 
+from ag_ui.core import RunAgentInput
 from crewai import Crew
-from crewai.events.event_bus import CrewAIEventsBus
+from crewai.events import crewai_event_bus
 from crewai.tools import BaseTool
-from openai.types.chat import CompletionCreateParams
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.agents.base import is_streaming
+from datarobot_genai.crewai.events import CrewAIRagasEventListener
 
 from .mcp import mcp_tools_context
 
@@ -50,17 +49,6 @@ if TYPE_CHECKING:
     from ragas.messages import ToolMessage
 
 
-def create_pipeline_interactions_from_messages(
-    messages: list[HumanMessage | AIMessage | ToolMessage] | None,
-) -> MultiTurnSample | None:
-    if not messages:
-        return None
-    # Lazy import to reduce memory overhead when ragas is not used
-    from ragas import MultiTurnSample
-
-    return MultiTurnSample(user_input=messages)
-
-
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
@@ -68,6 +56,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     and may override ``crew`` to customize the workflow
     construction.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
 
     @property
     @abc.abstractmethod
@@ -96,16 +87,17 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         """
         raise NotImplementedError
 
-    def _extract_pipeline_interactions(self) -> MultiTurnSample | None:
-        """Extract pipeline interactions from event listener if available."""
-        if not hasattr(self, "event_listener"):
+    @classmethod
+    def create_pipeline_interactions_from_messages(
+        cls,
+        messages: list[HumanMessage | AIMessage | ToolMessage] | None,
+    ) -> MultiTurnSample | None:
+        if not messages:
             return None
-        try:
-            listener = getattr(self, "event_listener", None)
-            messages = getattr(listener, "messages", None) if listener is not None else None
-            return create_pipeline_interactions_from_messages(messages)
-        except Exception:
-            return None
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+
+        return MultiTurnSample(user_input=messages)
 
     def _extract_usage_metrics(self, crew_output: Any) -> UsageMetrics:
         """Extract usage metrics from crew output."""
@@ -119,17 +111,17 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         return default_usage_metrics()
 
     def _process_crew_output(
-        self, crew_output: Any
+        self, crew_output: Any, messages: list[HumanMessage | AIMessage | ToolMessage]
     ) -> tuple[str, MultiTurnSample | None, UsageMetrics]:
         """Process crew output into response tuple."""
         response_text = str(crew_output.raw)
-        pipeline_interactions = self._extract_pipeline_interactions()
+        pipeline_interactions = self.create_pipeline_interactions_from_messages(messages)
         usage_metrics = self._extract_usage_metrics(crew_output)
         return response_text, pipeline_interactions, usage_metrics
 
-    async def invoke(self, completion_create_params: CompletionCreateParams) -> InvokeReturn:
+    async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
-        user_prompt_content = extract_user_prompt_content(completion_create_params)
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
         # Preserve prior template startup print for CLI parity
         try:
             print("Running agent with user prompt:", user_prompt_content, flush=True)
@@ -139,37 +131,20 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Use MCP context manager to handle connection lifecycle
         with mcp_tools_context(
-            authorization_context=self._authorization_context,
+            authorization_context=self.authorization_context,
             forwarded_headers=self.forwarded_headers,
         ) as mcp_tools:
             # Set MCP tools for all agents if MCP is not configured this is effectively a no-op
             self.set_mcp_tools(mcp_tools)
 
-            # If an event listener is provided by the subclass/template, register it
-            if hasattr(self, "event_listener") and CrewAIEventsBus is not None:
-                try:
-                    listener = getattr(self, "event_listener")
-                    setup_fn = getattr(listener, "setup_listeners", None)
-                    if callable(setup_fn):
-                        setup_fn(CrewAIEventsBus)
-                except Exception:
-                    # Listener is optional best-effort; proceed without failing invoke
-                    pass
+            with crewai_event_bus.scoped_handlers():
+                ragas_event_listener = CrewAIRagasEventListener()
+                ragas_event_listener.setup_listeners(crewai_event_bus)
 
-            crew = self.crew()
+                crew = self.crew()
 
-            if is_streaming(completion_create_params):
-
-                async def _gen() -> AsyncGenerator[
-                    tuple[str, MultiTurnSample | None, UsageMetrics]
-                ]:
-                    crew_output = await asyncio.to_thread(
-                        crew.kickoff,
-                        inputs=self.make_kickoff_inputs(user_prompt_content),
-                    )
-                    yield self._process_crew_output(crew_output)
-
-                return _gen()
-
-            crew_output = crew.kickoff(inputs=self.make_kickoff_inputs(user_prompt_content))
-            return self._process_crew_output(crew_output)
+                crew_output = await asyncio.to_thread(
+                    crew.kickoff,
+                    inputs=self.make_kickoff_inputs(user_prompt_content),
+                )
+            yield self._process_crew_output(crew_output, ragas_event_listener.messages)

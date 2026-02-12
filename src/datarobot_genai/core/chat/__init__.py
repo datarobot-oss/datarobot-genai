@@ -3,6 +3,7 @@
 from .auth import initialize_authorization_context
 from .auth import resolve_authorization_context
 from .client import ToolClient
+from .completions import agent_chat_completion_wrapper
 from .responses import CustomModelChatResponse
 from .responses import CustomModelStreamingResponse
 from .responses import to_custom_model_chat_response
@@ -16,4 +17,5 @@ __all__ = [
     "ToolClient",
     "resolve_authorization_context",
     "initialize_authorization_context",
+    "agent_chat_completion_wrapper",
 ]
