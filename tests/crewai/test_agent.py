@@ -50,14 +50,20 @@ class TestListener:
         self.called_setup = True
 
 
+@pytest.fixture
+def mock_ragas_event_listener() -> TestListener:
+    event_listener = TestListener(messages=[HumanMessage(content="hi"), AIMessage(content="there")])
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIRagasEventListener"
+    ) as mock_ragas_event_listener:
+        mock_ragas_event_listener.return_value = event_listener
+        yield event_listener
+
+
 class TestAgent(CrewAIAgent):
     def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.crew_output = crew_output
-        # Provide valid Ragas messages so interactions can be constructed
-        self.ragas_event_listener = TestListener(
-            messages=[HumanMessage(content="hi"), AIMessage(content="there")]
-        )
 
     @property
     def agents(self) -> list[Any]:
@@ -111,7 +117,7 @@ def run_agent_input() -> RunAgentInput:
     )
 
 
-async def test_invoke(run_agent_input, patch_mcp_tools_context) -> None:
+async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event_listener) -> None:
     # GIVEN agent with predefined crew output and forwarded headers
     out = CrewOutput(
         raw="agent result",
@@ -145,7 +151,7 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context) -> None:
     assert agent.mcp_tools == ["tool1"]
 
     # THEN ragas event listener was setup
-    assert agent.ragas_event_listener.called_setup
+    assert mock_ragas_event_listener.called_setup
 
     # THEN there is just one event
     assert len(events) == 1
