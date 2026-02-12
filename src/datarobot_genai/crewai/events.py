@@ -36,7 +36,6 @@ class CrewAIRagasEventListener:
 
     def __init__(self) -> None:
         self.messages: list[HumanMessage | AIMessage | ToolMessage] = []
-        self.set_up_listeners = False
 
     def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
         # Lazy import to reduce memory overhead when ragas is not used
@@ -44,10 +43,6 @@ class CrewAIRagasEventListener:
         from ragas.messages import HumanMessage
         from ragas.messages import ToolCall
         from ragas.messages import ToolMessage
-
-        if self.set_up_listeners:
-            return
-        self.set_up_listeners = True
 
         @crewai_event_bus.on(CrewKickoffStartedEvent)
         def on_crew_execution_started(_: Any, event: Any) -> None:

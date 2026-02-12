@@ -59,7 +59,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.ragas_event_listener = CrewAIRagasEventListener()
 
     @property
     @abc.abstractmethod
@@ -112,13 +111,11 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         return default_usage_metrics()
 
     def _process_crew_output(
-        self, crew_output: Any
+        self, crew_output: Any, messages: list[HumanMessage | AIMessage | ToolMessage]
     ) -> tuple[str, MultiTurnSample | None, UsageMetrics]:
         """Process crew output into response tuple."""
         response_text = str(crew_output.raw)
-        pipeline_interactions = self.create_pipeline_interactions_from_messages(
-            self.ragas_event_listener.messages
-        )
+        pipeline_interactions = self.create_pipeline_interactions_from_messages(messages)
         usage_metrics = self._extract_usage_metrics(crew_output)
         return response_text, pipeline_interactions, usage_metrics
 
@@ -141,7 +138,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             self.set_mcp_tools(mcp_tools)
 
             with crewai_event_bus.scoped_handlers():
-                self.ragas_event_listener.setup_listeners(crewai_event_bus)
+                ragas_event_listener = CrewAIRagasEventListener()
+                ragas_event_listener.setup_listeners(crewai_event_bus)
 
                 crew = self.crew()
 
@@ -149,4 +147,4 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     crew.kickoff,
                     inputs=self.make_kickoff_inputs(user_prompt_content),
                 )
-            yield self._process_crew_output(crew_output)
+            yield self._process_crew_output(crew_output, ragas_event_listener.messages)
