@@ -21,6 +21,7 @@ from unittest.mock import patch
 import datarobot as dr
 import pytest
 from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.tools.predictive import predict
 
@@ -68,7 +69,11 @@ async def test_predict_by_file_path(
     patch_predict_dependencies["mock_cred"].return_value = MagicMock(credential_id="cid")
     result = await predict.predict_by_file_path("dep", "file.csv", 5)
     patch_predict_dependencies["mock_batch_job"].score.assert_called_once()
-    assert "Finished Batch Prediction job ID jobid" in result
+    assert isinstance(result, ToolResult)
+    assert result.structured_content["job_id"] == "jobid"
+    assert result.structured_content["deployment_id"] == "dep"
+    assert "Scoring file file.csv" in result.structured_content["input_desc"]
+    assert "s3_url" in result.structured_content
 
 
 @pytest.mark.asyncio
@@ -87,7 +92,11 @@ async def test_predict_by_ai_catalog(
         monkeypatch.setattr(predict, "get_sdk_client", lambda: mock_client)
         result = await predict.predict_by_ai_catalog("dep", "dsid", 5)
         patch_predict_dependencies["mock_batch_job"].score.assert_called_once()
-        assert "Finished Batch Prediction job ID jobid" in result
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["job_id"] == "jobid"
+        assert result.structured_content["deployment_id"] == "dep"
+        assert "Scoring dataset dsid" in result.structured_content["input_desc"]
+        assert "s3_url" in result.structured_content
 
 
 @pytest.mark.asyncio
@@ -101,7 +110,11 @@ async def test_predict_from_project_data(
         patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
         result = await predict.predict_from_project_data("dep", "pid", "dsid", "holdout", 5)
         patch_predict_dependencies["mock_batch_job"].score.assert_called_once()
-        assert "Finished Batch Prediction job ID jobid" in result
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["job_id"] == "jobid"
+        assert result.structured_content["deployment_id"] == "dep"
+        assert "Scoring project pid" in result.structured_content["input_desc"]
+        assert "s3_url" in result.structured_content
 
 
 @pytest.mark.asyncio

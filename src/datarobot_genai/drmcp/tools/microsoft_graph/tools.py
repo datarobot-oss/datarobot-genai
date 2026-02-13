@@ -22,7 +22,7 @@ from typing import Literal
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url

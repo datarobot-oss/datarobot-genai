@@ -13,13 +13,15 @@
 # limitations under the License.
 
 import os
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from nat.data_models.api_server import ChatRequest
+from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
 from nat.data_models.intermediate_step import IntermediateStepType
@@ -41,7 +43,9 @@ def workflow_path():
 
 @pytest.fixture
 def agent(workflow_path):
-    return NatAgent(workflow_path=workflow_path)
+    return NatAgent(
+        workflow_path=workflow_path,
+    )
 
 
 @pytest.fixture
@@ -51,6 +55,110 @@ def agent_with_headers(workflow_path):
         forwarded_headers={"h1": "v1"},
         authorization_context={"c1": "v2"},
     )
+
+
+@pytest.fixture
+def agent_steps():
+    start_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_START,
+            data=StreamEventData(
+                input=[
+                    {"role": "system", "content": "system prompt"},
+                    {"role": "user", "content": "user prompt"},
+                ]
+            ),
+        ),
+    )
+    new_token_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_NEW_TOKEN,
+            usage_info=UsageInfo(
+                token_usage=TokenUsageBaseModel(
+                    total_tokens=2, completion_tokens=1, prompt_tokens=1
+                )
+            ),
+        ),
+    )
+    end_step = IntermediateStep(
+        parent_id="some_parent_id",
+        function_ancestry=InvocationNode(
+            function_id="some_function_id", function_name="some_function"
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_END,
+            data=StreamEventData(output="LLM response"),
+            usage_info=UsageInfo(
+                token_usage=TokenUsageBaseModel(
+                    total_tokens=2, completion_tokens=1, prompt_tokens=1
+                )
+            ),
+        ),
+    )
+    return [start_step, new_token_step, end_step, end_step]
+
+
+@pytest.fixture
+def mock_intermediate_structured(agent_steps):
+    with patch(
+        "datarobot_genai.nat.agent.pull_intermediate_structured", new_callable=AsyncMock
+    ) as mock_intermediate_structured:
+        mock_intermediate_structured.return_value = agent_steps
+        yield mock_intermediate_structured
+
+
+@pytest.fixture
+def mock_load_workflow():
+    async def mock_result_stream():
+        yield "chunk1"
+        yield "chunk2"
+
+    mock_run = MagicMock()
+    mock_run.return_value.__aenter__.return_value = AsyncMock(result_stream=mock_result_stream)
+    with patch(
+        "datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock
+    ) as mock_load_workflow:
+        mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
+        yield mock_load_workflow
+
+
+@pytest.fixture
+def run_agent_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[UserMessage(content="Artificial Intelligence", id="message_id")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+@pytest.fixture
+def patch_environment_variables():
+    deployment_id = "abc123def456789012345678"
+    api_base = "https://app.datarobot.com/api/v2"
+    api_key = "test-api-key"
+
+    with patch.dict(
+        os.environ,
+        {
+            "MCP_DEPLOYMENT_ID": deployment_id,
+            "DATAROBOT_ENDPOINT": api_base,
+            "DATAROBOT_API_TOKEN": api_key,
+        },
+        clear=True,
+    ):
+        yield
 
 
 @patch.dict(os.environ, {}, clear=True)
@@ -67,309 +175,83 @@ def test_init_with_additional_kwargs(workflow_path):
         _ = agent.extra_param1
 
 
-async def test_run_method(agent, workflow_path):
-    # Patch the run_nat_workflow method
-    start_step = IntermediateStep(
-        parent_id="some_parent_id",
-        function_ancestry=InvocationNode(
-            function_id="some_function_id", function_name="some_function"
-        ),
-        payload=IntermediateStepPayload(
-            event_type=IntermediateStepType.LLM_START,
-            data=StreamEventData(
-                input=[
-                    {"role": "system", "content": "system prompt"},
-                    {"role": "user", "content": "user prompt"},
-                ]
-            ),
-        ),
-    )
-    new_token_step = IntermediateStep(
-        parent_id="some_parent_id",
-        function_ancestry=InvocationNode(
-            function_id="some_function_id", function_name="some_function"
-        ),
-        payload=IntermediateStepPayload(
-            event_type=IntermediateStepType.LLM_NEW_TOKEN,
-            usage_info=UsageInfo(
-                token_usage=TokenUsageBaseModel(
-                    total_tokens=2, completion_tokens=1, prompt_tokens=1
-                )
-            ),
-        ),
-    )
-    end_step = IntermediateStep(
-        parent_id="some_parent_id",
-        function_ancestry=InvocationNode(
-            function_id="some_function_id", function_name="some_function"
-        ),
-        payload=IntermediateStepPayload(
-            event_type=IntermediateStepType.LLM_END,
-            data=StreamEventData(output="LLM response"),
-            usage_info=UsageInfo(
-                token_usage=TokenUsageBaseModel(
-                    total_tokens=2, completion_tokens=1, prompt_tokens=1
-                )
-            ),
-        ),
-    )
-    with patch.object(
-        NatAgent,
-        "run_nat_workflow",
-        return_value=("success", [start_step, new_token_step, end_step, end_step]),
-    ):
-        # Call the run method with test inputs
-        completion_create_params = {
-            "model": "test-model",
-            "messages": [{"role": "user", "content": "Artificial Intelligence"}],
-            "environment_var": True,
-        }
-        result, pipeline_interactions, usage = await agent.invoke(completion_create_params)
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_mcp_headers(agent, run_agent_input):
+    # GIVEN: an agent with run agent input
+    # WHEN: invoke the agent with a run agent input
+    streaming_response_iterator = agent.invoke(run_agent_input)
 
-        # Verify run_nat_workflow was called with the right inputs
-        agent.run_nat_workflow.assert_called_once_with(
-            workflow_path,
-            ChatRequest.from_string("Artificial Intelligence"),
-            None,
-        )
+    # THEN: the response is an async generator
+    assert isinstance(streaming_response_iterator, AsyncGenerator)
+    events = [event async for event in streaming_response_iterator]
 
-        assert result == "success"
-        assert pipeline_interactions == MultiTurnSample(
+    # THEN: the events are tuples of (result, pipeline interactions, usage)
+    deltas, pipeline_interactions_list, usage_list = zip(*events)
+
+    # THEN: the deltas are the expected result
+    assert deltas == ("chunk1", "chunk2", "")
+
+    # THEN: the pipeline interactions are the expected pipeline interactions
+    assert pipeline_interactions_list == (
+        None,
+        None,
+        MultiTurnSample(
             user_input=[
                 HumanMessage(content="user prompt"),
                 AIMessage(content="LLM response"),
                 AIMessage(content="LLM response"),
             ]
-        )
-        assert usage == {
+        ),
+    )
+
+    # THEN: the usage is the expected usage
+    assert usage_list == (
+        {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+        },
+        {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+        },
+        {
             "completion_tokens": 2,
             "prompt_tokens": 2,
             "total_tokens": 4,
-        }
-
-
-async def test_mcp_headers(agent_with_headers, workflow_path):
-    # Patch the run_nat_workflow method
-    with patch.object(
-        NatAgent,
-        "run_nat_workflow",
-        return_value=("success", []),
-    ):
-        # Call the run method with test inputs
-        completion_create_params = {
-            "model": "test-model",
-            "messages": [{"role": "user", "content": "Artificial Intelligence"}],
-            "environment_var": True,
-        }
-
-        deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "test-api-key"
-
-        expected_headers = {
-            "h1": "v1",
-            "Authorization": f"Bearer {api_key}",
-            "X-DataRobot-Authorization-Context": (
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjMSI6InYyIn0"
-                ".5Elh7RxbEZV1JdUZi9duxJwXUkFRdzKhtyXyfTIj4Ms"
-            ),
-        }
-
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_ENDPOINT": api_base,
-                "DATAROBOT_API_TOKEN": api_key,
-            },
-            clear=True,
-        ):
-            await agent_with_headers.invoke(completion_create_params)
-
-        # Verify run_nat_workflow was called with the right inputs
-        agent_with_headers.run_nat_workflow.assert_called_once_with(
-            workflow_path,
-            ChatRequest.from_string("Artificial Intelligence"),
-            expected_headers,
-        )
-
-
-async def test_streaming(agent):
-    start_step = IntermediateStep(
-        parent_id="some_parent_id",
-        function_ancestry=InvocationNode(
-            function_id="some_function_id", function_name="some_function"
-        ),
-        payload=IntermediateStepPayload(
-            event_type=IntermediateStepType.LLM_START,
-            data=StreamEventData(
-                input=[
-                    {"role": "system", "content": "system prompt"},
-                    {"role": "user", "content": "user prompt"},
-                ]
-            ),
-        ),
+        },
     )
-    new_token_step = IntermediateStep(
-        parent_id="some_parent_id",
-        function_ancestry=InvocationNode(
-            function_id="some_function_id", function_name="some_function"
-        ),
-        payload=IntermediateStepPayload(
-            event_type=IntermediateStepType.LLM_NEW_TOKEN,
-            usage_info=UsageInfo(
-                token_usage=TokenUsageBaseModel(
-                    total_tokens=2, completion_tokens=1, prompt_tokens=1
-                )
-            ),
-        ),
-    )
-    end_step = IntermediateStep(
-        parent_id="some_parent_id",
-        function_ancestry=InvocationNode(
-            function_id="some_function_id", function_name="some_function"
-        ),
-        payload=IntermediateStepPayload(
-            event_type=IntermediateStepType.LLM_END,
-            data=StreamEventData(output="LLM response"),
-            usage_info=UsageInfo(
-                token_usage=TokenUsageBaseModel(
-                    total_tokens=2, completion_tokens=1, prompt_tokens=1
-                )
-            ),
-        ),
-    )
-    # Call the run method with test inputs
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": "Artificial Intelligence"}],
-        "environment_var": True,
-        "stream": True,
-    }
-    with patch(
-        "datarobot_genai.nat.agent.pull_intermediate_structured", new_callable=AsyncMock
-    ) as mock_intermediate_structured:
-        mock_intermediate_structured.return_value = [start_step, new_token_step, end_step, end_step]
-        with patch(
-            "datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock
-        ) as mock_load_workflow:
-
-            async def mock_result_stream():
-                yield "chunk1"
-                yield "chunk2"
-
-            mock_run = MagicMock()
-            mock_run.return_value.__aenter__.return_value = AsyncMock(
-                result_stream=mock_result_stream
-            )
-            mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
-            streaming_response_iterator = await agent.invoke(completion_create_params)
-
-            result_list = []
-            pipeline_interactions_list = []
-            usage_list = []
-            async for (
-                result,
-                pipeline_interactions,
-                usage,
-            ) in streaming_response_iterator:
-                result_list.append(result)
-                pipeline_interactions_list.append(pipeline_interactions)
-                usage_list.append(usage)
-
-            assert result_list == ["chunk1", "chunk2", ""]
-            assert pipeline_interactions_list == [
-                None,
-                None,
-                MultiTurnSample(
-                    user_input=[
-                        HumanMessage(content="user prompt"),
-                        AIMessage(content="LLM response"),
-                        AIMessage(content="LLM response"),
-                    ]
-                ),
-            ]
-            assert usage_list == [
-                {
-                    "completion_tokens": 0,
-                    "prompt_tokens": 0,
-                    "total_tokens": 0,
-                },
-                {
-                    "completion_tokens": 0,
-                    "prompt_tokens": 0,
-                    "total_tokens": 0,
-                },
-                {
-                    "completion_tokens": 2,
-                    "prompt_tokens": 2,
-                    "total_tokens": 4,
-                },
-            ]
 
 
-async def test_streaming_mcp_headers(agent_with_headers, workflow_path):
-    # Call the run method with test inputs
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": "Artificial Intelligence"}],
-        "environment_var": True,
-        "stream": True,
-    }
+@pytest.mark.usefixtures("mock_intermediate_structured", "patch_environment_variables")
+async def test_streaming_mcp_headers(
+    agent_with_headers, run_agent_input, mock_load_workflow, workflow_path
+):
+    # GIVEN: an agent with headers and a run agent input
+    # WHEN: invoke the agent with a run agent input
+    streaming_response_iterator = agent_with_headers.invoke(run_agent_input)
 
-    deployment_id = "abc123def456789012345678"
-    api_base = "https://app.datarobot.com/api/v2"
-    api_key = "test-api-key"
+    # THEN: the response is an async generator
+    assert isinstance(streaming_response_iterator, AsyncGenerator)
+    events = [event async for event in streaming_response_iterator]
 
+    # THEN: the events are tuples of (result, pipeline interactions, usage)
+    deltas, _, _ = zip(*events)
+
+    # THEN: the deltas are the expected result
+    assert deltas == ("chunk1", "chunk2", "")
+
+    # THEN: the mcp load workflow is called with the expected headers
     expected_headers = {
         "h1": "v1",
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": "Bearer test-api-key",
         "X-DataRobot-Authorization-Context": (
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjMSI6InYyIn0"
             ".5Elh7RxbEZV1JdUZi9duxJwXUkFRdzKhtyXyfTIj4Ms"
         ),
     }
-
-    with patch.dict(
-        os.environ,
-        {
-            "MCP_DEPLOYMENT_ID": deployment_id,
-            "DATAROBOT_ENDPOINT": api_base,
-            "DATAROBOT_API_TOKEN": api_key,
-        },
-        clear=True,
-    ):
-        with patch(
-            "datarobot_genai.nat.agent.pull_intermediate_structured", new_callable=AsyncMock
-        ):
-            with patch(
-                "datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock
-            ) as mock_load_workflow:
-
-                async def mock_result_stream():
-                    yield "chunk1"
-                    yield "chunk2"
-
-                mock_run = MagicMock()
-                mock_run.return_value.__aenter__.return_value = AsyncMock(
-                    result_stream=mock_result_stream
-                )
-                mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
-                streaming_response_iterator = await agent_with_headers.invoke(
-                    completion_create_params
-                )
-
-                result_list = []
-                async for (
-                    result,
-                    _,
-                    _,
-                ) in streaming_response_iterator:
-                    result_list.append(result)
-
-                mock_load_workflow.assert_called_once_with(
-                    workflow_path,
-                    headers=expected_headers,
-                )
-
-                assert result_list == ["chunk1", "chunk2", ""]
+    mock_load_workflow.assert_called_once_with(
+        workflow_path,
+        headers=expected_headers,
+    )

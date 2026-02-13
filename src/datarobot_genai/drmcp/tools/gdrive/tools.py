@@ -21,7 +21,7 @@ from typing import Literal
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.gdrive import LIMIT
 from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
 from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS

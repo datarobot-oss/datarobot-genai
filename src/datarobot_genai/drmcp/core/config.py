@@ -28,6 +28,7 @@ from pydantic_settings import SettingsConfigDict
 from .config_utils import extract_datarobot_dict_runtime_param_payload
 from .config_utils import extract_datarobot_runtime_param_payload
 from .constants import DEFAULT_DATAROBOT_ENDPOINT
+from .constants import MCP_CLI_OPTS
 from .constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
 
@@ -326,6 +327,16 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable memory management",
     )
+    mcp_cli_configs: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_CLI_CONFIGS",
+            "MCP_CLI_CONFIGS",
+        ),
+        description="Comma-separated list of features to enable: dynamic_tools, dynamic_prompts, "
+        "predictive, gdrive, microsoft_graph, jira, confluence, perplexity, tavily. "
+        "Individual env vars (e.g. ENABLE_PREDICTIVE_TOOLS) take precedence when set.",
+    )
 
     tool_config: MCPToolConfig = Field(
         default_factory=MCPToolConfig,
@@ -350,6 +361,7 @@ class MCPServerConfig(BaseSettings):
         "otel_enabled",
         "otel_enabled_http_instrumentors",
         "enable_memory_management",
+        "mcp_cli_configs",
         "tool_registration_allow_empty_schema",
         "mcp_server_register_dynamic_tools_on_startup",
         "tool_registration_duplicate_behavior",
@@ -373,12 +385,66 @@ class MCPServerConfig(BaseSettings):
 _config: MCPServerConfig | None = None
 
 
+def _individual_env_set_for_field(
+    model: type[MCPServerConfig] | type[MCPToolConfig], attr: str
+) -> bool:
+    """Return True if the user set this field via env (any of its validation_alias names)."""
+    info = model.model_fields[attr]
+    alias = getattr(info, "validation_alias", None)
+    if alias is None:
+        return False
+    if isinstance(alias, str):
+        names = [alias]
+    elif hasattr(alias, "choices"):
+        names = list(alias.choices)
+    else:
+        names = []
+    return any(os.environ.get(name, "").strip() for name in names)
+
+
+def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig:
+    """Override from MCP_CLI_CONFIGS when field is at default and individual env not set."""
+    raw = (config.mcp_cli_configs or "").strip()
+    if not raw:
+        return config
+    enabled = {s.strip().lower() for s in raw.split(",") if s.strip()}
+    root_updates: dict[str, Any] = {}
+    tool_updates: dict[str, Any] = {}
+    for mcp_opt, root_attr, tool_attr in MCP_CLI_OPTS:
+        if mcp_opt not in enabled:
+            continue
+        attr = root_attr if root_attr is not None else tool_attr
+        assert attr is not None  # each MCP_CLI_OPTS row has either root_attr or tool_attr
+        model: type[MCPServerConfig] | type[MCPToolConfig] = (
+            MCPServerConfig if root_attr else MCPToolConfig
+        )
+        if _individual_env_set_for_field(model, attr):
+            continue
+        if root_attr is not None:
+            current = getattr(config, root_attr)
+            default = MCPServerConfig.model_fields[root_attr].default
+            if current == default:
+                root_updates[root_attr] = True
+        else:
+            assert tool_attr is not None
+            current = getattr(config.tool_config, tool_attr)
+            default = MCPToolConfig.model_fields[tool_attr].default
+            if current == default:
+                tool_updates[tool_attr] = True
+    if tool_updates:
+        root_updates["tool_config"] = config.tool_config.model_copy(update=tool_updates)
+    if not root_updates:
+        return config
+    return config.model_copy(update=root_updates)
+
+
 def get_config() -> MCPServerConfig:
     """Get the global configuration instance."""
     # Use a local variable to avoid global statement warning
     config = _config
     if config is None:
         config = MCPServerConfig()
+        config = _apply_mcp_cli_configs_overrides(config)
         # Update the global variable
         globals()["_config"] = config
     return config

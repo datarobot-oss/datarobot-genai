@@ -24,7 +24,7 @@ from ragas.messages import ToolMessage
 
 from datarobot_genai.crewai.events import AgentExecutionCompletedEvent
 from datarobot_genai.crewai.events import AgentExecutionStartedEvent
-from datarobot_genai.crewai.events import CrewAIEventListener
+from datarobot_genai.crewai.events import CrewAIRagasEventListener
 from datarobot_genai.crewai.events import CrewKickoffStartedEvent
 from datarobot_genai.crewai.events import ToolUsageFinishedEvent
 from datarobot_genai.crewai.events import ToolUsageStartedEvent
@@ -70,7 +70,7 @@ class _ToolFinished:
 
 def test_crewai_event_listener_accumulates_messages() -> None:
     bus = _FakeBus()
-    listener = CrewAIEventListener()
+    listener = CrewAIRagasEventListener()
     listener.setup_listeners(bus)  # type: ignore[arg-type]
 
     # Fire kickoff (Human)

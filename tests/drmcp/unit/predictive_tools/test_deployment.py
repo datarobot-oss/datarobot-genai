@@ -189,9 +189,9 @@ async def test_get_sdk_client_uses_x_datarobot_api_token() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_sdk_client_falls_back_to_env() -> None:
+async def test_get_sdk_client_raises_when_no_token_in_headers() -> None:
+    """get_sdk_client raises when no token in headers (no credentials fallback)."""
     with (
-        patch("datarobot.Client") as mock_client,
         patch("datarobot_genai.drmcp.core.clients.get_http_headers") as mock_get_headers,
         patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
     ):
@@ -200,25 +200,24 @@ async def test_get_sdk_client_falls_back_to_env() -> None:
         mock_creds.datarobot.application_api_token = "env-token"
         mock_creds.datarobot.endpoint = "env-endpoint"
         mock_get_creds.return_value = mock_creds
-        get_sdk_client()
-        mock_client.assert_called_once()
-        _, kwargs = mock_client.call_args
-        assert kwargs["token"] == "env-token"
+        with pytest.raises(ValueError, match="No API token found"):
+            get_sdk_client()
 
 
 @pytest.mark.asyncio
-async def test_get_sdk_client_no_credentials() -> None:
+async def test_get_sdk_client_uses_token_from_headers() -> None:
+    """get_sdk_client uses token from headers when present."""
     with (
         patch("datarobot.Client") as mock_client,
         patch("datarobot_genai.drmcp.core.clients.get_http_headers") as mock_get_headers,
         patch("datarobot_genai.drmcp.core.clients.get_credentials") as mock_get_creds,
     ):
-        mock_get_headers.return_value = {}
+        mock_get_headers.return_value = {"authorization": "Bearer header-token"}
         mock_creds = MagicMock()
-        mock_creds.datarobot.application_api_token = "env-token"
         mock_creds.datarobot.endpoint = "env-endpoint"
         mock_get_creds.return_value = mock_creds
         get_sdk_client()
         mock_client.assert_called_once()
         _, kwargs = mock_client.call_args
-        assert kwargs["token"] == "env-token"
+        assert kwargs["token"] == "header-token"
+        assert kwargs["endpoint"] == "env-endpoint"

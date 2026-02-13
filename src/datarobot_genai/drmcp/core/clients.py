@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import logging
 from typing import Any
 from typing import cast
@@ -20,13 +21,71 @@ import datarobot as dr
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 from fastmcp.server.dependencies import get_http_headers
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
 
+from .constants import MCP_PATH_ENDPOINT
 from .credentials import get_credentials
+from .routes_utils import prefix_mount_path
 
 logger = logging.getLogger(__name__)
+
+# Context variable for request headers. Set by RequestHeadersMiddleware for every
+# HTTP request so get_sdk_client() can resolve the API token in custom routes and tools.
+_request_headers_ctx: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
+    "request_headers", default=None
+)
+
+
+def set_request_headers_for_context(headers: dict[str, str]) -> None:
+    """Set request headers in context so get_sdk_client() can use them (e.g. in tests)."""
+    _request_headers_ctx.set(headers)
+
+
+def _resolve_token_from_headers() -> str | None:
+    """
+    Resolve API token from request headers, trying both sources.
+
+    Order: try framework get_http_headers() first (preferred), then context
+    (set by RequestHeadersMiddleware). If both have headers, tries token extraction
+    from the first; if no token found, tries the second so the token is used
+    whichever source it came from.
+    """
+    framework_headers = None
+    try:
+        framework_headers = get_http_headers()
+    except Exception:
+        pass  # No HTTP context (e.g. stdio transport)
+
+    request_headers_ctx = _request_headers_ctx.get()
+
+    token = extract_token_from_headers(framework_headers) if framework_headers else None
+    if not token and request_headers_ctx:
+        token = extract_token_from_headers(request_headers_ctx)
+    return token
+
+
+class RequestHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    ASGI middleware that sets request headers in context for custom REST routes only.
+
+    Skips the streamable-http MCP path so only routes in routes.py get headers in
+    context; get_sdk_client() can then resolve the API token for those handlers.
+    """
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        mcp_path = prefix_mount_path(MCP_PATH_ENDPOINT).rstrip("/") or "/"
+        path = request.url.path
+        if path == mcp_path or path.startswith(mcp_path + "/"):
+            return await call_next(request)
+        headers = {k.lower(): v for k, v in request.headers.items()}
+        set_request_headers_for_context(headers)
+        return await call_next(request)
+
 
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
@@ -129,37 +188,38 @@ def extract_token_from_headers(headers: dict[str, str]) -> str | None:
 
 def get_sdk_client() -> Any:
     """
-    Get a DataRobot SDK client, using the user's Bearer token from the request.
+    Get a DataRobot SDK client using the API token from the current request.
 
-    This function attempts to extract the Bearer token from the HTTP request headers
-    with fallback strategies:
-    1. Standard authorization headers (Bearer token, x-datarobot-api-token, etc.)
-    2. Authorization context metadata (dr_ctx.api_key)
-    3. Application credentials as final fallback
+    Token resolution (prefer framework first, then our context):
+    1. get_http_headers() (framework; e.g. MCP tool request context)
+    2. _request_headers_ctx (set by RequestHeadersMiddleware or tests)
+    Token extraction from each source tries: standard auth headers, then
+    authorization context metadata (dr_ctx.api_key). If both sources have
+    headers, the token is taken from the first source that yields one.
+
+    Raises
+    ------
+        ValueError: If no API token is found in either header source.
+
+    Note
+    ----
+        Used in both Global MCP and DR MCP deployments; consider impact before changing.
     """
-    token = None
-
-    try:
-        headers = get_http_headers()
-        if headers:
-            token = extract_token_from_headers(headers)
-            if token:
-                logger.debug("Using API token found in HTTP headers")
-    except Exception:
-        # No HTTP context e.g. stdio transport
+    token = _resolve_token_from_headers()
+    if token:
+        logger.debug("Using API token from request headers")
+    else:
         logger.warning(
-            "Could not get HTTP headers, falling back to application credentials", exc_info=True
+            "No API token found in HTTP headers or authorization context "
+            "(e.g. stdio transport or missing Authorization header)."
         )
 
-    credentials = get_credentials()
-
-    # Fallback: Use application token
     if not token:
-        token = credentials.datarobot.application_api_token
-        logger.debug("Using application API token from credentials")
+        raise ValueError("No API token found in HTTP headers or authorization context")
 
+    credentials = get_credentials()
     dr.Client(token=token, endpoint=credentials.datarobot.endpoint)
-    # The trafaret setting up a use case in the context, seem to mess up the tool calls
+    # Avoid use-case context from trafaret affecting tool calls
     DRContext.use_case = None
     return dr
 

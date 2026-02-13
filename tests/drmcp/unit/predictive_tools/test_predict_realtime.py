@@ -23,6 +23,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 from fastmcp.exceptions import ToolError
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcp.tools.predictive import predict_realtime
@@ -82,9 +83,11 @@ async def test_predict_realtime_forecast_point(
         forecast_point="2024-06-01",
         timeout=5,
     )
-    assert result.type == "inline"
-    assert "a,b" in result.data
-    assert "1,3" in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "a,b" in content["data"]
+    assert "1,3" in content["data"]
     mock_s3.upload_file.assert_not_called()
     # Verify dr_predict called with correct parameters
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
@@ -116,8 +119,10 @@ async def test_predict_realtime_forecast_range_resource(
         explanation_algorithm="shap",
         timeout=5,
     )
-    assert result.type == "resource"
-    assert result.s3_url is not None
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "resource"
+    assert content.get("s3_url") is not None
     mock_s3.upload_file.assert_called()
     # Verify dr_predict called with correct parameters
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
@@ -176,13 +181,15 @@ async def test_predict_timeseries_regression_forecast_point_with_intervals(
     )
 
     # Verify response structure
-    assert result.type == "inline"
-    assert "prediction" in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "prediction" in content["data"]
     assert (
-        "1425.5" in result.data
+        "1425.5" in content["data"]
     )  # Check regression prediction value (pandas removes trailing zeros)
-    assert "prediction_lower" in result.data
-    assert "prediction_upper" in result.data
+    assert "prediction_lower" in content["data"]
+    assert "prediction_upper" in content["data"]
 
     # Verify dr_predict called with regression-appropriate parameters
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
@@ -234,11 +241,13 @@ async def test_predict_timeseries_regression_historical_range(
     )
 
     # Verify response structure for regression
-    assert result.type == "inline"
-    assert "prediction" in result.data
-    assert "498.75" in result.data  # Check first regression prediction
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "prediction" in content["data"]
+    assert "498.75" in content["data"]  # Check first regression prediction
     assert (
-        "522.1" in result.data
+        "522.1" in content["data"]
     )  # Check second regression prediction (pandas removes trailing zeros)
 
     # Verify dr_predict called with historical range parameters
@@ -294,11 +303,13 @@ async def test_predict_timeseries_regression_multiseries(
     )
 
     # Verify multiseries regression response
-    assert result.type == "inline"
-    assert "store_A" in result.data
-    assert "store_B" in result.data
-    assert "1425.5" in result.data  # Store A prediction (pandas removes trailing zeros)
-    assert "1125.75" in result.data  # Store B prediction
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "store_A" in content["data"]
+    assert "store_B" in content["data"]
+    assert "1425.5" in content["data"]  # Store A prediction (pandas removes trailing zeros)
+    assert "1125.75" in content["data"]  # Store B prediction
 
     # Verify series_id_column validation and dr_predict parameters
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
@@ -348,9 +359,11 @@ async def test_predict_timeseries_regression_large_dataset_resource(
     )
 
     # Verify large dataset triggers resource storage
-    assert result.type == "resource"
-    assert result.s3_url is not None
-    assert result.resource_id is not None
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "resource"
+    assert content.get("s3_url") is not None
+    assert content.get("resource_id") is not None
     mock_s3.upload_file.assert_called()
 
     # Verify dr_predict called correctly for large regression dataset
@@ -426,11 +439,13 @@ async def test_predict_timeseries_regression_no_prediction_intervals(
     )
 
     # Verify point estimate only
-    assert result.type == "inline"
-    assert "prediction" in result.data
-    assert "1425.5" in result.data  # pandas removes trailing zeros
-    assert "prediction_lower" not in result.data
-    assert "prediction_upper" not in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "prediction" in content["data"]
+    assert "1425.5" in content["data"]  # pandas removes trailing zeros
+    assert "prediction_lower" not in content["data"]
+    assert "prediction_upper" not in content["data"]
 
     # Verify dr_predict called without prediction intervals
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
@@ -464,8 +479,10 @@ async def test_predict_realtime_with_all_explanation_parameters(
     )
 
     # Verify response
-    assert result.type == "inline"
-    assert "text" in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "text" in content["data"]
 
     # Verify dr_predict called with all explanation parameters
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
@@ -607,9 +624,11 @@ async def test_predict_realtime_with_dataset_csv(
         dataset=csv_str,
         timeout=5,
     )
-    assert result.type == "inline"
-    assert "a,b" in result.data
-    assert "1,3" in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "a,b" in content["data"]
+    assert "1,3" in content["data"]
     args, kwargs = patch_realtime_dependencies["mock_read_csv"].call_args
 
     assert isinstance(args[0], io.StringIO)
@@ -636,9 +655,11 @@ async def test_predict_realtime_with_dataset_json(
         dataset=json_str,
         timeout=5,
     )
-    assert result.type == "inline"
-    assert "a,b" in result.data
-    assert "1,3" in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "a,b" in content["data"]
+    assert "1,3" in content["data"]
     # For JSON, pd.read_csv will fail, so it will try json.loads and pd.DataFrame
     # So mock_read_csv may or may not be called, but if called, it should be with StringIO
     # We can check that either it was called with StringIO and failed, or not called at all
@@ -667,9 +688,11 @@ async def test_predict_realtime_dataset_takes_precedence(
         dataset=csv_str,
         timeout=5,
     )
-    assert result.type == "inline"
-    assert "a,b" in result.data
-    assert "1,3" in result.data
+    assert isinstance(result, ToolResult)
+    content = result.structured_content
+    assert content["type"] == "inline"
+    assert "a,b" in content["data"]
+    assert "1,3" in content["data"]
     args, kwargs = patch_realtime_dependencies["mock_read_csv"].call_args
 
     assert isinstance(args[0], io.StringIO)
@@ -767,7 +790,9 @@ class TestPredictByAiCatalogRt:
         mock_make_output_settings.assert_called_once()
         mock_predictions_result_response.assert_called_once()
 
-        assert result == {"type": "inline", "data": "test_data"}
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["type"] == "inline"
+        assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
@@ -819,7 +844,9 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
 
-        assert result == {"type": "inline", "data": "test_data"}
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["type"] == "inline"
+        assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
@@ -872,7 +899,9 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
 
-        assert result == {"type": "inline", "data": "test_data"}
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["type"] == "inline"
+        assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
@@ -926,7 +955,9 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
 
-        assert result == {"type": "inline", "data": "test_data"}
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["type"] == "inline"
+        assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
@@ -980,4 +1011,6 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
 
-        assert result == {"type": "inline", "data": "test_data"}
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["type"] == "inline"
+        assert result.structured_content["data"] == "test_data"

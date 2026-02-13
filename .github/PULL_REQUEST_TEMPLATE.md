@@ -1,3 +1,7 @@
+<!--
+INFO: Comment "/build" to build a dev package
+-->
+
 # RATIONALE
 
 <!--
