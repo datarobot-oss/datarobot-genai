@@ -27,8 +27,9 @@ from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel
 
 from datarobot_genai.drmcp import dr_mcp_tool
-from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.utils import predictions_result_response
+from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
+from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drmcp.tools.clients.s3 import get_s3_bucket_info
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,8 @@ async def predict_by_ai_catalog_rt(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     dataset = client.Dataset.get(dataset_id)
 
     # 1. Preferred: built-in DataFrame helper (newer SDKs)
@@ -279,7 +281,8 @@ async def predict_realtime(
     if series_id_column and series_id_column not in df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     deployment = client.Deployment.get(deployment_id=deployment_id)
 
     # Check if this is a time series prediction or regular prediction

@@ -23,8 +23,8 @@ from datarobot.auth.users import User
 
 from datarobot_genai.drmcp.core.clients import _extract_token_from_auth_context
 from datarobot_genai.drmcp.core.clients import _extract_token_from_headers
+from datarobot_genai.drmcp.core.clients import _extract_token_from_headers_with_fallback
 from datarobot_genai.drmcp.core.clients import dr
-from datarobot_genai.drmcp.core.clients import extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
@@ -302,7 +302,7 @@ class TestExtractTokenFromAuthContext:
 
 
 class TestExtractTokenFromHeadersWithFallback:
-    """Test cases for extract_token_from_headers - critical path only."""
+    """Test cases for _extract_token_from_headers_with_fallback - critical path only."""
 
     def test_prefers_standard_header_over_auth_context(self):
         """Test that standard headers are preferred over auth context metadata."""
@@ -311,7 +311,7 @@ class TestExtractTokenFromHeadersWithFallback:
         with patch(
             "datarobot_genai.drmcp.core.clients._extract_token_from_auth_context"
         ) as mock_auth_extract:
-            result = extract_token_from_headers(headers)
+            result = _extract_token_from_headers_with_fallback(headers)
 
             assert result == "standard-token"
             mock_auth_extract.assert_not_called()
@@ -330,7 +330,7 @@ class TestExtractTokenFromHeadersWithFallback:
         mock_handler_class.return_value = mock_handler
 
         headers = {"x-datarobot-authorization-context": "jwt-token"}
-        result = extract_token_from_headers(headers)
+        result = _extract_token_from_headers_with_fallback(headers)
 
         assert result == "fallback-api-key"
 
@@ -360,7 +360,7 @@ class TestGetSdkClientWithHeaders:
     @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
     @patch("datarobot_genai.drmcp.core.clients.get_credentials")
     def test_raises_when_no_token_in_headers(self, mock_get_creds, mock_get_headers):
-        """Test that get_sdk_client raises when no token in headers."""
+        """Test that get_sdk_client raises when no token in headers (headers_auth_only=True)."""
         mock_get_headers.return_value = {}
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "credential-token"
@@ -368,14 +368,14 @@ class TestGetSdkClientWithHeaders:
         mock_get_creds.return_value = mock_creds
 
         with pytest.raises(ValueError, match="No API token found"):
-            get_sdk_client()
+            get_sdk_client(headers_auth_only=True)
 
     @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
     @patch("datarobot_genai.drmcp.core.clients.get_credentials")
     def test_raises_when_header_extraction_returns_empty_token(
         self, mock_get_creds, mock_get_headers
     ):
-        """Test that get_sdk_client raises when header has empty token."""
+        """Test that get_sdk_client raises when header has empty token (headers_auth_only=True)."""
         mock_get_headers.return_value = {"authorization": "Bearer   "}  # Empty token
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "credential-token"
@@ -383,12 +383,12 @@ class TestGetSdkClientWithHeaders:
         mock_get_creds.return_value = mock_creds
 
         with pytest.raises(ValueError, match="No API token found"):
-            get_sdk_client()
+            get_sdk_client(headers_auth_only=True)
 
     @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
     @patch("datarobot_genai.drmcp.core.clients.get_credentials")
     def test_raises_when_get_http_headers_fails(self, mock_get_creds, mock_get_headers):
-        """Test that get_sdk_client raises when get_http_headers raises and no token."""
+        """get_sdk_client raises, no token (headers_auth_only=True)."""
         mock_get_headers.side_effect = RuntimeError("No HTTP context")
         mock_creds = MagicMock()
         mock_creds.datarobot.application_api_token = "credential-token"
@@ -396,7 +396,7 @@ class TestGetSdkClientWithHeaders:
         mock_get_creds.return_value = mock_creds
 
         with pytest.raises(ValueError, match="No API token found"):
-            get_sdk_client()
+            get_sdk_client(headers_auth_only=True)
 
     @patch("datarobot_genai.drmcp.core.clients.dr.Client")
     @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
@@ -454,6 +454,69 @@ class TestGetSdkClientWithHeaders:
 
         # Verify use_case was reset to None
         assert mock_dr_context.use_case is None
+
+    @patch("datarobot_genai.drmcp.core.clients.dr.Client")
+    @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
+    @patch("datarobot_genai.drmcp.core.clients.get_credentials")
+    def test_uses_application_api_token_from_credentials_when_no_headers(
+        self, mock_get_creds, mock_get_headers, mock_client
+    ):
+        """get_sdk_client uses DATAROBOT_API_TOKEN from credentials when no token in headers."""
+        mock_get_headers.return_value = {}
+        mock_creds = MagicMock()
+        mock_creds.datarobot.application_api_token = "env-api-token-from-datarobot-api-token"
+        mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
+        mock_get_creds.return_value = mock_creds
+
+        result = get_sdk_client()
+
+        mock_client.assert_called_once_with(
+            token="env-api-token-from-datarobot-api-token",
+            endpoint="https://app.datarobot.com/api/v2",
+        )
+        assert result is dr
+
+    @patch("datarobot_genai.drmcp.core.clients.dr.Client")
+    @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
+    @patch("datarobot_genai.drmcp.core.clients.get_credentials")
+    def test_uses_application_api_token_when_get_http_headers_raises(
+        self, mock_get_creds, mock_get_headers, mock_client
+    ):
+        """get_sdk_client falls back to env API token when no HTTP context (e.g. stdio)."""
+        mock_get_headers.side_effect = RuntimeError("No HTTP context")
+        mock_creds = MagicMock()
+        mock_creds.datarobot.application_api_token = "stdio-env-token"
+        mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
+        mock_get_creds.return_value = mock_creds
+
+        result = get_sdk_client()
+
+        mock_client.assert_called_once_with(
+            token="stdio-env-token",
+            endpoint="https://app.datarobot.com/api/v2",
+        )
+        assert result is dr
+
+    @patch("datarobot_genai.drmcp.core.clients.dr.Client")
+    @patch("datarobot_genai.drmcp.core.clients.get_http_headers")
+    @patch("datarobot_genai.drmcp.core.clients.get_credentials")
+    def test_prefers_header_token_over_application_api_token(
+        self, mock_get_creds, mock_get_headers, mock_client
+    ):
+        """Test that get_sdk_client prefers Authorization header over DATAROBOT_API_TOKEN env."""
+        mock_get_headers.return_value = {"authorization": "Bearer header-token"}
+        mock_creds = MagicMock()
+        mock_creds.datarobot.application_api_token = "env-token-from-datarobot-api-token"
+        mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
+        mock_get_creds.return_value = mock_creds
+
+        result = get_sdk_client()
+
+        mock_client.assert_called_once_with(
+            token="header-token",
+            endpoint="https://app.datarobot.com/api/v2",
+        )
+        assert result is dr
 
     @patch("datarobot_genai.drmcp.core.clients.dr.Client")
     @patch("datarobot_genai.drmcp.core.clients.AuthContextHeaderHandler")

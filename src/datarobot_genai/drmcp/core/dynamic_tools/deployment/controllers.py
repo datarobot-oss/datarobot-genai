@@ -39,7 +39,7 @@ async def register_tool_for_deployment_id(deployment_id: str) -> Tool:
     -------
         The registered Tool instance.
     """
-    deployment = get_sdk_client().Deployment.get(deployment_id)
+    deployment = get_sdk_client(headers_auth_only=True).Deployment.get(deployment_id)
     registered_tool = await register_tool_of_datarobot_deployment(deployment)
     return registered_tool
 

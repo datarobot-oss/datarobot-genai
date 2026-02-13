@@ -25,7 +25,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_tool
-from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
+from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,8 @@ async def analyze_dataset(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Analyze dataset structure
@@ -146,7 +148,8 @@ async def suggest_use_cases(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
@@ -176,7 +179,8 @@ async def get_exploratory_insights(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
@@ -501,7 +505,8 @@ async def start_autopilot(
     | None = None,
 ) -> ToolError | ToolResult:
     """Start automated model training (Autopilot) for a project."""
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
 
     if not project_id:
         if not dataset_url and not dataset_id:
@@ -563,7 +568,8 @@ async def get_model_roc_curve(
     if not model_id:
         raise ToolError("Model ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
 
@@ -614,7 +620,8 @@ async def get_model_feature_impact(
     if not model_id:
         raise ToolError("Model ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
     # Get feature impact
@@ -646,7 +653,8 @@ async def get_model_lift_chart(
     if not model_id:
         raise ToolError("Model ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
 

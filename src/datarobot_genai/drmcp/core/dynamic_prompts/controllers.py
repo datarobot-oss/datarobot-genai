@@ -87,11 +87,13 @@ async def delete_registered_prompt_template(prompt_template_id: str) -> bool:
     return True
 
 
-async def refresh_registered_prompt_template() -> None:
+async def refresh_registered_prompt_template(headers_auth_only: bool = False) -> None:
     """Refresh all registered prompt templates in the MCP instance."""
     prompt_templates = get_datarobot_prompt_templates()
     prompt_templates_ids = {p.id for p in prompt_templates}
-    prompt_templates_versions = get_datarobot_prompt_template_versions(list(prompt_templates_ids))
+    prompt_templates_versions = get_datarobot_prompt_template_versions(
+        list(prompt_templates_ids), headers_auth_only=headers_auth_only
+    )
 
     mcp_prompt_templates_mappings = await mcp.get_prompt_mapping()
 

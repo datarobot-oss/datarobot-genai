@@ -19,7 +19,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_tool
-from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
+from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,8 @@ logger = logging.getLogger(__name__)
 @dr_mcp_tool(tags={"predictive", "deployment", "read", "management", "list"})
 async def list_deployments() -> ToolResult:
     """List all DataRobot deployments for the authenticated user."""
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     deployments = client.Deployment.list()
     if not deployments:
         return ToolResult(
@@ -48,7 +50,8 @@ async def get_model_info_from_deployment(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     deployment = client.Deployment.get(deployment_id)
     return ToolResult(
         structured_content=deployment.model,
@@ -68,7 +71,8 @@ async def deploy_model(
     if not label:
         raise ToolError("Model label must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     try:
         prediction_servers = client.PredictionServer.list()
         if not prediction_servers:
