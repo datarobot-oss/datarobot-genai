@@ -26,8 +26,9 @@ from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.core.clients import get_credentials
-from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.utils import generate_presigned_url
+from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
+from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drmcp.tools.clients.s3 import get_s3_bucket_info
 
 logger = logging.getLogger(__name__)
@@ -153,8 +154,9 @@ async def predict_by_ai_catalog(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
-    client = get_sdk_client()
     dataset = client.Dataset.get(dataset_id)
     job = dr.BatchPredictionJob.score(
         deployment=deployment_id,
@@ -198,6 +200,8 @@ async def predict_from_project_data(
     if not project_id:
         raise ToolError("Project ID must be provided")
 
+    token = await get_datarobot_access_token()
+    DataRobotClient(token).get_client()
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     intake_settings: dict[str, Any] = {
         "type": "dss",
@@ -238,7 +242,8 @@ async def get_prediction_explanations(
     -------
         JSON string containing the prediction explanations for each row.
     """
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project=project, model_id=model_id)
     try:

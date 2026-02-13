@@ -20,9 +20,10 @@ Integration test MCP server.
 This server works standalone (base tools only) or detects and loads
 user modules if they exist in the project structure.
 
-When running under stdio there are no HTTP headers, so get_sdk_client() would
-raise. We patch it to fall back to credentials (from env) so integration tests
-can use DATAROBOT_API_TOKEN without injecting headers.
+When running under stdio there are no HTTP headers, so get_sdk_client() and
+get_datarobot_access_token() would raise. We patch both to fall back to
+credentials (from env) so integration tests can use DATAROBOT_API_TOKEN
+without injecting headers.
 """
 
 import os
@@ -93,13 +94,25 @@ def detect_user_modules() -> Any:
     return None
 
 
-def _patch_get_sdk_client_for_stdio() -> None:
-    """Patch get_sdk_client to fall back to credentials when no headers (stdio)."""
-    from datarobot_genai.drmcp.core import clients
+async def _get_datarobot_access_token_stdio_fallback() -> str:
+    """Return DataRobot token from credentials for stdio (no headers)."""
+    creds = get_credentials()
+    token = creds.datarobot.application_api_token
+    if not token:
+        from fastmcp.exceptions import ToolError
 
-    def get_sdk_client_with_credentials_fallback() -> Any:
+        raise ToolError("DataRobot API token not available (stdio and no DATAROBOT_API_TOKEN).")
+    return token
+
+
+def _patch_get_sdk_client_for_stdio() -> None:
+    """Patch get_sdk_client and get_datarobot_access_token for stdio (no headers)."""
+    from datarobot_genai.drmcp.core import clients
+    from datarobot_genai.drmcp.tools.clients import datarobot as tools_datarobot_client
+
+    def get_sdk_client_with_credentials_fallback(headers_auth_only: bool = False) -> Any:
         try:
-            return _original_get_sdk_client()
+            return _original_get_sdk_client(headers_auth_only=headers_auth_only)
         except ValueError:
             creds = get_credentials()
             token = creds.datarobot.application_api_token
@@ -110,6 +123,7 @@ def _patch_get_sdk_client_for_stdio() -> None:
             return dr
 
     clients.get_sdk_client = get_sdk_client_with_credentials_fallback
+    tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
 
 
 def main() -> None:

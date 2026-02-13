@@ -27,6 +27,7 @@ def get_datarobot_prompt_templates() -> list[dr.genai.PromptTemplate]:
 
 def get_datarobot_prompt_template_versions(
     prompt_template_ids: list[str],
+    headers_auth_only: bool = False,
 ) -> dict[str, list[dr.genai.PromptTemplateVersion]]:
     # Still missing in SDK
     prompt_template_versions_data = dr.utils.pagination.unpaginate(
@@ -34,7 +35,7 @@ def get_datarobot_prompt_template_versions(
         initial_params={
             "promptTemplateIds": prompt_template_ids,
         },
-        client=get_api_client(),
+        client=get_api_client(headers_auth_only=headers_auth_only),
     )
     prompt_template_versions = defaultdict(list)
     for prompt_template_version in prompt_template_versions_data:

@@ -19,6 +19,7 @@ import pytest
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
+from datarobot_genai.drmcp.core.config import _apply_mcp_cli_configs_overrides
 from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
@@ -247,7 +248,9 @@ class TestMCPCLIConfigs:
         """When MCP_CLI_CONFIGS is unset, no overrides; all fields keep model defaults."""
         with patch.dict(os.environ, {}, clear=True):
             self._reset_config()
-            config = get_config()
+            # Build config without loading .env so MCP_CLI_CONFIGS is truly unset
+            config = MCPServerConfig(_env_file=None)
+            config = _apply_mcp_cli_configs_overrides(config)
             assert config.mcp_cli_configs == ""
             assert config.mcp_server_register_dynamic_tools_on_startup is False
             assert config.mcp_server_register_dynamic_prompts_on_startup is False

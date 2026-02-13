@@ -16,6 +16,7 @@ import io
 import json
 from collections.abc import Generator
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -36,10 +37,22 @@ THRESHOLD_LOW = 0.2
 
 @pytest.fixture()
 def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
+    mock_client = MagicMock()
+    mock_deployment = MagicMock()
+    mock_client.Deployment = mock_deployment
+    mock_deployment.get = MagicMock()
+    mock_dr_client_instance = MagicMock()
+    mock_dr_client_instance.get_client.return_value = mock_client
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client"
-        ) as mock_get_sdk_client,
+            "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient",
+            return_value=mock_dr_client_instance,
+        ),
         patch(
             "datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv"
         ) as mock_read_csv,
@@ -52,11 +65,6 @@ def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
             return_value="https://dummy-presigned-url",
         ),
     ):
-        mock_client = MagicMock()
-        mock_deployment = MagicMock()
-        mock_client.Deployment = mock_deployment
-        mock_deployment.get = MagicMock()
-        mock_get_sdk_client.return_value = mock_client
         yield {
             "mock_read_csv": mock_read_csv,
             "mock_deployment_get": mock_deployment,
@@ -748,10 +756,16 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch(
+        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        return_value="token",
+    )
     async def test_predict_by_ai_catalog_rt_with_get_as_dataframe(
         self,
-        mock_get_sdk_client,
+        mock_get_datarobot_access_token,
+        mock_data_robot_client,
         mock_dr_predict,
         mock_make_output_settings,
         mock_predictions_result_response,
@@ -764,7 +778,7 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_get_sdk_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -799,10 +813,16 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch(
+        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        return_value="token",
+    )
     async def test_predict_by_ai_catalog_rt_with_download(
         self,
-        mock_get_sdk_client,
+        mock_get_datarobot_access_token,
+        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_make_output_settings,
@@ -818,7 +838,7 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_get_sdk_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = mock_df
@@ -853,10 +873,16 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch(
+        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        return_value="token",
+    )
     async def test_predict_by_ai_catalog_rt_with_get_file(
         self,
-        mock_get_sdk_client,
+        mock_get_datarobot_access_token,
+        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_make_output_settings,
@@ -873,7 +899,7 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_get_sdk_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = mock_df
@@ -908,10 +934,16 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch(
+        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        return_value="token",
+    )
     async def test_predict_by_ai_catalog_rt_with_get_bytes(
         self,
-        mock_get_sdk_client,
+        mock_get_datarobot_access_token,
+        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_make_output_settings,
@@ -929,7 +961,7 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_get_sdk_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = mock_df
@@ -964,10 +996,16 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_sdk_client")
+    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch(
+        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        return_value="token",
+    )
     async def test_predict_by_ai_catalog_rt_with_url_fallback(
         self,
-        mock_get_sdk_client,
+        mock_get_datarobot_access_token,
+        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_make_output_settings,
@@ -986,7 +1024,7 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_get_sdk_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = mock_df

@@ -46,7 +46,7 @@ def set_request_headers_for_context(headers: dict[str, str]) -> None:
     _request_headers_ctx.set(headers)
 
 
-def _resolve_token_from_headers() -> str | None:
+def resolve_token_from_headers() -> str | None:
     """
     Resolve API token from request headers, trying both sources.
 
@@ -63,9 +63,11 @@ def _resolve_token_from_headers() -> str | None:
 
     request_headers_ctx = _request_headers_ctx.get()
 
-    token = extract_token_from_headers(framework_headers) if framework_headers else None
+    token = (
+        _extract_token_from_headers_with_fallback(framework_headers) if framework_headers else None
+    )
     if not token and request_headers_ctx:
-        token = extract_token_from_headers(request_headers_ctx)
+        token = _extract_token_from_headers_with_fallback(request_headers_ctx)
     return token
 
 
@@ -162,7 +164,7 @@ def _extract_token_from_auth_context(headers: dict[str, str]) -> str | None:
         return None
 
 
-def extract_token_from_headers(headers: dict[str, str]) -> str | None:
+def _extract_token_from_headers_with_fallback(headers: dict[str, str]) -> str | None:
     """
     Extract a token from headers with multiple fallback strategies.
 
@@ -186,7 +188,7 @@ def extract_token_from_headers(headers: dict[str, str]) -> str | None:
     return None
 
 
-def get_sdk_client() -> Any:
+def get_sdk_client(headers_auth_only: bool = False) -> Any:
     """
     Get a DataRobot SDK client using the API token from the current request.
 
@@ -196,45 +198,38 @@ def get_sdk_client() -> Any:
     Token extraction from each source tries: standard auth headers, then
     authorization context metadata (dr_ctx.api_key). If both sources have
     headers, the token is taken from the first source that yields one.
+    3. Application credentials as final fallback
 
-    Raises
-    ------
-        ValueError: If no API token is found in either header source.
+    If headers_auth_only is True, only use the token from the request headers.
 
     Note
     ----
-        Used in both Global MCP and DR MCP deployments; consider impact before changing.
+        Use this function to get a DataRobot SDK client for use in core modules and routes only.
+        For use in tools, use DataRobotClient class in tools/clients/datarobot.py.
     """
-    token = _resolve_token_from_headers()
+    token = resolve_token_from_headers()
     if token:
         logger.debug("Using API token from request headers")
-    else:
-        logger.warning(
-            "No API token found in HTTP headers or authorization context "
-            "(e.g. stdio transport or missing Authorization header)."
-        )
-
-    if not token:
-        raise ValueError("No API token found in HTTP headers or authorization context")
 
     credentials = get_credentials()
+
+    if headers_auth_only and not token:
+        raise ValueError("No API token found in HTTP headers")
+
+    # Fallback: Use application token
+    if not token:
+        # required for dynamic tool and prompt registration on startup
+        token = credentials.datarobot.application_api_token
+        logger.debug("Using application API token from credentials")
+
     dr.Client(token=token, endpoint=credentials.datarobot.endpoint)
     # Avoid use-case context from trafaret affecting tool calls
     DRContext.use_case = None
     return dr
 
 
-def get_api_client() -> RESTClientObject:
+def get_api_client(headers_auth_only: bool = False) -> RESTClientObject:
     """Get a DataRobot SDK api client using application credentials."""
-    dr = get_sdk_client()
+    dr = get_sdk_client(headers_auth_only=headers_auth_only)
 
     return cast(RESTClientObject, dr.client.get_client())
-
-
-def get_s3_bucket_info() -> dict[str, str]:
-    """Get S3 bucket configuration."""
-    credentials = get_credentials()
-    return {
-        "bucket": credentials.aws_predictions_s3_bucket,
-        "prefix": credentials.aws_predictions_s3_prefix,
-    }

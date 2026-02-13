@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -23,36 +24,51 @@ from datarobot_genai.drmcp.tools.predictive import project
 
 @pytest.mark.asyncio
 async def test_list_projects_success() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.project.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_proj1 = MagicMock(id="1", project_name="proj1")
-        mock_proj2 = MagicMock(id="2", project_name="proj2")
-        mock_client.Project.list.return_value = [mock_proj1, mock_proj2]
-        mock_get_client.return_value = mock_client
+    mock_client = MagicMock()
+    mock_proj1 = MagicMock(id="1", project_name="proj1")
+    mock_proj2 = MagicMock(id="2", project_name="proj2")
+    mock_client.Project.list.return_value = [mock_proj1, mock_proj2]
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
         result = await project.list_projects()
-        assert hasattr(result, "structured_content")
-        projects_dict = result.structured_content
-        assert "1" in projects_dict
-        assert projects_dict["1"] == "proj1"
-        assert "2" in projects_dict
-        assert projects_dict["2"] == "proj2"
+    assert hasattr(result, "structured_content")
+    projects_dict = result.structured_content
+    assert "1" in projects_dict
+    assert projects_dict["1"] == "proj1"
+    assert "2" in projects_dict
+    assert projects_dict["2"] == "proj2"
 
 
 @pytest.mark.asyncio
 async def test_list_projects_empty() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.project.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_client.Project.list.return_value = []
-        mock_get_client.return_value = mock_client
+    mock_client = MagicMock()
+    mock_client.Project.list.return_value = []
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
         result = await project.list_projects()
-        assert hasattr(result, "structured_content")
-        assert result.structured_content == {}
+    assert hasattr(result, "structured_content")
+    assert result.structured_content == {}
 
 
 @pytest.mark.asyncio
 async def test_list_projects_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.project.get_sdk_client",
+        "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+        new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -62,46 +78,60 @@ async def test_list_projects_error() -> None:
 
 @pytest.mark.asyncio
 async def test_get_project_dataset_by_name_success() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.project.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_project = MagicMock()
-        mock_ds1 = MagicMock()
-        mock_ds1.name = "training_data"
-        mock_ds1.id = "dsid"
-        mock_project.get_datasets.return_value = [mock_ds1]
-        mock_project.get_dataset.return_value = None
-        mock_client.Project.get.return_value = mock_project
-        mock_get_client.return_value = mock_client
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_ds1 = MagicMock()
+    mock_ds1.name = "training_data"
+    mock_ds1.id = "dsid"
+    mock_project.get_datasets.return_value = [mock_ds1]
+    mock_project.get_dataset.return_value = None
+    mock_client.Project.get.return_value = mock_project
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
         result = await project.get_project_dataset_by_name(
             project_id="pid", dataset_name="training"
         )
-        mock_client.Project.get.assert_called_once_with("pid")
-        assert hasattr(result, "structured_content")
-        assert result.structured_content["dataset_id"] == "dsid"
+    mock_client.Project.get.assert_called_once_with("pid")
+    assert hasattr(result, "structured_content")
+    assert result.structured_content["dataset_id"] == "dsid"
 
 
 @pytest.mark.asyncio
 async def test_get_project_dataset_by_name_not_found() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.project.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_project = MagicMock()
-        mock_project.get_datasets.return_value = []
-        mock_project.get_dataset.return_value = None
-        mock_client.Project.get.return_value = mock_project
-        mock_get_client.return_value = mock_client
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.get_datasets.return_value = []
+    mock_project.get_dataset.return_value = None
+    mock_client.Project.get.return_value = mock_project
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(ToolError) as exc_info:
             await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
-        assert (
-            str(exc_info.value)
-            == "Error in get_project_dataset_by_name: ToolError: Dataset with name "
-            "containing 'training' not found in project pid."
-        )
+    assert (
+        str(exc_info.value) == "Error in get_project_dataset_by_name: ToolError: Dataset with name "
+        "containing 'training' not found in project pid."
+    )
 
 
 @pytest.mark.asyncio
 async def test_get_project_dataset_by_name_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.project.get_sdk_client",
+        "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+        new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:

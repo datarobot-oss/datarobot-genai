@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -25,7 +26,14 @@ from datarobot_genai.drmcp.tools.predictive import data
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_success() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
         patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
@@ -36,7 +44,7 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
         mock_catalog_item.version_id = None
         mock_catalog_item.name = "somefile.csv"
         mock_client.Dataset.create_from_file.return_value = mock_catalog_item
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
         mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
@@ -51,7 +59,14 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
@@ -59,7 +74,7 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
         mock_catalog_item.version_id = None
         mock_catalog_item.name = "somefile.csv"
         mock_client.Dataset.create_from_url.return_value = mock_catalog_item
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.upload_dataset_to_ai_catalog(
             file_url="https://example.com/somefile.csv"
@@ -78,7 +93,14 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
@@ -86,7 +108,7 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
         mock_catalog_item.version_id = None
         mock_catalog_item.name = "somefile.csv"
         mock_client.Dataset.create_from_url.return_value = mock_catalog_item
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         with pytest.raises(
             ToolError,
@@ -101,7 +123,12 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"),
     ):
         with pytest.raises(
             ToolError,
@@ -116,7 +143,12 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"),
     ):
         with pytest.raises(
             ToolError,
@@ -133,7 +165,12 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client"),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"),
         patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=False),
     ):
         with pytest.raises(
@@ -146,12 +183,19 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_error() -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client,
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
         patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
         mock_client.Dataset.create_from_file.side_effect = Exception("fail")
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         with pytest.raises(Exception) as exc_info:
             await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
@@ -160,7 +204,16 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
 
 @pytest.mark.asyncio
 async def test_list_ai_catalog_items_success() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client:
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
+    ):
         mock_client = MagicMock()
         mock_ds1 = MagicMock()
         mock_ds1.id = "1"
@@ -169,7 +222,7 @@ async def test_list_ai_catalog_items_success() -> None:
         mock_ds2.id = "2"
         mock_ds2.name = "ds2"
         mock_client.Dataset.list.return_value = [mock_ds1, mock_ds2]
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
         assert result.structured_content["count"] == 2
@@ -180,10 +233,19 @@ async def test_list_ai_catalog_items_success() -> None:
 
 @pytest.mark.asyncio
 async def test_list_ai_catalog_items_empty() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client:
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
+    ):
         mock_client = MagicMock()
         mock_client.Dataset.list.return_value = []
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
         assert result.structured_content["datasets"] == []
@@ -191,10 +253,19 @@ async def test_list_ai_catalog_items_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_list_ai_catalog_items_error() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.data.get_sdk_client") as mock_get_client:
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
+        ) as mock_data_robot_client,
+    ):
         mock_client = MagicMock()
         mock_client.Dataset.list.side_effect = Exception("fail")
-        mock_get_client.return_value = mock_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         with pytest.raises(Exception) as exc_info:
             await data.list_ai_catalog_items()

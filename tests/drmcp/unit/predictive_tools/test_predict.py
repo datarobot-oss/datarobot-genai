@@ -15,6 +15,7 @@
 import json
 from collections.abc import Generator
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -79,9 +80,16 @@ async def test_predict_by_file_path(
 @pytest.mark.asyncio
 async def test_predict_by_ai_catalog(
     patch_predict_dependencies: dict[str, Any],
-    monkeypatch: Any,
 ) -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.predict.uuid.uuid4", return_value="uuid"):
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.predict.uuid.uuid4", return_value="uuid"),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+    ):
         mock_job = MagicMock()
         mock_job.id = "jobid"
         mock_job.status = "COMPLETED"
@@ -89,7 +97,7 @@ async def test_predict_by_ai_catalog(
         mock_dataset = MagicMock()
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
-        monkeypatch.setattr(predict, "get_sdk_client", lambda: mock_client)
+        mock_drc.return_value.get_client.return_value = mock_client
         result = await predict.predict_by_ai_catalog("dep", "dsid", 5)
         patch_predict_dependencies["mock_batch_job"].score.assert_called_once()
         assert isinstance(result, ToolResult)
@@ -103,7 +111,16 @@ async def test_predict_by_ai_catalog(
 async def test_predict_from_project_data(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.predict.uuid.uuid4", return_value="uuid"):
+    with (
+        patch("datarobot_genai.drmcp.tools.predictive.predict.uuid.uuid4", return_value="uuid"),
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = MagicMock()
         mock_job = MagicMock()
         mock_job.id = "jobid"
         mock_job.status = "COMPLETED"
@@ -218,7 +235,7 @@ def test_make_output_settings() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_prediction_explanations_basic(monkeypatch: Any) -> None:
+async def test_get_prediction_explanations_basic() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(
         return_value=[
@@ -230,12 +247,19 @@ async def test_get_prediction_explanations_basic(monkeypatch: Any) -> None:
     mock_client = MagicMock()
     mock_client.Project.get.return_value = mock_project
     mock_client.Model.get.return_value = mock_model
-    monkeypatch.setattr(predict, "get_sdk_client", lambda: mock_client)
-
-    result_json = await predict.get_prediction_explanations(
-        project_id="pid", model_id="mid", dataset_id="dsid", max_explanations=2
-    )
-    result = result_json if isinstance(result_json, dict) else json.loads(result_json)
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result_json = await predict.get_prediction_explanations(
+            project_id="pid", model_id="mid", dataset_id="dsid", max_explanations=2
+        )
+        result = result_json if isinstance(result_json, dict) else json.loads(result_json)
     assert "explanations" in result
     assert isinstance(result["explanations"], list)
     assert result["ui_panel"] == ["prediction-distribution"]
@@ -243,18 +267,25 @@ async def test_get_prediction_explanations_basic(monkeypatch: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_prediction_explanations_empty(monkeypatch: Any) -> None:
+async def test_get_prediction_explanations_empty() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(return_value=[])
     mock_project = MagicMock()
     mock_client = MagicMock()
     mock_client.Project.get.return_value = mock_project
     mock_client.Model.get.return_value = mock_model
-    monkeypatch.setattr(predict, "get_sdk_client", lambda: mock_client)
-
-    result_json = await predict.get_prediction_explanations(
-        project_id="pid", model_id="mid", dataset_id="dsid"
-    )
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result_json = await predict.get_prediction_explanations(
+            project_id="pid", model_id="mid", dataset_id="dsid"
+        )
     result = result_json if isinstance(result_json, dict) else json.loads(result_json)
     assert "explanations" in result
     assert result["explanations"] == []
@@ -262,7 +293,7 @@ async def test_get_prediction_explanations_empty(monkeypatch: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_prediction_explanations_sdk_error(monkeypatch: Any) -> None:
+async def test_get_prediction_explanations_sdk_error() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(
         side_effect=Exception("SDK error")
@@ -271,10 +302,17 @@ async def test_get_prediction_explanations_sdk_error(monkeypatch: Any) -> None:
     mock_client = MagicMock()
     mock_client.Project.get.return_value = mock_project
     mock_client.Model.get.return_value = mock_model
-    monkeypatch.setattr(predict, "get_sdk_client", lambda: mock_client)
-
-    result_json = await predict.get_prediction_explanations(
-        project_id="pid", model_id="mid", dataset_id="dsid"
-    )
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result_json = await predict.get_prediction_explanations(
+            project_id="pid", model_id="mid", dataset_id="dsid"
+        )
     result = result_json if isinstance(result_json, dict) else json.loads(result_json)
     assert "Error in get_prediction_explanations" in result.get("error", "")

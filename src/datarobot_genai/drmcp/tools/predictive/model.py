@@ -22,7 +22,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_tool
-from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
+from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,8 @@ async def get_best_model(
     if not project_id:
         raise ToolError("Project ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     if not project:
         raise ToolError(f"Project with ID {project_id} not found.")
@@ -126,7 +128,8 @@ async def score_dataset_with_model(
     if not dataset_url:
         raise ToolError("Dataset URL must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     model = client.Model.get(project, model_id)
     job = model.score(dataset_url)
@@ -150,7 +153,8 @@ async def list_models(
     if not project_id:
         raise ToolError("Project ID must be provided")
 
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
     models = project.get_models()
 

@@ -20,8 +20,9 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_tool
-from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.utils import is_valid_url
+from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
+from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ async def upload_dataset_to_ai_catalog(
         raise ToolError("Please provide either file_path or file_url, not both.")
 
     # Get client
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     catalog_item = None
     # If file path is provided, create dataset from file.
     if file_path:
@@ -70,7 +72,8 @@ async def upload_dataset_to_ai_catalog(
 @dr_mcp_tool(tags={"predictive", "data", "read", "list", "catalog"})
 async def list_ai_catalog_items() -> ToolResult:
     """List all AI Catalog items (datasets) for the authenticated user."""
-    client = get_sdk_client()
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     datasets = client.Dataset.list()
 
     if not datasets:
@@ -105,7 +108,8 @@ async def list_ai_catalog_items() -> ToolResult:
 #         a resource id that can be used to retrieve the list of AI Catalog items using the
 #         get_resource tool
 #     """
-#     client = get_sdk_client()
+#     token = await get_datarobot_access_token()
+#     client = DataRobotClient(token).get_client()
 #     datasets = client.Dataset.list()
 #     if not datasets:
 #         logger.info("No AI Catalog items found")

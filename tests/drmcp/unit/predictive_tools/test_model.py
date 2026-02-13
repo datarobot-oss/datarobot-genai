@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -25,38 +26,50 @@ from datarobot_genai.drmcp.tools.predictive.model import ModelEncoder
 from datarobot_genai.drmcp.tools.predictive.model import model_to_dict
 
 
+def _patch_model_client(mock_client: MagicMock):
+    """Return (patch get_datarobot_access_token, patch DataRobotClient).
+    Use: with p1, p2 as mock_drc.
+    """
+    return (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.model.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.model.DataRobotClient"),
+    )
+
+
 @pytest.mark.asyncio
 async def test_get_best_model_success() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.model.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_project = MagicMock()
-        mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
-        mock_model2 = MagicMock(
-            id="m2", model_type="Random Forest", metrics={"AUC": {"validation": 0.8}}
-        )
-        mock_project.get_models.return_value = [mock_model1, mock_model2]
-        mock_client.Project.get.return_value = mock_project
-        mock_get_client.return_value = mock_client
-
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
+    mock_model2 = MagicMock(
+        id="m2", model_type="Random Forest", metrics={"AUC": {"validation": 0.8}}
+    )
+    mock_project.get_models.return_value = [mock_model1, mock_model2]
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
         result = await model.get_best_model(project_id="pid", metric="AUC")
-        assert hasattr(result, "structured_content")
-        assert result.structured_content["project_id"] == "pid"
-        assert result.structured_content["best_model"]["model_type"] == "XGBoost"
-        expected_auc = 0.9
-        assert (
-            result.structured_content["best_model"]["metrics"]["AUC"]["validation"] == expected_auc
-        )
+    assert hasattr(result, "structured_content")
+    assert result.structured_content["project_id"] == "pid"
+    assert result.structured_content["best_model"]["model_type"] == "XGBoost"
+    expected_auc = 0.9
+    assert result.structured_content["best_model"]["metrics"]["AUC"]["validation"] == expected_auc
 
 
 @pytest.mark.asyncio
 async def test_get_best_model_no_models() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.model.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_project = MagicMock()
-        mock_project.get_models.return_value = []
-        mock_client.Project.get.return_value = mock_project
-        mock_get_client.return_value = mock_client
-
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.get_models.return_value = []
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(
             ToolError, match="Error in get_best_model: ToolError: No models found for this project."
         ):
@@ -65,11 +78,11 @@ async def test_get_best_model_no_models() -> None:
 
 @pytest.mark.asyncio
 async def test_get_best_model_project_not_found() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.model.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_client.Project.get.return_value = None
-        mock_get_client.return_value = mock_client
-
+    mock_client = MagicMock()
+    mock_client.Project.get.return_value = None
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(
             ToolError, match="Error in get_best_model: ToolError: Project with ID pid not found."
         ):
@@ -79,7 +92,9 @@ async def test_get_best_model_project_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_best_model_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.model.get_sdk_client", side_effect=Exception("fail")
+        "datarobot_genai.drmcp.tools.predictive.model.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
             await model.get_best_model(project_id="pid", metric="AUC")
@@ -88,69 +103,74 @@ async def test_get_best_model_error() -> None:
 
 @pytest.mark.asyncio
 async def test_score_dataset_with_model_success() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.model.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_project = MagicMock()
-        mock_model = MagicMock()
-        mock_job = MagicMock(id="jobid")
-        mock_model.score.return_value = mock_job
-        mock_model.model_type = "type1"
-        mock_model.metrics = {"AUC": 0.9}
-        mock_client.Model.get.return_value = mock_model
-        mock_client.Project.get.return_value = mock_project
-        mock_get_client.return_value = mock_client
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_model = MagicMock()
+    mock_job = MagicMock(id="jobid")
+    mock_model.score.return_value = mock_job
+    mock_model.model_type = "type1"
+    mock_model.metrics = {"AUC": 0.9}
+    mock_client.Model.get.return_value = mock_model
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
         result = await model.score_dataset_with_model(
             project_id="pid", model_id="mid", dataset_url="url"
         )
-        mock_client.Project.get.assert_called_once_with("pid")
-        mock_client.Model.get.assert_called_once_with(mock_project, "mid")
-        mock_model.score.assert_called_once_with("url")
-        assert hasattr(result, "structured_content")
-        assert result.structured_content["scoring_job_id"] == "jobid"
+    mock_client.Project.get.assert_called_once_with("pid")
+    mock_client.Model.get.assert_called_once_with(mock_project, "mid")
+    mock_model.score.assert_called_once_with("url")
+    assert hasattr(result, "structured_content")
+    assert result.structured_content["scoring_job_id"] == "jobid"
 
 
 @pytest.mark.asyncio
 async def test_score_dataset_with_model_project_not_found() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.model.get_sdk_client") as mock_get_client:
-        project_id = "pid"
-        mock_client = MagicMock()
-        exception_message = (
-            "404 client error: {'message': 'Project with ID " + project_id + " does not exist'}"
-        )
-        mock_client.Project.get.side_effect = Exception(exception_message)
-        mock_get_client.return_value = mock_client
+    project_id = "pid"
+    mock_client = MagicMock()
+    exception_message = (
+        "404 client error: {'message': 'Project with ID " + project_id + " does not exist'}"
+    )
+    mock_client.Project.get.side_effect = Exception(exception_message)
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(Exception) as exc_info:
             await model.score_dataset_with_model(
                 project_id=project_id, model_id="mid", dataset_url="url"
             )
-        assert "Error in score_dataset_with_model: Exception: " + exception_message == str(
-            exc_info.value
-        )
+    assert "Error in score_dataset_with_model: Exception: " + exception_message == str(
+        exc_info.value
+    )
 
 
 @pytest.mark.asyncio
 async def test_score_dataset_with_model_model_not_found() -> None:
-    with patch("datarobot_genai.drmcp.tools.predictive.model.get_sdk_client") as mock_get_client:
-        mock_client = MagicMock()
-        mock_project = MagicMock()
-        mock_project.get_models.return_value = []
-        mock_client.Project.get.return_value = mock_project
-        exception_message = "404 client error: {'message': 'Leaderboard Item Not Found'}"
-        mock_client.Model.get.side_effect = Exception(exception_message)
-        mock_get_client.return_value = mock_client
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.get_models.return_value = []
+    mock_client.Project.get.return_value = mock_project
+    exception_message = "404 client error: {'message': 'Leaderboard Item Not Found'}"
+    mock_client.Model.get.side_effect = Exception(exception_message)
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(Exception) as exc_info:
             await model.score_dataset_with_model(
                 project_id="pid", model_id="mid", dataset_url="url"
             )
-        assert "Error in score_dataset_with_model: Exception: " + exception_message == str(
-            exc_info.value
-        )
+    assert "Error in score_dataset_with_model: Exception: " + exception_message == str(
+        exc_info.value
+    )
 
 
 @pytest.mark.asyncio
 async def test_score_dataset_with_model_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.model.get_sdk_client", side_effect=Exception("fail")
+        "datarobot_genai.drmcp.tools.predictive.model.get_datarobot_access_token",
+        new_callable=AsyncMock,
+        side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
             await model.score_dataset_with_model(
