@@ -34,6 +34,25 @@ header:
   paths:
     # do NOT modify the next line as it is used by the groovy script in the CI pipeline
     # INSERT_FILES_FROM_PULL_REQUEST_HERE
+    - src/datarobot_genai/core/agents/__init__.py
+    - src/datarobot_genai/core/agents/base.py
+    - src/datarobot_genai/core/chat/__init__.py
+    - src/datarobot_genai/core/chat/completions.py
+    - src/datarobot_genai/crewai/__init__.py
+    - src/datarobot_genai/crewai/agent.py
+    - src/datarobot_genai/crewai/events.py
+    - src/datarobot_genai/langgraph/agent.py
+    - src/datarobot_genai/llama_index/__init__.py
+    - src/datarobot_genai/llama_index/agent.py
+    - src/datarobot_genai/nat/agent.py
+    - tests/core/agents/test_base.py
+    - tests/core/agents/test_base_utils.py
+    - tests/core/chat/test_completions.py
+    - tests/crewai/test_agent.py
+    - tests/crewai/test_events.py
+    - tests/langgraph/test_agent.py
+    - tests/llamaindex/test_agent.py
+    - tests/nat/test_agent.py
     # - You can temporarily list files below which will be checked when running the tool locally.
 
   paths-ignore:
