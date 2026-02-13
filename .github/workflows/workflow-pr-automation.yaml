@@ -1,0 +1,59 @@
+name: PR Automation
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [labeled, opened, edited]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  # Triggered when a PR review is submitted with an "approved" state.
+  # Marks the PR as reviewed (e.g. applies a label or updates status) so the team
+  # knows it has passed code review and is ready for the next step.
+  mark-reviewed:
+    if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved'
+    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-reviewed.yaml@0.0.3
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+
+  # Triggered when the "ready for review" label is added to a PR.
+  # Sends a Slack notification with PR metadata (title, author, diff size, URL)
+  # so reviewers are alerted that the PR is ready for their attention.
+  notify-ready-for-review:
+    if: github.event_name == 'pull_request' && contains(github.event.label.name, 'ready for review')
+    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-to-review.yaml@0.0.3
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_url: ${{ github.event.pull_request.html_url }}
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_author: ${{ github.event.pull_request.user.login }}
+      pr_additions: ${{ github.event.pull_request.additions }}
+      pr_deletions: ${{ github.event.pull_request.deletions }}
+      repo_name: ${{ github.event.repository.name }}
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Triggered when a PR is opened or its title/description is edited.
+  # Parses the PR title or branch name for a Jira ticket ID and adds a link
+  # to the corresponding Jira issue in the PR description or as a comment.
+  add-jira-link:
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'edited')
+    uses: datarobot-oss/github-actions/.github/workflows/add-jira-link.yaml@0.0.3
+    with:
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_branch: ${{ github.head_ref }}
+    permissions:
+      pull-requests: write
+
+  # Triggered on a 30-minute cron schedule or manual workflow dispatch.
+  # Sends a Slack digest/reminder notification, useful for surfacing PRs
+  # that are still open and may need attention.
+  notify-slack-scheduled:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.3
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
