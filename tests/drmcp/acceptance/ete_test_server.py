@@ -31,5 +31,5 @@ from datarobot_genai.drmcp.test_utils.elicitation_test_tool import (  # noqa: E4
 from tests.drmcp.acceptance.test_tools import get_auth_context_user_info  # noqa: E402, F401
 
 if __name__ == "__main__":
-    server = create_mcp_server()
+    server = create_mcp_server(load_native_mcp_tools=True)
     server.run(show_banner=True)

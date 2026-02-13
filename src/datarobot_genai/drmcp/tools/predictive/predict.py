@@ -24,9 +24,9 @@ from fastmcp.resources import HttpResource
 from fastmcp.resources import ResourceManager
 from fastmcp.tools.tool import ToolResult
 
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.core.clients import get_credentials
 from datarobot_genai.drmcp.core.clients import get_sdk_client
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.utils import generate_presigned_url
 from datarobot_genai.drmcp.tools.clients.s3 import get_s3_bucket_info
 

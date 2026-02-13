@@ -24,7 +24,9 @@ from fastmcp import FastMCP
 from starlette.middleware import Middleware
 
 from .auth import initialize_oauth_middleware
+from .clients import RequestHeadersMiddleware
 from .config import get_config
+from .constants import MCP_PATH_ENDPOINT
 from .credentials import get_credentials
 from .dr_mcp_server_logo import log_server_custom_banner
 from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
@@ -79,6 +81,7 @@ class DataRobotMCPServer:
         credentials_factory: Callable[[], Any] | None = None,
         lifecycle: BaseServerLifecycle | None = None,
         additional_module_paths: list[tuple[str, str]] | None = None,
+        load_native_mcp_tools: bool = False,
     ):
         """
         Initialize the server.
@@ -91,6 +94,7 @@ class DataRobotMCPServer:
             lifecycle: Optional lifecycle handler (defaults to BaseServerLifecycle())
             additional_module_paths: Optional list of (directory, package_prefix) tuples for
                 loading additional modules
+            load_native_mcp_tools: If True, load tools from drmcp/tools (default False)
         """
         # Initialize config and logging
         self._config = get_config()
@@ -139,14 +143,15 @@ class DataRobotMCPServer:
                     "No AWS credentials found, skipping memory manager initialization"
                 )
 
-        # Load static tools modules
+        # Load native MCP tools modules (only when load_native_mcp_tools is True)
         base_dir = os.path.dirname(os.path.dirname(__file__))
-        for tool_type, tool_config in TOOL_CONFIGS.items():
-            if is_tool_enabled(tool_type, self._config):
-                _import_modules_from_dir(
-                    os.path.join(base_dir, "tools", tool_config["directory"]),
-                    tool_config["package_prefix"],
-                )
+        if load_native_mcp_tools:
+            for tool_type, tool_config in TOOL_CONFIGS.items():
+                if is_tool_enabled(tool_type, self._config):
+                    _import_modules_from_dir(
+                        os.path.join(base_dir, "tools", tool_config["directory"]),
+                        tool_config["package_prefix"],
+                    )
 
         # Load memory management tools if available
         if self._memory_manager:
@@ -258,13 +263,17 @@ class DataRobotMCPServer:
                     server_task = asyncio.create_task(
                         self._mcp.run_http_async(
                             transport="http",
-                            middleware=[Middleware(OtelASGIMiddleware)],
+                            middleware=[
+                                # Request headers in context for REST routes only (skips MCP path).
+                                Middleware(RequestHeadersMiddleware),
+                                Middleware(OtelASGIMiddleware),
+                            ],
                             show_banner=False,
                             port=self._config.mcp_server_port,
                             log_level=self._config.mcp_server_log_level,
                             host=self._config.mcp_server_host,
                             stateless_http=True,
-                            path=prefix_mount_path("/mcp"),
+                            path=prefix_mount_path(MCP_PATH_ENDPOINT),
                         )
                     )
                 else:
@@ -302,6 +311,7 @@ def create_mcp_server(
     lifecycle: BaseServerLifecycle | None = None,
     additional_module_paths: list[tuple[str, str]] | None = None,
     transport: str = "streamable-http",
+    load_native_mcp_tools: bool = False,
 ) -> DataRobotMCPServer:
     """
     Create a DataRobot MCP server.
@@ -312,6 +322,7 @@ def create_mcp_server(
         lifecycle: Optional lifecycle handler
         additional_module_paths: Optional list of (directory, package_prefix) tuples
         transport: Transport type ("streamable-http" or "stdio")
+        load_native_mcp_tools: If True, load tools from drmcp/tools (default False)
 
     Returns
     -------
@@ -347,4 +358,5 @@ def create_mcp_server(
         credentials_factory=credentials_factory,
         lifecycle=lifecycle,
         additional_module_paths=additional_module_paths,
+        load_native_mcp_tools=load_native_mcp_tools,
     )

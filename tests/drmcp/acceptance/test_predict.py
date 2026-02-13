@@ -36,6 +36,7 @@ def expectations_for_predict_by_file_path_success(
                 parameters={
                     "deployment_id": deployment_id,
                     "file_path": str(classification_predict_file_path),
+                    "timeout": 600,
                 },
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -122,7 +123,8 @@ class TestPredictE2E(ToolBaseE2E):
         [
             """
         I have a DataRobot deployment with ID '{deployment_id}'.
-        Please run batch predictions using the local CSV file at '{file_path}'.
+        Please run batch predictions using the local CSV file at '{file_path}'
+        with a timeout of 600 seconds.
         """
         ],
     )

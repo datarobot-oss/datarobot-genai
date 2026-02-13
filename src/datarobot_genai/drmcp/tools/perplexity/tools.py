@@ -21,7 +21,7 @@ from typing import Literal
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.perplexity import MAX_QUERIES
 from datarobot_genai.drmcp.tools.clients.perplexity import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.perplexity import MAX_RESULTS_DEFAULT

@@ -29,6 +29,7 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
 
+from . import tools
 from .core.clients import get_sdk_client
 from .core.config import MCPServerConfig
 from .core.config import get_config
@@ -42,6 +43,7 @@ from .core.dr_mcp_server import BaseServerLifecycle
 from .core.dr_mcp_server import DataRobotMCPServer
 from .core.dr_mcp_server import create_mcp_server
 from .core.logging import MCPLogging
+from .core.mcp_instance import ToolKwargs
 from .core.mcp_instance import dr_mcp_tool
 from .core.mcp_instance import register_tools
 
@@ -62,6 +64,7 @@ __all__ = [
     "get_sdk_client",
     "dr_mcp_tool",
     "register_tools",
+    "ToolKwargs",
     # Utilities
     "MCPLogging",
     "extract_datarobot_runtime_param_payload",
@@ -77,4 +80,5 @@ __all__ = [
     "ToolBaseE2E",
     "ToolCallTestExpectations",
     "integration_test_mcp_session",
+    "tools",
 ]

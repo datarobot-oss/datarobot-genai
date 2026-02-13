@@ -20,7 +20,7 @@ from typing import Literal
 
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
 from datarobot_genai.drmcp.tools.clients.tavily import MAX_CHUNKS_PER_SOURCE
 from datarobot_genai.drmcp.tools.clients.tavily import MAX_RESULTS

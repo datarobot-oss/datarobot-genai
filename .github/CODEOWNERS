@@ -1,1 +1,6 @@
+# drmcp - MCP server and tools
+/src/datarobot_genai/drmcp/ @datarobot-oss/mcp
+/tests/drmcp/ @datarobot-oss/mcp
+/.taskfiles/drmcp.yml @datarobot-oss/mcp
+
 * @datarobot-oss/buzok @cavitcakir @jpclemens0

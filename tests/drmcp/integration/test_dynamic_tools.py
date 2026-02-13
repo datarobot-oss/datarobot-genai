@@ -17,7 +17,6 @@ from unittest.mock import MagicMock
 import pytest
 import responses
 
-from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
@@ -249,15 +248,9 @@ def mock_api_responses(
 
 
 @pytest.fixture
-def sdk_client():
-    """Get configured DataRobot SDK client."""
-    return get_sdk_client()
-
-
-@pytest.fixture
-def deployment_ok(sdk_client, deployment_id_ok: str):
+def deployment_ok(dr_client, deployment_id_ok: str):
     """Get deployment object."""
-    return sdk_client.Deployment.get(deployment_id_ok)
+    return dr_client.Deployment.get(deployment_id_ok)
 
 
 # todo - change the hardcoded deployment id (deployment_id_ok) to a proper fixture that
@@ -266,7 +259,7 @@ def deployment_ok(sdk_client, deployment_id_ok: str):
 @responses.activate
 async def test_get_mcp_tool_metadata(
     mock_api_responses,
-    sdk_client,
+    dr_client,
     deployment_ok,
     expected_input_schema: dict,
 ) -> None:
@@ -279,7 +272,7 @@ async def test_get_mcp_tool_metadata(
 
 @pytest.mark.asyncio
 @responses.activate
-async def test_dynamic_tool_registration(sdk_client, mock_api_responses) -> None:
+async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
     await register_tools_of_datarobot_deployments()
 
     tool_names = {tool.name for tool in await mcp._list_tools_mcp()}
