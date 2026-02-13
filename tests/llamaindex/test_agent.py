@@ -17,7 +17,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -239,3 +241,74 @@ async def test_llama_index_agent_invoke_with_mcp_tools(
     assert mcp_calls[0]["forwarded_headers"] == {
         "x-datarobot-api-key": "scoped-token-123",
     }
+
+
+def test_make_input_message_includes_history_summary() -> None:
+    """By default, LlamaIndexAgent.make_input_message should NOT include history."""
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow)
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    text = agent.make_input_message(run_agent_input)
+
+    assert text == "Follow-up"
+
+
+def test_make_input_message_zero_history_disables_summary() -> None:
+    """When MAX_HISTORY_MESSAGES is 0, history should be disabled."""
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow)
+    agent.MAX_HISTORY_MESSAGES = 0
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    text = agent.make_input_message(run_agent_input)
+    assert text == "Follow-up"
+
+
+def test_make_input_message_replaces_chat_history_placeholder() -> None:
+    """History is injected only when `{chat_history}` placeholder is present."""
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow)
+    completion_create_params: Any = {
+        "model": "m",
+        "messages": [
+            {"role": "system", "content": "You are a helper."},
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "First answer"},
+            {"role": "user", "content": "History:\n{chat_history}\n\nLatest: Follow-up"},
+        ],
+    }
+
+    text = agent.make_input_message(completion_create_params)  # type: ignore[arg-type]
+    assert "system: You are a helper." in text
+    assert "user: First question" in text
+    assert "assistant: First answer" in text
+    assert "{chat_history}" not in text

@@ -22,6 +22,8 @@ import pytest
 from ag_ui.core import BaseEvent
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
+from ag_ui.core import AssistantMessage
+from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
@@ -180,7 +182,162 @@ class SimpleLangGraphAgent(LangGraphAgent):
         return {}
 
 
-async def test_langgraph(run_agent_input):
+class HistoryAwareLangGraphAgent(LangGraphAgent):
+    """LangGraph agent whose prompt template exposes {chat_history}."""
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        # Reuse the same mock workflow behaviour as SimpleLangGraphAgent; tests
+        # that rely on streaming/invoke semantics use the original class.
+        return SimpleLangGraphAgent().workflow
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {
+                    "role": "system",
+                    "content": "History transcript:\n{chat_history}",
+                },
+                {
+                    "role": "user",
+                    "content": "Latest request: {topic}",
+                },
+            ]
+        )
+
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
+
+
+def test_convert_input_message_includes_history() -> None:
+    """convert_input_message should preserve prior turns as chat history."""
+    agent = SimpleLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Expect 3 history messages (system, first user, assistant)
+    # plus the templated final user messages (system + user).
+    assert len(all_messages) == 5
+    assert isinstance(all_messages[0], SystemMessage)
+    assert isinstance(all_messages[1], HumanMessage)
+    assert isinstance(all_messages[2], AIMessage)
+    assert isinstance(all_messages[-2], SystemMessage)
+    assert isinstance(all_messages[-1], HumanMessage)
+
+
+def test_convert_input_message_truncates_history() -> None:
+    """History is truncated to MAX_HISTORY_MESSAGES prior turns."""
+    agent = SimpleLangGraphAgent()
+    max_history = agent.MAX_HISTORY_MESSAGES
+
+    # Create more messages than MAX_HISTORY_MESSAGES, all user role so that
+    # everything before the final one is treated as history.
+    messages = [
+        UserMessage(id=f"user_{i}", content=f'{{"topic": "Topic {i}"}}')
+        for i in range(max_history + 10)
+    ]
+    run_agent_input = RunAgentInput(
+        messages=messages,
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # We expect MAX_HISTORY_MESSAGES history messages plus the 2 templated
+    # messages for the final user turn.
+    assert len(all_messages) == max_history + 2
+
+def test_convert_input_message_injects_chat_history_variable() -> None:
+    """convert_input_message should provide {chat_history} to the prompt template."""
+    agent = HistoryAwareLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Find the system message generated from the prompt template and assert that
+    # it contains a rendered history transcript (prior turns only).
+    history_msgs = [
+        m
+        for m in all_messages
+        if isinstance(m, SystemMessage) and "History transcript:" in str(m.content)
+    ]
+    assert len(history_msgs) == 1
+    history_text = str(history_msgs[0].content)
+
+    assert "system: You are a helper." in history_text
+    assert 'user: {"topic": "First question"}' in history_text
+    assert "assistant: First answer" in history_text
+    # The latest user turn should not appear inside the history transcript.
+    assert "Follow-up" not in history_text
+
+
+def test_convert_input_message_zero_history_disables_history() -> None:
+    """When MAX_HISTORY_MESSAGES is 0, no prior turns are included."""
+    agent = SimpleLangGraphAgent()
+    agent.MAX_HISTORY_MESSAGES = 0
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Only the templated messages for the final user turn should remain.
+    assert len(all_messages) == 2
+    assert isinstance(all_messages[0], SystemMessage)
+    assert isinstance(all_messages[1], HumanMessage)
+
+
+async def test_langgraph_non_streaming(run_agent_input):
     # GIVEN a simple langgraph agent implementation
     agent = SimpleLangGraphAgent()
 
