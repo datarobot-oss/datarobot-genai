@@ -7,7 +7,7 @@ on:
 jobs:
   notify:
     if: contains(github.event.label.name, 'ready for review')
-    uses: ./.github/workflows/tool-mark-pr-to-review.yaml
+    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-to-review.yaml@0.0.3
     with:
       pr_number: ${{ github.event.pull_request.number }}
       pr_url: ${{ github.event.pull_request.html_url }}

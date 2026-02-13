@@ -7,6 +7,6 @@ on:
 
 jobs:
   notify:
-    uses: ./.github/workflows/tool-notify-slack.yaml
+    uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.3
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
