@@ -86,18 +86,23 @@ class _ContentExtractor(HTMLParser):
         self._title: str = ""
         self._in_title = False
         self._skip_depth = 0
+        self._content_depth = 0
         self._tag_stack: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self._tag_stack.append(tag)
         if tag in self._SKIP_TAGS:
             self._skip_depth += 1
+        if tag in self._CONTENT_TAGS:
+            self._content_depth += 1
         if tag == "title":
             self._in_title = True
 
     def handle_endtag(self, tag: str) -> None:
         if tag in self._SKIP_TAGS and self._skip_depth > 0:
             self._skip_depth -= 1
+        if tag in self._CONTENT_TAGS and self._content_depth > 0:
+            self._content_depth -= 1
         if tag == "title":
             self._in_title = False
         if self._tag_stack and self._tag_stack[-1] == tag:
@@ -109,7 +114,7 @@ class _ContentExtractor(HTMLParser):
             return
         if self._in_title:
             self._title = text
-        if self._skip_depth == 0 and text:
+        if self._skip_depth == 0 and self._content_depth > 0:
             self._texts.append(text)
 
     @property
@@ -206,8 +211,9 @@ class _DocsIndex:
         return [page for _, page in scored[:max_results]]
 
 
-# Global index instance (cached)
+# Global index instance (cached) and lock to prevent concurrent builds
 _index = _DocsIndex()
+_build_index_lock = asyncio.Lock()
 
 
 async def _fetch_url_raw_text_content(session: aiohttp.ClientSession, url: str) -> str | None:
@@ -276,8 +282,8 @@ def _title_from_url(url: str) -> str:
     return " > ".join(title_parts) if title_parts else "DataRobot Documentation"
 
 
-async def _build_index(session: aiohttp.ClientSession) -> list[DocPage]:
-    """Build the documentation index from the sitemap with full page content.
+async def _create_datarobot_agentic_docs_pages(session: aiohttp.ClientSession) -> list[DocPage]:
+    """Create DataRobot agentic documentation pages from the sitemap with full page content.
 
     Fetches all agentic-ai documentation URLs from sitemap.xml, then retrieves
     their full HTML content concurrently. With ~28 pages and a concurrency limit
@@ -325,13 +331,19 @@ async def _ensure_index() -> _DocsIndex:
     if not _index.is_stale:
         return _index
 
-    logger.info("Building DataRobot agentic-ai docs index...")
-    async with aiohttp.ClientSession() as session:
-        pages = await _build_index(session)
-        if pages:
-            _index.build(pages)
-        else:
-            logger.warning("No pages found for docs index")
+    async with _build_index_lock:
+        # Re-check after acquiring the lock — another coroutine may have
+        # already finished building the index while we were waiting.
+        if not _index.is_stale:
+            return _index
+
+        logger.info("Building DataRobot agentic-ai docs index...")
+        async with aiohttp.ClientSession() as session:
+            pages = await _create_datarobot_agentic_docs_pages(session)
+            if pages:
+                _index.build(pages)
+            else:
+                logger.warning("No pages found for docs index")
 
     return _index
 
