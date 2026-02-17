@@ -30,23 +30,24 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
     """End-to-end tests for DataRobot Documentation search tools."""
 
     async def test_search_datarobot_docs_success(self, llm_client: Any) -> None:
-        """Test basic DataRobot docs search."""
+        """Test basic DataRobot agentic-ai docs search."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
                     name="search_datarobot_docs",
-                    parameters={"query": "autopilot", "max_results": 3},
+                    parameters={"query": "MCP server"},  # LLM chooses query text
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
             ],
-            llm_response_content_contains_expectations=["autopilot", "docs.datarobot.com"],
+            llm_response_content_contains_expectations=["MCP", "server", "docs.datarobot.com"],
         )
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = frame.f_code.co_name if frame else "test_search_datarobot_docs_success"
             await self._run_test_with_expectations(
-                "Search the DataRobot documentation for 'autopilot' and list what you find.",
+                "Search the DataRobot agentic-AI documentation for 'MCP server' and list what you \
+                    find. Only pass required parameters when calling tools.",
                 expectations,
                 llm_client,
                 session,
@@ -54,24 +55,24 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
             )
 
     async def test_fetch_datarobot_doc_page_success(self, llm_client: Any) -> None:
-        """Test fetching a specific DataRobot documentation page."""
+        """Test fetching a specific DataRobot agentic-ai documentation page."""
+        _url = "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
                     name="fetch_datarobot_doc_page",
-                    parameters={"url": "https://docs.datarobot.com/en/docs/modeling/"},
+                    parameters={"url": _url},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
             ],
-            llm_response_content_contains_expectations=["modeling", "DataRobot"],
+            llm_response_content_contains_expectations=["agentic", "glossary", "DataRobot"],
         )
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = frame.f_code.co_name if frame else "test_fetch_datarobot_doc_page_success"
             await self._run_test_with_expectations(
-                "Fetch the content from 'https://docs.datarobot.com/en/docs/modeling/' "
-                "and summarize what you find.",
+                f"Fetch the content from '{_url}' and summarize what you find.",
                 expectations,
                 llm_client,
                 session,
@@ -79,29 +80,32 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
             )
 
     async def test_search_and_fetch_workflow(self, llm_client: Any) -> None:
-        """Test the typical workflow: search for docs, then fetch a page."""
+        """Test the typical workflow: search agentic-ai docs, then fetch a page."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
                     name="search_datarobot_docs",
-                    parameters={"query": "time series"},
+                    parameters={"query": "authentication"},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
                 ToolCallTestExpectations(
                     name="fetch_datarobot_doc_page",
-                    # Don't specify URL - let the LLM choose from search results
+                    parameters={
+                        "url": "https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/agentic-authentication.html"
+                    },
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
             ],
-            llm_response_content_contains_expectations=["time series", "DataRobot"],
+            llm_response_content_contains_expectations=["agentic", "authentication", "DataRobot"],
         )
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = frame.f_code.co_name if frame else "test_search_and_fetch_workflow"
             await self._run_test_with_expectations(
-                "Search the DataRobot documentation for 'time series' information, "
-                "then fetch and summarize the most relevant page you find.",
+                "Search the DataRobot agentic-AI documentation for 'authentication', "
+                "then fetch and summarize the most relevant page you find. \
+                    Only pass required parameters when calling tools.",
                 expectations,
                 llm_client,
                 session,
@@ -125,7 +129,8 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
             frame = inspect.currentframe()
             test_name = frame.f_code.co_name if frame else "test_search_no_results"
             await self._run_test_with_expectations(
-                "Search the DataRobot documentation for 'xyznonexistentquery123'.",
+                "Search the DataRobot documentation for 'xyznonexistentquery123'. \
+                    Only pass required parameters when calling tools.",
                 expectations,
                 llm_client,
                 session,

@@ -12,14 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DataRobot Documentation search client.
+"""DataRobot Agentic AI Documentation search client.
 
-Searches the DataRobot product documentation site without requiring any API
-keys. Parses the sitemap.xml to discover all documentation page URLs and builds
-a TF-IDF index from URL paths and generated titles. The index is cached in
-memory for fast repeated queries.
+Searches the DataRobot agentic-ai documentation section without requiring
+any API keys. Parses the sitemap.xml to discover agentic-ai documentation
+page URLs, fetches their full HTML content concurrently at index-build time,
+and builds a TF-IDF index from real page titles and body text. The index is
+cached in memory for fast repeated queries.
+
+Only pages under https://docs.datarobot.com/en/docs/agentic-ai/ are indexed,
+keeping the corpus small (~28 pages) so the full index can be built in a few
+seconds at server startup.
 """
 
+import asyncio
 import logging
 import math
 import re
@@ -36,8 +42,12 @@ logger = logging.getLogger(__name__)
 DOCS_BASE_URL = "https://docs.datarobot.com"
 DOCS_SITEMAP_URL = f"{DOCS_BASE_URL}/en/docs/sitemap.xml"
 
-# Cache TTL in seconds (1 hour)
-CACHE_TTL_SECONDS = 3600
+# Only index pages under this path — keeps the corpus small enough to fetch
+# all content at build time without a background enrichment job.
+AGENTIC_AI_PATH = "/en/docs/agentic-ai/"
+
+# Cache TTL in seconds (1 day)
+CACHE_TTL_SECONDS = 86400
 
 # Maximum number of results to return
 MAX_RESULTS = 20
@@ -45,6 +55,8 @@ MAX_RESULTS_DEFAULT = 5
 
 # Request timeout in seconds
 REQUEST_TIMEOUT_SECONDS = 30
+
+CONTENT_FETCH_CONCURRENCY = 20
 
 
 def _tokenize(text: str) -> list[str]:
@@ -115,20 +127,17 @@ class DocPage:
         self.url = url
         self.title = title
         self.text = text
-        # Pre-compute tokens for searching
+        # Pre-compute tokens for searching (title weighted 3x over body text)
         self._title_tokens = _tokenize(title)
         self._text_tokens = _tokenize(text)
-        self._url_tokens = _tokenize(url.split("/en/docs/")[-1] if "/en/docs/" in url else url)
-        # Combined TF for scoring
-        all_tokens = self._title_tokens * 3 + self._url_tokens * 2 + self._text_tokens
-        self.tf = _compute_tf(all_tokens)
+        self.tf = _compute_tf(self._title_tokens * 3 + self._text_tokens)
 
     def as_dict(self) -> dict[str, str]:
         """Return a dictionary representation of the page."""
         return {
             "url": self.url,
             "title": self.title,
-            "description": self.text[:300] + "..." if len(self.text) > 300 else self.text,
+            "description": self.text,
         }
 
 
@@ -215,7 +224,7 @@ async def _fetch_url(session: aiohttp.ClientSession, url: str) -> str | None:
 
 
 async def _fetch_sitemap_urls(session: aiohttp.ClientSession) -> list[str]:
-    """Fetch and parse the sitemap.xml to get all documentation page URLs."""
+    """Fetch and parse the sitemap.xml to get agentic-ai documentation page URLs."""
     xml_text = await _fetch_url(session, DOCS_SITEMAP_URL)
     if not xml_text:
         logger.warning("Sitemap not available; docs search will be empty until next refresh")
@@ -234,23 +243,13 @@ async def _fetch_sitemap_urls(session: aiohttp.ClientSession) -> list[str]:
             for url_elem in root.findall(".//url/loc"):
                 if url_elem.text:
                     urls.append(url_elem.text.strip())
-        # Also try finding nested sitemaps (sitemap index)
-        if not urls:
-            for sitemap_elem in root.findall(".//sm:sitemap/sm:loc", ns):
-                if sitemap_elem.text:
-                    nested_xml = await _fetch_url(session, sitemap_elem.text.strip())
-                    if nested_xml:
-                        nested_root = ElementTree.fromstring(nested_xml)
-                        for url_elem in nested_root.findall(".//sm:url/sm:loc", ns):
-                            if url_elem.text:
-                                urls.append(url_elem.text.strip())
     except ElementTree.ParseError as e:
         logger.warning(f"Failed to parse sitemap XML: {e}")
         return []
 
-    # Filter to only docs pages
-    docs_urls = [u for u in urls if "/en/docs/" in u]
-    logger.info(f"Found {len(docs_urls)} documentation URLs from sitemap")
+    # Filter to only agentic-ai pages
+    docs_urls = [u for u in urls if AGENTIC_AI_PATH in u]
+    logger.info(f"Found {len(docs_urls)} agentic-ai documentation URLs from sitemap")
     return docs_urls
 
 
@@ -274,23 +273,46 @@ def _title_from_url(url: str) -> str:
 
 
 async def _build_index(session: aiohttp.ClientSession) -> list[DocPage]:
-    """Build the documentation index from the sitemap.
+    """Build the documentation index from the sitemap with full page content.
 
-    Fetches all page URLs from sitemap.xml and generates searchable titles
-    from URL path segments. Page content is not fetched at index time to
-    keep initialization fast -- use fetch_page_content() for on-demand reads.
+    Fetches all agentic-ai documentation URLs from sitemap.xml, then retrieves
+    their full HTML content concurrently. With ~28 pages and a concurrency limit
+    of 20, this completes in a few seconds and provides rich TF-IDF scoring from
+    real page titles and body text.
     """
-    pages: list[DocPage] = []
-    seen_urls: set[str] = set()
-
     sitemap_urls = await _fetch_sitemap_urls(session)
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_urls: list[str] = []
     for url in sitemap_urls:
         normalized = url.rstrip("/")
-        if normalized not in seen_urls:
-            seen_urls.add(normalized)
-            title = _title_from_url(url)
-            pages.append(DocPage(url=url, title=title, text=""))
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_urls.append(url)
 
+    logger.info(f"Fetching content for {len(unique_urls)} agentic-ai docs pages...")
+    semaphore = asyncio.Semaphore(CONTENT_FETCH_CONCURRENCY)
+
+    async def fetch_page(url: str) -> DocPage:
+        async with semaphore:
+            html = await _fetch_url(session, url)
+        if html:
+            extractor = _ContentExtractor()
+            extractor.feed(html)
+            title = extractor.title or _title_from_url(url)
+            text = extractor.text_content
+        else:
+            title = _title_from_url(url)
+            text = ""
+        return DocPage(url=url, title=title, text=text)
+
+    results = await asyncio.gather(
+        *[fetch_page(url) for url in unique_urls],
+        return_exceptions=True,
+    )
+    pages = [r for r in results if isinstance(r, DocPage)]
+    logger.info(f"Indexed {len(pages)} agentic-ai docs pages with full content")
     return pages
 
 
@@ -299,7 +321,7 @@ async def _ensure_index() -> _DocsIndex:
     if not _index.is_stale:
         return _index
 
-    logger.info("Building DataRobot docs index...")
+    logger.info("Building DataRobot agentic-ai docs index...")
     async with aiohttp.ClientSession() as session:
         pages = await _build_index(session)
         if pages:
@@ -311,7 +333,7 @@ async def _ensure_index() -> _DocsIndex:
 
 
 async def search_docs(query: str, max_results: int = MAX_RESULTS_DEFAULT) -> list[dict[str, Any]]:
-    """Search DataRobot documentation for pages relevant to a query.
+    """Search DataRobot agentic-ai documentation for pages relevant to a query.
 
     Args:
         query: The search query string.

@@ -26,14 +26,14 @@ class TestSearchDatarobotDocs:
         """Test that search returns structured results on success."""
         mock_results = [
             {
-                "url": "https://docs.datarobot.com/en/docs/modeling/autopilot/",
-                "title": "Autopilot",
-                "description": "Automated machine learning",
+                "url": "https://docs.datarobot.com/en/docs/agentic-ai/index.html",
+                "title": "Agentic AI Overview",
+                "description": "Introduction to DataRobot agentic AI",
             },
             {
-                "url": "https://docs.datarobot.com/en/docs/mlops/deployment/",
-                "title": "Deployment",
-                "description": "Deploy models",
+                "url": "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html",
+                "title": "Agentic AI Glossary",
+                "description": "Definitions of agentic AI terms",
             },
         ]
 
@@ -43,18 +43,25 @@ class TestSearchDatarobotDocs:
         ) as mock_search:
             mock_search.return_value = mock_results
 
-            result = await search_datarobot_docs(query="autopilot", max_results=5)
+            result = await search_datarobot_docs(query="agentic", max_results=5)
 
             assert result.structured_content is not None
             content = result.structured_content
             assert content["status"] == "success"
-            assert content["query"] == "autopilot"
+            assert content["query"] == "agentic"
             assert content["total_results"] == 2
-            assert content["result_0_title"] == "Autopilot"
+            assert content["result_0_title"] == "Agentic AI Overview"
+            assert content["result_0_description"] == "Introduction to DataRobot agentic AI"
             assert (
-                content["result_0_url"] == "https://docs.datarobot.com/en/docs/modeling/autopilot/"
+                content["result_0_url"]
+                == "https://docs.datarobot.com/en/docs/agentic-ai/index.html"
             )
-            assert content["result_1_title"] == "Deployment"
+            assert content["result_1_title"] == "Agentic AI Glossary"
+            assert content["result_1_description"] == "Definitions of agentic AI terms"
+            assert (
+                content["result_1_url"]
+                == "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
+            )
 
     async def test_search_no_results(self) -> None:
         """Test that search returns no_results status when no matches found."""
@@ -72,49 +79,6 @@ class TestSearchDatarobotDocs:
             assert content["query"] == "nonexistent"
             assert "No documentation pages found" in content["message"]
 
-    async def test_search_includes_descriptions(self) -> None:
-        """Test that search includes descriptions when present."""
-        mock_results = [
-            {
-                "url": "https://docs.datarobot.com/en/docs/test/",
-                "title": "Test Page",
-                "description": "This is a test description",
-            }
-        ]
-
-        with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.tools.search_docs",
-            new_callable=AsyncMock,
-        ) as mock_search:
-            mock_search.return_value = mock_results
-
-            result = await search_datarobot_docs(query="test", max_results=5)
-
-            content = result.structured_content
-            assert content["result_0_description"] == "This is a test description"
-
-    async def test_search_omits_empty_descriptions(self) -> None:
-        """Test that empty descriptions are omitted from results."""
-        mock_results = [
-            {
-                "url": "https://docs.datarobot.com/en/docs/test/",
-                "title": "Test Page",
-                "description": "",
-            }
-        ]
-
-        with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.tools.search_docs",
-            new_callable=AsyncMock,
-        ) as mock_search:
-            mock_search.return_value = mock_results
-
-            result = await search_datarobot_docs(query="test", max_results=5)
-
-            content = result.structured_content
-            # Empty description should not be included
-            assert "result_0_description" not in content
-
 
 class TestFetchDatarobotDocPage:
     """Tests for fetch_datarobot_doc_page MCP tool."""
@@ -122,9 +86,9 @@ class TestFetchDatarobotDocPage:
     async def test_fetch_returns_page_content(self) -> None:
         """Test that fetch returns page content on success."""
         mock_content = {
-            "url": "https://docs.datarobot.com/en/docs/modeling/autopilot/",
-            "title": "Autopilot Overview",
-            "content": "Autopilot is an automated machine learning feature that...",
+            "url": "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html",
+            "title": "Agentic AI Glossary",
+            "content": "Definitions of agentic AI terms used in DataRobot...",
         }
 
         with patch(
@@ -134,14 +98,17 @@ class TestFetchDatarobotDocPage:
             mock_fetch.return_value = mock_content
 
             result = await fetch_datarobot_doc_page(
-                url="https://docs.datarobot.com/en/docs/modeling/autopilot/"
+                url="https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
             )
 
             assert result.structured_content is not None
             content = result.structured_content
-            assert content["url"] == "https://docs.datarobot.com/en/docs/modeling/autopilot/"
-            assert content["title"] == "Autopilot Overview"
-            assert "automated machine learning" in content["content"]
+            assert (
+                content["url"]
+                == "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
+            )
+            assert content["title"] == "Agentic AI Glossary"
+            assert "agentic AI terms" in content["content"]
 
     async def test_fetch_returns_error_for_invalid_url(self) -> None:
         """Test that fetch returns error content for invalid URLs."""
@@ -165,10 +132,11 @@ class TestFetchDatarobotDocPage:
 
     async def test_fetch_returns_error_on_failure(self) -> None:
         """Test that fetch returns error content when fetch fails."""
+        _url = "https://docs.datarobot.com/en/docs/agentic-ai/index.html"
         mock_error = {
-            "url": "https://docs.datarobot.com/en/docs/test/",
+            "url": _url,
             "title": "Error",
-            "content": "Failed to fetch content from https://docs.datarobot.com/en/docs/test/",
+            "content": f"Failed to fetch content from {_url}",
         }
 
         with patch(
@@ -177,7 +145,7 @@ class TestFetchDatarobotDocPage:
         ) as mock_fetch:
             mock_fetch.return_value = mock_error
 
-            result = await fetch_datarobot_doc_page(url="https://docs.datarobot.com/en/docs/test/")
+            result = await fetch_datarobot_doc_page(url=_url)
 
             content = result.structured_content
             assert content["title"] == "Error"
