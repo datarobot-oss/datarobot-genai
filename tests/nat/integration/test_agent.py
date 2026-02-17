@@ -20,6 +20,7 @@ from unittest.mock import ANY
 import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
+from datarobot_genai.core.chat import agent_chat_completion_wrapper
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.chat.responses import async_gen_to_sync_thread
 from datarobot_genai.core.chat.responses import (
@@ -72,23 +73,6 @@ def agent_with_mcp(workflow_with_mcp_path, config):
     )
 
 
-async def test_run_method(agent):
-    # Call the run method with test inputs
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": "AI"}],
-        "environment_var": True,
-    }
-    result, pipeline_interactions, usage = await agent.invoke(completion_create_params)
-
-    assert result
-    assert isinstance(result, str)
-    assert pipeline_interactions
-    assert usage["completion_tokens"] > 0
-    assert usage["prompt_tokens"] > 0
-    assert usage["total_tokens"] > 0
-
-
 async def test_run_method_with_mcp(agent_with_mcp):
     # You probably need to comment out the disable_env_file conftest fixture to pick up
     # MCP settings from .env.
@@ -126,7 +110,8 @@ async def test_run_method_streaming(agent):
         "environment_var": True,
         "stream": True,
     }
-    streaming_response_iterator = await agent.invoke(completion_create_params)
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(completion_create_params)
+    streaming_response_iterator = agent.invoke(run_agent_input)
 
     async for (
         result,
@@ -159,14 +144,10 @@ def test_custom_model_streaming_response(agent):
     event_loop = asyncio.new_event_loop()
     thread_pool_executor.submit(asyncio.set_event_loop, event_loop).result()
 
-    # Invoke the agent and check if it returns a generator or a tuple
-    # Set the authorization context in the worker thread before invoking the agent
-    def invoke_with_auth_context():  # type: ignore[no-untyped-def]
-        return event_loop.run_until_complete(
-            agent.invoke(completion_create_params=completion_create_params)
-        )
-
-    result = thread_pool_executor.submit(invoke_with_auth_context).result()
+    result = thread_pool_executor.submit(
+        event_loop.run_until_complete,
+        agent_chat_completion_wrapper(agent, completion_create_params),
+    ).result()
 
     streaming_response_iterator = async_gen_to_sync_thread(result, thread_pool_executor, event_loop)
 
