@@ -194,7 +194,12 @@ async def datarobot_mcp_client_function_group(
         )
     elif config.server.transport == "streamable-http":
         # Use default_user_id for the base client
-        base_user_id = auth_provider.config.default_user_id if auth_provider else None
+        # For interactive OAuth2: from config. For service accounts: defaults to server URL
+        base_user_id = (
+            getattr(auth_provider.config, "default_user_id", str(config.server.url))
+            if auth_provider
+            else None
+        )
         client = DataRobotMCPStreamableHTTPClient(
             str(config.server.url),
             auth_provider=auth_provider,
@@ -217,6 +222,21 @@ async def datarobot_mcp_client_function_group(
     # Store shared components for session client creation
     group._shared_auth_provider = auth_provider
     group._client_config = config
+
+    # Set auth provider config defaults
+    # For interactive OAuth2: use config values
+    # For service accounts: default_user_id = server URL,
+    #                       allow_default_user_id_for_tool_calls = True
+    if auth_provider:
+        group._default_user_id = getattr(
+            auth_provider.config, "default_user_id", str(config.server.url)
+        )
+        group._allow_default_user_id_for_tool_calls = getattr(
+            auth_provider.config, "allow_default_user_id_for_tool_calls", True
+        )
+    else:
+        group._default_user_id = None
+        group._allow_default_user_id_for_tool_calls = True
 
     async with client:
         # Expose the live MCP client on the function group instance so other components
