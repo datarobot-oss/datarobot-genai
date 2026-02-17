@@ -47,7 +47,7 @@ async def search_datarobot_agentic_docs(
     ],
     max_results: Annotated[
         int,
-        f"Maximum number of documentation pages to return (1-{MAX_RESULTS}).",
+        f"Maximum number of documentation pages to return (1 to {MAX_RESULTS}).",
     ] = MAX_RESULTS_DEFAULT,
 ) -> ToolResult:
     """
@@ -68,7 +68,6 @@ async def search_datarobot_agentic_docs(
 
     Note:
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
-        - The index is pre-built at server startup and cached for one day.
         - Use fetch_datarobot_doc_page to get the full content of a specific page.
     """
     results = await search_docs(query=query, max_results=max_results)
@@ -119,8 +118,7 @@ async def fetch_datarobot_doc_page(
           )
 
     Note:
-        - Only works with DataRobot documentation URLs (docs.datarobot.com).
-        - Content is truncated to ~5000 characters for very long pages.
+        - Only works with English DataRobot documentation URLs (e.g. docs.datarobot.com/en/docs/).
     """
     result = await fetch_page_content(url=url)
 
