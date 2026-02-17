@@ -16,7 +16,6 @@ from enum import auto
 
 
 class DataRobotMCPToolCategory(Enum):
-    USER_TOOL = auto()
-    DATAROBOT_PREDICTIVE_AI_TOOL = auto()
-    THIRD_PARTY_API_WRAPPER_TOOL = auto()
-    CORE_MCP_SERVER_TOOL = auto()
+    USER_TOOL = auto()  # tools created by users
+    INTEGRATION_TOOL = auto()  # tools as a wrapper of external service
+    DYNAMICALLY_LOADED_TOOL = auto()  # tools dynamically loaded after MCP server is up

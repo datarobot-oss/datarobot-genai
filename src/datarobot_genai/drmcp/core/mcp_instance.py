@@ -265,6 +265,23 @@ class ToolKwargs(TypedDict, total=False):
     enabled: bool | None
 
 
+def dr_core_mcp_tool(
+    **kwargs: Unpack[ToolKwargs],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Combine decorator that includes mcp.tool() and dr_mcp_extras().
+
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        instrumented = dr_mcp_extras()(func)
+        mcp.tool(**kwargs)(instrumented)
+        return instrumented
+
+    return decorator
+
+
 async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """
     Add memory management capabilities to any async function.
@@ -328,50 +345,16 @@ def dr_mcp_tool(
     return decorator
 
 
-def dr_core_mcp_tool(
+def dr_mcp_integration_tool(
     **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorate the mcp tool of core MCP server functionality.
-    Combine decorator that includes mcp.tool() and dr_mcp_extras().
-
-    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
-    See ToolKwargs for available parameters.
+    """Decorate mcp tool created as a wrapper of external service API (e.g., DataRobot Predictive
+    AI, github API).
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        instrumented = dr_mcp_extras()(func)
-        updated_kwargs = update_mcp_tool_init_args_with_tool_category(
-            DataRobotMCPToolCategory.CORE_MCP_SERVER_TOOL,
-            **kwargs,
-        )
-        mcp.tool(**updated_kwargs)(instrumented)
-        return instrumented
-
-    return decorator
-
-
-def dr_mcp_predictive_ai_tool(
-    **kwargs: Unpack[ToolKwargs],
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorate mcp tool created as a wrapper of DataRobot Predictive AI functionalities."""
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         return dr_mcp_tool(
-            tool_category=DataRobotMCPToolCategory.DATAROBOT_PREDICTIVE_AI_TOOL,
-            **kwargs,
-        )(func)
-
-    return decorator
-
-
-def dr_mcp_third_party_api_wrapper_tool(
-    **kwargs: Unpack[ToolKwargs],
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorate mcp tool created as a wrapper of 3rd party API (e.g., github)."""
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        return dr_mcp_tool(
-            tool_category=DataRobotMCPToolCategory.THIRD_PARTY_API_WRAPPER_TOOL,
+            tool_category=DataRobotMCPToolCategory.INTEGRATION_TOOL,
             **kwargs,
         )(func)
 
