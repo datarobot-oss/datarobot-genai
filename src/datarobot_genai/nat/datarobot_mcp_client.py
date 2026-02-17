@@ -41,14 +41,14 @@ def _default_transport() -> Literal["streamable-http", "sse", "stdio"]:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["transport"] if server_config else "stdio"
+    return server_config["transport"] if server_config else "streamable-http"
 
 
 def _default_url() -> HttpUrl | None:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["url"] if server_config else None
+    return server_config["url"] if server_config else "http://localhost"
 
 
 def _default_auth_provider() -> str | AuthenticationRef | None:
@@ -66,11 +66,11 @@ def _default_command() -> str | None:
 
 
 class DataRobotMCPServerConfig(MCPServerConfig):
-    transport: Literal["streamable-http", "sse", "stdio"] = Field(
+    transport: Literal["streamable-http", "sse"] = Field(
         default_factory=_default_transport,
         description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
-    url: HttpUrl | None = Field(
+    url: HttpUrl = Field(
         default_factory=_default_url,
         description="URL of the MCP server (for sse or streamable-http transport)",
     )
@@ -78,10 +78,6 @@ class DataRobotMCPServerConfig(MCPServerConfig):
     auth_provider: str | AuthenticationRef | None = Field(
         default_factory=_default_auth_provider,
         description="Reference to authentication provider",
-    )
-    command: str | None = Field(
-        default_factory=_default_command,
-        description="Command to run for stdio transport (e.g. 'python' or 'docker')",
     )
 
 
