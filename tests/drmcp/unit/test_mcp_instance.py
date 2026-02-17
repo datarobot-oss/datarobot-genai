@@ -154,7 +154,7 @@ class TestMCPToolDecorator:
             yield mock_decorator
 
     @pytest.fixture
-    def mock_mcp_server_tool(self) -> Iterator[Mock]:
+    def mock_datarobot_mcp_server_tool(self) -> Iterator[Mock]:
         with patch.object(DataRobotMCP, "tool") as mock_func:
             yield mock_func
 
@@ -166,6 +166,10 @@ class TestMCPToolDecorator:
             f"{module_under_test}.update_mcp_tool_init_args_with_tool_category"
         ) as mock_func:
             yield mock_func
+
+    @pytest.fixture
+    def mock_mcp_tool_callable(self) -> Iterator[Mock]:
+        yield Mock(return_value=Mock())
 
     def test_update_mcp_tool_init_args_raises_error_if_tool_category_reserved_field_is_overridden(
         self,
@@ -191,15 +195,11 @@ class TestMCPToolDecorator:
         actual_tool_category = updated_tool_init_args["meta"]["tool_category"]
         assert expected_tool_category == actual_tool_category
 
-    @pytest.fixture
-    def mock_mcp_tool_callable(self) -> Iterator[Mock]:
-        yield Mock(return_value=Mock())
-
     def test_dr_mcp_tool(
         self,
         mock_mcp_tool_callable: Mock,
         mock_dr_mcp_extras: Mock,
-        mock_mcp_server_tool: Mock,
+        mock_datarobot_mcp_server_tool: Mock,
         mock_update_mcp_tool_init_args_with_tool_category: Mock,
     ) -> None:
         mock_mcp_tool_callable_args = {}
@@ -212,10 +212,10 @@ class TestMCPToolDecorator:
         (inner_wrapper_func,) = dr_mcp_extras_decorator_call_args
         assert inner_wrapper_func.__qualname__ == "dr_mcp_tool.<locals>.decorator.<locals>.wrapper"
 
-        mock_mcp_server_tool.assert_called_once_with(
+        mock_datarobot_mcp_server_tool.assert_called_once_with(
             **mock_update_mcp_tool_init_args_with_tool_category.return_value
         )
-        mock_mcp_server_tool_callable = mock_mcp_server_tool.return_value
+        mock_mcp_server_tool_callable = mock_datarobot_mcp_server_tool.return_value
         mock_mcp_server_tool_callable.assert_called_once_with(
             mock_dr_mcp_extras_decorator.return_value
         )
@@ -226,7 +226,7 @@ class TestMCPToolDecorator:
     def test_dr_mcp_tool_decorator_with_tool_type_setup(
         self,
         mock_mcp_tool_callable: Mock,
-        mock_mcp_server_tool: Mock,
+        mock_datarobot_mcp_server_tool: Mock,
         mock_update_mcp_tool_init_args_with_tool_category: Mock,
     ) -> None:
         mock_mcp_tool_callable_args = {}
@@ -238,7 +238,7 @@ class TestMCPToolDecorator:
             mock_tool_type,
             **mock_mcp_tool_callable_args,
         )
-        mock_mcp_server_tool.assert_called_once_with(
+        mock_datarobot_mcp_server_tool.assert_called_once_with(
             **mock_update_mcp_tool_init_args_with_tool_category.return_value,
         )
 
