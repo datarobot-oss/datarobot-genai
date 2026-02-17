@@ -350,6 +350,20 @@ def dr_core_mcp_tool(
     return decorator
 
 
+def dr_mcp_predictive_ai_tool(
+    **kwargs: Unpack[ToolKwargs],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorate mcp tool created as a wrapper of DataRobot Predictive AI functionalities."""
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        return dr_mcp_tool(
+            tool_category=DataRobotMCPToolCategory.DATAROBOT_PREDICTIVE_AI_TOOL,
+            **kwargs,
+        )(func)
+
+    return decorator
+
+
 def dr_mcp_third_party_api_wrapper_tool(
     **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:

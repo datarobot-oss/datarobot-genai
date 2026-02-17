@@ -22,6 +22,7 @@ from fastmcp.exceptions import NotFoundError
 from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_predictive_ai_tool
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_third_party_api_wrapper_tool
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
@@ -242,6 +243,23 @@ class TestMCPToolDecorator:
         mock_mcp_server_tool.assert_called_once_with(
             **mock_update_mcp_tool_init_args_with_tool_category.return_value,
         )
+
+    def test_dr_mcp_predictive_ai_tool(
+        self,
+        mock_mcp_tool_callable: Mock,
+        mock_dr_mcp_tool: Mock,
+    ) -> None:
+        expected_kwarg_key = "sadfa"
+        expected_kwarg_value = "23rew"
+        mock_mcp_tool_callable_args = {expected_kwarg_key: expected_kwarg_value}
+        decorator = dr_mcp_predictive_ai_tool(**mock_mcp_tool_callable_args)
+        decorator(mock_mcp_tool_callable)(**mock_mcp_tool_callable_args)
+
+        assert not mock_dr_mcp_tool.call_args.args
+        assert mock_dr_mcp_tool.call_args.kwargs == {
+            "tool_category": DataRobotMCPToolCategory.DATAROBOT_PREDICTIVE_AI_TOOL,
+            expected_kwarg_key: expected_kwarg_value,
+        }
 
     def test_dr_mcp_third_party_api_wrapper_tool(
         self,
