@@ -33,6 +33,7 @@ class ToolType(str, Enum):
     MICROSOFT_GRAPH = "microsoft_graph"
     PERPLEXITY = "perplexity"
     TAVILY = "tavily"
+    DR_DOCS = "dr_docs"
 
 
 class ToolConfig(TypedDict):
@@ -95,6 +96,13 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="tavily",
         package_prefix="datarobot_genai.drmcp.tools.tavily",
         config_field_name="enable_tavily_tools",
+    ),
+    ToolType.DR_DOCS: ToolConfig(
+        name="dr_docs",
+        oauth_check=None,
+        directory="dr_docs",
+        package_prefix="datarobot_genai.drmcp.tools.dr_docs",
+        config_field_name="enable_dr_docs_tools",
     ),
 }
 
