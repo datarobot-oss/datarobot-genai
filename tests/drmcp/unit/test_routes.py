@@ -1022,6 +1022,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_microsoft_graph_tools = False
         mock_tool_config.enable_perplexity_tools = False
         mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.enable_dr_docs_tools = True
         mock_tool_config.is_atlassian_oauth_configured = False
         mock_tool_config.is_google_oauth_configured = False
         mock_tool_config.is_microsoft_oauth_configured = False
@@ -1128,6 +1129,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_microsoft_graph_tools = False
         mock_tool_config.enable_perplexity_tools = False
         mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.enable_dr_docs_tools = False
         mock_tool_config.is_atlassian_oauth_configured = False
         mock_tool_config.is_google_oauth_configured = False
         mock_tool_config.is_microsoft_oauth_configured = False
@@ -1190,6 +1192,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_microsoft_graph_tools = True  # OAuth required
         mock_tool_config.enable_perplexity_tools = False
         mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.enable_dr_docs_tools = False
         mock_tool_config.is_atlassian_oauth_configured = True
         mock_tool_config.is_google_oauth_configured = True
         mock_tool_config.is_microsoft_oauth_configured = True
@@ -1275,6 +1278,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_microsoft_graph_tools = False
         mock_tool_config.enable_perplexity_tools = False
         mock_tool_config.enable_tavily_tools = False
+        mock_tool_config.enable_dr_docs_tools = False
         mock_tool_config.is_atlassian_oauth_configured = False  # OAuth not configured
         mock_tool_config.is_google_oauth_configured = False
         mock_tool_config.is_microsoft_oauth_configured = False
