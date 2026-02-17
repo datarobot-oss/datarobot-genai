@@ -294,12 +294,10 @@ async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: A
 def update_mcp_tool_init_args_with_tool_category(
     tool_category: DataRobotMCPToolCategory,
     **mcp_tool_init_args: Unpack[ToolKwargs],
-) -> Unpack[ToolKwargs]:
-    if mcp_tool_init_args.get("meta", {}).get("tool_category"):
-        raise ValueError(
-            "tool_category is a reserved field under meta. "
-            "Please don't override it."
-        )
+) -> ToolKwargs:
+    meta = mcp_tool_init_args.get("meta")
+    if meta and meta.get("tool_category"):
+        raise ValueError("tool_category is a reserved field under meta. Please don't override it.")
     mcp_tool_init_args.update({"meta": {"tool_category": tool_category}})
 
     return mcp_tool_init_args
@@ -333,9 +331,8 @@ def dr_mcp_tool(
 def dr_core_mcp_tool(
     **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """This is a decorator for the mcp tool of core MCP server functionality.
-    It is a combine decorator
-    that includes mcp.tool() and dr_mcp_extras().
+    """Decorate the mcp tool of core MCP server functionality.
+    Combine decorator that includes mcp.tool() and dr_mcp_extras().
 
     All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
     See ToolKwargs for available parameters.
@@ -344,7 +341,8 @@ def dr_core_mcp_tool(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         instrumented = dr_mcp_extras()(func)
         updated_kwargs = update_mcp_tool_init_args_with_tool_category(
-            DataRobotMCPToolCategory.CORE_MCP_SERVER_TOOL, **kwargs,
+            DataRobotMCPToolCategory.CORE_MCP_SERVER_TOOL,
+            **kwargs,
         )
         mcp.tool(**updated_kwargs)(instrumented)
         return instrumented
@@ -355,7 +353,8 @@ def dr_core_mcp_tool(
 def dr_mcp_third_party_api_wrapper_tool(
     **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """This is a decorator for the mcp tool created as a wrapper of 3rd party API (e.g., github)"""
+    """Decorate mcp tool created as a wrapper of 3rd party API (e.g., github)."""
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         return dr_mcp_tool(
             tool_category=DataRobotMCPToolCategory.THIRD_PARTY_API_WRAPPER_TOOL,
