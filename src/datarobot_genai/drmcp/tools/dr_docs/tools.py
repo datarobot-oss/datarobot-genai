@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DataRobot Documentation search tools.
+"""DataRobot Agentic AI documentation search tools.
 
 Provides MCP tools for searching and fetching content from the DataRobot
-product documentation at https://docs.datarobot.com/en/docs/index.html.
+agentic-ai documentation at https://docs.datarobot.com/en/docs/agentic-ai/.
 
-No API keys or external services are required — the tool directly crawls
-and indexes the public documentation site.
+No API keys or external services are required — the tool directly indexes
+the public documentation site using a TF-IDF search over page titles and
+body text.
 """
 
 import logging
@@ -50,24 +51,24 @@ async def search_datarobot_docs(
     ] = MAX_RESULTS_DEFAULT,
 ) -> ToolResult:
     """
-    Search the DataRobot product documentation for relevant pages.
+    Search the DataRobot agentic-AI documentation for relevant pages.
 
-    This tool searches through the DataRobot documentation site at
-    https://docs.datarobot.com/en/docs/ to find pages relevant to your query.
-    It returns page titles and URLs that you can then fetch for full content.
+    This tool searches through the DataRobot agentic-AI documentation at
+    https://docs.datarobot.com/en/docs/agentic-ai/ to find pages relevant
+    to your query. It returns page titles and URLs that you can then fetch
+    for full content.
 
-    No API keys are required — the tool directly indexes the public
-    documentation site and uses keyword-based relevance matching.
+    No API keys are required — the tool indexes the public documentation
+    site using TF-IDF over real page titles and body text.
 
     Usage:
-        - Find deployment docs: search_datarobot_docs(query="deploy a model")
-        - Find time series info: search_datarobot_docs(query="time series modeling")
-        - Find API docs: search_datarobot_docs(query="prediction API")
-        - Broad search: search_datarobot_docs(query="custom model environment", max_results=10)
+        - Find MCP info: search_datarobot_docs(query="MCP server setup")
+        - Find agent tools: search_datarobot_docs(query="agentic tools")
+        - Broad search: search_datarobot_docs(query="authentication agentic", max_results=10)
 
     Note:
-        - The first call may take a few seconds to build the documentation index.
-        - Subsequent calls use a cached index (refreshed hourly).
+        - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
+        - The index is pre-built at server startup and cached for one day.
         - Use fetch_datarobot_doc_page to get the full content of a specific page.
     """
     results = await search_docs(query=query, max_results=max_results)

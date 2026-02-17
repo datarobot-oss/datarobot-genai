@@ -24,6 +24,25 @@ from datarobot_genai.drmcp.tools.clients.dr_docs import _tokenize
 from datarobot_genai.drmcp.tools.clients.dr_docs import fetch_page_content
 from datarobot_genai.drmcp.tools.clients.dr_docs import search_docs
 
+# Reusable agentic-ai mock sitemaps (must contain AGENTIC_AI_PATH to pass the filter)
+_SITEMAP_ONE_PAGE = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/index.html</loc></url>
+</urlset>"""
+
+_SITEMAP_TWO_PAGES = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/index.html</loc></url>
+    <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html</loc></url>
+</urlset>"""
+
+_SITEMAP_THREE_PAGES = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/index.html</loc></url>
+    <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/index.html</loc></url>
+    <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/agentic-deploy/index.html</loc></url>
+</urlset>"""
+
 
 class TestTokenize:
     """Tests for _tokenize function."""
@@ -201,18 +220,18 @@ class TestDocPage:
     def test_docpage_initialization(self) -> None:
         """Test DocPage initializes correctly."""
         page = DocPage(
-            url="https://docs.datarobot.com/en/docs/modeling/autopilot/",
-            title="Autopilot Overview",
-            text="Autopilot is an automated machine learning feature.",
+            url="https://docs.datarobot.com/en/docs/agentic-ai/index.html",
+            title="Agentic AI Overview",
+            text="Agentic AI is a feature.",
         )
-        assert page.url == "https://docs.datarobot.com/en/docs/modeling/autopilot/"
-        assert page.title == "Autopilot Overview"
-        assert "automated" in page.text
+        assert page.url == "https://docs.datarobot.com/en/docs/agentic-ai/index.html"
+        assert page.title == "Agentic AI Overview"
+        assert "feature" in page.text
 
     def test_docpage_computes_tf(self) -> None:
         """Test that DocPage computes TF on initialization."""
         page = DocPage(
-            url="https://docs.datarobot.com/en/docs/test/",
+            url="https://docs.datarobot.com/en/docs/agentic-ai/test/",
             title="Test Page",
             text="test content",
         )
@@ -222,21 +241,22 @@ class TestDocPage:
         assert "test" in page.tf
         assert "page" in page.tf
 
-    def test_docpage_url_tokens_extracted(self) -> None:
-        """Test that URL path is tokenized."""
+    def test_docpage_title_tokens_extracted(self) -> None:
+        """Test that title tokens are indexed for search."""
         page = DocPage(
-            url="https://docs.datarobot.com/en/docs/modeling/autopilot/",
-            title="Title",
-            text="",
+            url="https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html",
+            title="Agentic AI > Agentic Glossary",
+            text="sample text",
         )
-        # URL tokens should include "modeling" and "autopilot"
-        assert "modeling" in page.tf
-        assert "autopilot" in page.tf
+        # Tokens should include "agentic", "glossary", "sample"
+        assert "agentic" in page.tf
+        assert "glossary" in page.tf
+        assert "sample" in page.tf
 
     def test_docpage_title_weighted_higher(self) -> None:
         """Test that title tokens have higher weight than text tokens."""
         page = DocPage(
-            url="https://docs.datarobot.com/en/docs/test/",
+            url="https://docs.datarobot.com/en/docs/agentic-ai/test/",
             title="unique",
             text="common common common",
         )
@@ -249,12 +269,12 @@ class TestDocPage:
     def test_docpage_as_dict(self) -> None:
         """Test DocPage.as_dict() returns correct format."""
         page = DocPage(
-            url="https://docs.datarobot.com/en/docs/test/",
+            url="https://docs.datarobot.com/en/docs/agentic-ai/test/",
             title="Test",
             text="Short text",
         )
         result = page.as_dict()
-        assert result["url"] == "https://docs.datarobot.com/en/docs/test/"
+        assert result["url"] == "https://docs.datarobot.com/en/docs/agentic-ai/test/"
         assert result["title"] == "Test"
         assert result["description"] == "Short text"
 
@@ -344,44 +364,52 @@ class TestSearchDocs:
 
     async def test_search_docs_builds_index(self) -> None:
         """Test that search_docs builds index if needed."""
-        mock_sitemap = """<?xml version="1.0" encoding="UTF-8"?>
-        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-            <url><loc>https://docs.datarobot.com/en/docs/modeling/</loc></url>
-        </urlset>"""
-
         with patch(
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url",
             new_callable=AsyncMock,
         ) as mock_fetch:
-            mock_fetch.return_value = mock_sitemap
+            mock_fetch.return_value = _SITEMAP_ONE_PAGE
 
-            results = await search_docs("modeling", max_results=5)
+            results = await search_docs("agentic", max_results=5)
 
             assert isinstance(results, list)
-            # Should have called fetch for sitemap
+            # Should have called fetch for sitemap + page content
             mock_fetch.assert_called()
 
     async def test_search_docs_returns_dicts(self) -> None:
         """Test that search_docs returns list of dicts."""
-        mock_sitemap = """<?xml version="1.0" encoding="UTF-8"?>
-        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-            <url><loc>https://docs.datarobot.com/en/docs/modeling/test/</loc></url>
-            <url><loc>https://docs.datarobot.com/en/docs/deployment/guide/</loc></url>
-            <url><loc>https://docs.datarobot.com/en/docs/data/preparation/</loc></url>
-        </urlset>"""
-
-        # Force index rebuild by marking it as stale
         import datarobot_genai.drmcp.tools.clients.dr_docs as dr_docs_module
 
+        # Force index rebuild by marking it as stale
         dr_docs_module._index._built_at = 0
+
+        def _html(title: str, body: str) -> str:
+            return f"<html><head><title>{title}</title></head><body><p>{body}</p></body></html>"
+
+        # Give each page distinct content so TF-IDF can differentiate them
+        page_html = {
+            "https://docs.datarobot.com/en/docs/agentic-ai/index.html": _html(
+                "Agentic AI Overview", "Introduction to agentic AI features"
+            ),
+            "https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/index.html": _html(
+                "Agentic Development Guide", "How to develop agentic workflows"
+            ),
+            "https://docs.datarobot.com/en/docs/agentic-ai/agentic-deploy/index.html": _html(
+                "Agentic Deployment Guide", "How to deploy agentic applications"
+            ),
+        }
+
+        async def _side_effect(session: object, url: str) -> str:
+            if "sitemap" in url:
+                return _SITEMAP_THREE_PAGES
+            return page_html.get(url)
 
         with patch(
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url",
-            new_callable=AsyncMock,
-        ) as mock_fetch:
-            mock_fetch.return_value = mock_sitemap
-
-            results = await search_docs("test", max_results=5)
+            side_effect=_side_effect,
+        ):
+            # "develop" only appears in one page → non-zero IDF → at least one result
+            results = await search_docs("develop", max_results=5)
 
             assert isinstance(results, list)
             assert len(results) > 0
@@ -391,23 +419,18 @@ class TestSearchDocs:
 
     async def test_search_docs_clamps_max_results(self) -> None:
         """Test that max_results is clamped to valid range."""
-        mock_sitemap = """<?xml version="1.0" encoding="UTF-8"?>
-        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-            <url><loc>https://docs.datarobot.com/en/docs/test/</loc></url>
-        </urlset>"""
-
         with patch(
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url",
             new_callable=AsyncMock,
         ) as mock_fetch:
-            mock_fetch.return_value = mock_sitemap
+            mock_fetch.return_value = _SITEMAP_ONE_PAGE
 
             # Test upper bound
-            results = await search_docs("test", max_results=100)
+            results = await search_docs("agentic", max_results=100)
             assert len(results) <= 20  # MAX_RESULTS = 20
 
             # Test lower bound - should not fail with max_results=0
-            results = await search_docs("test", max_results=0)
+            results = await search_docs("agentic", max_results=0)
             assert isinstance(results, list)
 
 

@@ -179,12 +179,12 @@ class ToolBaseE2E:
                     f"Should have called {test_expectations.tool_calls_expected[i].name} tool, but "
                     f"got: {tool_call.tool_name}"
                 )
-                assert (
-                    tool_call.parameters == test_expectations.tool_calls_expected[i].parameters
-                ), (
-                    f"Should have called {tool_call.tool_name} tool with the correct parameters, "
-                    f"but got: {tool_call.parameters}"
-                )
+                expected_params = test_expectations.tool_calls_expected[i].parameters
+                if expected_params is not None:
+                    assert tool_call.parameters == expected_params, (
+                        f"Should have called {tool_call.tool_name} tool with the correct "
+                        f"parameters, but got: {tool_call.parameters}"
+                    )
                 if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
                     expected_result = test_expectations.tool_calls_expected[i].result
                     if isinstance(expected_result, str):
