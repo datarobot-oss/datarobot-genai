@@ -20,6 +20,7 @@ from unittest.mock import ANY
 import pytest
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
+from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.chat.responses import async_gen_to_sync_thread
 from datarobot_genai.core.chat.responses import (
     streaming_iterator_to_custom_model_streaming_response,
@@ -96,14 +97,25 @@ async def test_run_method_with_mcp(agent_with_mcp):
         "messages": [{"role": "user", "content": "List the projects"}],
         "environment_var": True,
     }
-    result, pipeline_interactions, usage = await agent_with_mcp.invoke(completion_create_params)
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(completion_create_params)
+    streaming_response_iterator = agent_with_mcp.invoke(run_agent_input)
 
-    assert result
-    assert isinstance(result, str)
-    assert pipeline_interactions
+    async for (
+        result,
+        pipeline_interactions,
+        usage,
+    ) in streaming_response_iterator:
+        assert isinstance(result, str)
+        assert usage == {
+            "completion_tokens": ANY,
+            "prompt_tokens": ANY,
+            "total_tokens": ANY,
+        }
+    # Final chunk has the total usage and pipeline interactions
     assert usage["completion_tokens"] > 0
     assert usage["prompt_tokens"] > 0
     assert usage["total_tokens"] > 0
+    assert pipeline_interactions
 
 
 async def test_run_method_streaming(agent):
