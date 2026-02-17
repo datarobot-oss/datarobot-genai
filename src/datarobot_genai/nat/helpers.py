@@ -63,10 +63,6 @@ def add_headers_to_datarobot_mcp_auth(config_yaml: dict, headers: dict[str, str]
             for auth_name in authentication:
                 auth_config = authentication[auth_name]
                 if auth_config.get("_type") == "datarobot_mcp_auth":
-                    if "Authorization" in headers:
-                        token = headers["Authorization"].lstrip("Bearer ")
-                        headers["x-datarobot-api-token"] = token
-                        headers["x-datarobot-api-key"] = token
                     auth_config["headers"] = headers
 
 
