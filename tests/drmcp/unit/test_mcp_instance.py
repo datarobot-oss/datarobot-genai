@@ -13,11 +13,21 @@
 # limitations under the License.
 
 from unittest.mock import patch
+from typing import Dict
+from typing import Iterator
+from unittest.mock import Mock
+from unittest.mock import patch
 
 import pytest
 from fastmcp.exceptions import NotFoundError
 
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcp.core.mcp_instance import mcp
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_third_party_api_wrapper_tool
+from datarobot_genai.drmcp.core.mcp_instance import dr_core_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
+from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
 
 
 class TestDataRobotMCPInstanceAdditional:
@@ -130,3 +140,143 @@ class TestDataRobotMCPInstanceAdditional:
             mock_logger.debug.assert_called_with(
                 "Tool old_tool not found in registry, skipping removal"
             )
+
+
+class TestMCPToolDecorator:
+    @pytest.fixture
+    def module_under_test(self) -> str:
+        return "datarobot_genai.drmcp.core.mcp_instance"
+
+    @pytest.fixture
+    def mock_dr_mcp_tool(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.dr_mcp_tool") as mock_decorator:
+            yield mock_decorator
+
+    @pytest.fixture
+    def mock_dr_mcp_extras(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.dr_mcp_extras") as mock_decorator:
+            yield mock_decorator
+
+    @pytest.fixture
+    def mock_mcp_server_tool(self) -> Iterator[Mock]:
+        with patch.object(DataRobotMCP, "tool") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_update_mcp_tool_init_args_with_tool_category(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.update_mcp_tool_init_args_with_tool_category") as mock_func:
+            yield mock_func
+
+    def test_update_mcp_tool_init_args_raises_error_if_tool_category_reserved_field_is_overridden(
+        self
+    ) -> None:
+        mock_tool_init_args = {"meta": {"tool_category": Mock()}}
+        with pytest.raises(ValueError):
+            update_mcp_tool_init_args_with_tool_category(Mock(), **mock_tool_init_args)
+
+    @pytest.mark.parametrize(
+        "tool_init_args",
+        [{}, {"meta": {"1ewqa": "adfa"}}]
+    )
+    def test_update_mcp_tool_init_args_with_tool_category(
+        self, tool_init_args: Dict[str, str],
+    ) -> None:
+        expected_tool_category = Mock()
+        updated_tool_init_args = update_mcp_tool_init_args_with_tool_category(
+            expected_tool_category, **tool_init_args,
+        )
+
+        actual_tool_category = updated_tool_init_args["meta"]["tool_category"]
+        assert expected_tool_category == actual_tool_category
+
+    @pytest.fixture
+    def mock_mcp_tool_callable(self) -> Iterator[Mock]:
+        yield Mock(return_value=Mock())
+
+    def test_dr_mcp_tool(
+        self,
+        mock_mcp_tool_callable: Mock,
+        mock_dr_mcp_extras: Mock,
+        mock_mcp_server_tool: Mock,
+        mock_update_mcp_tool_init_args_with_tool_category: Mock,
+    ) -> None:
+        mock_mcp_tool_callable_args = {}
+        decorator = dr_mcp_tool()
+        decorator(mock_mcp_tool_callable)(**mock_mcp_tool_callable_args)
+
+        mock_dr_mcp_extras.assert_called_with()
+        mock_dr_mcp_extras_decorator = mock_dr_mcp_extras.return_value
+        dr_mcp_extras_decorator_call_args = mock_dr_mcp_extras_decorator.call_args.args
+        inner_wrapper_func, = dr_mcp_extras_decorator_call_args
+        assert inner_wrapper_func.__qualname__ == "dr_mcp_tool.<locals>.decorator.<locals>.wrapper"
+
+        mock_mcp_server_tool.assert_called_once_with(
+            **mock_update_mcp_tool_init_args_with_tool_category.return_value
+        )
+        mock_mcp_server_tool_callable = mock_mcp_server_tool.return_value
+        mock_mcp_server_tool_callable.assert_called_once_with(
+            mock_dr_mcp_extras_decorator.return_value
+        )
+
+    @pytest.mark.usefixtures(
+        "mock_dr_mcp_extras",
+    )
+    def test_dr_mcp_tool_decorator_with_tool_type_setup(
+        self,
+            mock_mcp_tool_callable: Mock,
+        mock_mcp_server_tool: Mock,
+        mock_update_mcp_tool_init_args_with_tool_category: Mock,
+    ) -> None:
+        mock_mcp_tool_callable_args = {}
+        mock_tool_type = Mock()
+        decorator = dr_mcp_tool(tool_category=mock_tool_type)
+        decorator(mock_mcp_tool_callable)(**mock_mcp_tool_callable_args)
+
+        mock_update_mcp_tool_init_args_with_tool_category.assert_called_once_with(
+            mock_tool_type, **mock_mcp_tool_callable_args,
+        )
+        mock_mcp_server_tool.assert_called_once_with(
+            **mock_update_mcp_tool_init_args_with_tool_category.return_value,
+        )
+
+    def test_dr_mcp_third_party_api_wrapper_tool(
+        self,
+        mock_mcp_tool_callable: Mock,
+        mock_dr_mcp_tool: Mock,
+    ) -> None:
+        expected_kwarg_key = "sadfa"
+        expected_kwarg_value = "23rew"
+        mock_mcp_tool_callable_args = {expected_kwarg_key: expected_kwarg_value}
+        decorator = dr_mcp_third_party_api_wrapper_tool(**mock_mcp_tool_callable_args)
+        decorator(mock_mcp_tool_callable)(**mock_mcp_tool_callable_args)
+
+        assert not mock_dr_mcp_tool.call_args.args
+        assert mock_dr_mcp_tool.call_args.kwargs == {
+            "tool_category": DataRobotMCPToolCategory.THIRD_PARTY_API_WRAPPER_TOOL,
+            expected_kwarg_key: expected_kwarg_value,
+        }
+
+    def test_dr_core_mcp_tool(
+        self,
+        mock_mcp_tool_callable: Mock,
+        mock_dr_mcp_extras: Mock,
+        mock_mcp_server_tool: Mock,
+        mock_update_mcp_tool_init_args_with_tool_category: Mock,
+    ) -> None:
+        mock_mcp_tool_callable_args = {}
+        decorator = dr_core_mcp_tool()
+        decorator(mock_mcp_tool_callable)(**mock_mcp_tool_callable_args)
+
+        mock_dr_mcp_extras.assert_called_with()
+        mock_dr_mcp_extras_decorator = mock_dr_mcp_extras.return_value
+        mock_dr_mcp_extras_decorator.assert_called_once_with(mock_mcp_tool_callable)
+        mock_update_mcp_tool_init_args_with_tool_category.assert_called_once_with(
+            DataRobotMCPToolCategory.CORE_MCP_SERVER_TOOL, **mock_mcp_tool_callable_args,
+        )
+        mock_mcp_server_tool.assert_called_once_with(
+            **mock_update_mcp_tool_init_args_with_tool_category.return_value
+        )
+        mock_mcp_server_tool_callable = mock_mcp_server_tool.return_value
+        mock_mcp_server_tool_callable.assert_called_once_with(
+            mock_dr_mcp_extras_decorator.return_value
+        )
