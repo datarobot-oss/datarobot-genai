@@ -305,7 +305,7 @@ class TestDocsIndex:
         index.build(pages)
         results = index.search("model", max_results=5)
         # Should return pages with "model" in title/url
-        assert len(results) > 0
+        assert 0 < len(results) <= 5
         assert any("model" in p.url.lower() for p in results)
 
     def test_index_search_empty_query(self) -> None:
@@ -323,17 +323,6 @@ class TestDocsIndex:
         index.build(pages)
         results = index.search("nonexistent", max_results=5)
         assert results == []
-
-    def test_index_search_respects_max_results(self) -> None:
-        """Test that search respects max_results limit."""
-        pages = [
-            DocPage(f"https://example.com/page{i}", f"Test Page {i}", "test content")
-            for i in range(10)
-        ]
-        index = _DocsIndex()
-        index.build(pages)
-        results = index.search("test", max_results=3)
-        assert len(results) <= 3
 
     def test_index_search_tfidf_scoring(self) -> None:
         """Test that TF-IDF scoring works correctly."""
@@ -376,8 +365,15 @@ class TestSearchDocs:
         """Test that search_docs returns list of dicts."""
         mock_sitemap = """<?xml version="1.0" encoding="UTF-8"?>
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-            <url><loc>https://docs.datarobot.com/en/docs/test/</loc></url>
+            <url><loc>https://docs.datarobot.com/en/docs/modeling/test/</loc></url>
+            <url><loc>https://docs.datarobot.com/en/docs/deployment/guide/</loc></url>
+            <url><loc>https://docs.datarobot.com/en/docs/data/preparation/</loc></url>
         </urlset>"""
+
+        # Force index rebuild by marking it as stale
+        import datarobot_genai.drmcp.tools.clients.dr_docs as dr_docs_module
+
+        dr_docs_module._index._built_at = 0
 
         with patch(
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url",
@@ -388,10 +384,10 @@ class TestSearchDocs:
             results = await search_docs("test", max_results=5)
 
             assert isinstance(results, list)
-            if results:
-                assert "url" in results[0]
-                assert "title" in results[0]
-                assert "description" in results[0]
+            assert len(results) > 0
+            assert "url" in results[0]
+            assert "title" in results[0]
+            assert "description" in results[0]
 
     async def test_search_docs_clamps_max_results(self) -> None:
         """Test that max_results is clamped to valid range."""
