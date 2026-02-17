@@ -37,13 +37,13 @@ logger = logging.getLogger(__name__)
 
 
 @dr_mcp_tool(tags={"datarobot", "docs", "documentation", "search"})
-async def search_datarobot_docs(
+async def search_datarobot_agentic_docs(
     *,
     query: Annotated[
         str,
-        "The search query describing what you want to find in the DataRobot documentation. "
-        "Use natural language or keywords (e.g., 'how to deploy a model', 'time series', "
-        "'custom inference model', 'bias and fairness').",
+        "The search query describing what you want to find in the DataRobot agentic-AI docs. "
+        "Use natural language or keywords (e.g., 'MCP server setup', 'agentic tools', "
+        "'custom agent', 'authentication').",
     ],
     max_results: Annotated[
         int,
@@ -62,9 +62,9 @@ async def search_datarobot_docs(
     site using TF-IDF over real page titles and body text.
 
     Usage:
-        - Find MCP info: search_datarobot_docs(query="MCP server setup")
-        - Find agent tools: search_datarobot_docs(query="agentic tools")
-        - Broad search: search_datarobot_docs(query="authentication agentic", max_results=10)
+        - Find MCP info: search_datarobot_agentic_docs(query="MCP server setup")
+        - Find agent tools: search_datarobot_agentic_docs(query="agentic tools")
+        - Broad search: search_datarobot_agentic_docs(query="authentication", max_results=10)
 
     Note:
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
@@ -109,7 +109,7 @@ async def fetch_datarobot_doc_page(
     """
     Fetch and extract the text content of a specific DataRobot documentation page.
 
-    Use this tool after search_datarobot_docs to retrieve the full content of a
+    Use this tool after search_datarobot_agentic_docs to retrieve the full content of a
     relevant documentation page. The content is extracted as clean text, suitable
     for reading and analysis.
 

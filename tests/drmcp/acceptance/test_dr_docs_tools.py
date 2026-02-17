@@ -29,12 +29,12 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 class TestDrDocsToolsE2E(ToolBaseE2E):
     """End-to-end tests for DataRobot Documentation search tools."""
 
-    async def test_search_datarobot_docs_success(self, llm_client: Any) -> None:
+    async def test_search_datarobot_agentic_docs_success(self, llm_client: Any) -> None:
         """Test basic DataRobot agentic-ai docs search."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="search_datarobot_docs",
+                    name="search_datarobot_agentic_docs",
                     parameters={"query": "MCP server"},  # LLM chooses query text
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -44,7 +44,9 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_search_datarobot_docs_success"
+            test_name = (
+                frame.f_code.co_name if frame else "test_search_datarobot_agentic_docs_success"
+            )
             await self._run_test_with_expectations(
                 "Search the DataRobot agentic-AI documentation for 'MCP server' and list what you \
                     find. Only pass required parameters when calling tools.",
@@ -84,7 +86,7 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="search_datarobot_docs",
+                    name="search_datarobot_agentic_docs",
                     parameters={"query": "authentication"},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -117,7 +119,7 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="search_datarobot_docs",
+                    name="search_datarobot_agentic_docs",
                     parameters={"query": "xyznonexistentquery123"},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),

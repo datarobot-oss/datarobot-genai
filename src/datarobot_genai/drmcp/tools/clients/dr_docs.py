@@ -56,7 +56,8 @@ MAX_RESULTS_DEFAULT = 5
 # Request timeout in seconds
 REQUEST_TIMEOUT_SECONDS = 30
 
-CONTENT_FETCH_CONCURRENCY = 20
+# Maximum number of concurrent HTTP requests to fetch content
+CONTENT_FETCH_CONCURRENCY = 30
 
 
 def _tokenize(text: str) -> list[str]:
@@ -147,7 +148,7 @@ class _DocsIndex:
     def __init__(self) -> None:
         self.pages: list[DocPage] = []
         self._df: dict[str, int] = {}  # document frequency
-        self._built_at: float = 0.0
+        self._built_at: float = 0.0  # timestamp of when the last index was built
 
     @property
     def is_stale(self) -> bool:
@@ -157,7 +158,10 @@ class _DocsIndex:
         return (time.time() - self._built_at) > CACHE_TTL_SECONDS
 
     def build(self, pages: list[DocPage]) -> None:
-        """Build the index from a list of pages."""
+        """
+        Build the index from a list of pages.
+        Computes document frequency of each term in the corpus.
+        """
         self.pages = pages
         self._df = {}
         for page in pages:
@@ -206,7 +210,7 @@ class _DocsIndex:
 _index = _DocsIndex()
 
 
-async def _fetch_url(session: aiohttp.ClientSession, url: str) -> str | None:
+async def _fetch_url_raw_text_content(session: aiohttp.ClientSession, url: str) -> str | None:
     """Fetch a URL and return its text content, or None on failure."""
     try:
         async with session.get(
@@ -225,7 +229,7 @@ async def _fetch_url(session: aiohttp.ClientSession, url: str) -> str | None:
 
 async def _fetch_sitemap_urls(session: aiohttp.ClientSession) -> list[str]:
     """Fetch and parse the sitemap.xml to get agentic-ai documentation page URLs."""
-    xml_text = await _fetch_url(session, DOCS_SITEMAP_URL)
+    xml_text = await _fetch_url_raw_text_content(session, DOCS_SITEMAP_URL)
     if not xml_text:
         logger.warning("Sitemap not available; docs search will be empty until next refresh")
         return []
@@ -277,7 +281,7 @@ async def _build_index(session: aiohttp.ClientSession) -> list[DocPage]:
 
     Fetches all agentic-ai documentation URLs from sitemap.xml, then retrieves
     their full HTML content concurrently. With ~28 pages and a concurrency limit
-    of 20, this completes in a few seconds and provides rich TF-IDF scoring from
+    of 30, this ideally should complete in a few seconds and provide TF-IDF scoring from
     real page titles and body text.
     """
     sitemap_urls = await _fetch_sitemap_urls(session)
@@ -294,9 +298,9 @@ async def _build_index(session: aiohttp.ClientSession) -> list[DocPage]:
     logger.info(f"Fetching content for {len(unique_urls)} agentic-ai docs pages...")
     semaphore = asyncio.Semaphore(CONTENT_FETCH_CONCURRENCY)
 
-    async def fetch_page(url: str) -> DocPage:
+    async def create_doc_page(url: str) -> DocPage:
         async with semaphore:
-            html = await _fetch_url(session, url)
+            html = await _fetch_url_raw_text_content(session, url)
         if html:
             extractor = _ContentExtractor()
             extractor.feed(html)
@@ -308,7 +312,7 @@ async def _build_index(session: aiohttp.ClientSession) -> list[DocPage]:
         return DocPage(url=url, title=title, text=text)
 
     results = await asyncio.gather(
-        *[fetch_page(url) for url in unique_urls],
+        *[create_doc_page(url) for url in unique_urls],
         return_exceptions=True,
     )
     pages = [r for r in results if isinstance(r, DocPage)]
@@ -361,16 +365,26 @@ async def fetch_page_content(url: str) -> dict[str, Any]:
     -------
         Dictionary with 'url', 'title', and 'content' keys.
     """
-    if "/en/docs/" not in url and not url.startswith(DOCS_BASE_URL):
+    if "/en/docs/" not in url or not url.startswith(DOCS_BASE_URL):
         return {
             "url": url,
             "title": "Error",
-            "content": "URL must be a DataRobot documentation page "
+            "content": "URL must be a DataRobot English documentation page "
             f"(must contain '/en/docs/' or start with '{DOCS_BASE_URL}').",
         }
 
+    # Check if the page is already cached in the index to avoid a live HTTP request
+    if not _index.is_stale:
+        for page in _index.pages:
+            if page.url.lower().rstrip("/") == url.lower().rstrip("/"):
+                return {
+                    "url": page.url,
+                    "title": page.title,
+                    "content": page.text,
+                }
+
     async with aiohttp.ClientSession() as session:
-        html = await _fetch_url(session, url)
+        html = await _fetch_url_raw_text_content(session, url)
 
     if not html:
         return {
