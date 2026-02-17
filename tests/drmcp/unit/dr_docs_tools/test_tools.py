@@ -16,11 +16,11 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 from datarobot_genai.drmcp.tools.dr_docs.tools import fetch_datarobot_doc_page
-from datarobot_genai.drmcp.tools.dr_docs.tools import search_datarobot_docs
+from datarobot_genai.drmcp.tools.dr_docs.tools import search_datarobot_agentic_docs
 
 
-class TestSearchDatarobotDocs:
-    """Tests for search_datarobot_docs MCP tool."""
+class TestSearchDatarobotAgenticDocs:
+    """Tests for search_datarobot_agentic_docs MCP tool."""
 
     async def test_search_returns_results(self) -> None:
         """Test that search returns structured results on success."""
@@ -43,7 +43,7 @@ class TestSearchDatarobotDocs:
         ) as mock_search:
             mock_search.return_value = mock_results
 
-            result = await search_datarobot_docs(query="agentic", max_results=5)
+            result = await search_datarobot_agentic_docs(query="agentic", max_results=5)
 
             assert result.structured_content is not None
             content = result.structured_content
@@ -71,7 +71,7 @@ class TestSearchDatarobotDocs:
         ) as mock_search:
             mock_search.return_value = []
 
-            result = await search_datarobot_docs(query="nonexistent", max_results=5)
+            result = await search_datarobot_agentic_docs(query="nonexistent", max_results=5)
 
             assert result.structured_content is not None
             content = result.structured_content

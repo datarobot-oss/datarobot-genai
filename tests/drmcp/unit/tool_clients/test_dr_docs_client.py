@@ -359,10 +359,10 @@ class TestDocsIndex:
         assert "autopilot" in results[0].url
 
 
-class TestSearchDocs:
+class TestSearchAgenticDocs:
     """Tests for search_docs function."""
 
-    async def test_search_docs_builds_index(self) -> None:
+    async def test_search_agentic_docs_builds_index(self) -> None:
         """Test that search_docs builds index if needed."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url",
@@ -376,7 +376,7 @@ class TestSearchDocs:
             # Should have called fetch for sitemap + page content
             mock_fetch.assert_called()
 
-    async def test_search_docs_returns_dicts(self) -> None:
+    async def test_search_agentic_docs_returns_dicts(self) -> None:
         """Test that search_docs returns list of dicts."""
         import datarobot_genai.drmcp.tools.clients.dr_docs as dr_docs_module
 
@@ -417,7 +417,7 @@ class TestSearchDocs:
             assert "title" in results[0]
             assert "description" in results[0]
 
-    async def test_search_docs_clamps_max_results(self) -> None:
+    async def test_search_agentic_docs_clamps_max_results(self) -> None:
         """Test that max_results is clamped to valid range."""
         with patch(
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url",
