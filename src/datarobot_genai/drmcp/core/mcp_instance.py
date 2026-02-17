@@ -322,7 +322,7 @@ def update_mcp_tool_init_args_with_tool_category(
 
 def dr_mcp_tool(
     tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.USER_TOOL,
-    **kwargs: Unpack[ToolKwargs],
+    **mcp_tool_init_args: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Combine decorator that includes mcp.tool(), dr_mcp_extras(), and capture memory ids from
     the request headers if they exist.
@@ -336,7 +336,9 @@ def dr_mcp_tool(
         async def wrapper(*args: Any, **inner_kwargs: Any) -> Any:
             return await memory_aware_wrapper(func, *args, **inner_kwargs)
 
-        updated_kwargs = update_mcp_tool_init_args_with_tool_category(tool_category, **kwargs)
+        updated_kwargs = update_mcp_tool_init_args_with_tool_category(
+            tool_category, **mcp_tool_init_args
+        )
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
         mcp.tool(**updated_kwargs)(instrumented)
@@ -346,7 +348,7 @@ def dr_mcp_tool(
 
 
 def dr_mcp_integration_tool(
-    **kwargs: Unpack[ToolKwargs],
+    **mcp_tool_init_args: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorate mcp tool created as a wrapper of external service API (e.g., DataRobot Predictive
     AI, github API).
@@ -355,7 +357,7 @@ def dr_mcp_integration_tool(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         return dr_mcp_tool(
             tool_category=DataRobotMCPToolCategory.INTEGRATION_TOOL,
-            **kwargs,
+            **mcp_tool_init_args,
         )(func)
 
     return decorator
@@ -374,6 +376,17 @@ def dr_mcp_extras(
         return log_execution(trace_execution(trace_type=type)(func))
 
     return decorator
+
+
+async def check_tool_registration_status_after_it_finishes(
+    mcp_server: DataRobotMCP,
+    name_of_tool_to_register: str,
+) -> None:
+    # Verify tool is registered
+    tools = await mcp_server._list_tools_mcp()
+    if not any(tool.name == name_of_tool_to_register for tool in tools):
+        raise RuntimeError(f"Tool {name_of_tool_to_register} was not registered successfully")
+    logger.info(f"Registered tools: {len(tools)}")
 
 
 async def register_tools(
@@ -423,6 +436,7 @@ async def register_tools(
         description=description,
         annotations=annotations,
         tags=tags,
+        meta={"tool_category": DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL},
     )
 
     # Register the tool
@@ -432,11 +446,7 @@ async def register_tools(
     if deployment_id:
         await mcp.set_deployment_mapping(deployment_id, tool_name)
 
-    # Verify tool is registered
-    tools = await mcp._list_tools_mcp()
-    if not any(tool.name == tool_name for tool in tools):
-        raise RuntimeError(f"Tool {tool_name} was not registered successfully")
-    logger.info(f"Registered tools: {len(tools)}")
+    await check_tool_registration_status_after_it_finishes(mcp, tool_name)
 
     return registered_tool
 

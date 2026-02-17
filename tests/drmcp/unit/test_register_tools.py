@@ -14,15 +14,21 @@
 
 import base64
 from collections.abc import Generator
+from collections.abc import Iterator
 from typing import NamedTuple
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from fastmcp.tools import Tool
 from mcp.server.fastmcp import Context
 from mcp.shared.context import RequestContext
-from mcp.types import Tool
+from mcp.types import Tool as MCPTool
+
+from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcp.core.mcp_instance import check_tool_registration_status_after_it_finishes
 
 # Add import for the function we're testing
 from datarobot_genai.drmcp.core.mcp_instance import register_tools
@@ -80,16 +86,16 @@ def mock_mcp() -> Generator[MagicMock, None, None]:
         mock_mcp: The MCP mock to setup
         tool_name: The name of the tool that will be registered
     """
-    registered_tools: list[Tool] = []
+    registered_tools: list[MCPTool] = []
 
     with patch("datarobot_genai.drmcp.core.mcp_instance.mcp") as mock_mcp:
 
-        def add_tool(tool: Tool) -> Tool:
+        def add_tool(tool: MCPTool) -> MCPTool:
             """Mock add_tool that tracks the registered tool."""
             registered_tools.append(tool)
             return tool
 
-        async def _list_tools_mcp() -> list[Tool]:
+        async def _list_tools_mcp() -> list[MCPTool]:
             """Mock _list_tools_mcp that returns registered tools."""
             return registered_tools
 
@@ -345,3 +351,116 @@ class TestFormatResponseAsToolResult:
         result = format_response_as_tool_result(data, content_type, charset)
         assert result.structured_content["type"] == "text"
         assert result.structured_content["data"] == ""
+
+
+class TestRegisterTool:
+    @pytest.fixture
+    def module_under_test(self) -> str:
+        return "datarobot_genai.drmcp.core.mcp_instance"
+
+    @pytest.fixture
+    def mock_datarobot_mcp_server_list_tools_mcp(self) -> AsyncMock:
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_datarobot_mcp_server(
+        self,
+        module_under_test: str,
+        mock_datarobot_mcp_server_list_tools_mcp: AsyncMock,
+    ) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.mcp") as mock_instance:
+            mock_instance._list_tools_mcp = mock_datarobot_mcp_server_list_tools_mcp
+            yield mock_instance
+
+    @pytest.fixture
+    def mock_dr_mcp_extras(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.dr_mcp_extras") as mock_decorator:
+            yield mock_decorator
+
+    @pytest.fixture
+    def mock_mcp_tool_callable(self) -> Iterator[Mock]:
+        yield Mock(return_value=Mock())
+
+    @pytest.fixture
+    def mock_tool_from_function(self) -> Iterator[Mock]:
+        with patch.object(Tool, "from_function") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_check_tool_registration_status_after_it_finishes(
+        self,
+        module_under_test: str,
+    ) -> Iterator[AsyncMock]:
+        with patch(
+            f"{module_under_test}.check_tool_registration_status_after_it_finishes",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.mark.asyncio
+    async def test_check_tool_registration_status_after_it_finishes_succeeds(
+        self,
+        mock_datarobot_mcp_server: Mock,
+        mock_datarobot_mcp_server_list_tools_mcp: Mock,
+    ) -> None:
+        mock_function_name = "sadfads"
+        mock_registered_tool = Mock()
+        mock_registered_tool.name = mock_function_name
+        mock_datarobot_mcp_server_list_tools_mcp.return_value = [mock_registered_tool]
+
+        await check_tool_registration_status_after_it_finishes(
+            mock_datarobot_mcp_server,
+            mock_function_name,
+        )
+
+        mock_datarobot_mcp_server_list_tools_mcp.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_tool_registration_status_after_it_finishes_fails(
+        self,
+        mock_datarobot_mcp_server: Mock,
+        mock_datarobot_mcp_server_list_tools_mcp: Mock,
+    ) -> None:
+        mock_datarobot_mcp_server_list_tools_mcp.return_value = [Mock()]
+
+        with pytest.raises(RuntimeError):
+            await check_tool_registration_status_after_it_finishes(
+                mock_datarobot_mcp_server,
+                Mock(),
+            )
+            mock_datarobot_mcp_server_list_tools_mcp.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_register_tools_with_proper_tool_category(
+        self,
+        mock_check_tool_registration_status_after_it_finishes: AsyncMock,
+        mock_datarobot_mcp_server: Mock,
+        mock_dr_mcp_extras: Mock,
+        mock_mcp_tool_callable: Mock,
+        mock_tool_from_function: Mock,
+    ) -> None:
+        tool_func_name = Mock()
+        actual_output = await register_tools(
+            fn=mock_mcp_tool_callable,
+            name=tool_func_name,
+        )
+
+        mock_dr_mcp_extras.assert_called_once_with()
+        mock_dr_mcp_extras_decorator = mock_dr_mcp_extras.return_value
+        mock_tool_from_function.assert_called_once_with(
+            fn=mock_dr_mcp_extras_decorator.return_value,
+            name=tool_func_name,
+            title=None,
+            description=None,
+            annotations=None,
+            tags=None,
+            meta={"tool_category": DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL},
+        )
+        mock_datarobot_mcp_server.add_tool.assert_called_once_with(
+            mock_tool_from_function.return_value
+        )
+        mock_check_tool_registration_status_after_it_finishes.assert_called_once_with(
+            mock_datarobot_mcp_server,
+            tool_func_name,
+        )
+        assert actual_output == mock_datarobot_mcp_server.add_tool.return_value
