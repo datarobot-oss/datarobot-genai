@@ -467,7 +467,7 @@ class TestFetchPageContent:
         result = await fetch_page_content("https://example.com/not-docs/")
 
         assert result["title"] == "Error"
-        assert "must be a DataRobot documentation page" in result["content"]
+        assert "must be a DataRobot English documentation page" in result["content"]
 
     async def test_fetch_page_content_fetch_failure(self) -> None:
         """Test handling fetch failure."""
