@@ -315,7 +315,9 @@ def update_mcp_tool_init_args_with_tool_category(
     meta = mcp_tool_init_args.get("meta")
     if meta and meta.get("tool_category"):
         raise ValueError("tool_category is a reserved field under meta. Please don't override it.")
-    mcp_tool_init_args.update({"meta": {"tool_category": tool_category.name}})
+    meta = meta or {}
+    meta["tool_category"] = tool_category.name
+    mcp_tool_init_args.update({"meta": meta})
 
     return mcp_tool_init_args
 
