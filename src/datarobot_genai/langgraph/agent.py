@@ -82,6 +82,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> list[BaseMessage]:
         raise NotImplementedError("Not implemented")
 
+    @abc.abstractmethod
+    def store_memory(self, pipeline_interactions: MultiTurnSample) -> None:
+        raise NotImplementedError("Not implemented")
+
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
@@ -155,8 +159,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 # Yield all items from the result generator
                 # The context will be closed when this generator is exhausted
                 # Cast to async generator since we know stream=True means it's a generator
-                async for item in result:
-                    yield item
+                async for response_text, pipeline_interactions, usage_metrics in result:
+                    if pipeline_interactions:
+                        self.store_memory(pipeline_interactions)
+                    yield response_text, pipeline_interactions, usage_metrics
         except RuntimeError as e:
             error_message = str(e).lower()
             if "different task" in error_message and "cancel scope" in error_message:
