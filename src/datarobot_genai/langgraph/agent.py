@@ -31,6 +31,7 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import BaseMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
@@ -77,6 +78,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
+    @abc.abstractmethod
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> list[BaseMessage]:
+        raise NotImplementedError("Not implemented")
+
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
@@ -118,6 +123,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
+        messages = self.retrieve_memories_based_on_user_prompt(user_prompt)
+        messages.extend(self.prompt_template.invoke(user_prompt).to_messages())
         command = Command(  # type: ignore[var-annotated]
             update={
                 "messages": current_messages,
