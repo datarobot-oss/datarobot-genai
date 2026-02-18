@@ -19,6 +19,7 @@ from datarobot_genai.drmcp.tools.clients.dr_docs import DocPage
 from datarobot_genai.drmcp.tools.clients.dr_docs import _compute_tf
 from datarobot_genai.drmcp.tools.clients.dr_docs import _DocsIndex
 from datarobot_genai.drmcp.tools.clients.dr_docs import _extract_html_content
+from datarobot_genai.drmcp.tools.clients.dr_docs import _fetch_sitemap_urls
 from datarobot_genai.drmcp.tools.clients.dr_docs import _title_from_url
 from datarobot_genai.drmcp.tools.clients.dr_docs import _tokenize
 from datarobot_genai.drmcp.tools.clients.dr_docs import fetch_page_content
@@ -42,6 +43,43 @@ _SITEMAP_THREE_PAGES = """<?xml version="1.0" encoding="UTF-8"?>
     <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/index.html</loc></url>
     <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/agentic-deploy/index.html</loc></url>
 </urlset>"""
+
+
+class TestFetchSitemapUrls:
+    """Tests for _fetch_sitemap_urls."""
+
+    async def test_fetch_sitemap_urls_namespaced(self) -> None:
+        """Parses a standard namespaced sitemap."""
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = _SITEMAP_TWO_PAGES
+
+            urls = await _fetch_sitemap_urls(session=object())  # type: ignore[arg-type]
+
+        assert urls == [
+            "https://docs.datarobot.com/en/docs/agentic-ai/index.html",
+            "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html",
+        ]
+
+    async def test_fetch_sitemap_urls_without_namespace_filters_agentic_ai(self) -> None:
+        """Falls back to non-namespaced sitemap parsing and filters to agentic-ai."""
+        sitemap = """<?xml version="1.0" encoding="UTF-8"?>
+        <urlset>
+            <url><loc>https://docs.datarobot.com/en/docs/agentic-ai/index.html</loc></url>
+            <url><loc>https://docs.datarobot.com/en/docs/modeling/index.html</loc></url>
+        </urlset>"""
+
+        with patch(
+            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = sitemap
+
+            urls = await _fetch_sitemap_urls(session=object())  # type: ignore[arg-type]
+
+        assert urls == ["https://docs.datarobot.com/en/docs/agentic-ai/index.html"]
 
 
 class TestTokenize:
