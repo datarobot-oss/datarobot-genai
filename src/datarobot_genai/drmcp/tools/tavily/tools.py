@@ -20,7 +20,7 @@ from typing import Literal
 
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
 from datarobot_genai.drmcp.tools.clients.tavily import MAX_CHUNKS_PER_SOURCE
 from datarobot_genai.drmcp.tools.clients.tavily import MAX_RESULTS
@@ -31,7 +31,7 @@ from datarobot_genai.drmcp.tools.clients.tavily import get_tavily_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"tavily", "search", "web", "websearch"})
+@dr_mcp_integration_tool(tags={"tavily", "search", "web", "websearch"})
 async def tavily_search(
     *,
     query: Annotated[str, "The search query to execute."],
@@ -116,7 +116,7 @@ async def tavily_search(
     )
 
 
-@dr_mcp_tool(tags={"extract", "tavily", "web", "content"})
+@dr_mcp_integration_tool(tags={"extract", "tavily", "web", "content"})
 async def tavily_extract(
     *,
     urls: Annotated[
@@ -174,7 +174,7 @@ async def tavily_extract(
     return ToolResult(structured_content=response.as_flat_dict())
 
 
-@dr_mcp_tool(tags={"map", "tavily", "discovery"})
+@dr_mcp_integration_tool(tags={"map", "tavily", "discovery"})
 async def tavily_map(
     *,
     url: Annotated[str, "The root URL to begin mapping."],
@@ -200,7 +200,7 @@ async def tavily_map(
     return ToolResult(structured_content=response.as_flat_dict())
 
 
-@dr_mcp_tool(tags={"crawl", "tavily", "web", "rag"})
+@dr_mcp_integration_tool(tags={"crawl", "tavily", "web", "rag"})
 async def tavily_crawl(
     *,
     url: Annotated[str, "The root URL to begin the traversal."],
