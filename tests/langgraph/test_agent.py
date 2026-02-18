@@ -27,6 +27,7 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import BaseMessage
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
@@ -180,6 +181,9 @@ class SimpleLangGraphAgent(LangGraphAgent):
     @property
     def langgraph_config(self) -> dict[str, Any]:
         return {}
+
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> list[BaseMessage]:
+        return []
 
 
 class HistoryAwareLangGraphAgent(LangGraphAgent):
