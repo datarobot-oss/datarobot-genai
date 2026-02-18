@@ -31,11 +31,10 @@ import math
 import re
 import time
 from collections import Counter
-from html.parser import HTMLParser
 from typing import Any
-from xml.etree import ElementTree
 
 import aiohttp
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +49,8 @@ AGENTIC_AI_PATH = "/en/docs/agentic-ai/"
 CACHE_TTL_SECONDS = 86400
 
 # Maximum number of results to return
-MAX_RESULTS = 20
-MAX_RESULTS_DEFAULT = 5
+MAX_RESULTS = 10
+MAX_RESULTS_DEFAULT = 3
 
 # Request timeout in seconds
 REQUEST_TIMEOUT_SECONDS = 30
@@ -72,58 +71,30 @@ def _compute_tf(tokens: list[str]) -> dict[str, float]:
     return {term: count / total for term, count in counts.items()}
 
 
-class _ContentExtractor(HTMLParser):
-    """Extract meaningful text content from an HTML page."""
+_CONTENT_TAGS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "td", "th", "dt", "dd"]
+_SKIP_TAGS = ["script", "style", "nav", "footer", "header"]
 
-    # Tags whose text content we want to capture
-    _CONTENT_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "td", "th", "dt", "dd"}
-    # Tags to skip entirely
-    _SKIP_TAGS = {"script", "style", "nav", "footer", "header"}
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._texts: list[str] = []
-        self._title: str = ""
-        self._in_title = False
-        self._skip_depth = 0
-        self._content_depth = 0
-        self._tag_stack: list[str] = []
+def _extract_html_content(html: str) -> tuple[str, str]:
+    """Extract the page title and meaningful body text from an HTML string.
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._tag_stack.append(tag)
-        if tag in self._SKIP_TAGS:
-            self._skip_depth += 1
-        if tag in self._CONTENT_TAGS:
-            self._content_depth += 1
-        if tag == "title":
-            self._in_title = True
+    Returns a ``(title, text_content)`` tuple.
+    """
+    soup = BeautifulSoup(html, "html.parser")
 
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self._SKIP_TAGS and self._skip_depth > 0:
-            self._skip_depth -= 1
-        if tag in self._CONTENT_TAGS and self._content_depth > 0:
-            self._content_depth -= 1
-        if tag == "title":
-            self._in_title = False
-        if self._tag_stack and self._tag_stack[-1] == tag:
-            self._tag_stack.pop()
+    title = ""
+    if soup.title and soup.title.string:
+        title = soup.title.string.strip()
 
-    def handle_data(self, data: str) -> None:
-        text = data.strip()
-        if not text:
-            return
-        if self._in_title:
-            self._title = text
-        if self._skip_depth == 0 and self._content_depth > 0:
-            self._texts.append(text)
+    for tag in soup(_SKIP_TAGS):
+        tag.decompose()
 
-    @property
-    def title(self) -> str:
-        return self._title
-
-    @property
-    def text_content(self) -> str:
-        return " ".join(self._texts)
+    texts = [
+        text
+        for el in soup.find_all(_CONTENT_TAGS)
+        if (text := el.get_text(separator=" ", strip=True))
+    ]
+    return title, " ".join(texts)
 
 
 class DocPage:
@@ -240,20 +211,12 @@ async def _fetch_sitemap_urls(session: aiohttp.ClientSession) -> list[str]:
         logger.warning("Sitemap not available; docs search will be empty until next refresh")
         return []
 
-    urls: list[str] = []
     try:
-        root = ElementTree.fromstring(xml_text)
-        # Handle XML namespaces - sitemaps use the sitemap protocol namespace
-        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-        for url_elem in root.findall(".//sm:url/sm:loc", ns):
-            if url_elem.text:
-                urls.append(url_elem.text.strip())
-        # If no namespace, try without
-        if not urls:
-            for url_elem in root.findall(".//url/loc"):
-                if url_elem.text:
-                    urls.append(url_elem.text.strip())
-    except ElementTree.ParseError as e:
+        soup = BeautifulSoup(xml_text, "lxml-xml")
+        urls = [
+            loc.get_text(strip=True) for loc in soup.find_all("loc") if loc.get_text(strip=True)
+        ]
+    except Exception as e:
         logger.warning(f"Failed to parse sitemap XML: {e}")
         return []
 
@@ -308,10 +271,8 @@ async def _create_datarobot_agentic_docs_pages(session: aiohttp.ClientSession) -
         async with semaphore:
             html = await _fetch_url_raw_text_content(session, url)
         if html:
-            extractor = _ContentExtractor()
-            extractor.feed(html)
-            title = extractor.title or _title_from_url(url)
-            text = extractor.text_content
+            title, text = _extract_html_content(html)
+            title = title or _title_from_url(url)
         else:
             title = _title_from_url(url)
             text = ""
@@ -405,11 +366,8 @@ async def fetch_page_content(url: str) -> dict[str, Any]:
             "content": f"Failed to fetch content from {url}",
         }
 
-    extractor = _ContentExtractor()
-    extractor.feed(html)
-
-    title = extractor.title or _title_from_url(url)
-    content = extractor.text_content
+    title, content = _extract_html_content(html)
+    title = title or _title_from_url(url)
 
     return {
         "url": url,

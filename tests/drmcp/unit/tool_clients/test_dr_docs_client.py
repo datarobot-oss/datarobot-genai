@@ -17,8 +17,8 @@ from unittest.mock import patch
 
 from datarobot_genai.drmcp.tools.clients.dr_docs import DocPage
 from datarobot_genai.drmcp.tools.clients.dr_docs import _compute_tf
-from datarobot_genai.drmcp.tools.clients.dr_docs import _ContentExtractor
 from datarobot_genai.drmcp.tools.clients.dr_docs import _DocsIndex
+from datarobot_genai.drmcp.tools.clients.dr_docs import _extract_html_content
 from datarobot_genai.drmcp.tools.clients.dr_docs import _title_from_url
 from datarobot_genai.drmcp.tools.clients.dr_docs import _tokenize
 from datarobot_genai.drmcp.tools.clients.dr_docs import fetch_page_content
@@ -105,76 +105,139 @@ class TestComputeTf:
         assert result == {"test": 1.0}
 
 
-class TestContentExtractor:
-    """Tests for _ContentExtractor HTML parser."""
-
-    def test_extract_title(self) -> None:
-        """Test extracting page title."""
-        html = "<html><head><title>Test Page</title></head><body></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        assert extractor.title == "Test Page"
+class TestExtractHtmlContent:
+    """Tests for _extract_html_content."""
 
     def test_extract_paragraph_text(self) -> None:
         """Test extracting paragraph text."""
-        html = "<html><body><p>First paragraph</p><p>Second paragraph</p></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        assert "First paragraph" in extractor.text_content
-        assert "Second paragraph" in extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>Paragraphs</title>
+          </head>
+          <body>
+            <p>First paragraph</p>
+            <p>Second paragraph</p>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "Paragraphs"
+        assert "First paragraph" in content
+        assert "Second paragraph" in content
 
     def test_extract_heading_text(self) -> None:
         """Test extracting heading text."""
-        html = "<html><body><h1>Main Title</h1><h2>Subtitle</h2></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        content = extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>Headings</title>
+          </head>
+          <body>
+            <h1>Main Title</h1>
+            <h2>Subtitle</h2>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "Headings"
         assert "Main Title" in content
         assert "Subtitle" in content
 
     def test_skip_script_tags(self) -> None:
         """Test that script content is skipped."""
-        html = "<html><body><p>Visible</p><script>alert('hidden');</script></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        content = extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>Scripts</title>
+          </head>
+          <body>
+            <p>Visible</p>
+            <script>alert('hidden');</script>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "Scripts"
         assert "Visible" in content
         assert "alert" not in content
         assert "hidden" not in content
 
     def test_skip_style_tags(self) -> None:
         """Test that style content is skipped."""
-        html = "<html><body><p>Visible</p><style>body { color: red; }</style></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        content = extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>Styles</title>
+          </head>
+          <body>
+            <p>Visible</p>
+            <style>body { color: red; }</style>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "Styles"
         assert "Visible" in content
         assert "color" not in content
 
     def test_skip_nav_tags(self) -> None:
         """Test that nav content is skipped."""
-        html = "<html><body><p>Main</p><nav><a>Navigation</a></nav></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        content = extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>Navigation</title>
+          </head>
+          <body>
+            <p>Main</p>
+            <nav><a>Nav Link</a></nav>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "Navigation"
         assert "Main" in content
-        assert "Navigation" not in content
+        assert "Nav Link" not in content
 
     def test_extract_list_items(self) -> None:
         """Test extracting list item text."""
-        html = "<html><body><ul><li>Item 1</li><li>Item 2</li></ul></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        content = extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>List</title>
+          </head>
+          <body>
+            <ul>
+              <li>Item 1</li>
+              <li>Item 2</li>
+            </ul>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "List"
         assert "Item 1" in content
         assert "Item 2" in content
 
     def test_extract_table_content(self) -> None:
         """Test extracting table content."""
-        html = "<html><body><table><tr><th>Header</th><td>Data</td></tr></table></body></html>"
-        extractor = _ContentExtractor()
-        extractor.feed(html)
-        content = extractor.text_content
+        html = """
+        <html>
+          <head>
+            <title>Table</title>
+          </head>
+          <body>
+            <table>
+              <tr>
+                <th>Header</th>
+                <td>Data</td>
+              </tr>
+            </table>
+          </body>
+        </html>
+        """
+        title, content = _extract_html_content(html)
+        assert title == "Table"
         assert "Header" in content
         assert "Data" in content
 
@@ -427,7 +490,7 @@ class TestSearchAgenticDocs:
 
             # Test upper bound
             results = await search_docs("agentic", max_results=100)
-            assert len(results) <= 20  # MAX_RESULTS = 20
+            assert len(results) <= 10  # MAX_RESULTS = 10
 
             # Test lower bound - should not fail with max_results=0
             results = await search_docs("agentic", max_results=0)
@@ -441,11 +504,13 @@ class TestFetchPageContent:
         """Test fetching page content successfully."""
         mock_html = """
         <html>
-            <head><title>Test Page</title></head>
-            <body>
-                <h1>Main Heading</h1>
-                <p>This is test content.</p>
-            </body>
+          <head>
+            <title>Test Page</title>
+          </head>
+          <body>
+            <h1>Main Heading</h1>
+            <p>This is test content.</p>
+          </body>
         </html>
         """
 
@@ -486,7 +551,9 @@ class TestFetchPageContent:
         """Test that URL-based title is used when <title> tag missing."""
         mock_html = """
         <html>
-            <body><p>Content without title tag</p></body>
+          <body>
+            <p>Content without title tag</p>
+          </body>
         </html>
         """
 
