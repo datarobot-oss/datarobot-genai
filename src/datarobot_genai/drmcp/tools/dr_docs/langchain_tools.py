@@ -60,7 +60,7 @@ async def search_datarobot_agentic_docs(
     ],
     max_results: Annotated[
         int,
-        f"Maximum number of documentation pages to return (1 to {MAX_RESULTS}).",
+        f"Maximum number of documentation pages to return (allowable values: 1 to {MAX_RESULTS}).",
     ] = MAX_RESULTS_DEFAULT,
 ) -> dict[str, Any]:
     """
@@ -68,11 +68,10 @@ async def search_datarobot_agentic_docs(
 
     This tool searches through the DataRobot agentic-AI documentation at
     https://docs.datarobot.com/en/docs/agentic-ai/ to find pages relevant
-    to your query. It returns page titles and URLs that you can then fetch
-    for full content.
+    to your query. It returns page titles, URLs, and page contents.
 
     No API keys are required — the tool indexes the public documentation
-    site using TF-IDF over real page titles and body text.
+    site using TF-IDF over real page titles and page text.
 
     Usage:
         - Find MCP info: search_datarobot_agentic_docs(query="MCP server setup")
@@ -81,7 +80,6 @@ async def search_datarobot_agentic_docs(
 
     Note:
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
-        - Use fetch_datarobot_doc_page to get the full content of a specific page.
     """
     results = await search_docs(query=query, max_results=max_results)
 
@@ -119,9 +117,8 @@ async def fetch_datarobot_doc_page(
     """
     Fetch and extract the text content of a specific DataRobot documentation page.
 
-    Use this tool after search_datarobot_agentic_docs to retrieve the full content of a
-    relevant documentation page. The content is extracted as clean text, suitable
-    for reading and analysis.
+    Use this tool to retrieve the full content of a relevant documentation page. The content is
+    extracted as clean text, suitable for reading and analysis.
 
     Usage:
         - Fetch a page: fetch_datarobot_doc_page(
