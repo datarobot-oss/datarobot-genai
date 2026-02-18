@@ -454,7 +454,7 @@ class TestRegisterTool:
             description=None,
             annotations=None,
             tags=None,
-            meta={"tool_category": DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL},
+            meta={"tool_category": DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL.name},
         )
         mock_datarobot_mcp_server.add_tool.assert_called_once_with(
             mock_tool_from_function.return_value

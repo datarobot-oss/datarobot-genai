@@ -193,7 +193,7 @@ class TestMCPToolDecorator:
         )
 
         actual_tool_category = updated_tool_init_args["meta"]["tool_category"]
-        assert expected_tool_category == actual_tool_category
+        assert expected_tool_category.name == actual_tool_category
 
     def test_dr_mcp_tool(
         self,
