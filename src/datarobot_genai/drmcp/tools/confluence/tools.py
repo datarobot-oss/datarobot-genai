@@ -20,7 +20,7 @@ from typing import Annotated
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceClient
 from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
@@ -28,7 +28,7 @@ from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"confluence", "read", "get", "page"})
+@dr_mcp_integration_tool(tags={"confluence", "read", "get", "page"})
 async def confluence_get_page(
     *,
     page_id_or_title: Annotated[str, "The ID or the exact title of the Confluence page."],
@@ -71,7 +71,7 @@ async def confluence_get_page(
     )
 
 
-@dr_mcp_tool(tags={"confluence", "write", "create", "page"})
+@dr_mcp_integration_tool(tags={"confluence", "write", "create", "page"})
 async def confluence_create_page(
     *,
     space_key: Annotated[str, "The key of the Confluence space where the new page should live."],
@@ -118,7 +118,7 @@ async def confluence_create_page(
     )
 
 
-@dr_mcp_tool(tags={"confluence", "write", "add", "comment"})
+@dr_mcp_integration_tool(tags={"confluence", "write", "add", "comment"})
 async def confluence_add_comment(
     *,
     page_id: Annotated[str, "The numeric ID of the page where the comment will be added."],
@@ -156,7 +156,7 @@ async def confluence_add_comment(
     )
 
 
-@dr_mcp_tool(tags={"confluence", "search", "content"})
+@dr_mcp_integration_tool(tags={"confluence", "search", "content"})
 async def confluence_search(
     *,
     cql_query: Annotated[
@@ -213,7 +213,7 @@ async def confluence_search(
     )
 
 
-@dr_mcp_tool(tags={"confluence", "write", "update", "page"})
+@dr_mcp_integration_tool(tags={"confluence", "write", "update", "page"})
 async def confluence_update_page(
     *,
     page_id: Annotated[str, "The ID of the Confluence page to update."],

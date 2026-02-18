@@ -31,6 +31,7 @@ from typing_extensions import Unpack
 from .config import MCPServerConfig
 from .config import get_config
 from .dynamic_prompts.utils import get_prompt_name_no_duplicate
+from .enums import DataRobotMCPToolCategory
 from .logging import log_execution
 from .memory_management.manager import MemoryManager
 from .memory_management.manager import get_memory_manager
@@ -307,8 +308,23 @@ async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: A
     return await func(*args, **kwargs)
 
 
+def update_mcp_tool_init_args_with_tool_category(
+    tool_category: DataRobotMCPToolCategory,
+    **mcp_tool_init_args: Unpack[ToolKwargs],
+) -> ToolKwargs:
+    meta = mcp_tool_init_args.get("meta")
+    if meta and meta.get("tool_category"):
+        raise ValueError("tool_category is a reserved field under meta. Please don't override it.")
+    meta = meta or {}
+    meta["tool_category"] = tool_category.name
+    mcp_tool_init_args.update({"meta": meta})
+
+    return mcp_tool_init_args
+
+
 def dr_mcp_tool(
-    **kwargs: Unpack[ToolKwargs],
+    tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.USER_TOOL,
+    **mcp_tool_init_args: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Combine decorator that includes mcp.tool(), dr_mcp_extras(), and capture memory ids from
     the request headers if they exist.
@@ -322,10 +338,29 @@ def dr_mcp_tool(
         async def wrapper(*args: Any, **inner_kwargs: Any) -> Any:
             return await memory_aware_wrapper(func, *args, **inner_kwargs)
 
+        updated_kwargs = update_mcp_tool_init_args_with_tool_category(
+            tool_category, **mcp_tool_init_args
+        )
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
-        mcp.tool(**kwargs)(instrumented)
+        mcp.tool(**updated_kwargs)(instrumented)
         return instrumented
+
+    return decorator
+
+
+def dr_mcp_integration_tool(
+    **mcp_tool_init_args: Unpack[ToolKwargs],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorate mcp tool created as a wrapper of external service API (e.g., DataRobot Predictive
+    AI, github API).
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        return dr_mcp_tool(
+            tool_category=DataRobotMCPToolCategory.INTEGRATION_TOOL,
+            **mcp_tool_init_args,
+        )(func)
 
     return decorator
 
@@ -343,6 +378,17 @@ def dr_mcp_extras(
         return log_execution(trace_execution(trace_type=type)(func))
 
     return decorator
+
+
+async def check_tool_registration_status_after_it_finishes(
+    mcp_server: DataRobotMCP,
+    name_of_tool_to_register: str,
+) -> None:
+    # Verify tool is registered
+    tools = await mcp_server._list_tools_mcp()
+    if not any(tool.name == name_of_tool_to_register for tool in tools):
+        raise RuntimeError(f"Tool {name_of_tool_to_register} was not registered successfully")
+    logger.info(f"Registered tools: {len(tools)}")
 
 
 async def register_tools(
@@ -392,6 +438,7 @@ async def register_tools(
         description=description,
         annotations=annotations,
         tags=tags,
+        meta={"tool_category": DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL.name},
     )
 
     # Register the tool
@@ -401,11 +448,7 @@ async def register_tools(
     if deployment_id:
         await mcp.set_deployment_mapping(deployment_id, tool_name)
 
-    # Verify tool is registered
-    tools = await mcp._list_tools_mcp()
-    if not any(tool.name == tool_name for tool in tools):
-        raise RuntimeError(f"Tool {tool_name} was not registered successfully")
-    logger.info(f"Registered tools: {len(tools)}")
+    await check_tool_registration_status_after_it_finishes(mcp, tool_name)
 
     return registered_tool
 
