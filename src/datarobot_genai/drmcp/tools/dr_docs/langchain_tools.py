@@ -14,26 +14,32 @@
 
 """Standalone (non-MCP) DataRobot Agentic AI documentation search tools.
 
-Provides the same tool interface as the MCP-registered tools in tools.py, but
-as plain async functions that return dict[str, Any] rather than ToolResult. No
-MCP server or FastMCP dependency is required.
-
-These functions are framework-agnostic and can be passed directly to any agent
-that accepts Python callables, or wrapped with a framework-specific decorator
-(e.g. LangChain's ``@tool``, LlamaIndex's ``FunctionTool``) at the call site.
+Provides LangChain-wrapped tools that can be used directly with LangChain,
+LangGraph, and other frameworks that support LangChain tools. No MCP server
+or FastMCP dependency is required.
 
 Example — LangGraph::
 
-    from langchain_core.tools import tool
+    from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
+    from langchain.agents import create_agent
+
+    agent = create_agent(model, tools=[search_datarobot_agentic_docs])
+
+Example — Direct invocation::
+
     from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
 
-    search_tool = tool(search_datarobot_agentic_docs)
-    agent = create_react_agent(model, tools=[search_tool])
+    result = await search_datarobot_agentic_docs.ainvoke({
+        "query": "MCP server setup",
+        "max_results": 5
+    })
 """
 
 import logging
 from typing import Annotated
 from typing import Any
+
+from langchain_core.tools import tool
 
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS_DEFAULT
@@ -43,6 +49,7 @@ from datarobot_genai.drmcp.tools.clients.dr_docs import search_docs
 logger = logging.getLogger(__name__)
 
 
+@tool
 async def search_datarobot_agentic_docs(
     *,
     query: Annotated[
@@ -100,6 +107,7 @@ async def search_datarobot_agentic_docs(
     return flat
 
 
+@tool
 async def fetch_datarobot_doc_page(
     *,
     url: Annotated[

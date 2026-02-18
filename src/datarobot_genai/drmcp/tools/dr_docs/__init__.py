@@ -14,27 +14,21 @@
 
 """DataRobot Agentic AI documentation tools.
 
-Exports the standalone (non-MCP) tool functions for direct use in agent
-demos and applications that do not run an MCP server.
-
-Example::
-
-    from datarobot_genai.drmcp.tools.dr_docs import (
-        fetch_datarobot_doc_page,
-        search_datarobot_agentic_docs,
-    )
+Exports LangChain-wrapped tools that can be used directly with LangChain,
+LangGraph, and other frameworks supporting LangChain tools.
 
 For use with LangGraph::
 
-    from langchain_core.tools import tool as lc_tool
     from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
 
-    search_tool = lc_tool(search_datarobot_agentic_docs)
-    agent = create_react_agent(model, tools=[search_tool])
+    result = await search_datarobot_agentic_docs.ainvoke({
+        "query": "MCP server setup",
+        "max_results": 5
+    })
 """
 
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import fetch_datarobot_doc_page
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import search_datarobot_agentic_docs
+from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import fetch_datarobot_doc_page
+from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import search_datarobot_agentic_docs
 
 __all__ = [
     "fetch_datarobot_doc_page",
