@@ -186,6 +186,11 @@ class SimpleLangGraphAgent(LangGraphAgent):
         return []
 
 
+class LangGraphAgentWithMemories(SimpleLangGraphAgent):
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> list[BaseMessage]:
+        return [SystemMessage(content="Retrieved memories here")]
+
+
 class HistoryAwareLangGraphAgent(LangGraphAgent):
     """LangGraph agent whose prompt template exposes {chat_history}."""
 
@@ -511,3 +516,31 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
     # ToolMessage filtered out; order preserved
     msgs = sample.user_input
     assert len(msgs) == 2
+
+
+async def test_langgraph_retrieves_memories(run_agent_input):
+    # GIVEN a simple langgraph agent implementation
+    agent = LangGraphAgentWithMemories()
+
+    # WHEN invoking the agent
+    streaming_response_iterator = agent.invoke(run_agent_input)
+
+    # THEN the streaming response iterator returns the expected first response including memory
+    async for _ in streaming_response_iterator:
+        expected_command = Command(
+            update={
+                "messages": [
+                    SystemMessage(content="Retrieved memories here"),
+                    SystemMessage(content="You are a helpful assistant. Tell user about AI."),
+                    HumanMessage(content="Hi, tell me about AI."),
+                ]
+            }
+        )
+        agent.workflow.compile().astream.assert_called_once_with(
+            input=expected_command,
+            config={},
+            debug=True,
+            stream_mode=["updates", "messages"],
+            subgraphs=True,
+        )
+        break
