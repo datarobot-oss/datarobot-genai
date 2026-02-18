@@ -22,8 +22,8 @@ import pytest
 from dotenv import load_dotenv
 from fastmcp.exceptions import ToolError
 
+from datarobot_genai.drmcp.tools.clients.datarobot import deploy_custom_model_impl
 from datarobot_genai.drmcp.tools.predictive import deployment
-from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import deploy_custom_model_impl
 
 
 def test_load_dotenv() -> None:
@@ -193,7 +193,7 @@ async def test_deploy_model_error() -> None:
 
 
 def _custom_model_fixture_dir() -> str:
-    return str(Path(__file__).resolve().parent.parent.parent / "fixtures" / "custom_model")
+    return str(Path(__file__).resolve().parent / "fixtures" / "custom_model")
 
 
 @pytest.mark.asyncio
@@ -236,10 +236,19 @@ async def test_deploy_custom_model_mocked_success() -> None:
         "custom_model_version_id": "v1",
         "registered_model_version_id": "rmv1",
     }
-    with patch(
-        "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
-        return_value=out,
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
+            return_value=out,
+        ),
     ):
+        mock_drc.return_value.get_client.return_value = MagicMock()
         result = await deployment.deploy_custom_model(
             model_folder=folder,
             model_file_path=model_file,
@@ -271,10 +280,19 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
     folder = _custom_model_fixture_dir()
     provided_path = os.path.join(folder, "custom.py")
     out = {"deployment_id": "d", "label": "L"}
-    with patch(
-        "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
-        return_value=out,
+    with (
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch(
+            "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
+            return_value=out,
+        ),
     ):
+        mock_drc.return_value.get_client.return_value = MagicMock()
         result = await deployment.deploy_custom_model(
             model_folder=folder,
             model_file_path=provided_path,
@@ -300,70 +318,61 @@ async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> 
         f.write(b"dummy model data")
 
     try:
-        with patch(
-            "datarobot_genai.drmcp.tools.predictive.custom_model_deploy.get_sdk_client"
-        ) as mock_get_client:
-            mock_client = MagicMock()
+        mock_client = MagicMock()
 
-            # Mock execution environment - must match
-            # the pattern in select_execution_environment
-            mock_env = MagicMock()
-            mock_env.id = "env123"
-            mock_env.name = "[DataRobot] Python Scikit-Learn 3.11 Drop-In"
-            mock_env.latest_successful_version = MagicMock()
-            mock_env.latest_successful_version.id = "env_ver123"
-            mock_client.ExecutionEnvironment.list.return_value = [mock_env]
+        # Mock execution environment - must match the pattern in _select_execution_environment
+        mock_env = MagicMock()
+        mock_env.id = "env123"
+        mock_env.name = "[DataRobot] Python Scikit-Learn 3.11 Drop-In"
+        mock_env.latest_successful_version = MagicMock()
+        mock_env.latest_successful_version.id = "env_ver123"
+        mock_client.ExecutionEnvironment.list.return_value = [mock_env]
 
-            # Mock custom model creation
-            mock_custom_model = MagicMock()
-            mock_custom_model.id = "cm123"
-            mock_client.CustomInferenceModel.create.return_value = mock_custom_model
+        # Mock custom model creation
+        mock_custom_model = MagicMock()
+        mock_custom_model.id = "cm123"
+        mock_client.CustomInferenceModel.create.return_value = mock_custom_model
 
-            # Mock custom model version
-            mock_version = MagicMock()
-            mock_version.id = "version123"
-            mock_client.CustomModelVersion.create_clean.return_value = mock_version
+        # Mock custom model version
+        mock_version = MagicMock()
+        mock_version.id = "version123"
+        mock_client.CustomModelVersion.create_clean.return_value = mock_version
 
-            # Mock dependency build
-            mock_build_info = MagicMock()
-            mock_build_info.build_status = "success"
-            mock_client.CustomModelVersionDependencyBuild.start_build.return_value = mock_build_info
+        # Mock dependency build
+        mock_build_info = MagicMock()
+        mock_build_info.build_status = "success"
+        mock_client.CustomModelVersionDependencyBuild.start_build.return_value = mock_build_info
 
-            # Mock registered model version
-            mock_rmv = MagicMock()
-            mock_rmv.id = "rmv123"
-            mock_client.RegisteredModelVersion.create_for_custom_model_version.return_value = (
-                mock_rmv
+        # Mock registered model version
+        mock_rmv = MagicMock()
+        mock_rmv.id = "rmv123"
+        mock_client.RegisteredModelVersion.create_for_custom_model_version.return_value = mock_rmv
+
+        # Mock prediction servers - EMPTY LIST (this is the issue scenario)
+        mock_client.PredictionServer.list.return_value = []
+
+        # Mock deployment creation - this should fail if ps_id is None
+        mock_deployment = MagicMock()
+        mock_deployment.id = "dep123"
+        mock_deployment.label = "Test Model"
+        mock_client.Deployment.create_from_registered_model_version.return_value = mock_deployment
+
+        # This should raise a ValueError when no prediction servers exist
+        # This ensures consistency with deploy_model which also validates prediction servers
+        with pytest.raises((ValueError, RuntimeError)) as exc_info:
+            deploy_custom_model_impl(
+                mock_client,
+                model_folder=folder,
+                model_file_path=model_file,
+                name="Test Model",
+                target_type="Binary",
+                target_name="target",
             )
-
-            # Mock prediction servers - EMPTY LIST (this is the issue scenario)
-            mock_client.PredictionServer.list.return_value = []
-
-            # Mock deployment creation - this should fail if ps_id is None
-            mock_deployment = MagicMock()
-            mock_deployment.id = "dep123"
-            mock_deployment.label = "Test Model"
-            mock_client.Deployment.create_from_registered_model_version.return_value = (
-                mock_deployment
-            )
-
-            mock_get_client.return_value = mock_client
-
-            # This should raise a ValueError when no prediction servers exist
-            # This ensures consistency with deploy_model which also validates prediction servers
-            with pytest.raises((ValueError, RuntimeError)) as exc_info:
-                deploy_custom_model_impl(
-                    model_folder=folder,
-                    model_file_path=model_file,
-                    name="Test Model",
-                    target_type="Binary",
-                    target_name="target",
-                )
-            # Verify the error message mentions prediction servers
-            assert (
-                "prediction server" in str(exc_info.value).lower()
-                or "no prediction" in str(exc_info.value).lower()
-            )
+        # Verify the error message mentions prediction servers
+        assert (
+            "prediction server" in str(exc_info.value).lower()
+            or "no prediction" in str(exc_info.value).lower()
+        )
     finally:
         # Cleanup
         if os.path.exists(model_file):
