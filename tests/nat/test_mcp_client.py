@@ -56,13 +56,10 @@ class _FakeMCPClient(MCPBaseClient):
         *,
         tools: dict[str, _FakeTool],
         url: str | None = None,
-        command: str | None = None,
-        args: list[str] | None = None,
     ) -> None:
-        super().__init__("stdio")
+        super().__init__("streamable-http")
         self._tools = tools
         self.url = url
-        self.command = command
 
     async def get_tool(self, name: str) -> _FakeTool:
         """Retrieve a tool by name."""
@@ -79,11 +76,9 @@ class _FakeMCPClient(MCPBaseClient):
 
 
 async def test_datarobot_mcp_client():
-    with patch("nat.plugins.mcp.client.client_base.MCPStdioClient") as mock_client:
+    with patch("nat.plugins.mcp.client.client_base.MCPStreamableHTTPClient") as mock_client:
         fake_tools = {"a": _FakeTool("a", "da"), "b": _FakeTool("b", "db")}
-        mock_client.return_value = _FakeMCPClient(
-            tools=fake_tools, command="python", args=["server.py"]
-        )
+        mock_client.side_effect = lambda url: _FakeMCPClient(tools=fake_tools, url=url)
         server_config = DataRobotMCPServerConfig()
         config = DataRobotMCPClientConfig(server=server_config)
         async with WorkflowBuilder() as builder:
