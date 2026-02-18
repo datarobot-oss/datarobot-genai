@@ -21,8 +21,8 @@ No API keys or external services are required — the tool directly indexes
 the public documentation site using a TF-IDF search over page titles and
 body text.
 
-For use without an MCP server, import the equivalent plain async functions
-from :mod:`datarobot_genai.drmcp.tools.dr_docs.local_tools` (or via the
+For use without an MCP server, import the LangChain tools directly from
+:mod:`datarobot_genai.drmcp.tools.dr_docs.langchain_tools` (or via the
 package ``__init__``).
 """
 
@@ -34,10 +34,10 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS_DEFAULT
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import (
+from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import (
     fetch_datarobot_doc_page as _fetch_datarobot_doc_page,
 )
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import (
+from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import (
     search_datarobot_agentic_docs as _search_datarobot_agentic_docs,
 )
 
@@ -78,7 +78,9 @@ async def search_datarobot_agentic_docs(
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
         - Use fetch_datarobot_doc_page to get the full content of a specific page.
     """
-    result = await _search_datarobot_agentic_docs(query=query, max_results=max_results)
+    result = await _search_datarobot_agentic_docs.ainvoke(
+        {"query": query, "max_results": max_results}
+    )
     return ToolResult(structured_content=result)
 
 
@@ -106,5 +108,5 @@ async def fetch_datarobot_doc_page(
     Note:
         - Only works with English DataRobot documentation URLs (e.g. docs.datarobot.com/en/docs/).
     """
-    result = await _fetch_datarobot_doc_page(url=url)
+    result = await _fetch_datarobot_doc_page.ainvoke({"url": url})
     return ToolResult(structured_content=result)
