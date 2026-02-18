@@ -1,0 +1,2 @@
+custom.py and requirements.txt are required by the DataRobot custom model format,
+not by pytest. They are used as fixture content when testing deploy_custom_model.

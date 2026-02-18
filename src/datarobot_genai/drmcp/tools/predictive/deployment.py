@@ -20,13 +20,13 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
-from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drmcp.tools.predictive.custom_model_deploy import (
+from datarobot_genai.drmcp.tools.clients.datarobot import (
     MODEL_EXTENSIONS,
     REQUIRED_FILES,
+    DataRobotClient,
     deploy_custom_model_impl,
     find_model_file_in_folder,
+    get_datarobot_access_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,18 +100,19 @@ async def deploy_model(
         raise ToolError(f"Error deploying model {model_id}: {type(e).__name__}: {e}")
 
 
-@dr_mcp_tool(tags={"predictive", "deployment", "write", "custom", "create"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "custom", "create"})
 async def deploy_custom_model(
     *,
     model_folder: Annotated[
         str, "Path to directory with custom.py, requirements.txt, and optionally a model file"
     ]
     | None = None,
-    name: Annotated[str, "Custom model and deployment name"] | None = None,
-    target_type: Annotated[str, "Target type: Binary, Regression, or Multiclass"] | None = None,
+    name: Annotated[str, "Single name used for both custom model and deployment"] | None = None,
+    target_type: Annotated[str, "Target type: binary, regression, or multiclass"] | None = None,
     target_name: Annotated[str, "Target column name"] | None = None,
     model_file_path: Annotated[
-        str, "Optional path to model file; if not set and none in folder, ToolError is raised"
+        str,
+        "Optional path to model file. If not set and folder contains none, ToolError is raised.",
     ]
     | None = None,
     positive_class_label: Annotated[str, "For binary: positive class label"] | None = None,
@@ -121,7 +122,7 @@ async def deploy_custom_model(
     execution_environment_id: Annotated[str, "Optional execution environment ID"] | None = None,
     description: Annotated[str, "Optional description"] | None = None,
 ) -> ToolResult:
-    """Deploy a custom inference model (e.g. .pkl) to DataRobot MLOps.
+    """Deploy a custom inference model (e.g., .pkl) to DataRobot MLOps.
 
     Requires a model file in the folder or model_file_path.
     """
@@ -153,10 +154,13 @@ async def deploy_custom_model(
     if resolved_path is None:
         raise ToolError(
             f"No model file ({', '.join(MODEL_EXTENSIONS)}) found in {model_folder}. "
-            "Add a model file to that folder or pass model_file_path."
+            "Add a model file to the folder or pass model_file_path."
         )
     try:
+        token = await get_datarobot_access_token()
+        client = DataRobotClient(token).get_client()
         out = deploy_custom_model_impl(
+            client,
             model_folder=model_folder,
             model_file_path=resolved_path,
             name=name,
