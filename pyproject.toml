@@ -26,6 +26,7 @@ dependencies = [
   "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
   "ag-ui-protocol>=0.1.9,<0.2.0",
   "pyarrow==21.0.0",
+  "beautifulsoup4>=4.14.3",
 ]
 
 [project.urls]
