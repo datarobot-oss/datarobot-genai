@@ -83,7 +83,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         raise NotImplementedError("Not implemented")
 
     @abc.abstractmethod
-    def store_memory(self, pipeline_interactions: MultiTurnSample) -> None:
+    def store_memory(self, pipeline_interactions: "MultiTurnSample") -> None:
         raise NotImplementedError("Not implemented")
 
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
