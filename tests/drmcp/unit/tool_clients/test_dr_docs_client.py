@@ -431,7 +431,22 @@ class TestSearchAgenticDocs:
             "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
-            mock_fetch.return_value = _SITEMAP_ONE_PAGE
+
+            async def _side_effect(session: object, url: str) -> str:
+                if "sitemap" in url:
+                    return _SITEMAP_ONE_PAGE
+                return """
+                <html>
+                  <head>
+                    <title>Test Page</title>
+                  </head>
+                  <body>
+                    <p>Test content</p>
+                  </body>
+                </html>
+                """
+
+            mock_fetch.side_effect = _side_effect
 
             results = await search_docs("agentic", max_results=5)
 

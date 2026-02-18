@@ -32,6 +32,7 @@ import re
 import time
 from collections import Counter
 from typing import Any
+from xml.etree import ElementTree
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -211,12 +212,20 @@ async def _fetch_sitemap_urls(session: aiohttp.ClientSession) -> list[str]:
         logger.warning("Sitemap not available; docs search will be empty until next refresh")
         return []
 
+    urls: list[str] = []
     try:
-        soup = BeautifulSoup(xml_text, "lxml-xml")
-        urls = [
-            loc.get_text(strip=True) for loc in soup.find_all("loc") if loc.get_text(strip=True)
-        ]
-    except Exception as e:
+        root = ElementTree.fromstring(xml_text)
+        # Handle XML namespaces - sitemaps use the sitemap protocol namespace
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        for url_elem in root.findall(".//sm:url/sm:loc", ns):
+            if url_elem.text:
+                urls.append(url_elem.text.strip())
+        # If no namespace, try without
+        if not urls:
+            for url_elem in root.findall(".//url/loc"):
+                if url_elem.text:
+                    urls.append(url_elem.text.strip())
+    except ElementTree.ParseError as e:
         logger.warning(f"Failed to parse sitemap XML: {e}")
         return []
 
@@ -255,16 +264,7 @@ async def _create_datarobot_agentic_docs_pages(session: aiohttp.ClientSession) -
     """
     sitemap_urls = await _fetch_sitemap_urls(session)
 
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    unique_urls: list[str] = []
-    for url in sitemap_urls:
-        normalized = url.rstrip("/")
-        if normalized not in seen:
-            seen.add(normalized)
-            unique_urls.append(url)
-
-    logger.info(f"Fetching content for {len(unique_urls)} agentic-ai docs pages...")
+    logger.info(f"Fetching content for {len(sitemap_urls)} agentic-ai docs pages...")
     semaphore = asyncio.Semaphore(CONTENT_FETCH_CONCURRENCY)
 
     async def create_doc_page(url: str) -> DocPage:
@@ -279,7 +279,7 @@ async def _create_datarobot_agentic_docs_pages(session: aiohttp.ClientSession) -
         return DocPage(url=url, title=title, text=text)
 
     results = await asyncio.gather(
-        *[create_doc_page(url) for url in unique_urls],
+        *[create_doc_page(url) for url in sitemap_urls],
         return_exceptions=True,
     )
     pages = [r for r in results if isinstance(r, DocPage)]
