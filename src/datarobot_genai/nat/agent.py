@@ -30,6 +30,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.mcp.common import MCPConfig
 from datarobot_genai.nat.helpers import load_workflow
 
@@ -37,18 +38,19 @@ if TYPE_CHECKING:
     from ragas import MultiTurnSample
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
+    from ragas.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
 
 
 def convert_to_ragas_messages(
     steps: list[IntermediateStep],
-) -> list[HumanMessage | AIMessage]:
+) -> list[HumanMessage | AIMessage | ToolMessage]:
     # Lazy import to reduce memory overhead when ragas is not used
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
 
-    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage:
+    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage | ToolMessage:
         if step.event_type == IntermediateStepType.LLM_START:
             return HumanMessage(content=_parse(step.data.input))
         elif step.event_type == IntermediateStepType.LLM_END:
@@ -137,9 +139,25 @@ class NatAgent(BaseAgent[None]):
         )
         self.workflow_path = workflow_path
 
+    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
+
     def make_chat_request(self, run_agent_input: RunAgentInput) -> ChatRequest:
-        user_prompt_content = str(extract_user_prompt_content(run_agent_input))
-        return ChatRequest.from_string(user_prompt_content)
+        """Create a NAT ChatRequest from the agent input.
+
+        By default this:
+        - Uses the last user message as the primary request.
+        - Does NOT include prior turns by default.
+        - History is opt-in: include a `{chat_history}` placeholder in the input
+          string if you want a transcript injected.
+        """
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
+        text = str(user_prompt_content)
+        if "{chat_history}" in text:
+            history_summary = self.build_history_summary(
+                {"messages": getattr(run_agent_input, "messages", []) or []}
+            )
+            text = text.replace("{chat_history}", history_summary)
+        return ChatRequest.from_string(text)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided completion parameters.

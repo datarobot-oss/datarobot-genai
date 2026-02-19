@@ -21,6 +21,7 @@ from typing import cast
 
 from ag_ui.core import RunAgentInput
 from llama_index.core.base.llms.types import LLMMetadata
+from llama_index.core.llms import ChatMessage
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
 from llama_index.llms.litellm import LiteLLM
@@ -29,7 +30,9 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
+from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.config import get_max_history_messages_default
 
 from .mcp import load_mcp_tools
 
@@ -59,6 +62,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         super().__init__(*args, **kwargs)
         self._mcp_tools: list[Any] = []
 
+    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
+
     def set_mcp_tools(self, tools: list[Any]) -> None:
         """Set MCP tools for this agent."""
         self._mcp_tools = tools
@@ -83,9 +88,24 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         raise NotImplementedError
 
     def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        """Create an input string for the workflow from the user prompt."""
+        """Create an input string for the workflow from the user prompt.
+
+        Default implementation:
+        - Uses the last user message as the primary request.
+        - Does NOT include prior turns by default.
+        - History is opt-in: if the input string contains a `{chat_history}`
+          placeholder, it will be replaced with a rendered transcript of prior
+          turns (excluding the latest user message).
+        """
         user_prompt_content = extract_user_prompt_content(run_agent_input)
-        return str(user_prompt_content)
+        current_text = str(user_prompt_content)
+        if "{chat_history}" not in current_text:
+            return current_text
+
+        history_summary = self.build_history_summary(
+            {"messages": getattr(run_agent_input, "messages", []) or []}
+        )
+        return current_text.replace("{chat_history}", history_summary)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
