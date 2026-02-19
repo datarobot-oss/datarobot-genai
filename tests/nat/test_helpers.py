@@ -59,9 +59,7 @@ from datarobot_genai.nat.helpers import load_workflow
         ),
     ],
 )
-def test_add_headers_to_datarobot_mcp_auth(
-    config: dict, headers: dict | None, expected: dict
-) -> None:
+def test_add_headers_to_datarobot_mcp_auth(config, headers, expected):
     add_headers_to_datarobot_mcp_auth(config, headers)
     assert config == expected
 
@@ -133,9 +131,7 @@ def test_add_headers_to_datarobot_mcp_auth(
         ),
     ],
 )
-def test_add_headers_to_datarobot_llm_deployment(
-    config: dict, headers: dict | None, expected: dict
-) -> None:
+def test_add_headers_to_datarobot_llm_deployment(config, headers, expected):
     add_headers_to_datarobot_llm_deployment(config, headers)
     assert config == expected
 
@@ -152,7 +148,7 @@ def test_add_headers_to_datarobot_llm_deployment(
         ),
     ],
 )
-def test_load_config(config_yaml: dict, headers: dict | None, should_have_headers: bool) -> None:
+def test_load_config(config_yaml, headers, should_have_headers):
     with patch("datarobot_genai.nat.helpers.yaml_load", return_value=config_yaml):
         config = load_config("some_path", headers)
     dr_auth_config = config.authentication["some_auth_name"]
@@ -163,7 +159,7 @@ def test_load_config(config_yaml: dict, headers: dict | None, should_have_header
         assert not dr_auth_config.headers
 
 
-async def test_load_workflow() -> None:
+async def test_load_workflow():
     with patch("datarobot_genai.nat.helpers.WorkflowBuilder"):
         with patch("datarobot_genai.nat.helpers.SessionManager") as mock_session_manager:
             mock_session_manager.create = AsyncMock()

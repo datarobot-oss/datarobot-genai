@@ -186,9 +186,7 @@ def test_make_chat_request_includes_history(workflow_path):
             AgSystemMessage(id="sys_1", content="You are a helper."),
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(
-                id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"
-            ),
+            UserMessage(id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),

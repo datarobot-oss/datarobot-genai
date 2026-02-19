@@ -141,23 +141,21 @@ class NatAgent(BaseAgent[None]):
 
     MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
-    def make_chat_request(self, run_agent_input: RunAgentInput) -> ChatRequest:
-        """Create a NAT ChatRequest from the agent input.
+    def make_user_prompt(self, run_agent_input: RunAgentInput) -> str:
+        """Create the user prompt text. Override to customize formatting.
 
-        By default this:
-        - Uses the last user message as the primary request.
-        - Does NOT include prior turns by default.
-        - History is opt-in: include a `{chat_history}` placeholder in the input
-          string if you want a transcript injected.
+        Chat history is injected via the `{chat_history}` placeholder.
+        The base class `invoke` method will detect this placeholder and
+        replace it with the actual history summary when available.
+
+        Default implementation returns the raw user message content.
         """
         user_prompt_content = extract_user_prompt_content(run_agent_input)
-        text = str(user_prompt_content)
-        if "{chat_history}" in text:
-            history_summary = self.build_history_summary(
-                {"messages": getattr(run_agent_input, "messages", []) or []}
-            )
-            text = text.replace("{chat_history}", history_summary)
-        return ChatRequest.from_string(text)
+        return str(user_prompt_content)
+
+    def make_chat_request(self, user_prompt: str) -> ChatRequest:
+        """Create a NAT ChatRequest from the processed user prompt."""
+        return ChatRequest.from_string(user_prompt)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided completion parameters.
@@ -172,8 +170,18 @@ class NatAgent(BaseAgent[None]):
             pipeline_interactions, usage_metrics).
 
         """
-        # Retrieve the starting chat request from the CompletionCreateParams
-        chat_request = self.make_chat_request(run_agent_input)
+        # Build the user prompt from the template
+        user_prompt = self.make_user_prompt(run_agent_input)
+
+        # Handle {chat_history} placeholder replacement for subclass templates
+        if "{chat_history}" in user_prompt:
+            history_summary = self.build_history_summary(
+                {"messages": getattr(run_agent_input, "messages", []) or []}
+            )
+            user_prompt = user_prompt.replace("{chat_history}", history_summary)
+
+        # Create the chat request from the processed prompt
+        chat_request = self.make_chat_request(user_prompt)
 
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)

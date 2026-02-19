@@ -18,6 +18,7 @@ import abc
 import json
 import os
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
@@ -25,14 +26,17 @@ from typing import Optional
 from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
+from typing import cast
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 
+from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
 if TYPE_CHECKING:
+    from openai.types.chat import CompletionCreateParams
     from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
@@ -49,6 +53,8 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - verbose: Verbosity flag
       - authorization_context: Authorization context for downstream agents/tools
     """
+
+    MAX_HISTORY_MESSAGES: int = DEFAULT_MAX_HISTORY_MESSAGES
 
     def __init__(
         self,
@@ -118,8 +124,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         prior messages are included. This is primarily intended for exposing a
         ``chat_history`` variable in prompts across different agent types.
         """
-        max_history = getattr(self, "MAX_HISTORY_MESSAGES", 20)
-        return build_history_summary(completion_create_params, max_history)
+        return build_history_summary(completion_create_params, self.MAX_HISTORY_MESSAGES)
 
     @classmethod
     def create_pipeline_interactions_from_events(

@@ -18,9 +18,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
-from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -83,23 +81,6 @@ class TestAgent(CrewAIAgent):
         return TestCrew(self.crew_output)
 
 
-def _run_input_with_history() -> RunAgentInput:
-    return RunAgentInput(
-        messages=[
-            AgSystemMessage(id="sys_1", content="You are a helper."),
-            UserMessage(id="user_1", content="First question"),
-            AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content="Follow-up"),
-        ],
-        tools=[],
-        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
-        thread_id="thread_id",
-        run_id="run_id",
-        state={},
-        context=[],
-    )
-
-
 # --- Tests for create_pipeline_interactions_from_messages ---
 
 
@@ -138,6 +119,7 @@ def run_agent_input() -> RunAgentInput:
 
 
 async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event_listener) -> None:
+    # GIVEN agent with predefined crew output and forwarded headers
     out = CrewOutput(
         raw="agent result",
         token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
@@ -153,31 +135,50 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
         authorization_context=authorization_context,
     )
 
+    # WHEN invoke agent is called
     gen = agent.invoke(run_agent_input)
+
+    # THEN response is an async generator
     assert isinstance(gen, AsyncGenerator)
     events = [event async for event in gen]
 
+    # THEN MCP context was called with forwarded headers and authorization context
     patch_mcp_tools_context.assert_called_once_with(
         authorization_context=authorization_context,
         forwarded_headers=forwarded_headers,
     )
+
+    # THEN MCP tools are set
     assert agent.mcp_tools == ["tool1"]
+
+    # THEN ragas event listener was setup
     assert mock_ragas_event_listener.called_setup
 
+    # THEN there is just one event
     assert len(events) == 1
+
+    # THEN the event is a tuple of (delta, pipeline interactions, UsageMetrics)
     delta, pipeline_interactions, usage = events[0]
+
+    # THEN delta is the expected delta
     assert delta == "agent result"
+
+    # THEN pipeline interactions is not None and is a MultiTurnSample
     assert pipeline_interactions is not None
     assert isinstance(pipeline_interactions, MultiTurnSample)
+
+    # THEN pipeline interactions has expected events
     assert pipeline_interactions.user_input == [
         HumanMessage(content="hi"),
         AIMessage(content="there", metadata=None, type="ai", tool_calls=None),
     ]
+
+    # THEN usage is the expected usage
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
 
 
 async def test_invoke_does_not_include_chat_history_by_default(
-    patch_mcp_tools_context, mock_ragas_event_listener
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -190,14 +191,14 @@ async def test_invoke_does_not_include_chat_history_by_default(
     agent = TestAgent(out, api_base="https://x/", api_key="k", verbose=False)
     agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
-    _ = [event async for event in agent.invoke(_run_input_with_history())]
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["topic"] == "Follow-up"
     assert "chat_history" not in captured_inputs
 
 
 async def test_invoke_overwrites_blank_chat_history_placeholder(
-    patch_mcp_tools_context, mock_ragas_event_listener
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -214,7 +215,7 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
     agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
     agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
-    _ = [event async for event in agent.invoke(_run_input_with_history())]
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     history = captured_inputs["chat_history"]
     assert isinstance(history, str)
@@ -226,7 +227,7 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
 
 
 async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
-    patch_mcp_tools_context, mock_ragas_event_listener
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -243,7 +244,6 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
     agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
     agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
-    _ = [event async for event in agent.invoke(_run_input_with_history())]
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
-

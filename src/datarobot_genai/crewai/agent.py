@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import abc
 import asyncio
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -40,8 +39,8 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import build_history_summary
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.crewai.events import CrewAIRagasEventListener
 from datarobot_genai.core.config import get_max_history_messages_default
+from datarobot_genai.crewai.events import CrewAIRagasEventListener
 
 from .mcp import mcp_tools_context
 
@@ -50,17 +49,6 @@ if TYPE_CHECKING:
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
     from ragas.messages import ToolMessage
-
-
-def create_pipeline_interactions_from_messages(
-    messages: Sequence[HumanMessage | AIMessage | ToolMessage] | None,
-) -> MultiTurnSample | None:
-    if not messages:
-        return None
-    # Lazy import to reduce memory overhead when ragas is not used
-    from ragas import MultiTurnSample
-
-    return MultiTurnSample(user_input=messages)
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
@@ -103,7 +91,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         """Build a plain-text summary of prior turns for Crew inputs."""
         return build_history_summary(
             {"messages": getattr(run_agent_input, "messages", []) or []},
-            getattr(self, "MAX_HISTORY_MESSAGES", get_max_history_messages_default()),
+            self.MAX_HISTORY_MESSAGES,
         )
 
     @classmethod

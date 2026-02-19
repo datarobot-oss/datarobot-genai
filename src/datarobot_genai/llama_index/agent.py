@@ -21,7 +21,6 @@ from typing import cast
 
 from ag_ui.core import RunAgentInput
 from llama_index.core.base.llms.types import LLMMetadata
-from llama_index.core.llms import ChatMessage
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
 from llama_index.llms.litellm import LiteLLM
@@ -30,7 +29,6 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
-from datarobot_genai.core.agents.base import extract_history_messages
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.config import get_max_history_messages_default
 
@@ -93,23 +91,23 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         Default implementation:
         - Uses the last user message as the primary request.
         - Does NOT include prior turns by default.
-        - History is opt-in: if the input string contains a `{chat_history}`
-          placeholder, it will be replaced with a rendered transcript of prior
-          turns (excluding the latest user message).
+        - Subclasses can include a `{chat_history}` placeholder in their template,
+          which will be replaced by the base class `invoke` method with actual
+          conversation history.
         """
         user_prompt_content = extract_user_prompt_content(run_agent_input)
-        current_text = str(user_prompt_content)
-        if "{chat_history}" not in current_text:
-            return current_text
-
-        history_summary = self.build_history_summary(
-            {"messages": getattr(run_agent_input, "messages", []) or []}
-        )
-        return current_text.replace("{chat_history}", history_summary)
+        return str(user_prompt_content)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
         input_message = self.make_input_message(run_agent_input)
+
+        # Handle {chat_history} placeholder replacement for subclass templates
+        if "{chat_history}" in input_message:
+            history_summary = self.build_history_summary(
+                {"messages": getattr(run_agent_input, "messages", []) or []}
+            )
+            input_message = input_message.replace("{chat_history}", history_summary)
 
         # Load MCP tools (if configured) asynchronously before building workflow
         mcp_tools = await load_mcp_tools(

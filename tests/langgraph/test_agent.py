@@ -19,10 +19,10 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from ag_ui.core import AssistantMessage
 from ag_ui.core import BaseEvent
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
-from ag_ui.core import AssistantMessage
 from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
@@ -212,8 +212,8 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
 
 
 def test_convert_input_message_includes_history() -> None:
-    """convert_input_message should preserve prior turns as chat history."""
-    agent = SimpleLangGraphAgent()
+    """convert_input_message should include history when template uses {chat_history}."""
+    agent = HistoryAwareLangGraphAgent()
     run_agent_input = RunAgentInput(
         messages=[
             AgSystemMessage(id="sys_1", content="You are a helper."),
@@ -232,19 +232,23 @@ def test_convert_input_message_includes_history() -> None:
     command = agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
-    # Expect 3 history messages (system, first user, assistant)
-    # plus the templated final user messages (system + user).
-    assert len(all_messages) == 5
+    # History is embedded as string in the template, so we expect 2 messages:
+    # - System message with history transcript + user message
+    assert len(all_messages) == 2
     assert isinstance(all_messages[0], SystemMessage)
     assert isinstance(all_messages[1], HumanMessage)
-    assert isinstance(all_messages[2], AIMessage)
-    assert isinstance(all_messages[-2], SystemMessage)
-    assert isinstance(all_messages[-1], HumanMessage)
+
+    # Verify history is embedded in the system message
+    system_content = str(all_messages[0].content)
+    assert "History transcript:" in system_content
+    assert "system: You are a helper." in system_content
+    assert "First question" in system_content
+    assert "First answer" in system_content
 
 
 def test_convert_input_message_truncates_history() -> None:
     """History is truncated to MAX_HISTORY_MESSAGES prior turns."""
-    agent = SimpleLangGraphAgent()
+    agent = HistoryAwareLangGraphAgent()
     max_history = agent.MAX_HISTORY_MESSAGES
 
     # Create more messages than MAX_HISTORY_MESSAGES, all user role so that
@@ -266,9 +270,19 @@ def test_convert_input_message_truncates_history() -> None:
     command = agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
-    # We expect MAX_HISTORY_MESSAGES history messages plus the 2 templated
-    # messages for the final user turn.
-    assert len(all_messages) == max_history + 2
+    # We expect 2 templated messages (system + user)
+    assert len(all_messages) == 2
+
+    # Verify history in system message is truncated
+    system_content = str(all_messages[0].content)
+    # The earliest messages should not appear (truncated)
+    # Use exact match with closing brace to avoid substring matches (e.g., "Topic 1" in "Topic 10")
+    assert '"topic": "Topic 0"' not in system_content
+    # The last message (Topic 29) should be excluded from history
+    assert '"topic": "Topic 29"' not in system_content
+    # Messages within the history window should appear
+    assert '"topic": "Topic 9"' in system_content
+
 
 def test_convert_input_message_injects_chat_history_variable() -> None:
     """convert_input_message should provide {chat_history} to the prompt template."""
