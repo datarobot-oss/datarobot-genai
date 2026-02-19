@@ -21,7 +21,7 @@ from datarobot.models.model import Model
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
@@ -54,7 +54,7 @@ class ModelEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-@dr_mcp_tool(tags={"predictive", "model", "read", "management", "info"})
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "info"})
 async def get_best_model(
     *,
     project_id: Annotated[str, "The DataRobot project ID"] | None = None,
@@ -113,7 +113,7 @@ async def get_best_model(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "model", "read", "scoring", "dataset"})
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "scoring", "dataset"})
 async def score_dataset_with_model(
     *,
     project_id: Annotated[str, "The DataRobot project ID"] | None = None,
@@ -144,7 +144,7 @@ async def score_dataset_with_model(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "model", "read", "management", "list"})
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "list"})
 async def list_models(
     *,
     project_id: Annotated[str, "The DataRobot project ID"] | None = None,

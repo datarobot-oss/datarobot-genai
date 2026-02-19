@@ -18,14 +18,14 @@ from typing import Annotated
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"predictive", "project", "read", "management", "list"})
+@dr_mcp_integration_tool(tags={"predictive", "project", "read", "management", "list"})
 async def list_projects() -> ToolResult:
     """List all DataRobot projects for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -38,7 +38,7 @@ async def list_projects() -> ToolResult:
     )
 
 
-@dr_mcp_tool(tags={"predictive", "project", "read", "data", "info"})
+@dr_mcp_integration_tool(tags={"predictive", "project", "read", "data", "info"})
 async def get_project_dataset_by_name(
     *,
     project_id: Annotated[str, "The ID of the DataRobot project."] | None = None,

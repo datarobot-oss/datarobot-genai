@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+from typing import Any
 from typing import get_args
 from unittest.mock import patch
 
@@ -19,7 +20,6 @@ import pytest
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
-from datarobot_genai.drmcp.core.config import _apply_mcp_cli_configs_overrides
 from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
@@ -238,8 +238,22 @@ class TestToolConfiguration:
             assert config.tool_config.is_microsoft_oauth_configured is False
 
 
+class _MCPServerConfigNoEnvFile(MCPServerConfig):
+    """Subclass that forces _env_file=None so .env is never loaded (used in tests)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["_env_file"] = None
+        super().__init__(*args, **kwargs)
+
+
 class TestMCPCLIConfigs:
     """Test MCP_CLI_CONFIGS override: only when option in list, at default, and env not set."""
+
+    @pytest.fixture(autouse=True)
+    def no_env_file(self) -> None:
+        """Prevent loading .env so only patched os.environ is used."""
+        with patch.object(config_module, "MCPServerConfig", _MCPServerConfigNoEnvFile):
+            yield
 
     def _reset_config(self) -> None:
         config_module._config = None
@@ -248,9 +262,7 @@ class TestMCPCLIConfigs:
         """When MCP_CLI_CONFIGS is unset, no overrides; all fields keep model defaults."""
         with patch.dict(os.environ, {}, clear=True):
             self._reset_config()
-            # Build config without loading .env so MCP_CLI_CONFIGS is truly unset
-            config = MCPServerConfig(_env_file=None)
-            config = _apply_mcp_cli_configs_overrides(config)
+            config = get_config()
             assert config.mcp_cli_configs == ""
             assert config.mcp_server_register_dynamic_tools_on_startup is False
             assert config.mcp_server_register_dynamic_prompts_on_startup is False
@@ -269,6 +281,7 @@ class TestMCPCLIConfigs:
             self._reset_config()
             config = get_config()
             assert config.mcp_server_register_dynamic_tools_on_startup is False
+            assert config.tool_config.enable_predictive_tools is True
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
@@ -284,7 +297,7 @@ class TestMCPCLIConfigs:
             config = get_config()
             assert config.mcp_server_register_dynamic_tools_on_startup is True
             assert config.mcp_server_register_dynamic_prompts_on_startup is False
-            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_predictive_tools is False
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
@@ -421,6 +434,14 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
+    def test_predictive_tools_default_true_without_env_file(self) -> None:
+        """Regression: without loading .env, enable_predictive_tools keeps model default True."""
+        with patch.dict(os.environ, {}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_predictive_tools is True
+            self._reset_config()
+
     def test_predictive_default_true_stays_true_when_in_mcp_cli_configs(self) -> None:
         """Predictive has default True; when in MCP_CLI_CONFIGS and no env, stays True."""
         with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "predictive"}, clear=True):
@@ -435,13 +456,25 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
+    def test_predictive_in_mcp_cli_configs_but_env_false_respected(self) -> None:
+        """ENABLE_PREDICTIVE_TOOLS=false with predictive in list: env wins, stays False."""
+        with patch.dict(
+            os.environ,
+            {"MCP_CLI_CONFIGS": "predictive", "ENABLE_PREDICTIVE_TOOLS": "false"},
+            clear=True,
+        ):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_predictive_tools is False
+            self._reset_config()
+
     def test_dynamic_prompts_override_when_in_mcp_cli_configs(self) -> None:
         """dynamic_prompts default False; when in MCP_CLI_CONFIGS and no env, becomes True."""
         with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "dynamic_prompts"}, clear=True):
             self._reset_config()
             config = get_config()
             assert config.mcp_server_register_dynamic_prompts_on_startup is True
-            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_predictive_tools is False
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
