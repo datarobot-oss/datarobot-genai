@@ -177,8 +177,9 @@ def test_init_with_additional_kwargs(workflow_path):
         _ = agent.extra_param1
 
 
-def test_make_chat_request_includes_history(workflow_path):
-    """NatAgent history injection: invoke() appends prior turns to the user prompt."""
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_includes_chat_history(workflow_path):
+    """NatAgent.invoke() appends prior turns to the user prompt."""
     agent = NatAgent(workflow_path=workflow_path)
 
     run_agent_input = RunAgentInput(
@@ -196,18 +197,24 @@ def test_make_chat_request_includes_history(workflow_path):
         context=[],
     )
 
-    # Replicate the same history injection that invoke() performs
-    user_prompt = agent.make_user_prompt(run_agent_input)
-    history_summary = agent.build_history_summary(run_agent_input)
-    if history_summary:
-        user_prompt = f"{user_prompt}\n\nPrior conversation:\n{history_summary}"
+    captured_prompts: list[str] = []
+    original = agent.make_chat_request
 
-    chat_request = agent.make_chat_request(user_prompt)
-    text = chat_request.messages[0].content
+    def capturing(user_prompt: str):  # type: ignore[no-untyped-def]
+        captured_prompts.append(user_prompt)
+        return original(user_prompt)
+
+    agent.make_chat_request = capturing  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    assert len(captured_prompts) == 1
+    text = captured_prompts[0]
+    assert "Prior conversation:" in text
     assert "system: You are a helper." in text
     assert "user: First question" in text
     assert "assistant: First answer" in text
-    assert "Follow-up" in text
+    assert text.startswith("Follow-up")
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")

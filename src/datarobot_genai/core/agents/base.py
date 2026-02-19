@@ -30,6 +30,7 @@ from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
@@ -58,15 +59,12 @@ class BaseAgent(Generic[TTool], abc.ABC):
     def max_history_messages(self) -> int:
         """Maximum number of prior messages to include in chat history.
 
-        Evaluated lazily so the ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES``
-        environment variable is read at call time, not at module import.
-        Subclasses can override via the constructor parameter, the setter,
-        or by overriding this property.
+        Defaults to ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES`` env var (read at
+        call time). Subclasses can override via the constructor parameter or
+        by overriding this property.
         """
         if self._max_history_messages is not None:
             return self._max_history_messages
-        from datarobot_genai.core.config import get_max_history_messages_default
-
         return get_max_history_messages_default()
 
     def __init__(

@@ -264,18 +264,30 @@ def test_make_input_message_zero_history_disables_summary(
     assert text == "Follow-up"
 
 
-def test_make_input_message_replaces_chat_history_placeholder() -> None:
-    """History is injected only when `{chat_history}` placeholder is present."""
-    workflow = Workflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow)
+@pytest.mark.usefixtures("mock_load_mcp_tools")
+async def test_invoke_replaces_chat_history_placeholder() -> None:
+    """invoke() replaces {chat_history} placeholder with actual history."""
+    captured_msgs: list[str] = []
 
-    # Create a RunAgentInput with a user message containing the {chat_history} placeholder
+    class CapturingWorkflow(Workflow):
+        def run(self, *, user_msg: str) -> Handler:
+            captured_msgs.append(user_msg)
+            return super().run(user_msg=user_msg)
+
+    class AgentWithPlaceholder(MyLlamaAgent):
+        def make_input_message(self, run_agent_input: Any) -> str:
+            user_prompt = super().make_input_message(run_agent_input)
+            return f"History:\n{{chat_history}}\n\nLatest: {user_prompt}"
+
+    workflow = CapturingWorkflow(events=[], state="S")
+    agent = AgentWithPlaceholder(workflow)
+
     run_agent_input = RunAgentInput(
         messages=[
             AgSystemMessage(id="sys_1", content="You are a helper."),
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"),
+            UserMessage(id="user_2", content="Follow-up"),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -285,12 +297,10 @@ def test_make_input_message_replaces_chat_history_placeholder() -> None:
         context=[],
     )
 
-    # Replicate the {chat_history} replacement that invoke() performs
-    text = agent.make_input_message(run_agent_input)
-    if "{chat_history}" in text:
-        history_summary = agent.build_history_summary(run_agent_input)
-        text = text.replace("{chat_history}", history_summary)
+    _ = [event async for event in agent.invoke(run_agent_input)]
 
+    assert len(captured_msgs) == 1
+    text = captured_msgs[0]
     assert "system: You are a helper." in text
     assert "user: First question" in text
     assert "assistant: First answer" in text
