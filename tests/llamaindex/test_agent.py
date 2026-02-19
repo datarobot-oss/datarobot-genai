@@ -256,10 +256,9 @@ def test_make_input_message_includes_history_summary(run_agent_input_with_histor
 def test_make_input_message_zero_history_disables_summary(
     run_agent_input_with_history,
 ) -> None:
-    """When MAX_HISTORY_MESSAGES is 0, history should be disabled."""
+    """When max_history_messages is 0, history should be disabled."""
     workflow = Workflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow)
-    agent.MAX_HISTORY_MESSAGES = 0
+    agent = MyLlamaAgent(workflow, max_history_messages=0)
 
     text = agent.make_input_message(run_agent_input_with_history)
     assert text == "Follow-up"
@@ -286,7 +285,12 @@ def test_make_input_message_replaces_chat_history_placeholder() -> None:
         context=[],
     )
 
+    # Replicate the {chat_history} replacement that invoke() performs
     text = agent.make_input_message(run_agent_input)
+    if "{chat_history}" in text:
+        history_summary = agent.build_history_summary(run_agent_input)
+        text = text.replace("{chat_history}", history_summary)
+
     assert "system: You are a helper." in text
     assert "user: First question" in text
     assert "assistant: First answer" in text

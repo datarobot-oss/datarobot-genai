@@ -30,7 +30,6 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.config import get_max_history_messages_default
 
 from .mcp import load_mcp_tools
 
@@ -60,8 +59,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         super().__init__(*args, **kwargs)
         self._mcp_tools: list[Any] = []
 
-    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
-
     def set_mcp_tools(self, tools: list[Any]) -> None:
         """Set MCP tools for this agent."""
         self._mcp_tools = tools
@@ -86,15 +83,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         raise NotImplementedError
 
     def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        """Create an input string for the workflow from the user prompt.
-
-        Default implementation:
-        - Uses the last user message as the primary request.
-        - Does NOT include prior turns by default.
-        - Subclasses can include a `{chat_history}` placeholder in their template,
-          which will be replaced by the base class `invoke` method with actual
-          conversation history.
-        """
+        """Create an input string for the workflow from the user prompt."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         return str(user_prompt_content)
 
@@ -104,10 +93,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Handle {chat_history} placeholder replacement for subclass templates
         if "{chat_history}" in input_message:
-            history_summary = self.build_history_summary(
-                {"messages": getattr(run_agent_input, "messages", []) or []}
+            history_summary = self.build_history_summary(run_agent_input)
+            formatted_history = (
+                f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
             )
-            input_message = input_message.replace("{chat_history}", history_summary)
+            input_message = input_message.replace("{chat_history}", formatted_history)
 
         # Load MCP tools (if configured) asynchronously before building workflow
         mcp_tools = await load_mcp_tools(

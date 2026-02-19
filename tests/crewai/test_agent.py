@@ -220,6 +220,7 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
     history = captured_inputs["chat_history"]
     assert isinstance(history, str)
     assert history.strip() != ""
+    assert "Prior conversation:" in history
     assert "system: You are a helper." in history
     assert "user: First question" in history
     assert "assistant: First answer" in history

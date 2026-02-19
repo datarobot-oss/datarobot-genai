@@ -30,7 +30,6 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.mcp.common import MCPConfig
 from datarobot_genai.nat.helpers import load_workflow
 
@@ -139,14 +138,11 @@ class NatAgent(BaseAgent[None]):
         )
         self.workflow_path = workflow_path
 
-    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
-
     def make_user_prompt(self, run_agent_input: RunAgentInput) -> str:
         """Create the user prompt text. Override to customize formatting.
 
-        Chat history is injected via the `{chat_history}` placeholder.
-        The base class `invoke` method will detect this placeholder and
-        replace it with the actual history summary when available.
+        Chat history is automatically appended by `invoke` when
+        max_history_messages > 0 (controlled via DATAROBOT_GENAI_MAX_HISTORY_MESSAGES env var).
 
         Default implementation returns the raw user message content.
         """
@@ -158,11 +154,10 @@ class NatAgent(BaseAgent[None]):
         return ChatRequest.from_string(user_prompt)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        """Run the agent with the provided completion parameters.
+        """Run the agent with the provided input.
 
         Args:
-            completion_create_params: The completion request parameters including input topic
-            and settings.
+            run_agent_input: The agent run input including messages, tools, and context.
 
         Returns
         -------
@@ -173,12 +168,10 @@ class NatAgent(BaseAgent[None]):
         # Build the user prompt from the template
         user_prompt = self.make_user_prompt(run_agent_input)
 
-        # Handle {chat_history} placeholder replacement for subclass templates
-        if "{chat_history}" in user_prompt:
-            history_summary = self.build_history_summary(
-                {"messages": getattr(run_agent_input, "messages", []) or []}
-            )
-            user_prompt = user_prompt.replace("{chat_history}", history_summary)
+        # Automatically inject chat history when enabled (max_history_messages > 0)
+        history_summary = self.build_history_summary(run_agent_input)
+        if history_summary:
+            user_prompt = f"{user_prompt}\n\nPrior conversation:\n{history_summary}"
 
         # Create the chat request from the processed prompt
         chat_request = self.make_chat_request(user_prompt)

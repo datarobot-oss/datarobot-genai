@@ -178,7 +178,7 @@ def test_init_with_additional_kwargs(workflow_path):
 
 
 def test_make_chat_request_includes_history(workflow_path):
-    """NatAgent.make_chat_request should include history only via `{chat_history}`."""
+    """NatAgent history injection: invoke() appends prior turns to the user prompt."""
     agent = NatAgent(workflow_path=workflow_path)
 
     run_agent_input = RunAgentInput(
@@ -186,7 +186,7 @@ def test_make_chat_request_includes_history(workflow_path):
             AgSystemMessage(id="sys_1", content="You are a helper."),
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"),
+            UserMessage(id="user_2", content="Follow-up"),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -196,13 +196,18 @@ def test_make_chat_request_includes_history(workflow_path):
         context=[],
     )
 
-    chat_request = agent.make_chat_request(run_agent_input)
+    # Replicate the same history injection that invoke() performs
+    user_prompt = agent.make_user_prompt(run_agent_input)
+    history_summary = agent.build_history_summary(run_agent_input)
+    if history_summary:
+        user_prompt = f"{user_prompt}\n\nPrior conversation:\n{history_summary}"
+
+    chat_request = agent.make_chat_request(user_prompt)
     text = chat_request.messages[0].content
     assert "system: You are a helper." in text
     assert "user: First question" in text
     assert "assistant: First answer" in text
-    assert "{chat_history}" not in text
-    assert "Latest: Follow-up" in text
+    assert "Follow-up" in text
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")

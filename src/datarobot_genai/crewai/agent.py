@@ -36,10 +36,8 @@ from crewai.tools import BaseTool
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.core.agents.base import build_history_summary
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
 
 from .mcp import mcp_tools_context
@@ -57,8 +55,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     Subclasses should define the ``agents`` and ``tasks`` properties
     and may override ``crew`` to customize the workflow construction.
     """
-
-    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
     @property
     @abc.abstractmethod
@@ -84,15 +80,46 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         Subclasses must implement this to provide the exact inputs required
         by their CrewAI tasks.
+
+        Expected inputs:
+
+        - ``topic`` (or similar): The user's prompt content. This is required
+          and should be passed through to CrewAI tasks that use placeholders
+          like ``{topic}`` in their descriptions.
+
+        - ``chat_history`` (optional): Include this key with an empty string
+          value (``""``) to opt into automatic chat history injection. When
+          present, the base class will populate it with a plain-text summary
+          of prior conversation turns. Use ``{chat_history}`` in agent
+          goals/backstories or task descriptions to reference it.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary of inputs that will be passed to ``Crew.kickoff()``.
+            The dictionary keys should match the placeholder names used in
+            your CrewAI task descriptions and agent configurations.
+
+        Examples
+        --------
+        Basic implementation (no history):
+
+        .. code-block:: python
+
+            def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+                return {"topic": user_prompt_content}
+
+        With chat history opt-in:
+
+        .. code-block:: python
+
+            def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+                return {
+                    "topic": user_prompt_content,
+                    "chat_history": "",  # Will be auto-populated with prior turns
+                }
         """
         raise NotImplementedError
-
-    def _build_history_summary(self, run_agent_input: RunAgentInput) -> str:
-        """Build a plain-text summary of prior turns for Crew inputs."""
-        return build_history_summary(
-            {"messages": getattr(run_agent_input, "messages", []) or []},
-            self.MAX_HISTORY_MESSAGES,
-        )
 
     @classmethod
     def create_pipeline_interactions_from_messages(
@@ -155,15 +182,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
                 # in prompts).
                 if "chat_history" in kickoff_inputs:
-                    history_summary = self._build_history_summary(run_agent_input)
-                    existing_history = kickoff_inputs.get("chat_history")
-                    try:
-                        existing_history_text = str(existing_history or "")
-                    except Exception:
-                        existing_history_text = ""
+                    history_summary = self.build_history_summary(run_agent_input)
+                    existing_history_text = str(kickoff_inputs.get("chat_history") or "")
 
                     if history_summary and not existing_history_text.strip():
-                        kickoff_inputs["chat_history"] = history_summary
+                        kickoff_inputs["chat_history"] = (
+                            f"\n\nPrior conversation:\n{history_summary}"
+                        )
 
                 crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
                 yield self._process_crew_output(crew_output, ragas_event_listener.messages)

@@ -40,9 +40,7 @@ from langgraph.types import Command
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.core.agents.base import build_history_summary
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 if TYPE_CHECKING:
@@ -62,8 +60,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     declares and uses a `{chat_history}` input variable. If the template does
     not use `{chat_history}`, no chat history is passed to the model.
     """
-
-    MAX_HISTORY_MESSAGES: int = get_max_history_messages_default()
 
     @property
     @abc.abstractmethod
@@ -100,14 +96,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         except TypeError:
             vars_list = []
         uses_chat_history = "chat_history" in vars_list
-        history_summary = (
-            build_history_summary(
-                {"messages": getattr(run_agent_input, "messages", []) or []},
-                self.MAX_HISTORY_MESSAGES,
-            )
-            if uses_chat_history
-            else ""
-        )
+        history_summary = self.build_history_summary(run_agent_input) if uses_chat_history else ""
 
         # Prefer structured dict input when available so templates can access both
         # the original fields (e.g. {topic}) and a plain-text {chat_history}.

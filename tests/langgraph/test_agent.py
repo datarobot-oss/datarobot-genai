@@ -247,11 +247,11 @@ def test_convert_input_message_includes_history() -> None:
 
 
 def test_convert_input_message_truncates_history() -> None:
-    """History is truncated to MAX_HISTORY_MESSAGES prior turns."""
+    """History is truncated to max_history_messages prior turns."""
     agent = HistoryAwareLangGraphAgent()
-    max_history = agent.MAX_HISTORY_MESSAGES
+    max_history = agent.max_history_messages
 
-    # Create more messages than MAX_HISTORY_MESSAGES, all user role so that
+    # Create more messages than max_history_messages, all user role so that
     # everything before the final one is treated as history.
     messages = [
         UserMessage(id=f"user_{i}", content=f'{{"topic": "Topic {i}"}}')
@@ -323,9 +323,8 @@ def test_convert_input_message_injects_chat_history_variable() -> None:
 
 
 def test_convert_input_message_zero_history_disables_history() -> None:
-    """When MAX_HISTORY_MESSAGES is 0, no prior turns are included."""
-    agent = SimpleLangGraphAgent()
-    agent.MAX_HISTORY_MESSAGES = 0
+    """When max_history_messages is 0, no prior turns are included."""
+    agent = SimpleLangGraphAgent(max_history_messages=0)
 
     run_agent_input = RunAgentInput(
         messages=[

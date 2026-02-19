@@ -26,17 +26,14 @@ from typing import Optional
 from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
-from typing import cast
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 
-from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
 if TYPE_CHECKING:
-    from openai.types.chat import CompletionCreateParams
     from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
@@ -52,9 +49,25 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - timeout: Request timeout
       - verbose: Verbosity flag
       - authorization_context: Authorization context for downstream agents/tools
+      - max_history_messages: Maximum number of prior messages to include in chat history
     """
 
-    MAX_HISTORY_MESSAGES: int = DEFAULT_MAX_HISTORY_MESSAGES
+    _max_history_messages: int | None
+
+    @property
+    def max_history_messages(self) -> int:
+        """Maximum number of prior messages to include in chat history.
+
+        Evaluated lazily so the ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES``
+        environment variable is read at call time, not at module import.
+        Subclasses can override via the constructor parameter, the setter,
+        or by overriding this property.
+        """
+        if self._max_history_messages is not None:
+            return self._max_history_messages
+        from datarobot_genai.core.config import get_max_history_messages_default
+
+        return get_max_history_messages_default()
 
     def __init__(
         self,
@@ -66,8 +79,10 @@ class BaseAgent(Generic[TTool], abc.ABC):
         timeout: int | None = 90,
         authorization_context: dict[str, Any] | None = None,
         forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
         **_: Any,
     ) -> None:
+        self._max_history_messages = max_history_messages
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
         self.api_base = (
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
@@ -116,15 +131,15 @@ class BaseAgent(Generic[TTool], abc.ABC):
 
     def build_history_summary(
         self,
-        completion_create_params: CompletionCreateParams | Mapping[str, Any],
+        run_agent_input: RunAgentInput,
     ) -> str:
         """Instance helper to summarize prior turns as plain-text transcript.
 
-        Subclasses can override ``MAX_HISTORY_MESSAGES`` to control how many
+        Subclasses can override ``max_history_messages`` to control how many
         prior messages are included. This is primarily intended for exposing a
         ``chat_history`` variable in prompts across different agent types.
         """
-        return build_history_summary(completion_create_params, self.MAX_HISTORY_MESSAGES)
+        return _build_history_summary_from_messages(run_agent_input, self.max_history_messages)
 
     @classmethod
     def create_pipeline_interactions_from_events(
@@ -217,13 +232,13 @@ def _summarize_tool_calls(tool_calls: Any) -> str:
 
 
 def extract_history_messages(
-    completion_create_params: CompletionCreateParams | Mapping[str, Any],
+    run_agent_input: RunAgentInput,
     max_history: int,
 ) -> list[NormalizedHistoryMessage]:
     r"""Return normalized prior messages to use as chat history.
 
     Behaviour:
-    - Considers ``completion_create_params['messages']`` in order.
+    - Considers ``run_agent_input.messages`` in order.
     - If the *final* message is a ``"user"`` message, treats everything *before*
       it as history (so the latest user turn can be handled separately).
     - Otherwise treats all provided messages as history.
@@ -235,8 +250,7 @@ def extract_history_messages(
     - When ``max_history <= 0``, history is disabled and an empty list is returned.
       This matches the documented semantics where 0 means "no history".
     """
-    params = cast(Mapping[str, Any], completion_create_params)
-    raw_messages = list(params.get("messages", []))
+    raw_messages = list(getattr(run_agent_input, "messages", []) or [])
     if not raw_messages or max_history <= 0:
         return []
 
@@ -248,7 +262,7 @@ def extract_history_messages(
 
     # Keep only the most recent N messages in history to avoid unbounded growth
     # when callers provide long transcripts.
-    if max_history and len(history_slice) > max_history:
+    if len(history_slice) > max_history:
         history_slice = history_slice[-max_history:]
 
     history: list[NormalizedHistoryMessage] = []
@@ -293,11 +307,11 @@ def extract_history_messages(
     return history
 
 
-def build_history_summary(
-    completion_create_params: CompletionCreateParams | Mapping[str, Any],
+def _build_history_summary_from_messages(
+    run_agent_input: RunAgentInput,
     max_history: int,
 ) -> str:
-    """Build a plain-text summary of prior turns for prompts.
+    r"""Build a plain-text summary of prior turns for prompts.
 
     This is a convenience helper around ``extract_history_messages`` that:
     - Uses the same history selection semantics as ``extract_history_messages``
@@ -305,8 +319,13 @@ def build_history_summary(
     - Normalizes them into ``{role, content}`` dicts
     and then renders a newline-separated transcript of the form
     ``role: content``.
+
+    Returns an empty string when there is no history to include. Callers that
+    embed the result in a prompt section (e.g. "Prior conversation:\\n{summary}")
+    should check for an empty return value and omit the section entirely to
+    avoid dangling headers.
     """
-    history = extract_history_messages(completion_create_params, max_history)
+    history = extract_history_messages(run_agent_input, max_history)
     if not history:
         return ""
 
