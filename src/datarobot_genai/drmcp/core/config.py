@@ -413,7 +413,7 @@ def _individual_env_set_for_field(
 
 
 def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig:
-    """Override from MCP_CLI_CONFIGS when field is at default and individual env not set."""
+    """Apply MCP_CLI_CONFIGS: listed options enabled; others disabled unless individual env set."""
     raw = (config.mcp_cli_configs or "").strip()
     if not raw:
         return config
@@ -421,8 +421,6 @@ def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig
     root_updates: dict[str, Any] = {}
     tool_updates: dict[str, Any] = {}
     for mcp_opt, root_attr, tool_attr in MCP_CLI_OPTS:
-        if mcp_opt not in enabled:
-            continue
         attr = root_attr if root_attr is not None else tool_attr
         assert attr is not None  # each MCP_CLI_OPTS row has either root_attr or tool_attr
         model: type[MCPServerConfig] | type[MCPToolConfig] = (
@@ -430,17 +428,24 @@ def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig
         )
         if _individual_env_set_for_field(model, attr):
             continue
-        if root_attr is not None:
-            current = getattr(config, root_attr)
-            default = MCPServerConfig.model_fields[root_attr].default
-            if current == default:
-                root_updates[root_attr] = True
+        if mcp_opt in enabled:
+            if root_attr is not None:
+                current = getattr(config, root_attr)
+                default = MCPServerConfig.model_fields[root_attr].default
+                if current == default:
+                    root_updates[root_attr] = True
+            else:
+                assert tool_attr is not None
+                current = getattr(config.tool_config, tool_attr)
+                default = MCPToolConfig.model_fields[tool_attr].default
+                if current == default:
+                    tool_updates[tool_attr] = True
+        elif root_attr is not None:
+            # Option not in MCP_CLI_CONFIGS: disable.
+            root_updates[root_attr] = False
         else:
             assert tool_attr is not None
-            current = getattr(config.tool_config, tool_attr)
-            default = MCPToolConfig.model_fields[tool_attr].default
-            if current == default:
-                tool_updates[tool_attr] = True
+            tool_updates[tool_attr] = False
     if tool_updates:
         root_updates["tool_config"] = config.tool_config.model_copy(update=tool_updates)
     if not root_updates:

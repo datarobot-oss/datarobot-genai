@@ -19,10 +19,10 @@ These tools are loaded by the MCP server and are available for testing purposes.
 """
 
 from datarobot_genai.drmcp.core.auth import must_get_auth_context
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
 
 
-@dr_mcp_tool()
+@dr_mcp_integration_tool()
 async def get_auth_context_user_info() -> str:
     """
     Tool that retrieves and returns user info like ID, name, and email from the auth context.

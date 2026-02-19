@@ -44,9 +44,9 @@ tasks:
     silent: true
 
   smoke-extras-none:
-    desc: "🧪 Test with no extras"
+    desc: "🧪 Test with no dependency groups"
     cmds:
-      - echo "🧪 Testing with no extras (fresh venv like CI)..."
+      - echo "🧪 Testing with no dependency groups (fresh venv like CI)..."
       - rm -rf .venv-ci-test
       - python -m venv .venv-ci-test
       - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
@@ -56,69 +56,59 @@ tasks:
     silent: true
 
   smoke-extras-crewai:
-    desc: "🧪 Test with crewai extra"
+    desc: "🧪 Test with crewai dependency group"
     cmds:
-      - echo "🧪 Testing with crewai extra (fresh venv like CI)..."
+      - echo "🧪 Testing with crewai dependency group (fresh venv like CI)..."
       - rm -rf .venv-ci-test
-      - python -m venv .venv-ci-test
-      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
-      - source .venv-ci-test/bin/activate && pip install ".[crewai]"
+      - VIRTUAL_ENV=.venv-ci-test uv sync --group crewai --no-dev
       - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "crewai"
       - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-langgraph:
-    desc: "🧪 Test with langgraph extra"
+    desc: "🧪 Test with langgraph dependency group"
     cmds:
-      - echo "🧪 Testing with langgraph extra (fresh venv like CI)..."
+      - echo "🧪 Testing with langgraph dependency group (fresh venv like CI)..."
       - rm -rf .venv-ci-test
-      - python -m venv .venv-ci-test
-      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
-      - source .venv-ci-test/bin/activate && pip install ".[langgraph]"
+      - VIRTUAL_ENV=.venv-ci-test uv sync --group langgraph --no-dev
       - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "langgraph"
       - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-llamaindex:
-    desc: "🧪 Test with llamaindex extra"
+    desc: "🧪 Test with llamaindex dependency group"
     cmds:
-      - echo "🧪 Testing with llamaindex extra (fresh venv like CI)..."
+      - echo "🧪 Testing with llamaindex dependency group (fresh venv like CI)..."
       - rm -rf .venv-ci-test
-      - python -m venv .venv-ci-test
-      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
-      - source .venv-ci-test/bin/activate && pip install ".[llamaindex]"
+      - VIRTUAL_ENV=.venv-ci-test uv sync --group llamaindex --no-dev
       - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "llamaindex"
       - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-drmcp:
-    desc: "🧪 Test with drmcp extra"
+    desc: "🧪 Test with drmcp dependency group"
     cmds:
-      - echo "🧪 Testing with drmcp extra (fresh venv like CI)..."
+      - echo "🧪 Testing with drmcp dependency group (fresh venv like CI)..."
       - rm -rf .venv-ci-test
-      - python -m venv .venv-ci-test
-      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
-      - source .venv-ci-test/bin/activate && pip install ".[drmcp]"
+      - VIRTUAL_ENV=.venv-ci-test uv sync --group drmcp --no-dev
       - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "drmcp"
       - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-all:
-    desc: "🧪 Test with all extras"
+    desc: "🧪 Test with all dependency groups"
     cmds:
-      - echo "🧪 Testing with all extras (fresh venv like CI)..."
+      - echo "🧪 Testing with all dependency groups (fresh venv like CI)..."
       - rm -rf .venv-ci-test
-      - python -m venv .venv-ci-test
-      - source .venv-ci-test/bin/activate && python -m pip install -U pip wheel setuptools
-      - source .venv-ci-test/bin/activate && pip install ".[crewai,langgraph,llamaindex,drmcp]"
+      - VIRTUAL_ENV=.venv-ci-test uv sync --group crewai --group langgraph --group llamaindex --group drmcp --no-dev
       - source .venv-ci-test/bin/activate && python scripts/smoke_optional_extras.py --extras "all"
       - rm -rf .venv-ci-test
     silent: true
 
   smoke-extras-matrix:
-    desc: "🧪 Test all optional extras combinations (like CI matrix)"
+    desc: "🧪 Test all dependency group combinations (like CI matrix)"
     cmds:
-      - echo "🧪 Testing all extras combinations..."
+      - echo "🧪 Testing all dependency group combinations..."
       - task: smoke-extras-none
       - task: smoke-extras-crewai
       - task: smoke-extras-langgraph
