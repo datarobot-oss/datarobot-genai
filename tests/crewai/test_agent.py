@@ -74,11 +74,14 @@ class TestAgent(CrewAIAgent):
     def tasks(self) -> list[Any]:
         return [object()]
 
-    def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-        return {"topic": user_prompt_content}
+    def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+        return {"topic": user_prompt_content, "context": context}
 
     def crew(self) -> Any:
         return TestCrew(self.crew_output)
+
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> str:
+        return ""
 
 
 # --- Tests for create_pipeline_interactions_from_messages ---
