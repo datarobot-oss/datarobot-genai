@@ -21,8 +21,8 @@ No API keys or external services are required — the tool directly indexes
 the public documentation site using a TF-IDF search over page titles and
 body text.
 
-For use without an MCP server, import the LangChain tools directly from
-:mod:`datarobot_genai.drmcp.tools.dr_docs.langchain_tools` (or via the
+For use without an MCP server, import the tool functions directly from
+:mod:`datarobot_genai.drmcp.tools.dr_docs.local_tools` (or via the
 package ``__init__``).
 """
 
@@ -31,20 +31,20 @@ from typing import Annotated
 
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS_DEFAULT
-from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import (
+from datarobot_genai.drmcp.tools.dr_docs.local_tools import (
     fetch_datarobot_doc_page as _fetch_datarobot_doc_page,
 )
-from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import (
+from datarobot_genai.drmcp.tools.dr_docs.local_tools import (
     search_datarobot_agentic_docs as _search_datarobot_agentic_docs,
 )
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"datarobot", "docs", "documentation", "search"})
+@dr_mcp_integration_tool(tags={"datarobot", "docs", "documentation", "search"})
 async def search_datarobot_agentic_docs(
     *,
     query: Annotated[
@@ -76,13 +76,11 @@ async def search_datarobot_agentic_docs(
     Note:
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
     """
-    result = await _search_datarobot_agentic_docs.ainvoke(
-        {"query": query, "max_results": max_results}
-    )
+    result = await _search_datarobot_agentic_docs(query=query, max_results=max_results)
     return ToolResult(structured_content=result)
 
 
-@dr_mcp_tool(tags={"datarobot", "docs", "documentation", "fetch", "read"})
+@dr_mcp_integration_tool(tags={"datarobot", "docs", "documentation", "fetch", "read"})
 async def fetch_datarobot_doc_page(
     *,
     url: Annotated[
@@ -105,5 +103,5 @@ async def fetch_datarobot_doc_page(
     Note:
         - Only works with English DataRobot documentation URLs (e.g. docs.datarobot.com/en/docs/).
     """
-    result = await _fetch_datarobot_doc_page.ainvoke({"url": url})
+    result = await _fetch_datarobot_doc_page(url=url)
     return ToolResult(structured_content=result)

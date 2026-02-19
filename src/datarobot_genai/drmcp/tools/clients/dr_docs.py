@@ -22,7 +22,21 @@ cached in memory for fast repeated queries.
 
 Only pages under https://docs.datarobot.com/en/docs/agentic-ai/ are indexed,
 keeping the corpus small (~28 pages) so the full index can be built in a few
-seconds at server startup.
+seconds.
+
+----------------------------------------------------------------------------------------------------
+TODO: Pre-built index (push index build out of MCP):
+Build the TF-IDF index in a separate process (workload api), then store it (serialized file or
+blob).
+Sitemap fetch, 28 HTTP requests, HTML parsing, tokenization, and index construction run outside the
+MCP.
+
+In the MCP:
+Load pre-built index from file/URL or bundled resource.
+search_docs = load index if needed + TF-IDF search.
+Same for fetch_page_content if cache page contents in the artifact.
+No sitemap or bulk HTML fetch, no parsing/tokenizing in the MCP.
+Only loads that artifact and runs search in memory.
 """
 
 import asyncio

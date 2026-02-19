@@ -39,8 +39,6 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from langchain_core.tools import tool
-
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS_DEFAULT
 from datarobot_genai.drmcp.tools.clients.dr_docs import fetch_page_content
@@ -49,7 +47,6 @@ from datarobot_genai.drmcp.tools.clients.dr_docs import search_docs
 logger = logging.getLogger(__name__)
 
 
-@tool
 async def search_datarobot_agentic_docs(
     *,
     query: Annotated[
@@ -105,7 +102,6 @@ async def search_datarobot_agentic_docs(
     return flat
 
 
-@tool
 async def fetch_datarobot_doc_page(
     *,
     url: Annotated[

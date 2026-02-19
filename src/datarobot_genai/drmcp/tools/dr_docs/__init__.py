@@ -14,21 +14,24 @@
 
 """DataRobot Agentic AI documentation tools.
 
-Exports LangChain-wrapped tools that can be used directly with LangChain,
-LangGraph, and other frameworks supporting LangChain tools.
+Exports tool functions that can be wrapped as LangChain or other framework (e.g. LlamaIndex) tools.
 
 For use with LangGraph::
 
     from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
+    from langchain_core.tools import tool
+    search_tool = tool(search_datarobot_agentic_docs)
+    agent = create_agent(model, tools=[search_tool])
 
-    result = await search_datarobot_agentic_docs.ainvoke({
+    # To call directly:
+    result = await search_tool.ainvoke({
         "query": "MCP server setup",
         "max_results": 5
     })
 """
 
-from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import fetch_datarobot_doc_page
-from datarobot_genai.drmcp.tools.dr_docs.langchain_tools import search_datarobot_agentic_docs
+from datarobot_genai.drmcp.tools.dr_docs.local_tools import fetch_datarobot_doc_page
+from datarobot_genai.drmcp.tools.dr_docs.local_tools import search_datarobot_agentic_docs
 
 __all__ = [
     "fetch_datarobot_doc_page",
