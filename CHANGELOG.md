@@ -27,6 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Dependency groups are converted into the optional `extra` options for installation, without list of default dependencies.
 
+## 0.5.2
+
+- Updated NAT MCP client for 1.4.0 changes
+- Update default transport for NAT MCP client to `streamable_http`
+- Log error and fall back to empty function group when NAT MCP client is misconfigured
+
 ## 0.5.1
 
 - Added the CHANGELOG.md file
