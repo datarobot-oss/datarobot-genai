@@ -192,6 +192,9 @@ async def test_deploy_model_error() -> None:
         assert "fail servers" in str(exc_info.value)
 
 
+# custom_model fixtures: custom.py and requirements.txt are required by the DataRobot
+# custom model format, not by pytest. They are used as fixture content when testing
+# deploy_custom_model.
 def _custom_model_fixture_dir() -> str:
     return str(Path(__file__).resolve().parent / "fixtures" / "custom_model")
 
