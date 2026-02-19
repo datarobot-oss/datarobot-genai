@@ -10,7 +10,7 @@ tasks:
     desc: "🔧 Install drmcp and dev dependencies for development"
     cmds:
       - echo "🔧 Installing DR MCP Library and dev dependencies for development"
-      - uv sync --extra drmcp --dev
+      - uv sync --group drmcp --group dev
     silent: true
 
   drmcp-dev:
@@ -52,7 +52,7 @@ tasks:
           fi
           sleep 1
         done
-    silent: true 
+    silent: true
 
   drmcp-test-otel-server-background:
     desc: "🔨 Running DR MCP Library locally in background with OTEL"
@@ -148,4 +148,3 @@ tasks:
         echo ""
         uv run python -m datarobot_genai.drmcp.test_utils.test_interactive
     silent: true
-
