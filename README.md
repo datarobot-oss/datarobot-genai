@@ -34,24 +34,25 @@
 pip install --upgrade pip
 pip install "datarobot-genai"
 ```
-
-- Optional dependencies are managed as [dependency groups](https://peps.python.org/pep-0735/) and require `uv`.
+- Optional extras:
 ```bash
-uv sync --group crewai
-uv sync --group langgraph
-uv sync --group llamaindex
-# Multiple groups:
-uv sync --group langgraph --group crewai
+pip install "datarobot-genai[crewai]"
+pip install "datarobot-genai[langgraph]"
+pip install "datarobot-genai[llamaindex]"
+# Multiple extras
+pip install "datarobot-genai[crewai,langgraph,llamaindex]"
 ```
+  Available extras include: `crewai`, `langgraph`, `llamaindex`, `nat`, `drmcp`, `pydanticai`.
 
 ## Development
 Prerequisites: Python 3.10–3.13, uv, Task CLI, pre-commit.
 ```bash
-uv sync --all-groups
+uv sync --all-extras --dev
 pre-commit install
 task test
 ```
 
+### Test pypi
 To build and publish a dev version of a package, comment `/build` on a PR.
 
 ## Publishing
