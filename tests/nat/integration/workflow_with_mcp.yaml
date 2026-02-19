@@ -33,3 +33,4 @@ workflow:
   llm_name: datarobot_llm
   tool_names:
     - mcp_tools
+    - completion_tool
