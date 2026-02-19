@@ -281,9 +281,10 @@ async def datarobot_mcp_client_function_group(
                     input_schema=input_schema,
                     converters=tool_fn.converters,
                 )
+            yield group
     except Exception as e:
         logger.warning(f"Error in MCP client function group: {e}")
-    finally:
-        # Clean up client reference on the group to avoid stale clients
-        group.mcp_client = None
-        yield group
+    # finally:
+    #     # Clean up client reference on the group to avoid stale clients
+    #     #group.mcp_client = None
+    #     yield group
