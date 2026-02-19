@@ -48,7 +48,7 @@ def _default_url() -> HttpUrl | None:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["url"] if server_config else "http://localhost"
+    return server_config["url"] if server_config else "http://localhost:8080/mcp"
 
 
 def _default_auth_provider() -> str | AuthenticationRef | None:
