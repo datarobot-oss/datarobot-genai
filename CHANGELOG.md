@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.5.1
 
 - Added the CHANGELOG.md file
+- GitHub Action to verify changelog entries in pull requests
 
 ## 0.5.0
 
