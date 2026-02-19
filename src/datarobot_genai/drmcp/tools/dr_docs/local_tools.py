@@ -14,22 +14,18 @@
 
 """Standalone (non-MCP) DataRobot Agentic AI documentation search tools.
 
-Provides LangChain-wrapped tools that can be used directly with LangChain,
-LangGraph, and other frameworks that support LangChain tools. No MCP server
-or FastMCP dependency is required.
+Provides standalone tool functions that can be wrapped as LangChain or other framework
+(e.g. LlamaIndex) tools. No MCP server or FastMCP dependency is required.
 
-Example — LangGraph::
-
-    from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
-    from langchain.agents import create_agent
-
-    agent = create_agent(model, tools=[search_datarobot_agentic_docs])
-
-Example — Direct invocation::
+Example use with LangGraph::
 
     from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
+    from langchain_core.tools import tool
+    search_tool = tool(search_datarobot_agentic_docs)
+    agent = create_agent(model, tools=[search_tool])
 
-    result = await search_datarobot_agentic_docs.ainvoke({
+    # To call directly:
+    result = await search_tool.ainvoke({
         "query": "MCP server setup",
         "max_results": 5
     })

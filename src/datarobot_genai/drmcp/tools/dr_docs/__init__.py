@@ -16,7 +16,7 @@
 
 Exports tool functions that can be wrapped as LangChain or other framework (e.g. LlamaIndex) tools.
 
-For use with LangGraph::
+Example use with LangGraph::
 
     from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
     from langchain_core.tools import tool
