@@ -19,3 +19,12 @@ class DataRobotMCPToolCategory(Enum):
     USER_TOOL = auto()  # tools created by users
     INTEGRATION_TOOL = auto()  # tools as a wrapper of external service
     DYNAMICALLY_LOADED_TOOL = auto()  # tools dynamically loaded after MCP server is up
+
+
+class DataRobotMCPPromptCategory(Enum):
+    USER_PROMPT = auto()  # prompt created by users
+    DYNAMICALLY_LOADED_PROMPT_TEMPLATE = auto()  # prompts dynamically loaded after MCP server is up
+
+
+class DataRobotMCPResourceCategory(Enum):
+    USER_RESOURCE = auto()  # resource created by users

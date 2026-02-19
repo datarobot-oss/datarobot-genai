@@ -21,9 +21,18 @@ from fastmcp.exceptions import NotFoundError
 
 from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcp.core.mcp_instance import PromptInitArguments
+from datarobot_genai.drmcp.core.mcp_instance import ResourceInitArguments
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_prompt
+from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_resource
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
+
+
+@pytest.fixture
+def module_under_test() -> str:
+    return "datarobot_genai.drmcp.core.mcp_instance"
 
 
 class TestDataRobotMCPInstanceAdditional:
@@ -139,10 +148,6 @@ class TestDataRobotMCPInstanceAdditional:
 
 
 class TestMCPToolDecorator:
-    @pytest.fixture
-    def module_under_test(self) -> str:
-        return "datarobot_genai.drmcp.core.mcp_instance"
-
     @pytest.fixture
     def mock_dr_mcp_tool(self, module_under_test: str) -> Iterator[Mock]:
         with patch(f"{module_under_test}.dr_mcp_tool") as mock_decorator:
@@ -260,3 +265,145 @@ class TestMCPToolDecorator:
             "tool_category": DataRobotMCPToolCategory.INTEGRATION_TOOL,
             expected_kwarg_key: expected_kwarg_value,
         }
+
+
+class TestPromptInitArguments:
+    def test_prompt_init_arguments_fail_when_setting_reserved_prompt_category(self) -> None:
+        with pytest.raises(ValueError):
+            PromptInitArguments(meta={"prompt_category": Mock()})
+
+    def test_to_dict(self) -> None:
+        prompt_init_args = PromptInitArguments()
+        assert prompt_init_args.to_dict() == {
+            "name": None,
+            "title": None,
+            "description": None,
+            "icons": None,
+            "tags": None,
+            "enabled": None,
+            "meta": None,
+        }
+
+    @pytest.mark.parametrize(
+        "meta_arg",
+        [{}, None, {"1ewqa": "adfa"}],
+    )
+    def test_set_prompt_category(self, meta_arg: dict[str, str | None] | None):
+        prompt_init_args = PromptInitArguments(meta=meta_arg)
+
+        expected_prompt_category = Mock()
+        prompt_init_args.set_prompt_category(expected_prompt_category)
+
+        original_meta_arg = meta_arg or {}
+        expected_meta_arg = original_meta_arg | {"prompt_category": expected_prompt_category.name}
+        assert prompt_init_args.meta == expected_meta_arg
+
+
+class TestResourceInitArguments:
+    def test_resource_init_arguments_fail_when_setting_reserved_resource_category(self) -> None:
+        with pytest.raises(ValueError):
+            ResourceInitArguments(uri="dsafds", meta={"resource_category": Mock()})
+
+    def test_to_dict(self) -> None:
+        expected_uri = "sdafsd"
+        resource_init_args = ResourceInitArguments(uri=expected_uri)
+        assert resource_init_args.to_dict() == {
+            "uri": expected_uri,
+            "name": None,
+            "title": None,
+            "description": None,
+            "icons": None,
+            "mime_type": None,
+            "tags": None,
+            "enabled": None,
+            "annotations": None,
+            "meta": None,
+        }
+
+    @pytest.mark.parametrize(
+        "meta_arg",
+        [{}, None, {"1ewqa": "adfa"}],
+    )
+    def test_set_resource_category(self, meta_arg: dict[str, str | None] | None):
+        resource_init_args = ResourceInitArguments(uri="dafds", meta=meta_arg)
+
+        expected_resource_category = Mock()
+        resource_init_args.set_resource_category(expected_resource_category)
+
+        original_meta_arg = meta_arg or {}
+        expected_meta_arg = original_meta_arg | {
+            "resource_category": expected_resource_category.name
+        }
+        assert resource_init_args.meta == expected_meta_arg
+
+
+class TestMCPPromptDecorator:
+    @pytest.fixture
+    def mock_mcp_prompt_callable(self) -> Iterator[Mock]:
+        yield Mock(return_value=Mock())
+
+    @pytest.fixture
+    def mock_datarobot_mcp_server_prompt(self) -> Iterator[Mock]:
+        with patch.object(DataRobotMCP, "prompt") as mock_func:
+            yield mock_func
+
+    def test_dr_mcp_prompt(
+        self,
+        mock_mcp_prompt_callable: Mock,
+        mock_datarobot_mcp_server_prompt: Mock,
+    ) -> None:
+        mock_mcp_prompt_callable_args = {}
+        mock_prompt_category = Mock()
+        mock_prompt_init_args = Mock()
+        mock_prompt_init_args.to_dict.return_value = {}
+        decorator = dr_mcp_prompt(mock_prompt_category, mock_prompt_init_args)
+        decorator(mock_mcp_prompt_callable)(**mock_mcp_prompt_callable_args)
+
+        mock_prompt_init_args.set_prompt_category.assert_called_once_with(mock_prompt_category)
+        mock_datarobot_mcp_server_prompt.assert_called_once_with(
+            **mock_prompt_init_args.to_dict.return_value,
+        )
+        mock_datarobot_mcp_server_prompt_func = mock_datarobot_mcp_server_prompt.return_value
+        call_args = mock_datarobot_mcp_server_prompt_func.call_args.args
+        (inner_wrapper_func,) = call_args
+        assert (
+            inner_wrapper_func.__qualname__
+            == "dr_mcp_prompt.<locals>.prompt_decorator.<locals>._inner_decorator"
+        )
+
+
+class TestMCPResourceDecorator:
+    @pytest.fixture
+    def mock_mcp_resource_callable(self) -> Iterator[Mock]:
+        yield Mock(return_value=Mock())
+
+    @pytest.fixture
+    def mock_datarobot_mcp_server_resource(self) -> Iterator[Mock]:
+        with patch.object(DataRobotMCP, "resource") as mock_func:
+            yield mock_func
+
+    def test_dr_mcp_prompt(
+        self,
+        mock_mcp_resource_callable: Mock,
+        mock_datarobot_mcp_server_resource: Mock,
+    ) -> None:
+        mock_mcp_resource_callable_args = {}
+        mock_resource_category = Mock()
+        mock_resource_init_args = Mock()
+        mock_resource_init_args.to_dict.return_value = {}
+        decorator = dr_mcp_resource(mock_resource_init_args, mock_resource_category)
+        decorator(mock_mcp_resource_callable)(**mock_mcp_resource_callable_args)
+
+        mock_resource_init_args.set_resource_category.assert_called_once_with(
+            mock_resource_category
+        )
+        mock_datarobot_mcp_server_resource.assert_called_once_with(
+            **mock_resource_init_args.to_dict.return_value,
+        )
+        mock_datarobot_mcp_server_resource_func = mock_datarobot_mcp_server_resource.return_value
+        call_args = mock_datarobot_mcp_server_resource_func.call_args.args
+        (inner_wrapper_func,) = call_args
+        assert (
+            inner_wrapper_func.__qualname__
+            == "dr_mcp_resource.<locals>.resource_decorator.<locals>._inner_decorator"
+        )

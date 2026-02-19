@@ -14,9 +14,13 @@
 
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any
+from typing import ParamSpec
 from typing import TypedDict
+from typing import TypeVar
 
 from fastmcp import Context
 from fastmcp import FastMCP
@@ -24,18 +28,25 @@ from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
 from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool
+from mcp.types import Annotations as MCPAnnotationsType
 from mcp.types import AnyFunction
+from mcp.types import Icon as MCPIconType
 from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
 from .config import MCPServerConfig
 from .config import get_config
 from .dynamic_prompts.utils import get_prompt_name_no_duplicate
+from .enums import DataRobotMCPPromptCategory
+from .enums import DataRobotMCPResourceCategory
 from .enums import DataRobotMCPToolCategory
 from .logging import log_execution
 from .memory_management.manager import MemoryManager
 from .memory_management.manager import get_memory_manager
 from .telemetry import trace_execution
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +274,65 @@ class ToolKwargs(TypedDict, total=False):
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
     enabled: bool | None
+
+
+@dataclass
+class PromptInitArguments:
+    name: str | None = None
+    title: str | None = None
+    description: str | None = None
+    icons: list[MCPIconType] | None = None
+    tags: set[str] | None = None
+    enabled: bool | None = None
+    meta: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        meta = self.meta or {}
+        if meta.get("prompt_category"):
+            raise ValueError(
+                "prompt_category is a reserved field under meta. Please don't override it."
+            )
+
+    def to_dict(
+        self,
+    ) -> dict[str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | None]:
+        return asdict(self)
+
+    def set_prompt_category(self, prompt_category: DataRobotMCPPromptCategory) -> None:
+        self.meta = self.meta or {}
+        self.meta["prompt_category"] = prompt_category.name
+
+
+@dataclass
+class ResourceInitArguments:
+    uri: str
+    name: str | None = None
+    title: str | None = None
+    description: str | None = None
+    icons: list[MCPIconType] | None = None
+    mime_type: str | None = None
+    tags: set[str] | None = None
+    enabled: bool | None = None
+    annotations: MCPAnnotationsType | dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        meta = self.meta or {}
+        if meta.get("resource_category"):
+            raise ValueError(
+                "resource_category is a reserved field under meta. Please don't override it."
+            )
+
+    def to_dict(
+        self,
+    ) -> dict[
+        str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | MCPAnnotationsType | None
+    ]:
+        return asdict(self)
+
+    def set_resource_category(self, resource_category: DataRobotMCPResourceCategory) -> None:
+        self.meta = self.meta or {}
+        self.meta["resource_category"] = resource_category.name
 
 
 def dr_core_mcp_tool(
@@ -512,3 +582,33 @@ async def register_prompt(
     await mcp.notify_prompts_changed()
 
     return registered_prompt
+
+
+def dr_mcp_prompt(
+    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT,
+    prompt_init_args: PromptInitArguments = PromptInitArguments(),
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def prompt_decorator(func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def _inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
+            return func(*args, **kwargs)
+
+        prompt_init_args.set_prompt_category(prompt_category)
+        return mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
+
+    return prompt_decorator
+
+
+def dr_mcp_resource(
+    resource_init_args: ResourceInitArguments,
+    resource_category: DataRobotMCPResourceCategory = DataRobotMCPResourceCategory.USER_RESOURCE,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def resource_decorator(func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def _inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
+            return func(*args, **kwargs)
+
+        resource_init_args.set_resource_category(resource_category)
+        return mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+
+    return resource_decorator
