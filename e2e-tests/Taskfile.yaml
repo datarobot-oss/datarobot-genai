@@ -4,6 +4,9 @@ version: '3'
 
 dotenv: [".env"]
 
+vars:
+  PROJECT_SRC: "./dragent ./drmcp"
+
 includes:
   dragent:
     taskfile: dragent/Taskfile.yaml
