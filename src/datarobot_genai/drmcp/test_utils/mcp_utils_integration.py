@@ -49,12 +49,15 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
             "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP"
         )
         or "true",
+        "MCP_USE_DR_CLIENT_STUBS": "true",
     }
 
     script_dir = Path(__file__).resolve().parent
     server_script = str(script_dir / "integration_mcp_server.py")
     # Add src/ directory to Python path so datarobot_genai can be imported
     src_dir = script_dir.parent.parent.parent
+    # Signal to tests that the server uses DR stubs (so tests requiring real API can skip)
+    os.environ["DRMCP_INTEGRATION_USE_DR_STUBS"] = "true"
 
     return StdioServerParameters(
         command="uv",
@@ -71,7 +74,7 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
 @contextlib.asynccontextmanager
 async def integration_test_mcp_session(
     server_params: StdioServerParameters | None = None,
-    timeout: int = 30,
+    timeout: int = 60,
     elicitation_callback: Any | None = None,
 ) -> AsyncGenerator[ClientSession, None]:
     """

@@ -29,13 +29,17 @@ without injecting headers.
 import os
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import datarobot as dr
 from datarobot.context import Context as DRContext
 
 from datarobot_genai.drmcp import create_mcp_server
+from datarobot_genai.drmcp.core import clients
 from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
+from datarobot_genai.drmcp.tools.clients import datarobot as tools_datarobot_client
 
 # Import elicitation test tool to register it with the MCP server
 try:
@@ -126,11 +130,30 @@ def _patch_get_sdk_client_for_stdio() -> None:
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
 
 
+def _apply_dr_client_stubs() -> None:
+    """Replace the real DataRobot client with mocks from test_utils.stubs.dr_client_stubs."""
+    stub_dr = test_create_dr_client()
+    # get_api_client() does dr.client.get_client(); stub must have that for prompt registration.
+    # dr.utils.pagination.unpaginate expects client.get(...).json()
+    # to return {"data": [...], "next": url or None}.
+    # Return empty page so registration finishes immediately instead of hanging.
+    mock_rest = MagicMock()
+    mock_rest.get.return_value.json.return_value = {"data": [], "next": None}
+    stub_dr.client = MagicMock()
+    stub_dr.client.get_client = lambda: mock_rest
+
+    clients.get_sdk_client = lambda *args, **kwargs: stub_dr
+    tools_datarobot_client.DataRobotClient.get_client = lambda self: stub_dr  # type: ignore[method-assign]
+
+
 def main() -> None:
     """Run the integration test MCP server."""
     # Integration tests run with stdio (no HTTP headers); patch so tools get token from env
     if os.environ.get("MCP_SERVER_NAME") == "integration":
         _patch_get_sdk_client_for_stdio()
+    # Use DR client mocks when requested (e.g. by integration_test_mcp_session)
+    if os.environ.get("MCP_USE_DR_CLIENT_STUBS") == "true":
+        _apply_dr_client_stubs()
 
     # Try to detect and load user modules
     user_components = detect_user_modules()

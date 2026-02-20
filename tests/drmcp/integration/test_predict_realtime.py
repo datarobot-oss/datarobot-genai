@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import os
 from io import StringIO
 from typing import Any
 
@@ -21,6 +22,8 @@ import pytest
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
+
+_REQUIRES_REAL_DR_API = os.environ.get("DRMCP_INTEGRATION_USE_DR_STUBS") == "true"
 
 SHAP_NOT_SUPPORTED_MSG = "SHAP explanations are not supported"
 
@@ -38,6 +41,13 @@ def _is_shap_not_supported_error(result: Any) -> bool:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    _REQUIRES_REAL_DR_API,
+    reason="""
+    Requires real DataRobot Deployment for prediction endpoint;
+    skipped when using DR client stubs
+    """,
+)
 class TestMCPRealtimePredictToolsIntegration:
     """Integration tests for MCP realtime predict tools."""
 

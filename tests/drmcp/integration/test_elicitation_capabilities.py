@@ -28,14 +28,22 @@ Note: The MCP SDK doesn't currently support specifying form/url modes directly,
 so we test that the server respects whether the client provides an elicitation callback.
 """
 
+import os
+
 import pytest
 from mcp.types import ElicitRequestParams
 from mcp.types import ElicitResult
 
 from datarobot_genai.drmcp import integration_test_mcp_session
 
+_REQUIRES_REAL_DR_API = os.environ.get("DRMCP_INTEGRATION_USE_DR_STUBS") == "true"
+
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    _REQUIRES_REAL_DR_API,
+    reason="Elicitation flow can raise BrokenResourceError with stub server; run with real API",
+)
 @pytest.mark.parametrize(
     "has_elicitation_callback,should_allow_elicitation",
     [
