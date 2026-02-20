@@ -280,7 +280,7 @@ async def datarobot_mcp_client_function_group(
             yield group
     except Exception as e:
         primary_exception = e
-        if isinstance(e, ExceptionGroup):  # noqa: F821
+        if isinstance(e, ExceptionGroup):  # type: ignore[name-defined]  # noqa: F821
             primary_exception = extract_primary_exception(list(e.exceptions))
 
         logger.warning("Error in MCP client function group: %s", primary_exception)
