@@ -67,11 +67,12 @@ llamaindex = core + [
 ]
 
 nat = core + [
-    "nvidia-nat==1.4.0; python_version >= '3.11'",
-    "nvidia-nat-opentelemetry==1.4.0; python_version >= '3.11'",
-    "nvidia-nat-langchain==1.4.0; python_version >= '3.11'",
-    "nvidia-nat-llama-index==1.4.0; python_version >= '3.11'",
-    "nvidia-nat-mcp==1.4.0; python_version >= '3.11'",
+    "nvidia-nat==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-a2a==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-langchain==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-llama-index==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-mcp==1.4.1; python_version >= '3.11'",
     "crewai>=1.1.0; python_version >= '3.11'",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Need this to support datarobot-llm plugin
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
