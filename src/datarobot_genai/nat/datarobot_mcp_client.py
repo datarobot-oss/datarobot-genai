@@ -59,13 +59,6 @@ def _default_auth_provider() -> str | AuthenticationRef | None:
     return "datarobot_mcp_auth" if server_config else None
 
 
-def _default_command() -> str | None:
-    from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
-
-    server_config = MCPConfig().server_config
-    return None if server_config else "docker"
-
-
 class DataRobotMCPServerConfig(MCPServerConfig):
     transport: Literal["streamable-http", "sse"] = Field(
         default_factory=_default_transport,
