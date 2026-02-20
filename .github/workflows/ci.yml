@@ -106,11 +106,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ "${{ matrix.module }}" = "core" ]; then
-            uv sync --dev
-          else
-            uv sync --extra ${{ matrix.module }} --dev
-          fi
+          uv sync --extra ${{ matrix.module }} --dev
 
       - name: Run tests
         run: |
