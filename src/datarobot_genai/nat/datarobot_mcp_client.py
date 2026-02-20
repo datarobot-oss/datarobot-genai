@@ -15,9 +15,16 @@
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Literal
+
+# ExceptionGroup is a builtin from Python 3.11+; package supports 3.10 (see pyproject.toml).
+if sys.version_info >= (3, 11):
+    from builtins import ExceptionGroup
+else:
+    ExceptionGroup = ()  # type: ignore[misc]  # sentinel so isinstance(e, ExceptionGroup) is False on 3.10
 
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.component_ref import AuthenticationRef
@@ -265,7 +272,7 @@ async def datarobot_mcp_client_function_group(
             yield group
     except Exception as e:
         primary_exception = e
-        if isinstance(e, ExceptionGroup):  # type: ignore[name-defined]  # noqa: F821
+        if isinstance(e, ExceptionGroup):
             primary_exception = extract_primary_exception(list(e.exceptions))
 
         logger.warning("Error in MCP client function group: %s", primary_exception)
