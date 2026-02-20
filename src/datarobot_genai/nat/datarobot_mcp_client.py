@@ -285,6 +285,8 @@ async def datarobot_mcp_client_function_group(
 
         logger.warning("Error in MCP client function group: %s", primary_exception)
         group.mcp_client = None
+        group.mcp_client_server_name = getattr(client, "server_name", str(config.server.url))
+        group.mcp_client_transport = getattr(client, "transport", config.server.transport)
         if not yielded:
             yield group
         else:
