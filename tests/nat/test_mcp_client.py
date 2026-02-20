@@ -76,12 +76,23 @@ class _FakeMCPClient(MCPBaseClient):
 
 
 async def test_datarobot_mcp_client():
-    with patch("nat.plugins.mcp.client.client_base.MCPStreamableHTTPClient") as mock_client:
+    with patch(
+        "datarobot_genai.nat.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
+    ) as mock_client:
         fake_tools = {"a": _FakeTool("a", "da"), "b": _FakeTool("b", "db")}
-        mock_client.side_effect = lambda url: _FakeMCPClient(tools=fake_tools, url=url)
+
+        def make_fake_client(url, *args, **kwargs):
+            return _FakeMCPClient(tools=fake_tools, url=url)
+
+        mock_client.side_effect = make_fake_client
         server_config = DataRobotMCPServerConfig()
         config = DataRobotMCPClientConfig(server=server_config)
         async with WorkflowBuilder() as builder:
             await builder.add_function_group("datarobot_mcp_tools", config)
             function_group = await builder.get_function_group("datarobot_mcp_tools")
             assert isinstance(function_group, MCPFunctionGroup)
+            # Verify the happy path: fake client was used and tools were registered
+            all_functions = await function_group.get_all_functions()
+            # Function names are prefixed with the group name (e.g. datarobot_mcp_tools__a)
+            assert "datarobot_mcp_tools__a" in all_functions
+            assert "datarobot_mcp_tools__b" in all_functions
