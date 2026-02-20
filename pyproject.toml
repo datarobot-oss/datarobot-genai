@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling>=1.25.0"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10, <3.14"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
+dynamic = ["optional-dependencies"]
+
+# Optional dependencies (extras) are defined in setup.py
 dependencies = []
 
 [project.urls]
@@ -24,21 +27,11 @@ datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.register"
 
-[project.optional-dependencies]
+[tool.setuptools.packages.find]
+where = ["src"]
 
-[tool.hatch.build.targets.wheel]
-packages = [
-  "src/datarobot_genai",
-]
-
-[tool.hatch.build.targets.sdist]
-include = [
-  "src/datarobot_genai",
-  "pyproject.toml",
-  "README.md",
-  "LICENSE",
-  "AUTHORS",
-]
+[tool.setuptools.package-data]
+datarobot_genai = ["py.typed"]
 
 [tool.uv]
 package = true
@@ -50,92 +43,6 @@ exclude-dependencies = [
 ]
 
 [dependency-groups]
-core = [
-  "requests>=2.32.4,<3.0.0",
-  "datarobot>=3.10.0,<4.0.0",
-  "datarobot-predict>=1.13.2,<2.0.0",
-  "openai>=1.76.2,<2.0.0",
-  "ragas>=0.3.8,<0.4.0",
-  "pyjwt>=2.10.1,<3.0.0",
-  "pypdf>=6.1.3,<7.0.0",  # CVE BUZZOK-28182
-  "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
-  "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
-  "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
-  "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
-  "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
-  "ag-ui-protocol>=0.1.9,<0.2.0",
-  "pyarrow==21.0.0",
-]
-crewai = [
-  { include-group = "core" },
-  "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
-  "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
-  "crewai>=1.1.0",
-  "crewai-tools[mcp]>=0.69.0,<0.77.0",
-  "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
-  "pybase64>=1.4.2,<2.0.0",
-]
-langgraph = [
-  { include-group = "core" },
-  "langchain-mcp-adapters>=0.1.12,<0.2.0",
-  "langgraph>=1.0.0,<1.1.0",
-  "langgraph-prebuilt>=1.0.0,<1.1.0",
-  "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
-]
-llamaindex = [
-  { include-group = "core" },
-  "llama-index>=0.14.0,<0.15.0",
-  "llama-index-core>=0.14.0,<0.15.0",
-  "llama-index-llms-langchain>=0.6.1,<0.8.0",
-  "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
-  "llama-index-llms-openai>=0.6.0,<0.7.0",
-  "llama-index-tools-mcp>=0.1.0,<0.5.0",
-  "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
-  "pypdf>=6.0.0,<7.0.0",
-]
-nat = [
-  { include-group = "core" },
-  "nvidia-nat==1.4.0; python_version >= '3.11'",
-  "nvidia-nat-opentelemetry==1.4.0; python_version >= '3.11'",
-  "nvidia-nat-langchain==1.4.0; python_version >= '3.11'",
-  "nvidia-nat-llama-index==1.4.0; python_version >= '3.11'",
-  "nvidia-nat-mcp==1.4.0; python_version >= '3.11'",
-  "crewai>=1.1.0; python_version >= '3.11'",
-  "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Need this to support datarobot-llm plugin
-  "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
-  "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
-  "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
-  "anyio==4.11.0",
-]
-pydanticai = [
-  { include-group = "core" },
-  "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
-]
-drmcp = [
-  { include-group = "core" },
-  "pandas>=2.2.3,<3.0.0",
-  "datarobot-asgi-middleware>=0.2.0,<1.0.0",
-  "python-dotenv>=1.1.0,<2.0.0",
-  "boto3>=1.34.0,<2.0.0",
-  "httpx>=0.28.1,<1.0.0",
-  "tavily-python>=0.7.20,<1.0.0",
-  "perplexityai>=0.27,<1.0",
-  "pydantic>=2.6.1,<3.0.0",
-  "pydantic-settings>=2.1.0,<3.0.0",
-  "opentelemetry-api>=1.22.0,<2.0.0",
-  "opentelemetry-sdk>=1.22.0,<2.0.0",
-  "opentelemetry-exporter-otlp>=1.22.0,<2.0.0",
-  "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
-  "aiohttp>=3.9.0,<4.0.0",
-  "aiohttp-retry>=2.8.3,<3.0.0",
-  "aiosignal>=1.3.1,<2.0.0",
-  "fastmcp>=2.13.0.2,<3.0.0",
-]
-auth = [
-  "datarobot[auth]>=3.10.0,<4.0.0",
-  "aiohttp>=3.9.0,<4.0.0",
-  "pydantic>=2.6.1,<3.0.0",
-]
 dev = [
   "ruff>=0.6.0",
   "mypy>=1.10.0",

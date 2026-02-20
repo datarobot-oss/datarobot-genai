@@ -32,10 +32,10 @@ includes:
 
 tasks:
   install:
-    desc: "🔧 Install dependencies (all groups)"
+    desc: "🔧 Install dependencies (all extras)"
     cmds:
-      - echo "🔧 Installing dependencies (all groups)..."
-      - uv sync --all-groups
+      - echo "🔧 Installing dependencies (all extras)..."
+      - uv sync --all-extras --dev
     silent: true
 
   build:
