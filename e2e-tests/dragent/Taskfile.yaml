@@ -7,4 +7,4 @@ tasks:
     desc: "🔨 Running NAT locally"
     cmds:
       - echo "🔨 Running NAT locally"
-      - uv run nat start dragent_fastapi --config_file nat/workflow.yaml --reload true
+      - uv run nat start dragent_fastapi --config_file nat/workflow.yaml
