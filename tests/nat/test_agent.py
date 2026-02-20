@@ -20,7 +20,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
@@ -173,6 +175,46 @@ def test_init_with_additional_kwargs(workflow_path):
     # Verify that the extra parameters don't create attributes
     with pytest.raises(AttributeError):
         _ = agent.extra_param1
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_includes_chat_history(workflow_path):
+    """NatAgent.invoke() appends prior turns to the user prompt."""
+    agent = NatAgent(workflow_path=workflow_path)
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    captured_prompts: list[str] = []
+    original = agent.make_chat_request
+
+    def capturing(user_prompt: str):  # type: ignore[no-untyped-def]
+        captured_prompts.append(user_prompt)
+        return original(user_prompt)
+
+    agent.make_chat_request = capturing  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    assert len(captured_prompts) == 1
+    text = captured_prompts[0]
+    assert "Prior conversation:" in text
+    assert "system: You are a helper." in text
+    assert "user: First question" in text
+    assert "assistant: First answer" in text
+    assert text.startswith("Follow-up")
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")

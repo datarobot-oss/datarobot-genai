@@ -13,13 +13,14 @@
 # limitations under the License.
 
 # ruff: noqa: I001
-from typing import Any
 from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import patch
 
-from ag_ui.core import RunAgentInput, UserMessage
-from crewai import CrewOutput
 import pytest
+from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
+from crewai import CrewOutput
 from ragas import MultiTurnSample
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
@@ -174,3 +175,76 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
 
     # THEN usage is the expected usage
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
+
+
+async def test_invoke_does_not_include_chat_history_by_default(
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(TestCrew):
+        def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff(inputs=inputs)
+
+    out = CrewOutput(raw="agent result")
+    agent = TestAgent(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
+
+    assert captured_inputs["topic"] == "Follow-up"
+    assert "chat_history" not in captured_inputs
+
+
+async def test_invoke_overwrites_blank_chat_history_placeholder(
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(TestCrew):
+        def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff(inputs=inputs)
+
+    class AgentWithPlaceholder(TestAgent):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "chat_history": ""}
+
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
+
+    history = captured_inputs["chat_history"]
+    assert isinstance(history, str)
+    assert history.strip() != ""
+    assert "Prior conversation:" in history
+    assert "system: You are a helper." in history
+    assert "user: First question" in history
+    assert "assistant: First answer" in history
+    assert "user: Follow-up" not in history
+
+
+async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(TestCrew):
+        def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff(inputs=inputs)
+
+    class AgentWithOverride(TestAgent):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
+
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
+
+    assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
