@@ -45,11 +45,11 @@ def _default_transport() -> Literal["streamable-http", "sse", "stdio"]:
     return server_config["transport"] if server_config else "streamable-http"
 
 
-def _default_url() -> HttpUrl | None:
+def _default_url() -> HttpUrl:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["url"] if server_config else "http://localhost:8080/mcp"
+    return server_config["url"] if server_config else HttpUrl("http://localhost:8080/mcp")
 
 
 def _default_auth_provider() -> str | AuthenticationRef | None:
