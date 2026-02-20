@@ -98,6 +98,15 @@ class MCPToolConfig(BaseSettings):
         description="Enable/disable Tavily search tools",
     )
 
+    enable_dr_docs_tools: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_DR_DOCS_TOOLS",
+            "ENABLE_DR_DOCS_TOOLS",
+        ),
+        description="Enable/disable DataRobot documentation search tools",
+    )
+
     is_atlassian_oauth_provider_configured: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -152,6 +161,7 @@ class MCPToolConfig(BaseSettings):
         "enable_microsoft_graph_tools",
         "enable_perplexity_tools",
         "enable_tavily_tools",
+        "enable_dr_docs_tools",
         "is_atlassian_oauth_provider_configured",
         "is_google_oauth_provider_configured",
         "is_microsoft_oauth_provider_configured",
