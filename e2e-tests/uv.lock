@@ -778,8 +778,8 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.5.3"
-source = { directory = "../" }
+version = "0.5.4"
+source = { editable = "../" }
 
 [package.optional-dependencies]
 dragent = [
@@ -1028,7 +1028,7 @@ dragent-nat = [
 requires-dist = [{ name = "pytest" }]
 
 [package.metadata.requires-dev]
-dragent-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat"], directory = "../" }]
+dragent-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat"], editable = "../" }]
 
 [[package]]
 name = "datarobot-predict"

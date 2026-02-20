@@ -27,7 +27,6 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.response_helpers import generate_single_response
-from nat.front_ends.fastapi.response_helpers import generate_streaming_response_as_str
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.runtime.session import SessionManager
 from pydantic import BaseModel
@@ -38,6 +37,7 @@ from datarobot_genai.dragent.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.response import DRAgentChatResponse
 from datarobot_genai.dragent.response import DRAgentChatResponseChunk
 from datarobot_genai.dragent.response import DRAgentEventResponse
+from datarobot_genai.dragent.response import dragent_generate_streaming_response_as_str
 from datarobot_genai.dragent.step_adaptor import DRAgentEmptyStepAdaptor
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 ) as session:
                     return StreamingResponse(
                         headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                        content=generate_streaming_response_as_str(
+                        content=dragent_generate_streaming_response_as_str(
                             payload,
                             session=session,
                             streaming=True,
@@ -150,7 +150,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                         # Return streaming response
                         return StreamingResponse(
                             headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                            content=generate_streaming_response_as_str(
+                            content=dragent_generate_streaming_response_as_str(
                                 payload,
                                 session=session,
                                 streaming=True,
