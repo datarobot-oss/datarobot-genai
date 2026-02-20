@@ -27,14 +27,14 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"predictive", "deployment", "read", "info", "metadata"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata"})
 async def get_deployment_info(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
@@ -101,7 +101,7 @@ async def get_deployment_info(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "deployment", "read", "template", "data"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "template", "data"})
 async def generate_prediction_data_template(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
@@ -198,7 +198,7 @@ async def generate_prediction_data_template(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "deployment", "read", "validation", "data"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "validation", "data"})
 async def validate_prediction_data(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
@@ -331,7 +331,7 @@ async def validate_prediction_data(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "deployment", "read", "features", "info"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "features", "info"})
 async def get_deployment_features(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,

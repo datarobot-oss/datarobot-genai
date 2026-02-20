@@ -44,6 +44,7 @@ from .core.dr_mcp_server import DataRobotMCPServer
 from .core.dr_mcp_server import create_mcp_server
 from .core.logging import MCPLogging
 from .core.mcp_instance import ToolKwargs
+from .core.mcp_instance import dr_mcp_integration_tool
 from .core.mcp_instance import dr_mcp_tool
 from .core.mcp_instance import register_tools
 
@@ -81,4 +82,5 @@ __all__ = [
     "ToolCallTestExpectations",
     "integration_test_mcp_session",
     "tools",
+    "dr_mcp_integration_tool",
 ]

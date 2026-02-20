@@ -21,7 +21,7 @@ from typing import Literal
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.perplexity import MAX_QUERIES
 from datarobot_genai.drmcp.tools.clients.perplexity import MAX_RESULTS
 from datarobot_genai.drmcp.tools.clients.perplexity import MAX_RESULTS_DEFAULT
@@ -34,7 +34,7 @@ from datarobot_genai.drmcp.tools.clients.perplexity import get_perplexity_access
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"perplexity", "web", "search", "websearch"})
+@dr_mcp_integration_tool(tags={"perplexity", "web", "search", "websearch"})
 async def perplexity_search(
     *,
     query: Annotated[
@@ -117,7 +117,7 @@ async def perplexity_search(
     )
 
 
-@dr_mcp_tool(tags={"perplexity", "think", "research", "answer"})
+@dr_mcp_integration_tool(tags={"perplexity", "think", "research", "answer"})
 async def perplexity_think(
     *,
     prompt: Annotated[str, "The research prompt or instruction."],

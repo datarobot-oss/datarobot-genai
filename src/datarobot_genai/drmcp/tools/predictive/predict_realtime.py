@@ -26,7 +26,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.utils import predictions_result_response
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
@@ -46,7 +46,7 @@ def make_output_settings() -> BucketInfo:
     return BucketInfo(bucket=bucket_info["bucket"], key=s3_key)
 
 
-@dr_mcp_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
+@dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_by_ai_catalog_rt(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
@@ -114,7 +114,7 @@ async def predict_by_ai_catalog_rt(
     return ToolResult(structured_content=content)
 
 
-@dr_mcp_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
+@dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_realtime(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,

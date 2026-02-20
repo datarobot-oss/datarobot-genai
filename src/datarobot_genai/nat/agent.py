@@ -37,18 +37,19 @@ if TYPE_CHECKING:
     from ragas import MultiTurnSample
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
+    from ragas.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
 
 
 def convert_to_ragas_messages(
     steps: list[IntermediateStep],
-) -> list[HumanMessage | AIMessage]:
+) -> list[HumanMessage | AIMessage | ToolMessage]:
     # Lazy import to reduce memory overhead when ragas is not used
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
 
-    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage:
+    def _to_ragas(step: IntermediateStep) -> HumanMessage | AIMessage | ToolMessage:
         if step.event_type == IntermediateStepType.LLM_START:
             return HumanMessage(content=_parse(step.data.input))
         elif step.event_type == IntermediateStepType.LLM_END:
@@ -137,16 +138,26 @@ class NatAgent(BaseAgent[None]):
         )
         self.workflow_path = workflow_path
 
-    def make_chat_request(self, run_agent_input: RunAgentInput) -> ChatRequest:
-        user_prompt_content = str(extract_user_prompt_content(run_agent_input))
-        return ChatRequest.from_string(user_prompt_content)
+    def make_user_prompt(self, run_agent_input: RunAgentInput) -> str:
+        """Create the user prompt text. Override to customize formatting.
+
+        Chat history is automatically appended by `invoke` when
+        max_history_messages > 0 (controlled via DATAROBOT_GENAI_MAX_HISTORY_MESSAGES env var).
+
+        Default implementation returns the raw user message content.
+        """
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
+        return str(user_prompt_content)
+
+    def make_chat_request(self, user_prompt: str) -> ChatRequest:
+        """Create a NAT ChatRequest from the processed user prompt."""
+        return ChatRequest.from_string(user_prompt)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        """Run the agent with the provided completion parameters.
+        """Run the agent with the provided input.
 
         Args:
-            completion_create_params: The completion request parameters including input topic
-            and settings.
+            run_agent_input: The agent run input including messages, tools, and context.
 
         Returns
         -------
@@ -154,8 +165,16 @@ class NatAgent(BaseAgent[None]):
             pipeline_interactions, usage_metrics).
 
         """
-        # Retrieve the starting chat request from the CompletionCreateParams
-        chat_request = self.make_chat_request(run_agent_input)
+        # Build the user prompt from the template
+        user_prompt = self.make_user_prompt(run_agent_input)
+
+        # Automatically inject chat history when enabled (max_history_messages > 0)
+        history_summary = self.build_history_summary(run_agent_input)
+        if history_summary:
+            user_prompt = f"{user_prompt}\n\nPrior conversation:\n{history_summary}"
+
+        # Create the chat request from the processed prompt
+        chat_request = self.make_chat_request(user_prompt)
 
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)

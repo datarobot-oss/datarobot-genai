@@ -24,7 +24,7 @@ from fastmcp.resources import HttpResource
 from fastmcp.resources import ResourceManager
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.clients import get_credentials
 from datarobot_genai.drmcp.core.utils import generate_presigned_url
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
@@ -105,7 +105,7 @@ def wait_for_preds_and_cache_results(
     return _handle_prediction_resource(job, bucket, key, deployment_id, input_desc)
 
 
-@dr_mcp_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_file_path(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
@@ -136,7 +136,7 @@ async def predict_by_file_path(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_ai_catalog(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
@@ -171,7 +171,7 @@ async def predict_by_ai_catalog(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_from_project_data(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
     | None = None,
@@ -222,7 +222,7 @@ async def predict_from_project_data(
 
 
 # FIXME
-# @dr_mcp_tool(tags={"prediction", "explanations", "shap"})
+# @dr_mcp_integration_tool(tags={"prediction", "explanations", "shap"})
 async def get_prediction_explanations(
     project_id: str,
     model_id: str,
