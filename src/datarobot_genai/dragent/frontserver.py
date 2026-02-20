@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-import os
+from collections.abc import AsyncGenerator
 from collections.abc import Callable
 
 from ag_ui.core import Event
@@ -22,72 +22,34 @@ from fastapi import Request
 from fastapi import Response
 from fastapi.responses import StreamingResponse
 from nat.builder.context import Context
-from nat.builder.workflow_builder import WorkflowBuilder
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.response_helpers import generate_single_response
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.runtime.session import SessionManager
-from pydantic import BaseModel
-from pydantic import Field
 
 from datarobot_genai.dragent.request import DRAgentChatRequest
 from datarobot_genai.dragent.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.response import DRAgentChatResponse
 from datarobot_genai.dragent.response import DRAgentChatResponseChunk
 from datarobot_genai.dragent.response import DRAgentEventResponse
-from datarobot_genai.dragent.response import dragent_generate_streaming_response_as_str
-from datarobot_genai.dragent.step_adaptor import DRAgentEmptyStepAdaptor
+from datarobot_genai.dragent.response_helpers import dragent_generate_streaming_response
+from datarobot_genai.dragent.response_helpers import dragent_generate_streaming_response_as_str
+from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 logger = logging.getLogger(__name__)
 
 
-def prefix_mount_path(endpoint: str) -> str:
-    mount_path = os.getenv("URL_PREFIX", "")
-
-    if mount_path == "/":
-        return endpoint
-
-    if mount_path.endswith("/"):
-        mount_path = mount_path[:-1]
-
-    if not endpoint.startswith("/"):
-        endpoint = "/" + endpoint
-    return mount_path + endpoint
-
-
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def get_step_adaptor(self) -> StepAdaptor:
-        return DRAgentEmptyStepAdaptor(self.front_end_config.step_adaptor)
+        return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
 
-    async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
-        # For now, only subset of routes exposed by the default fastapi front end are exposed by the
-        # dragent fastapi frontend.
-        # We will be adding more routes as we figure out integrations
-        await self.add_default_route(app, await self._create_session_manager(builder))
-        await self.add_health_route(app)
+    async def add_default_route(self, app: FastAPI, session_manager: SessionManager) -> None:
+        # The default route is rewritten to our contract
+        await self.add_agent_route(app, self.front_end_config.workflow, session_manager)
 
-    async def add_health_route(self, app: FastAPI) -> None:
-        """Override to apply prefix_mount_path to the health endpoint."""
-
-        class HealthResponse(BaseModel):
-            status: str = Field(description="Health status of the server")
-
-        async def health_check() -> HealthResponse:
-            return HealthResponse(status="healthy")
-
-        app.add_api_route(
-            path=prefix_mount_path("/health"),
-            endpoint=health_check,
-            methods=["GET"],
-            response_model=HealthResponse,
-            description="Health check endpoint for liveness/readiness probes",
-            tags=["Health"],
-        )
-        logger.info("Added health check endpoint at %s", prefix_mount_path("/health"))
-
-    async def add_route(
+    async def add_agent_route(
         self,
         app: FastAPI,
         endpoint: FastApiFrontEndConfig.EndpointBase,
@@ -118,15 +80,32 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                     http_connection=request,
                     user_authentication_callback=self._http_flow_handler.authenticate,
                 ) as session:
-                    return StreamingResponse(
-                        headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                        content=dragent_generate_streaming_response_as_str(
+
+                    async def gen() -> AsyncGenerator[str]:
+                        async for item in dragent_generate_streaming_response(
                             payload,
                             session=session,
-                            streaming=True,
                             step_adaptor=self.get_step_adaptor(),
                             output_type=DRAgentEventResponse,
-                        ),
+                            streaming=True,
+                        ):
+                            if isinstance(item, DRAgentEventResponse) and item.events:
+                                # Handle RUN events
+                                for event in item.events:
+                                    if getattr(event, "thread_id", None) is None:
+                                        setattr(event, "thread_id", payload.thread_id)
+                                    if getattr(event, "run_id", None) is None:
+                                        setattr(event, "run_id", payload.run_id)
+                                    if getattr(event, "parent_run_id", None) is None:
+                                        setattr(event, "parent_run_id", payload.parent_run_id)
+                                    if getattr(event, "input", None) is None:
+                                        setattr(event, "input", payload)
+
+                            yield item.get_stream_data()
+
+                    return StreamingResponse(
+                        headers={"Content-Type": "text/event-stream; charset=utf-8"},
+                        content=gen(),
                     )
 
             return post_stream
@@ -155,7 +134,6 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                                 session=session,
                                 streaming=True,
                                 step_adaptor=self.get_step_adaptor(),
-                                result_type=DRAgentChatResponseChunk,
                                 output_type=DRAgentChatResponseChunk,
                             ),
                         )
@@ -170,7 +148,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         primary_route = endpoint.openai_api_path or "/chat"
         app.add_api_route(
-            path=prefix_mount_path(f"{primary_route}/stream"),
+            path=f"{primary_route}/stream",
             endpoint=post_streaming_endpoint(),
             methods=[endpoint.method],
             response_model=Event,
@@ -182,7 +160,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             # OpenAI v1 Compatible Mode: Create single endpoint that handles both streaming and
             # non-streaming
             app.add_api_route(
-                path=prefix_mount_path(endpoint.openai_api_v1_path),
+                path=endpoint.openai_api_v1_path,
                 endpoint=post_openai_api_compatible_endpoint(),
                 methods=[endpoint.method],
                 response_model=DRAgentChatResponse | DRAgentChatResponseChunk,

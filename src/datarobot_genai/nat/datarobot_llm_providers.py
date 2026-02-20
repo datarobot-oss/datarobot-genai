@@ -34,7 +34,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
     datarobot_api_token: str | None = None
     llm_deployment_id: str | None = None
     nim_deployment_id: str | None = None
-    use_datarobot_llm_gateway: bool = False
+    use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
 
 

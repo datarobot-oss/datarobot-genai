@@ -14,20 +14,28 @@
 
 import logging
 
-from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageChunkEvent
+from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import Message
 from nat.data_models.api_server import Usage
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
+from datarobot_genai.dragent.request import DRAgentChatRequest
 from datarobot_genai.dragent.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.response import DRAgentChatResponse
 from datarobot_genai.dragent.response import DRAgentChatResponseChunk
 from datarobot_genai.dragent.response import DRAgentEventResponse
 
 logger = logging.getLogger(__name__)
+
+# --- Input converters ---
+
+## --- AG-UI -> NAT Chat Completions ---
 
 
 def convert_dragent_run_agent_input_to_chat_request(input: DRAgentRunAgentInput) -> ChatRequest:
@@ -60,9 +68,17 @@ def convert_dragent_run_agent_input_to_chat_request_or_message(
     return ChatRequestOrMessage.model_validate(chat_request.model_dump())
 
 
-def convert_chat_request_to_run_agent_input(request: ChatRequest) -> DRAgentRunAgentInput:
+## --- dragent Chat Completions -> AG-UI ---
+
+
+def convert_chat_request_to_run_agent_input(request: DRAgentChatRequest) -> DRAgentRunAgentInput:
     chat_request_dict = request.model_dump()
     return convert_chat_completion_params_to_run_agent_input(chat_request_dict)
+
+
+# --- Output converters ---
+
+## --- NAT Chat Completions -> dragent Chat Completions ---
 
 
 def convert_str_to_dragent_chat_response(response: str) -> DRAgentChatResponse:
@@ -71,12 +87,30 @@ def convert_str_to_dragent_chat_response(response: str) -> DRAgentChatResponse:
     )
 
 
-def convert_str_to_dragent_chat_chunk_response(
+def convert_chat_response_to_dragent_chat_response(
+    response: ChatResponse,
+) -> DRAgentChatResponse:
+    return DRAgentChatResponse.model_validate(response.model_dump())
+
+
+def convert_str_to_dragent_chat_response_chunk(
     response: str,
 ) -> DRAgentChatResponseChunk:
-    return DRAgentChatResponseChunk.create_streaming_chunk(
-        response, usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+    chunk = DRAgentChatResponseChunk.create_streaming_chunk(
+        response,
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
     )
+    chunk.events = [TextMessageChunkEvent(delta=response)]
+    return chunk
+
+
+def convert_chat_response_chunk_to_dragent_chat_response_chunk(
+    response: ChatResponseChunk,
+) -> DRAgentChatResponseChunk:
+    return DRAgentChatResponseChunk.model_validate(response.model_dump())
+
+
+## --- NAT chat completions -> dragent AG-UI ---
 
 
 def convert_str_to_dragent_event_response(
@@ -86,22 +120,17 @@ def convert_str_to_dragent_event_response(
         delta=response,
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        event=None,
+        events=[TextMessageChunkEvent(delta=response)],
     )
+
+
+## --- dragent AG-UI -> dragent chat completions ---
 
 
 def convert_dragent_event_response_to_dragent_chunk(
     response: DRAgentEventResponse,
 ) -> DRAgentChatResponseChunk:
-    chunk = response.delta
-    if chunk is None:
-        if response.event is not None:
-            if isinstance(response.event, TextMessageContentEvent):
-                chunk = response.event.delta
-            else:
-                chunk = ""
-        else:
-            raise ValueError(f"No delta or event in DRAgentEventResponse: {response}")
+    chunk = response.get_delta()
     if response.usage_metrics is not None:
         usage = Usage(
             prompt_tokens=response.usage_metrics["prompt_tokens"],
@@ -110,4 +139,15 @@ def convert_dragent_event_response_to_dragent_chunk(
         )
     else:
         usage = Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-    return DRAgentChatResponseChunk.create_streaming_chunk(chunk, usage=usage)
+    chunk = DRAgentChatResponseChunk.create_streaming_chunk(
+        chunk, model=response.model, usage=usage
+    )
+    chunk.events = response.events
+    return chunk
+
+
+# --- Various converters ---
+
+
+def convert_tool_message_to_str(message: ToolMessage) -> str:
+    return message.content
