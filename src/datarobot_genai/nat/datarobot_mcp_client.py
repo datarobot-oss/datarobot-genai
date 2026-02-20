@@ -25,6 +25,7 @@ from nat.plugins.mcp.client.client_base import AuthAdapter
 from nat.plugins.mcp.client.client_base import MCPStreamableHTTPClient
 from nat.plugins.mcp.client.client_config import MCPServerConfig
 from nat.plugins.mcp.client.client_impl import MCPClientConfig
+from nat.plugins.mcp.exception_handler import extract_primary_exception
 from pydantic import Field
 from pydantic import HttpUrl
 
@@ -283,6 +284,10 @@ async def datarobot_mcp_client_function_group(
                 )
             yield group
     except Exception as e:
-        logger.warning(f"Error in MCP client function group: {e}")
+        primary_exception = e
+        if isinstance(e, ExceptionGroup):  # noqa: F821
+            primary_exception = extract_primary_exception(list(e.exceptions))
+
+        logger.warning(f"Error in MCP client function group: {primary_exception}")
         group.mcp_client = None
         yield group
