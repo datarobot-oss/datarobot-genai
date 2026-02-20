@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-genai"
-version = "0.5.2"
+version = "0.5.3"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.14"
@@ -20,6 +20,9 @@ datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
 datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
+
+[project.entry-points.'nat.front_ends']
+dragent = "datarobot_genai.dragent.register"
 
 [project.optional-dependencies]
 
@@ -145,7 +148,6 @@ dev = [
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
 ]
-
 
 [tool.mypy]
 disallow_untyped_defs = true

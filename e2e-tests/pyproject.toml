@@ -1,0 +1,95 @@
+[project]
+name = "datarobot-genai-e2e-tests"
+version = "0.1.0"
+description = "E2E tests for datarobot-genai"
+requires-python = ">=3.10, <3.14"
+authors = [{ name = "DataRobot, Inc." }]
+
+dependencies = [
+    "pytest",
+]
+
+[dependency-groups]
+dragent-nat = [
+    "datarobot-genai[dragent,nat]"
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+datarobot-genai = { path = "../" }
+
+[tool.mypy]
+disallow_untyped_defs = true
+disable_error_code = ["import-untyped"]
+ignore_missing_imports = true
+pretty = true
+show_absolute_path = true
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.setuptools]
+py-modules = ["dragent", "drmcp"]
+
+[tool.ruff.lint]
+select = [
+    "E",  # Pyflakes
+    "F",  # pycodestyle
+    "I",  # isort
+    "N",  # pep8-naming
+    "D",  # pydocstyle
+    "PL", # pylint
+    "UP", # pyupgrade
+    "INP", # check missing __init__.py
+    "B006", # mutable-argument-default
+]
+extend-ignore = [
+    # D100-D106: Ignore undocumented module, class, method, function & inner class
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106",
+    # 1 blank line required between summary line and description
+    "D205",
+    # Too many arguments
+    "PLR0913",
+    # Too many statements
+    "PLR0915",
+    # Too many branches
+    "PLR0912",
+]
+fixable = [
+    "I",    # isort
+    "D",    # pydocstyle
+    "UP",   # pyupgrade
+    "F401", # Imported but unused
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "D104", # Missing docstring in public package
+    "F401"  # Imported but unused
+]
+"scripts/*.py" = [
+    "INP001", # implicit-namespace-package: allow scripts without package semantics
+    "E402",   # module-import-not-at-top-of-file: allow local imports in smoke script
+    "I001",   # isort import order within functions
+    "PLC0415",# pylint import-outside-toplevel for controlled local imports
+]
+"src/datarobot_genai/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
+]
+"tests/**/*.py" = [
+    "PLC0415",# pylint import-outside-toplevel: allow imports in test functions
+    "PLR2004",# magic-value-comparison: allow magic values in test assertions
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["int", "str", "bytes"]
+max-args = 8
