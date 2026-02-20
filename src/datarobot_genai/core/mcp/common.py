@@ -177,7 +177,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             url = f"{base_url}/deployments/{self.mcp_deployment_id}/directAccess/mcp"
             headers = self._build_authenticated_headers()
 
-            logger.info(f"Using DataRobot hosted MCP deployment: {url}")
+            logger.debug(f"Using DataRobot hosted MCP deployment: {url}")
 
             return {
                 "url": url,
@@ -194,7 +194,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 external_headers = json.loads(self.external_mcp_headers)
                 headers.update(external_headers)
 
-            logger.info(f"Using external MCP URL: {self.external_mcp_url}")
+            logger.debug(f"Using external MCP URL: {self.external_mcp_url}")
 
             return {
                 "url": self.external_mcp_url.rstrip("/"),
@@ -205,14 +205,12 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         # No MCP configuration found, setup localhost if running locally
         if self.mcp_server_port:
             url = f"http://localhost:{self.mcp_server_port}"
-            if self._check_localhost_server(url):
-                headers = self._build_authenticated_headers()
-                logger.info(f"Using localhost MCP server: {url}")
-                return {
-                    "url": f"{url}/mcp",
-                    "transport": "streamable-http",
-                    "headers": headers,
-                }
-            logger.warning(f"MCP server is not running or not responding at {url}")
+            headers = self._build_authenticated_headers()
+            logger.debug(f"Using localhost MCP server: {url}")
+            return {
+                "url": f"{url}/mcp",
+                "transport": "streamable-http",
+                "headers": headers,
+            }
 
         return None

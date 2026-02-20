@@ -7,6 +7,9 @@ dotenv: [".env"]
 env:
   PARENT_ENV: true
 
+vars:
+  PROJECT_SRC: "./src"
+
 includes:
   lint:
     taskfile: .taskfiles/lint.yml
