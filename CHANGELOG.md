@@ -4,14 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.5
+
+- Added upper bound to `crewai` dependency (`>=1.1.0,<2.0.0`)
+
 ## 0.5.4
 
 - Added dr_mcp_prompt as prompt function decorator
 - Added dr_mcp_resource as resource function decorator
-
-## 0.5.4
-
-- Added upper bound to `crewai` dependency (`>=1.1.0,<2.0.0`)
 
 ## 0.5.3
 
