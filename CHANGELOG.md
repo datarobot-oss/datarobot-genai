@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.5.2
 
-- Restore extra options in the package
+- Dependency groups are converted into the optional `extra` options for installation, without list of default dependencies.
 
 ## 0.5.1
 
