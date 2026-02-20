@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Added "DR docs" tools: a tool for searching DataRobot Agentic AI docs and returning most relevant doc pages (includes title, URL, content) using TF-IDF, and a tool for fetching any DataRobot docs page. Note: only supported for English documentation, not Japanese.
 
+## 0.5.3
+
+- Added chat history support for all agent types (CrewAI, LangGraph, LlamaIndex, NAT)
+- History is opt-in per agent; configurable via `max_history_messages` constructor param or `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` env var (default: 20)
+
+## 0.5.2
+
+- Dependency groups are converted into the optional `extra` options for installation, without list of default dependencies.
+
 ## 0.5.1
 
 - Added the CHANGELOG.md file

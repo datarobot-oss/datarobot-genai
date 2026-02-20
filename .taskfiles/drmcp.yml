@@ -10,7 +10,7 @@ tasks:
     desc: "🔧 Install drmcp and dev dependencies for development"
     cmds:
       - echo "🔧 Installing DR MCP Library and dev dependencies for development"
-      - uv sync --group drmcp --group dev
+      - uv sync --extra drmcp --dev
     silent: true
 
   drmcp-dev:
