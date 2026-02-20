@@ -48,12 +48,6 @@ functions:
     _type: sequential_executor
     tool_list: [planner, writer]
     description: A tool that plans and writes content on the requested topic.
-function_groups:
-  mcp_tools:
-    _type: datarobot_mcp_client
-authentication:
-  datarobot_mcp_auth:
-    _type: datarobot_mcp_auth
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
@@ -62,7 +56,6 @@ workflow:
   llm_name: datarobot_llm
   tool_names:
     - content_writer_pipeline
-    - mcp_tools
   return_direct:
     - content_writer_pipeline
   system_prompt: Choose and call a tool to answer the query.

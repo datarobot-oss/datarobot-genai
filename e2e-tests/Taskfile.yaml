@@ -7,6 +7,7 @@ dotenv: [".env"]
 includes:
   dragent:
     taskfile: dragent/Taskfile.yaml
+    dir: ./dragent
   lint:
     taskfile: ../.taskfiles/lint.yml
     flatten: true

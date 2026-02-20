@@ -23,7 +23,6 @@ from fastapi import Response
 from fastapi.responses import StreamingResponse
 from nat.builder.context import Context
 from nat.builder.workflow_builder import WorkflowBuilder
-from nat.data_models.api_server import ChatRequest
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
@@ -34,6 +33,7 @@ from nat.runtime.session import SessionManager
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.dragent.request import DRAgentChatRequest
 from datarobot_genai.dragent.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.response import DRAgentChatResponse
 from datarobot_genai.dragent.response import DRAgentChatResponseChunk
@@ -138,7 +138,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             """
 
             async def post_openai_api_compatible(
-                response: Response, request: Request, payload: ChatRequest
+                response: Response, request: Request, payload: DRAgentChatRequest
             ) -> StreamingResponse | DRAgentChatResponse:
                 # Check if streaming is requested
 
