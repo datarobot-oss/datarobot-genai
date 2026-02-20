@@ -270,6 +270,36 @@ def test_create_pipeline_interactions_from_events_simple() -> None:
     assert sample.user_input == msgs
 
 
+def test_max_history_messages_defaults_to_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no constructor param is given, property reads from env var via config."""
+    monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "5")
+    agent = SimpleAgent()
+    assert agent.max_history_messages == 5
+
+
+def test_max_history_messages_defaults_to_builtin_when_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When neither constructor param nor env var is set, uses DEFAULT_MAX_HISTORY_MESSAGES."""
+    monkeypatch.delenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", raising=False)
+    agent = SimpleAgent()
+    assert agent.max_history_messages == 20  # DEFAULT_MAX_HISTORY_MESSAGES
+
+
+def test_max_history_messages_constructor_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Constructor param takes priority over env var."""
+    monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "5")
+    agent = SimpleAgent(max_history_messages=10)
+    assert agent.max_history_messages == 10
+
+
+def test_max_history_messages_constructor_zero_disables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Passing 0 explicitly disables history regardless of env var."""
+    monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "20")
+    agent = SimpleAgent(max_history_messages=0)
+    assert agent.max_history_messages == 0
+
+
 def test_base_agent_forwarded_headers_none() -> None:
     """Test BaseAgent with no forwarded headers."""
     agent = SimpleAgent(forwarded_headers=None)
