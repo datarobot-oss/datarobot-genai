@@ -14,9 +14,6 @@ includes:
   lint:
     taskfile: ../.taskfiles/lint.yml
     flatten: true
-  license:
-    taskfile: ../.taskfiles/license.yml
-    flatten: true
 
 tasks:
   install:
