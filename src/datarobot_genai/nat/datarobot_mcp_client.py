@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _default_transport() -> Literal["streamable-http", "sse", "stdio"]:
+def _default_transport() -> Literal["streamable-http", "sse"]:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
@@ -145,7 +145,6 @@ async def datarobot_mcp_client_function_group(
         The function group
     """
     from nat.plugins.mcp.client.client_base import MCPSSEClient  # noqa: PLC0415
-    from nat.plugins.mcp.client.client_base import MCPStdioClient  # noqa: PLC0415
     from nat.plugins.mcp.client.client_impl import MCPFunctionGroup  # noqa: PLC0415
     from nat.plugins.mcp.client.client_impl import (
         mcp_apply_tool_alias_and_description,  # noqa: PLC0415
@@ -158,21 +157,7 @@ async def datarobot_mcp_client_function_group(
         auth_provider = await _builder.get_auth_provider(config.server.auth_provider)
 
     # Build the appropriate client
-    if config.server.transport == "stdio":
-        if not config.server.command:
-            raise ValueError("command is required for stdio transport")
-        client = MCPStdioClient(
-            config.server.command,
-            config.server.args,
-            config.server.env,
-            tool_call_timeout=config.tool_call_timeout,
-            auth_flow_timeout=config.auth_flow_timeout,
-            reconnect_enabled=config.reconnect_enabled,
-            reconnect_max_attempts=config.reconnect_max_attempts,
-            reconnect_initial_backoff=config.reconnect_initial_backoff,
-            reconnect_max_backoff=config.reconnect_max_backoff,
-        )
-    elif config.server.transport == "sse":
+    if config.server.transport == "sse":
         client = MCPSSEClient(
             str(config.server.url),
             tool_call_timeout=config.tool_call_timeout,
