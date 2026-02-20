@@ -56,7 +56,7 @@ task test
 To build and publish a dev version of a package, comment `/build` on a PR.
 
 ## Publishing
-- PRs (same-repo): dev builds are auto-published to TestPyPI (`.devN`).
+- PRs (same-repo): comment `/build` to publish dev builds to TestPyPI (`.devN`).
 - Merge to `main`: tags `v{version}` and publishes to PyPI automatically.
 - Pushing a `v*` tag also triggers PyPI publish.
 - Optional: `task release:tag-and-push` creates and pushes `v{version}` locally.
