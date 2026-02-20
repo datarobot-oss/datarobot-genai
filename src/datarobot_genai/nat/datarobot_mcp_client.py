@@ -235,6 +235,7 @@ async def datarobot_mcp_client_function_group(
         group._default_user_id = None
         group._allow_default_user_id_for_tool_calls = True
 
+    yielded = False
     try:
         async with client:
             # Expose the live MCP client on the function group instance so other components
@@ -282,12 +283,18 @@ async def datarobot_mcp_client_function_group(
                     input_schema=input_schema,
                     converters=tool_fn.converters,
                 )
+            yielded = True
             yield group
     except Exception as e:
         primary_exception = e
         if isinstance(e, ExceptionGroup):  # noqa: F821
             primary_exception = extract_primary_exception(list(e.exceptions))
 
-        logger.warning(f"Error in MCP client function group: {primary_exception}")
+        logger.warning("Error in MCP client function group: %s", primary_exception)
         group.mcp_client = None
-        yield group
+        if not yielded:
+            yield group
+        else:
+            # Cleanup (e.g. __aexit__) failed after we already yielded; re-raise so
+            # the caller sees it and we do not yield a second time.
+            raise
