@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import os
 from typing import Any
 
 import pytest
@@ -22,8 +23,14 @@ from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 
+_REQUIRES_REAL_DR_API = os.environ.get("DRMCP_INTEGRATION_USE_DR_STUBS") == "true"
+
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    _REQUIRES_REAL_DR_API,
+    reason="Requires real DataRobot API (project/model); skipped when using DR client stubs",
+)
 class TestMCPToolsIntegration:
     """Integration tests for MCP tools."""
 

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import re
 
 import pytest
@@ -19,8 +20,14 @@ from mcp import McpError
 from datarobot_genai.drmcp import integration_test_mcp_session
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
+_REQUIRES_REAL_DR_API = os.environ.get("DRMCP_INTEGRATION_USE_DR_STUBS") == "true"
+
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    _REQUIRES_REAL_DR_API,
+    reason="Requires real DataRobot API (prompts from API); skipped when using DR client stubs",
+)
 class TestMCPDRPromptManagementIntegration:
     """Integration tests for MCP DR Prompt Management integration."""
 

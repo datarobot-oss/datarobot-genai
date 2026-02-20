@@ -11,7 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import uuid
+
+# Integration tests use MCP server with DR client stubs by default.
+# Tests that require a real DataRobot API should skip when this is set.
+os.environ.setdefault("DRMCP_INTEGRATION_USE_DR_STUBS", "true")
 from collections.abc import Iterator
 from typing import Any
 
