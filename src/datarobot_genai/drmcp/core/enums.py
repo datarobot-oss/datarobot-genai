@@ -23,7 +23,7 @@ class DataRobotMCPToolCategory(Enum):
 
 class DataRobotMCPPromptCategory(Enum):
     USER_PROMPT = auto()  # prompt created by users
-    DYNAMICALLY_LOADED_PROMPT_TEMPLATE = auto()  # prompts dynamically loaded after MCP server is up
+    DYNAMICALLY_LOADED_PROMPT = auto()  # prompts dynamically loaded after MCP server is up
 
 
 class DataRobotMCPResourceCategory(Enum):

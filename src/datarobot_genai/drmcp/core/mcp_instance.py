@@ -461,6 +461,17 @@ async def check_tool_registration_status_after_it_finishes(
     logger.info(f"Registered tools: {len(tools)}")
 
 
+async def check_prompt_registration_status_after_it_finishes(
+    mcp_server: DataRobotMCP,
+    prompt_name_no_duplicate: str,
+) -> None:
+    # Verify prompt is registered
+    prompts = await mcp_server.get_prompts()
+    if not any(prompt.name == prompt_name_no_duplicate for prompt in prompts.values()):
+        raise RuntimeError(f"Prompt {prompt_name_no_duplicate} was not registered successfully")
+    logger.info(f"Registered prompts: {len(prompts)}")
+
+
 async def register_tools(
     fn: AnyFunction,
     name: str | None = None,
@@ -468,6 +479,7 @@ async def register_tools(
     description: str | None = None,
     tags: set[str] | None = None,
     deployment_id: str | None = None,
+    tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL,
 ) -> Tool:
     """
     Register new tools after server has started.
@@ -479,6 +491,7 @@ async def register_tools(
         description: Optional description of what the tool does
         tags: Optional set of tags to apply to the tool
         deployment_id: Optional deployment ID associated with the tool
+        tool_category: Category of the tool. Its value is from DataRobotMCPToolCategory
 
     Returns
     -------
@@ -508,7 +521,7 @@ async def register_tools(
         description=description,
         annotations=annotations,
         tags=tags,
-        meta={"tool_category": DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL.name},
+        meta={"tool_category": tool_category.name},
     )
 
     # Register the tool
@@ -531,6 +544,7 @@ async def register_prompt(
     tags: set[str] | None = None,
     meta: dict[str, Any] | None = None,
     prompt_template: tuple[str, str] | None = None,
+    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.DYNAMICALLY_LOADED_PROMPT,  # noqa: E501
 ) -> Prompt:
     """
     Register new prompt after server has started.
@@ -543,6 +557,7 @@ async def register_prompt(
         tags: Optional set of tags to apply to the prompt
         meta: Optional dict of metadata to apply to the prompt
         prompt_template: Optional (id, version id) of the prompt template
+        prompt_category: Category of prompt. Its value is from DataRobotMCPPromptCategory
 
     Returns
     -------
@@ -554,6 +569,8 @@ async def register_prompt(
 
     prompt_name_no_duplicate = await get_prompt_name_no_duplicate(mcp, prompt_name)
 
+    meta = meta or {}
+    meta["resource_category"] = prompt_category.name
     prompt = Prompt.from_function(
         fn=wrapped_fn,
         name=prompt_name_no_duplicate,
@@ -572,11 +589,7 @@ async def register_prompt(
 
     registered_prompt = mcp.add_prompt(prompt)
 
-    # Verify prompt is registered
-    prompts = await mcp.get_prompts()
-    if not any(prompt.name == prompt_name_no_duplicate for prompt in prompts.values()):
-        raise RuntimeError(f"Prompt {prompt_name_no_duplicate} was not registered successfully")
-    logger.info(f"Registered prompts: {len(prompts)}")
+    await check_prompt_registration_status_after_it_finishes(mcp, prompt_name_no_duplicate)
 
     # Notify clients that the prompt list has changed
     await mcp.notify_prompts_changed()
