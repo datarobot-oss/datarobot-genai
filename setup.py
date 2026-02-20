@@ -84,15 +84,8 @@ pydanticai = core + [
     "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
 ]
 
-# auth is standalone set of dependencies for auth utilities only
-auth = [
-  "datarobot[auth]>=3.10.0,<4.0.0",
-  "aiohttp>=3.9.0,<4.0.0",
-  "pydantic>=2.6.1,<3.0.0",
-]
-
 # drmcp is standalone set of dependencies for MCP Server only
-drmcp = [
+drmcp = core + [
     "datarobot-asgi-middleware>=0.2.0,<1.0.0",
     "python-dotenv>=1.1.0,<2.0.0",
     "boto3>=1.34.0,<2.0.0",
@@ -110,6 +103,13 @@ drmcp = [
     "aiohttp-retry>=2.8.3,<3.0.0",
     "aiosignal>=1.3.1,<2.0.0",
     "fastmcp>=2.13.0.2,<3.0.0",
+]
+
+# auth is standalone set of dependencies for auth utilities only
+auth = [
+  "datarobot[auth]>=3.10.0,<4.0.0",
+  "aiohttp>=3.9.0,<4.0.0",
+  "pydantic>=2.6.1,<3.0.0",
 ]
 
 
