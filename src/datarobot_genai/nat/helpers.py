@@ -67,7 +67,7 @@ def add_headers_to_datarobot_mcp_auth(config_yaml: dict, headers: dict[str, str]
                     extra_api_token_keys = {"x-datarobot-api-token", "x-datarobot-api-key"}
                     has_extra_api_token_header = extra_api_token_keys & keys_present
                     if "Authorization" in headers and not has_extra_api_token_header:
-                        token = headers["Authorization"].lstrip("Bearer ")
+                        token = headers["Authorization"].removeprefix("Bearer ")
                         headers["x-datarobot-api-token"] = token
                     auth_config["headers"] = headers
 

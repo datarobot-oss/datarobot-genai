@@ -47,6 +47,71 @@ from datarobot_genai.nat.helpers import load_workflow
                 }
             },
         ),
+        # Authorization Bearer is copied to x-datarobot-api-token with prefix removed
+        (
+            {"authentication": {"some_auth_name": {"_type": "datarobot_mcp_auth"}}},
+            {"Authorization": "Bearer mytoken"},
+            {
+                "authentication": {
+                    "some_auth_name": {
+                        "_type": "datarobot_mcp_auth",
+                        "headers": {
+                            "Authorization": "Bearer mytoken",
+                            "x-datarobot-api-token": "mytoken",
+                        },
+                    }
+                }
+            },
+        ),
+        # Token starting with chars in {'B','e','a','r',' '} must not be stripped
+        # (removeprefix, not lstrip)
+        (
+            {"authentication": {"some_auth_name": {"_type": "datarobot_mcp_auth"}}},
+            {"Authorization": "Bearer abcToken"},
+            {
+                "authentication": {
+                    "some_auth_name": {
+                        "_type": "datarobot_mcp_auth",
+                        "headers": {
+                            "Authorization": "Bearer abcToken",
+                            "x-datarobot-api-token": "abcToken",
+                        },
+                    }
+                }
+            },
+        ),
+        # Authorization Bearer is not copied when extra key is present
+        (
+            {"authentication": {"some_auth_name": {"_type": "datarobot_mcp_auth"}}},
+            {"Authorization": "Bearer mytoken", "x-datarobot-api-token": "othertoken"},
+            {
+                "authentication": {
+                    "some_auth_name": {
+                        "_type": "datarobot_mcp_auth",
+                        "headers": {
+                            "Authorization": "Bearer mytoken",
+                            "x-datarobot-api-token": "othertoken",
+                        },
+                    }
+                }
+            },
+        ),
+        # Authorization Bearer is not copied when extra key is present
+        (
+            {"authentication": {"some_auth_name": {"_type": "datarobot_mcp_auth"}}},
+            {"Authorization": "Bearer mytoken", "x-datarobot-api-key": "othertoken"},
+            {
+                "authentication": {
+                    "some_auth_name": {
+                        "_type": "datarobot_mcp_auth",
+                        "headers": {
+                            "Authorization": "Bearer mytoken",
+                            "x-datarobot-api-key": "othertoken",
+                        },
+                    }
+                }
+            },
+        ),
         (
             {"authentication": {"some_auth_name": {"_type": "not_datarobot_mcp_auth"}}},
             {"h1": "v1"},
