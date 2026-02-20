@@ -32,6 +32,9 @@ def mock_mcp() -> MagicMock:
     mock._list_tools_mcp = AsyncMock(
         return_value=[MagicMock(name="tool1"), MagicMock(name="tool2")]
     )
+    mock.get_tools = AsyncMock(return_value=[])
+    mock.get_prompts = AsyncMock(return_value=[])
+    mock.get_resources = AsyncMock(return_value=[])
     # Mock low-level server for _configure_mcp_capabilities()
     mock._mcp_server = MagicMock()
     mock._mcp_server.notification_options = MagicMock()
@@ -311,6 +314,33 @@ class TestDataRobotMCPServer:
         mock_mcp._list_tools_mcp.assert_called_once()
         # Should be called twice: once for run_server, once for pre_server_shutdown
         assert mock_loop.run_until_complete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_tools(self, mock_mcp: MagicMock) -> None:
+        dr_mcp_server = DataRobotMCPServer(mock_mcp)
+
+        actual_outputs = await dr_mcp_server.get_tools()
+
+        mock_mcp.get_tools.assert_called_once_with()
+        assert actual_outputs == mock_mcp.get_tools.return_value
+
+    @pytest.mark.asyncio
+    async def test_get_prompts(self, mock_mcp: MagicMock) -> None:
+        dr_mcp_server = DataRobotMCPServer(mock_mcp)
+
+        actual_outputs = await dr_mcp_server.get_prompts()
+
+        mock_mcp.get_prompts.assert_called_once_with()
+        assert actual_outputs == mock_mcp.get_prompts.return_value
+
+    @pytest.mark.asyncio
+    async def test_get_resources(self, mock_mcp: MagicMock) -> None:
+        dr_mcp_server = DataRobotMCPServer(mock_mcp)
+
+        actual_outputs = await dr_mcp_server.get_resources()
+
+        mock_mcp.get_resources.assert_called_once_with()
+        assert actual_outputs == mock_mcp.get_resources.return_value
 
 
 def test_mcp_server_capabilities():
