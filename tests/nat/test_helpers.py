@@ -129,6 +129,33 @@ def test_add_headers_to_datarobot_mcp_auth(config, headers, expected):
     assert config == expected
 
 
+def test_add_headers_to_datarobot_mcp_auth_does_not_mutate_caller_headers():
+    """Caller's headers dict must not be mutated (no x-datarobot-api-token added in place)."""
+    headers = {"Authorization": "Bearer mytoken"}
+    config = {"authentication": {"auth1": {"_type": "datarobot_mcp_auth"}}}
+    add_headers_to_datarobot_mcp_auth(config, headers)
+    assert headers == {"Authorization": "Bearer mytoken"}
+    assert "x-datarobot-api-token" not in headers
+
+
+def test_add_headers_to_datarobot_mcp_auth_each_config_gets_own_headers_dict():
+    """Each datarobot_mcp_auth config must get its own headers dict (no shared mutable ref)."""
+    headers = {"h1": "v1"}
+    config = {
+        "authentication": {
+            "auth1": {"_type": "datarobot_mcp_auth"},
+            "auth2": {"_type": "datarobot_mcp_auth"},
+        }
+    }
+    add_headers_to_datarobot_mcp_auth(config, headers)
+    h1 = config["authentication"]["auth1"]["headers"]
+    h2 = config["authentication"]["auth2"]["headers"]
+    assert h1 == h2 == {"h1": "v1"}
+    assert h1 is not h2
+    h1["only_in_one"] = "x"
+    assert "only_in_one" not in h2
+
+
 @pytest.mark.parametrize(
     "config, headers, expected",
     [
