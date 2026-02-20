@@ -50,12 +50,6 @@ repos:
         types: [ python ]
         require_serial: true
         pass_filenames: false
-    -   id: fix-licenses
-        name: fix-licenses
-        entry: task fix-licenses-files --
-        language: system
-        require_serial: true
-        pass_filenames: true
     -   id: ruff-format-e2e
         name: ruff-format-e2e
         entry: cd e2e-tests && task fix-ruff-format
@@ -76,6 +70,12 @@ repos:
         types: [ python ]
         require_serial: true
         pass_filenames: false
+    -   id: fix-licenses
+        name: fix-licenses
+        entry: task fix-licenses-files --
+        language: system
+        require_serial: true
+        pass_filenames: true
     -   id: version-check-and-bump
         name: version-check-and-bump (PyPI)
         entry: uv run --no-sync python scripts/check_and_bump_version.py --repo pypi --bump patch --apply
