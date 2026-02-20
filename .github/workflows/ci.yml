@@ -51,7 +51,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          uv sync --all-groups
 
       - name: Lint (ruff format/check)
         run: |
@@ -106,11 +106,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ "${{ matrix.module }}" = "core" ]; then
-            uv sync --dev
-          else
-            uv sync --extra ${{ matrix.module }} --dev
-          fi
+          uv sync --group ${{ matrix.module }} --group dev
 
       - name: Run tests
         run: |
@@ -164,7 +160,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          uv sync --all-groups
 
       - name: Run all tests
         run: |
@@ -230,7 +226,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --dev
+          uv sync --all-groups
 
   version-check:
     runs-on: ubuntu-latest

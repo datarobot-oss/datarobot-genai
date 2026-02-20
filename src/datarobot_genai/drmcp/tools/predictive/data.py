@@ -19,7 +19,7 @@ from typing import Annotated
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.utils import is_valid_url
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
@@ -27,7 +27,7 @@ from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_t
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"predictive", "data", "write", "upload", "catalog"})
+@dr_mcp_integration_tool(tags={"predictive", "data", "write", "upload", "catalog"})
 async def upload_dataset_to_ai_catalog(
     *,
     file_path: Annotated[str, "The path to the dataset file to upload."] | None = None,
@@ -69,7 +69,7 @@ async def upload_dataset_to_ai_catalog(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "data", "read", "list", "catalog"})
+@dr_mcp_integration_tool(tags={"predictive", "data", "read", "list", "catalog"})
 async def list_ai_catalog_items() -> ToolResult:
     """List all AI Catalog items (datasets) for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -97,7 +97,7 @@ async def list_ai_catalog_items() -> ToolResult:
 # from datarobot_genai.drmcp.core.memory_management import MemoryManager, get_memory_manager
 
 
-# @dr_mcp_tool()
+# @dr_mcp_integration_tool()
 # async def list_ai_catalog_items(
 #     ctx: Context, agent_id: str = None, storage_id: str = None
 # ) -> str:

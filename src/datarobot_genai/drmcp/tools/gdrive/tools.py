@@ -21,7 +21,7 @@ from typing import Literal
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.gdrive import LIMIT
 from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
 from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS
@@ -32,7 +32,7 @@ from datarobot_genai.drmcp.tools.clients.gdrive import get_gdrive_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
+@dr_mcp_integration_tool(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
 async def gdrive_find_contents(
     *,
     page_size: Annotated[
@@ -101,7 +101,7 @@ async def gdrive_find_contents(
     )
 
 
-@dr_mcp_tool(tags={"google", "gdrive", "read", "content", "file", "download"})
+@dr_mcp_integration_tool(tags={"google", "gdrive", "read", "content", "file", "download"})
 async def gdrive_read_content(
     *,
     file_id: Annotated[str, "The ID of the file to read."],
@@ -148,7 +148,9 @@ async def gdrive_read_content(
     )
 
 
-@dr_mcp_tool(tags={"google", "gdrive", "create", "write", "file", "folder"}, enabled=False)
+@dr_mcp_integration_tool(
+    tags={"google", "gdrive", "create", "write", "file", "folder"}, enabled=False
+)
 async def gdrive_create_file(
     *,
     name: Annotated[str, "The name for the new file or folder."],
@@ -220,7 +222,7 @@ async def gdrive_create_file(
     )
 
 
-@dr_mcp_tool(
+@dr_mcp_integration_tool(
     tags={"google", "gdrive", "update", "metadata", "rename", "star", "trash"}, enabled=False
 )
 async def gdrive_update_metadata(
@@ -281,7 +283,7 @@ async def gdrive_update_metadata(
     )
 
 
-@dr_mcp_tool(tags={"google", "gdrive", "manage", "access", "acl"}, enabled=False)
+@dr_mcp_integration_tool(tags={"google", "gdrive", "manage", "access", "acl"}, enabled=False)
 async def gdrive_manage_access(
     *,
     file_id: Annotated[str, "The ID of the file or folder."],

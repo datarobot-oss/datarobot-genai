@@ -24,7 +24,7 @@ import pandas as pd
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
 from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
 
@@ -87,7 +87,7 @@ def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFra
         raise ToolError(f"Failed to retrieve dataset '{dataset_id}': {error_str}")
 
 
-@dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
 async def analyze_dataset(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
@@ -139,7 +139,7 @@ async def analyze_dataset(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "usecase"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "read", "analysis", "usecase"})
 async def suggest_use_cases(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
@@ -169,7 +169,7 @@ async def suggest_use_cases(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "training", "read", "analysis", "eda"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "read", "analysis", "eda"})
 async def get_exploratory_insights(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
@@ -468,7 +468,7 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
     return suggestions
 
 
-@dr_mcp_tool(tags={"predictive", "training", "write", "autopilot", "model"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "write", "autopilot", "model"})
 async def start_autopilot(
     *,
     target: Annotated[str, "Name of the target column for modeling"] | None = None,
@@ -548,7 +548,7 @@ async def start_autopilot(
         raise ToolError(f"Failed to start Autopilot: {str(e)}")
 
 
-@dr_mcp_tool(tags={"prediction", "training", "read", "model", "evaluation"})
+@dr_mcp_integration_tool(tags={"prediction", "training", "read", "model", "evaluation"})
 async def get_model_roc_curve(
     *,
     project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
@@ -608,7 +608,7 @@ async def get_model_roc_curve(
         raise ToolError(f"Failed to get ROC curve: {str(e)}")
 
 
-@dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "read", "model", "evaluation"})
 async def get_model_feature_impact(
     *,
     project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
@@ -633,7 +633,7 @@ async def get_model_feature_impact(
     )
 
 
-@dr_mcp_tool(tags={"predictive", "training", "read", "model", "evaluation"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "read", "model", "evaluation"})
 async def get_model_lift_chart(
     *,
     project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,

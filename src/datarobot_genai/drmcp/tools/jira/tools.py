@@ -19,14 +19,14 @@ from typing import Any
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_tool
+from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.tools.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drmcp.tools.clients.jira import JiraClient
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_tool(tags={"jira", "search", "issues"})
+@dr_mcp_integration_tool(tags={"jira", "search", "issues"})
 async def jira_search_issues(
     *,
     jql_query: Annotated[
@@ -61,7 +61,7 @@ async def jira_search_issues(
     )
 
 
-@dr_mcp_tool(tags={"jira", "read", "get", "issue"})
+@dr_mcp_integration_tool(tags={"jira", "read", "get", "issue"})
 async def jira_get_issue(
     *, issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."]
 ) -> ToolResult:
@@ -81,7 +81,7 @@ async def jira_get_issue(
     )
 
 
-@dr_mcp_tool(tags={"jira", "create", "add", "issue"})
+@dr_mcp_integration_tool(tags={"jira", "create", "add", "issue"})
 async def jira_create_issue(
     *,
     project_key: Annotated[str, "The key of the project where the issue should be created."],
@@ -125,7 +125,7 @@ async def jira_create_issue(
     )
 
 
-@dr_mcp_tool(tags={"jira", "update", "edit", "issue"})
+@dr_mcp_integration_tool(tags={"jira", "update", "edit", "issue"})
 async def jira_update_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."],
@@ -178,7 +178,7 @@ async def jira_update_issue(
     )
 
 
-@dr_mcp_tool(tags={"jira", "update", "transition", "issue"})
+@dr_mcp_integration_tool(tags={"jira", "update", "transition", "issue"})
 async def jira_transition_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to transition, e.g. 'PROJ-123'."],
