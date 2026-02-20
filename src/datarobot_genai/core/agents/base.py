@@ -53,7 +53,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - max_history_messages: Maximum number of prior messages to include in chat history
     """
 
-    _max_history_messages: int | None
+    _max_history_messages: int | None = None
 
     @property
     def max_history_messages(self) -> int:

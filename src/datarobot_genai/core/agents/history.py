@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc. and its affiliates.
+# Copyright 2026 DataRobot, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ def extract_history_messages(
     - When ``max_history <= 0``, history is disabled and an empty list is returned.
       This matches the documented semantics where 0 means "no history".
     """
-    raw_messages = list(getattr(run_agent_input, "messages", []) or [])
+    raw_messages = list(run_agent_input.messages)
     if not raw_messages or max_history <= 0:
         return []
 
