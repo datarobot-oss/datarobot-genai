@@ -147,6 +147,8 @@ async def deploy_custom_model(
         )
         if os.path.isfile(p):
             resolved_path = p
+        else:
+            raise ToolError(f"model_file_path does not exist: {p}")
     if resolved_path is None:
         resolved_path = find_model_file_in_folder(model_folder)
     if resolved_path is None:
