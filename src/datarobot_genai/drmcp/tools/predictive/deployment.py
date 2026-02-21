@@ -156,9 +156,9 @@ async def deploy_custom_model(
             f"No model file ({', '.join(MODEL_EXTENSIONS)}) found in {model_folder}. "
             "Add a model file to the folder or pass model_file_path."
         )
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
     try:
-        token = await get_datarobot_access_token()
-        client = DataRobotClient(token).get_client()
         out = deploy_custom_model_impl(
             client,
             model_folder=model_folder,
