@@ -365,7 +365,8 @@ async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> 
                 target_type="Binary",
                 target_name="target",
             )
-        assert "prediction server" in str(exc_info.value).lower() or "no prediction" in str(
-            exc_info.value
-        ).lower()
+        assert (
+            "prediction server" in str(exc_info.value).lower()
+            or "no prediction" in str(exc_info.value).lower()
+        )
         mock_client.CustomInferenceModel.create.assert_not_called()
