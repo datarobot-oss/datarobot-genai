@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -266,16 +268,20 @@ async def test_deploy_custom_model_mocked_success() -> None:
 
 @pytest.mark.asyncio
 async def test_deploy_custom_model_no_model_file_raises_tool_error() -> None:
-    folder = _custom_model_fixture_dir()
-    with pytest.raises(ToolError) as exc_info:
-        await deployment.deploy_custom_model(
-            model_folder=folder,
-            name="Test",
-            target_type="Binary",
-            target_name="target",
-        )
-    assert "model file" in str(exc_info.value).lower()
-    assert "model_file_path" in str(exc_info.value).lower()
+    fixture_dir = Path(_custom_model_fixture_dir())
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for f in ("custom.py", "requirements.txt"):
+            shutil.copy(fixture_dir / f, os.path.join(tmpdir, f))
+        with pytest.raises(ToolError) as exc_info:
+            await deployment.deploy_custom_model(
+                model_folder=tmpdir,
+                name="Test",
+                target_type="Binary",
+                target_name="target",
+            )
+        err = str(exc_info.value).lower()
+        assert "model file" in err
+        assert "model_file_path" in err
 
 
 @pytest.mark.asyncio
@@ -313,14 +319,17 @@ async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> 
     This test verifies the issue where deploy_custom_model_impl doesn't validate prediction servers
     before attempting deployment, unlike deploy_model which does validate.
     """
-    folder = _custom_model_fixture_dir()
-    model_file = os.path.join(folder, "model.pkl")
-    # Create a dummy model file for testing
-    os.makedirs(folder, exist_ok=True)
-    with open(model_file, "wb") as f:
-        f.write(b"dummy model data")
-
-    try:
+    fixture_dir = Path(_custom_model_fixture_dir())
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for f in ("custom.py", "requirements.txt", "model.pkl"):
+            src = fixture_dir / f
+            if src.exists():
+                shutil.copy(src, os.path.join(tmpdir, f))
+        model_file = os.path.join(tmpdir, "model.pkl")
+        if not os.path.exists(model_file):
+            with open(model_file, "wb") as f:
+                f.write(b"dummy model data")
+        folder = tmpdir
         mock_client = MagicMock()
 
         # Mock execution environment - must match the pattern in _select_execution_environment
@@ -376,7 +385,3 @@ async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> 
             "prediction server" in str(exc_info.value).lower()
             or "no prediction" in str(exc_info.value).lower()
         )
-    finally:
-        # Cleanup
-        if os.path.exists(model_file):
-            os.remove(model_file)
