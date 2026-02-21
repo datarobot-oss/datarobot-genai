@@ -286,7 +286,7 @@ async def test_deploy_custom_model_no_model_file_raises_tool_error() -> None:
 
 @pytest.mark.asyncio
 async def test_deploy_custom_model_explicit_model_file_path_nonexistent_raises_error() -> None:
-    """When model_file_path is provided but the file does not exist, raise ToolError (no silent fallback)."""
+    """model_file_path given but file missing: raise ToolError (no silent fallback)."""
     fixture_dir = Path(_custom_model_fixture_dir())
     with tempfile.TemporaryDirectory() as tmpdir:
         for f in ("custom.py", "requirements.txt", "model.pkl"):
@@ -342,7 +342,7 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
 
 @pytest.mark.asyncio
 async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> None:
-    """deploy_custom_model_impl checks prediction servers first; no resources created when none exist."""
+    """deploy_custom_model_impl checks prediction servers first; no resources created when none."""
     fixture_dir = Path(_custom_model_fixture_dir())
     with tempfile.TemporaryDirectory() as tmpdir:
         for f in ("custom.py", "requirements.txt", "model.pkl"):
