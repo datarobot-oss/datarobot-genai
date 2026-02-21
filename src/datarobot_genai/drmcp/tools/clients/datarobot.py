@@ -96,12 +96,13 @@ def find_model_file_in_folder(model_folder: str) -> str | None:
 
 def _select_execution_environment(
     client: Any, execution_environment_id: str | None
-) -> tuple[Any, str | None]:
+) -> tuple[Any, str]:
     if execution_environment_id:
         for e in client.ExecutionEnvironment.list():
             if e.id == execution_environment_id:
-                vid = e.latest_successful_version.id if e.latest_successful_version else None
-                return e, vid
+                if e.latest_successful_version is None:
+                    raise ValueError(f"Env {execution_environment_id} has no successful version")
+                return e, e.latest_successful_version.id
         raise ValueError(f"Execution environment not found: {execution_environment_id}")
     envs = client.ExecutionEnvironment.list()
     scikit = [
@@ -134,8 +135,9 @@ def _select_execution_environment(
             if not py_envs:
                 raise ValueError("No suitable Python execution environment found")
             env = py_envs[-1]
-    vid = env.latest_successful_version.id if env.latest_successful_version else None
-    return env, vid
+    if env.latest_successful_version is None:
+        raise ValueError(f"Execution environment {env.name} ({env.id}) has no successful version.")
+    return env, env.latest_successful_version.id
 
 
 def _target_type_from_string(s: str) -> str:
