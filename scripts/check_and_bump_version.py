@@ -82,7 +82,7 @@ def pypi_has_version(package: str, version: str, repository: str) -> bool:
             [
                 "python",
                 "-c",
-                f"import json,urllib.request as r;print(json.dumps(r.urlopen('{url}').read().decode()))",  # noqa: E501
+                f"import json,urllib.request as r;print(json.dumps(r.urlopen('{url}').read().decode()))",
             ],
             text=True,
         )
