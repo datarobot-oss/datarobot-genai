@@ -285,6 +285,34 @@ async def test_deploy_custom_model_no_model_file_raises_tool_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deploy_custom_model_explicit_model_file_path_nonexistent_raises_error() -> None:
+    """When model_file_path is provided but the file does not exist, raise ToolError (no silent fallback)."""
+    fixture_dir = Path(_custom_model_fixture_dir())
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for f in ("custom.py", "requirements.txt", "model.pkl"):
+            src = fixture_dir / f
+            if src.exists():
+                shutil.copy(src, os.path.join(tmpdir, f))
+        model_pkl = os.path.join(tmpdir, "model.pkl")
+        if not os.path.exists(model_pkl):
+            with open(model_pkl, "wb") as f:
+                f.write(b"dummy")
+        nonexistent = os.path.join(tmpdir, "nonexistent_model.pkl")
+        assert not os.path.exists(nonexistent)
+        with pytest.raises(ToolError) as exc_info:
+            await deployment.deploy_custom_model(
+                model_folder=tmpdir,
+                model_file_path=nonexistent,
+                name="Test",
+                target_type="Binary",
+                target_name="target",
+            )
+        err = str(exc_info.value)
+        assert "does not exist" in err
+        assert nonexistent in err or "nonexistent" in err.lower()
+
+
+@pytest.mark.asyncio
 async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds() -> None:
     folder = _custom_model_fixture_dir()
     provided_path = os.path.join(folder, "custom.py")
@@ -314,11 +342,7 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
 
 @pytest.mark.asyncio
 async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> None:
-    """Test that deploy_custom_model_impl raises an error when no prediction servers are available.
-
-    This test verifies the issue where deploy_custom_model_impl doesn't validate prediction servers
-    before attempting deployment, unlike deploy_model which does validate.
-    """
+    """deploy_custom_model_impl checks prediction servers first; no resources created when none exist."""
     fixture_dir = Path(_custom_model_fixture_dir())
     with tempfile.TemporaryDirectory() as tmpdir:
         for f in ("custom.py", "requirements.txt", "model.pkl"):
@@ -329,59 +353,19 @@ async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> 
         if not os.path.exists(model_file):
             with open(model_file, "wb") as f:
                 f.write(b"dummy model data")
-        folder = tmpdir
         mock_client = MagicMock()
-
-        # Mock execution environment - must match the pattern in _select_execution_environment
-        mock_env = MagicMock()
-        mock_env.id = "env123"
-        mock_env.name = "[DataRobot] Python Scikit-Learn 3.11 Drop-In"
-        mock_env.latest_successful_version = MagicMock()
-        mock_env.latest_successful_version.id = "env_ver123"
-        mock_client.ExecutionEnvironment.list.return_value = [mock_env]
-
-        # Mock custom model creation
-        mock_custom_model = MagicMock()
-        mock_custom_model.id = "cm123"
-        mock_client.CustomInferenceModel.create.return_value = mock_custom_model
-
-        # Mock custom model version
-        mock_version = MagicMock()
-        mock_version.id = "version123"
-        mock_client.CustomModelVersion.create_clean.return_value = mock_version
-
-        # Mock dependency build
-        mock_build_info = MagicMock()
-        mock_build_info.build_status = "success"
-        mock_client.CustomModelVersionDependencyBuild.start_build.return_value = mock_build_info
-
-        # Mock registered model version
-        mock_rmv = MagicMock()
-        mock_rmv.id = "rmv123"
-        mock_client.RegisteredModelVersion.create_for_custom_model_version.return_value = mock_rmv
-
-        # Mock prediction servers - EMPTY LIST (this is the issue scenario)
         mock_client.PredictionServer.list.return_value = []
 
-        # Mock deployment creation - this should fail if ps_id is None
-        mock_deployment = MagicMock()
-        mock_deployment.id = "dep123"
-        mock_deployment.label = "Test Model"
-        mock_client.Deployment.create_from_registered_model_version.return_value = mock_deployment
-
-        # This should raise a ValueError when no prediction servers exist
-        # This ensures consistency with deploy_model which also validates prediction servers
-        with pytest.raises((ValueError, RuntimeError)) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             deploy_custom_model_impl(
                 mock_client,
-                model_folder=folder,
+                model_folder=tmpdir,
                 model_file_path=model_file,
                 name="Test Model",
                 target_type="Binary",
                 target_name="target",
             )
-        # Verify the error message mentions prediction servers
-        assert (
-            "prediction server" in str(exc_info.value).lower()
-            or "no prediction" in str(exc_info.value).lower()
-        )
+        assert "prediction server" in str(exc_info.value).lower() or "no prediction" in str(
+            exc_info.value
+        ).lower()
+        mock_client.CustomInferenceModel.create.assert_not_called()

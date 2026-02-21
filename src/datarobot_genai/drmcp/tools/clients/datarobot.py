@@ -167,6 +167,9 @@ def deploy_custom_model_impl(
             raise FileNotFoundError(f"Required file not found: {p}")
     if not os.path.isfile(model_file_path):
         raise FileNotFoundError(f"Model file not found: {model_file_path}")
+    prediction_servers = client.PredictionServer.list()
+    if not prediction_servers:
+        raise ValueError("No prediction servers available for deployment.")
     model_basename = os.path.basename(model_file_path)
     files = [
         (os.path.join(model_folder, "custom.py"), "custom.py"),
@@ -215,9 +218,6 @@ def deploy_custom_model_impl(
         description=description or name,
     )
     label = deployment_label or name
-    prediction_servers = client.PredictionServer.list()
-    if not prediction_servers:
-        raise ValueError("No prediction servers available for deployment.")
     ps_id = prediction_servers[0].id
     deployment = client.Deployment.create_from_registered_model_version(
         model_package_id=rmv.id,
