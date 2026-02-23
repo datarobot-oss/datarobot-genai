@@ -60,10 +60,19 @@ def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> 
 def add_headers_to_datarobot_mcp_auth(config_yaml: dict, headers: dict[str, str] | None) -> None:
     if headers:
         if authentication := config_yaml.get("authentication"):
+            keys_present = {k.lower() for k in headers.keys()}
+            extra_api_token_keys = {"x-datarobot-api-token", "x-datarobot-api-key"}
+            has_extra_api_token_header = extra_api_token_keys & keys_present
+            # Do not mutate the caller's headers; give each auth config its own copy.
+            if "Authorization" in headers and not has_extra_api_token_header:
+                token = headers["Authorization"].removeprefix("Bearer ")
+                headers_copy = {**headers, "x-datarobot-api-token": token}
+            else:
+                headers_copy = dict(headers)
             for auth_name in authentication:
                 auth_config = authentication[auth_name]
                 if auth_config.get("_type") == "datarobot_mcp_auth":
-                    auth_config["headers"] = headers
+                    auth_config["headers"] = dict(headers_copy)
 
 
 def add_headers_to_datarobot_llm_deployment(
