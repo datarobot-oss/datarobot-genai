@@ -228,6 +228,12 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
     def langgraph_config(self) -> dict[str, Any]:
         return {}
 
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> list[BaseMessage]:
+        return []
+
+    def store_memory(self, pipeline_interactions: MultiTurnSample) -> None:
+        pass
+
 
 def test_convert_input_message_includes_history() -> None:
     """convert_input_message should include history when template uses {chat_history}."""
