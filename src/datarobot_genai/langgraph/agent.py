@@ -126,12 +126,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             # No declared variables: preserve pre-history behaviour.
             template_input = user_prompt
 
-        current_messages = self.prompt_template.invoke(template_input).to_messages()
         messages = self.retrieve_memories_based_on_user_prompt(user_prompt)
-        messages.extend(self.prompt_template.invoke(user_prompt).to_messages())
+        messages.extend(self.prompt_template.invoke(template_input).to_messages())
         command = Command(  # type: ignore[var-annotated]
             update={
-                "messages": current_messages,
+                "messages": messages,
             },
         )
         return command

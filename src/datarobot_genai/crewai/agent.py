@@ -182,7 +182,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 crew = self.crew()
 
-                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
+                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content), context)
                 # Chat history is opt-in: only populate it if the agent/template
                 # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
                 # in prompts).
