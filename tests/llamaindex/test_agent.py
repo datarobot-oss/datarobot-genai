@@ -17,7 +17,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -239,3 +241,67 @@ async def test_llama_index_agent_invoke_with_mcp_tools(
     assert mcp_calls[0]["forwarded_headers"] == {
         "x-datarobot-api-key": "scoped-token-123",
     }
+
+
+def test_make_input_message_includes_history_summary(run_agent_input_with_history) -> None:
+    """By default, LlamaIndexAgent.make_input_message should NOT include history."""
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow)
+
+    text = agent.make_input_message(run_agent_input_with_history)
+
+    assert text == "Follow-up"
+
+
+def test_make_input_message_zero_history_disables_summary(
+    run_agent_input_with_history,
+) -> None:
+    """When max_history_messages is 0, history should be disabled."""
+    workflow = Workflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow, max_history_messages=0)
+
+    text = agent.make_input_message(run_agent_input_with_history)
+    assert text == "Follow-up"
+
+
+@pytest.mark.usefixtures("mock_load_mcp_tools")
+async def test_invoke_replaces_chat_history_placeholder() -> None:
+    """invoke() replaces {chat_history} placeholder with actual history."""
+    captured_msgs: list[str] = []
+
+    class CapturingWorkflow(Workflow):
+        def run(self, *, user_msg: str) -> Handler:
+            captured_msgs.append(user_msg)
+            return super().run(user_msg=user_msg)
+
+    class AgentWithPlaceholder(MyLlamaAgent):
+        def make_input_message(self, run_agent_input: Any) -> str:
+            user_prompt = super().make_input_message(run_agent_input)
+            return f"History:\n{{chat_history}}\n\nLatest: {user_prompt}"
+
+    workflow = CapturingWorkflow(events=[], state="S")
+    agent = AgentWithPlaceholder(workflow)
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    assert len(captured_msgs) == 1
+    text = captured_msgs[0]
+    assert "system: You are a helper." in text
+    assert "user: First question" in text
+    assert "assistant: First answer" in text
+    assert "{chat_history}" not in text

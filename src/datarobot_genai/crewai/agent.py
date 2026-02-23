@@ -53,12 +53,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
 
     Subclasses should define the ``agents`` and ``tasks`` properties
-    and may override ``crew`` to customize the workflow
-    construction.
+    and may override ``crew`` to customize the workflow construction.
     """
-
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
 
     @property
     @abc.abstractmethod
@@ -84,6 +80,44 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         Subclasses must implement this to provide the exact inputs required
         by their CrewAI tasks.
+
+        Expected inputs:
+
+        - ``topic`` (or similar): The user's prompt content. This is required
+          and should be passed through to CrewAI tasks that use placeholders
+          like ``{topic}`` in their descriptions.
+
+        - ``chat_history`` (optional): Include this key with an empty string
+          value (``""``) to opt into automatic chat history injection. When
+          present, the base class will populate it with a plain-text summary
+          of prior conversation turns. Use ``{chat_history}`` in agent
+          goals/backstories or task descriptions to reference it.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary of inputs that will be passed to ``Crew.kickoff()``.
+            The dictionary keys should match the placeholder names used in
+            your CrewAI task descriptions and agent configurations.
+
+        Examples
+        --------
+        Basic implementation (no history):
+
+        .. code-block:: python
+
+            def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+                return {"topic": user_prompt_content}
+
+        With chat history opt-in:
+
+        .. code-block:: python
+
+            def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+                return {
+                    "topic": user_prompt_content,
+                    "chat_history": "",  # Will be auto-populated with prior turns
+                }
         """
         raise NotImplementedError
 
@@ -143,8 +177,18 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 crew = self.crew()
 
-                crew_output = await asyncio.to_thread(
-                    crew.kickoff,
-                    inputs=self.make_kickoff_inputs(user_prompt_content),
-                )
-            yield self._process_crew_output(crew_output, ragas_event_listener.messages)
+                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
+                # Chat history is opt-in: only populate it if the agent/template
+                # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
+                # in prompts).
+                if "chat_history" in kickoff_inputs:
+                    history_summary = self.build_history_summary(run_agent_input)
+                    existing_history_text = str(kickoff_inputs.get("chat_history") or "")
+
+                    if history_summary and not existing_history_text.strip():
+                        kickoff_inputs["chat_history"] = (
+                            f"\n\nPrior conversation:\n{history_summary}"
+                        )
+
+                crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
+                yield self._process_crew_output(crew_output, ragas_event_listener.messages)

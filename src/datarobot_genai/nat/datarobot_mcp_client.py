@@ -26,6 +26,7 @@ from nat.plugins.mcp.client.client_base import AuthAdapter
 from nat.plugins.mcp.client.client_base import MCPStreamableHTTPClient
 from nat.plugins.mcp.client.client_config import MCPServerConfig
 from nat.plugins.mcp.client.client_impl import MCPClientConfig
+from nat.plugins.mcp.exception_handler import extract_primary_exception
 from pydantic import Field
 from pydantic import HttpUrl
 
@@ -38,18 +39,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _default_transport() -> Literal["streamable-http", "sse", "stdio"]:
+def _default_transport() -> Literal["streamable-http", "sse"]:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["transport"] if server_config else "stdio"
+    return server_config["transport"] if server_config else "streamable-http"
 
 
-def _default_url() -> HttpUrl | None:
+def _default_url() -> HttpUrl:
     from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["url"] if server_config else None
+    return server_config["url"] if server_config else HttpUrl("http://localhost:8080/mcp")
 
 
 def _default_auth_provider() -> str | AuthenticationRef | None:
@@ -59,19 +60,12 @@ def _default_auth_provider() -> str | AuthenticationRef | None:
     return "datarobot_mcp_auth" if server_config else None
 
 
-def _default_command() -> str | None:
-    from datarobot_genai.core.mcp.common import MCPConfig  # noqa: PLC0415
-
-    server_config = MCPConfig().server_config
-    return None if server_config else "docker"
-
-
 class DataRobotMCPServerConfig(MCPServerConfig):
-    transport: Literal["streamable-http", "sse", "stdio"] = Field(
+    transport: Literal["streamable-http", "sse"] = Field(
         default_factory=_default_transport,
         description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
-    url: HttpUrl | None = Field(
+    url: HttpUrl = Field(
         default_factory=_default_url,
         description="URL of the MCP server (for sse or streamable-http transport)",
     )
@@ -79,10 +73,6 @@ class DataRobotMCPServerConfig(MCPServerConfig):
     auth_provider: str | AuthenticationRef | None = Field(
         default_factory=_default_auth_provider,
         description="Reference to authentication provider",
-    )
-    command: str | None = Field(
-        default_factory=_default_command,
-        description="Command to run for stdio transport (e.g. 'python' or 'docker')",
     )
 
 
@@ -156,7 +146,6 @@ async def datarobot_mcp_client_function_group(
         The function group
     """
     from nat.plugins.mcp.client.client_base import MCPSSEClient  # noqa: PLC0415
-    from nat.plugins.mcp.client.client_base import MCPStdioClient  # noqa: PLC0415
     from nat.plugins.mcp.client.client_impl import MCPFunctionGroup  # noqa: PLC0415
     from nat.plugins.mcp.client.client_impl import (
         mcp_apply_tool_alias_and_description,  # noqa: PLC0415
@@ -169,21 +158,7 @@ async def datarobot_mcp_client_function_group(
         auth_provider = await _builder.get_auth_provider(config.server.auth_provider)
 
     # Build the appropriate client
-    if config.server.transport == "stdio":
-        if not config.server.command:
-            raise ValueError("command is required for stdio transport")
-        client = MCPStdioClient(
-            config.server.command,
-            config.server.args,
-            config.server.env,
-            tool_call_timeout=config.tool_call_timeout,
-            auth_flow_timeout=config.auth_flow_timeout,
-            reconnect_enabled=config.reconnect_enabled,
-            reconnect_max_attempts=config.reconnect_max_attempts,
-            reconnect_initial_backoff=config.reconnect_initial_backoff,
-            reconnect_max_backoff=config.reconnect_max_backoff,
-        )
-    elif config.server.transport == "sse":
+    if config.server.transport == "sse":
         client = MCPSSEClient(
             str(config.server.url),
             tool_call_timeout=config.tool_call_timeout,
@@ -195,7 +170,12 @@ async def datarobot_mcp_client_function_group(
         )
     elif config.server.transport == "streamable-http":
         # Use default_user_id for the base client
-        base_user_id = auth_provider.config.default_user_id if auth_provider else None
+        # For interactive OAuth2: from config. For service accounts: defaults to server URL
+        base_user_id = (
+            getattr(auth_provider.config, "default_user_id", str(config.server.url))
+            if auth_provider
+            else None
+        )
         client = DataRobotMCPStreamableHTTPClient(
             str(config.server.url),
             auth_provider=auth_provider,
@@ -219,6 +199,22 @@ async def datarobot_mcp_client_function_group(
     group._shared_auth_provider = auth_provider
     group._client_config = config
 
+    # Set auth provider config defaults
+    # For interactive OAuth2: use config values
+    # For service accounts: default_user_id = server URL,
+    #                       allow_default_user_id_for_tool_calls = True
+    if auth_provider:
+        group._default_user_id = getattr(
+            auth_provider.config, "default_user_id", str(config.server.url)
+        )
+        group._allow_default_user_id_for_tool_calls = getattr(
+            auth_provider.config, "allow_default_user_id_for_tool_calls", True
+        )
+    else:
+        group._default_user_id = None
+        group._allow_default_user_id_for_tool_calls = True
+
+    yielded = False
     try:
         async with client:
             # Expose the live MCP client on the function group instance so other components
@@ -266,9 +262,21 @@ async def datarobot_mcp_client_function_group(
                     input_schema=input_schema,
                     converters=tool_fn.converters,
                 )
+            yielded = True
+            yield group
     except Exception as e:
-        logger.warning(f"Error in MCP client function group: {e}")
-    finally:
-        # Clean up client reference on the group to avoid stale clients
+        if hasattr(e, "exceptions"):
+            primary_exception = extract_primary_exception(list(e.exceptions))
+        else:
+            primary_exception = e
+
+        logger.warning("Error in MCP client function group: %s", primary_exception)
         group.mcp_client = None
-        yield group
+        group.mcp_client_server_name = getattr(client, "server_name", str(config.server.url))
+        group.mcp_client_transport = getattr(client, "transport", config.server.transport)
+        if not yielded:
+            yield group
+        else:
+            # Cleanup (e.g. __aexit__) failed after we already yielded; re-raise so
+            # the caller sees it and we do not yield a second time.
+            raise

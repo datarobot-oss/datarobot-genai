@@ -29,6 +29,8 @@ from typing import TypeVar
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 
+from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
@@ -48,7 +50,22 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - timeout: Request timeout
       - verbose: Verbosity flag
       - authorization_context: Authorization context for downstream agents/tools
+      - max_history_messages: Maximum number of prior messages to include in chat history
     """
+
+    _max_history_messages: int | None = None
+
+    @property
+    def max_history_messages(self) -> int:
+        """Maximum number of prior messages to include in chat history.
+
+        Defaults to ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES`` env var (read at
+        call time). Subclasses can override via the constructor parameter or
+        by overriding this property.
+        """
+        if self._max_history_messages is not None:
+            return self._max_history_messages
+        return get_max_history_messages_default()
 
     def __init__(
         self,
@@ -60,8 +77,10 @@ class BaseAgent(Generic[TTool], abc.ABC):
         timeout: int | None = 90,
         authorization_context: dict[str, Any] | None = None,
         forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
         **_: Any,
     ) -> None:
+        self._max_history_messages = max_history_messages
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
         self.api_base = (
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
@@ -107,6 +126,18 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @abc.abstractmethod
     def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
+
+    def build_history_summary(
+        self,
+        run_agent_input: RunAgentInput,
+    ) -> str:
+        """Instance helper to summarize prior turns as plain-text transcript.
+
+        Subclasses can override ``max_history_messages`` to control how many
+        prior messages are included. This is primarily intended for exposing a
+        ``chat_history`` variable in prompts across different agent types.
+        """
+        return build_history_summary_from_messages(run_agent_input, self.max_history_messages)
 
     @classmethod
     def create_pipeline_interactions_from_events(

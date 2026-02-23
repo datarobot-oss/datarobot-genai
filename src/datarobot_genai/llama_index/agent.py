@@ -91,6 +91,14 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Run the LlamaIndex workflow with the provided completion parameters."""
         input_message = self.make_input_message(run_agent_input)
 
+        # Handle {chat_history} placeholder replacement for subclass templates
+        if "{chat_history}" in input_message:
+            history_summary = self.build_history_summary(run_agent_input)
+            formatted_history = (
+                f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
+            )
+            input_message = input_message.replace("{chat_history}", formatted_history)
+
         # Load MCP tools (if configured) asynchronously before building workflow
         mcp_tools = await load_mcp_tools(
             authorization_context=self.authorization_context,
