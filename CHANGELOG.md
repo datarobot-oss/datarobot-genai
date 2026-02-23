@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.7
+
+- Updated NAT MCP client for 1.4.1 changes
+- Update default transport for NAT MCP client to `streamable_http`
+- Log error and fall back to empty function group when NAT MCP client is misconfigured
+
 ## 0.5.6
 
 - Bump NAT libraries to 1.4.1
