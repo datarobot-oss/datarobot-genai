@@ -211,8 +211,8 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
             return super().kickoff(inputs=inputs)
 
     class AgentWithPlaceholder(TestAgent):
-        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-            return {"topic": user_prompt_content, "chat_history": ""}
+        def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "chat_history": "", "context": context}
 
     out = CrewOutput(raw="agent result")
     agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
@@ -241,8 +241,12 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
             return super().kickoff(inputs=inputs)
 
     class AgentWithOverride(TestAgent):
-        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-            return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
+        def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+            return {
+                "topic": user_prompt_content,
+                "chat_history": "CUSTOM OVERRIDE",
+                "context": context,
+            }
 
     out = CrewOutput(raw="agent result")
     agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
