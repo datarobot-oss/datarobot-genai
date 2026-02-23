@@ -16,8 +16,8 @@ from typing import Any
 from unittest.mock import MagicMock
 
 
-class MockModel:
-    """Mock DataRobot model object."""
+class StubModel:
+    """Stub DataRobot model object."""
 
     def __init__(self, model_id: str, model_type: str, metrics: dict):
         self.id = model_id
@@ -25,12 +25,12 @@ class MockModel:
         self.metrics = metrics
 
     def score(self, dataset_url: str) -> MagicMock:
-        """Mock scoring method."""
+        """Stub scoring method."""
         return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
 
 
-class MockDatetimePartitioning:
-    """Mock datetime partitioning for get_deployment_info time_series_config."""
+class StubDatetimePartitioning:
+    """Stub datetime partitioning for get_deployment_info time_series_config."""
 
     datetime_partition_column = "date"
     forecast_window_start = 1
@@ -38,23 +38,23 @@ class MockDatetimePartitioning:
     multiseries_id_columns: list[str] = []
 
 
-class MockProject:
-    """Mock DataRobot project object."""
+class StubProject:
+    """Stub DataRobot project object."""
 
-    def __init__(self, project_id: str, models: list[MockModel] | None = None):
+    def __init__(self, project_id: str, models: list[StubModel] | None = None):
         self.id = project_id
         self._models = models or []
         self.target = "sentiment"
         self.target_type = "Binary"
-        self.datetime_partitioning = MockDatetimePartitioning()
+        self.datetime_partitioning = StubDatetimePartitioning()
 
-    def get_models(self, model_id: str) -> list:
-        """Mock getting model method."""
+    def get_models(self) -> list:
+        """Stub get_models (matches real API: no arguments)."""
         return self._models
 
 
-class MockDeployment:
-    """Mock DataRobot deployment object."""
+class StubDeployment:
+    """Stub DataRobot deployment object."""
 
     def __init__(
         self, deployment_id: str, project_id: str = "test_project_123", model_id: str = "model_1"
@@ -64,7 +64,7 @@ class MockDeployment:
 
     def get_features(self) -> list:
         """
-        Mock get_features;
+        Stub get_features;
         returns: list of feature dicts
         (must include feature_type for generate_prediction_data_template).
         """
@@ -74,41 +74,41 @@ class MockDeployment:
         ]
 
     def get_capabilities(self) -> MagicMock:
-        """Mock get_capabilities."""
+        """Stub get_capabilities."""
         return MagicMock()
 
 
-class MockDRClient:
-    """Mock DataRobot client object."""
+class StubDRClient:
+    """Stub DataRobot client for tests (canned responses; use with dr_client_stubs)."""
 
-    def __init__(self, projects: list[MockProject] | None = None):
+    def __init__(self, projects: list[StubProject] | None = None):
         self.Project = MagicMock()
         self.Model = MagicMock()
         self.Deployment = MagicMock()
         self.client = MagicMock()
 
 
-def test_create_dr_client() -> MockDRClient:
-    """Create a mock DataRobot client with test project and models."""
-    client = MockDRClient()
-    # Create test project with mock models
-    project = MockProject(
+def test_create_dr_client() -> StubDRClient:
+    """Create a stub DataRobot client with test project and models."""
+    client = StubDRClient()
+    # Create test project with stub models
+    project = StubProject(
         "test_project_123",
         models=[
-            MockModel(
+            StubModel(
                 "model_1",
                 "Keras Text Convolutional Neural Network Classifier",
                 {"AUC": 0.95, "LogLoss": 0.12},
             ),
-            MockModel("model_2", "Random Forest", {"AUC": 0.92, "LogLoss": 0.15}),
-            MockModel("model_3", "LightGBM", {"AUC": 0.94, "LogLoss": 0.13}),
+            StubModel("model_2", "Random Forest", {"AUC": 0.92, "LogLoss": 0.15}),
+            StubModel("model_3", "LightGBM", {"AUC": 0.94, "LogLoss": 0.13}),
         ],
     )
     # Create standalone model
-    standalone_model = MockModel("standalone_model", "Neural Network", {"AUC": 0.88})
+    standalone_model = StubModel("standalone_model", "Neural Network", {"AUC": 0.88})
 
-    def get_project(project_id: str) -> MockProject | None:
-        """Mock Project.get that returns appropriate project or raises exception."""
+    def get_project(project_id: str) -> StubProject | None:
+        """Stub Project.get that returns appropriate project or raises exception."""
         if project_id == "test_project_123":
             return project
         elif project_id == "nonexistent_project":
@@ -119,28 +119,29 @@ def test_create_dr_client() -> MockDRClient:
             return None
 
     def get_model(
-        model_id: str | None = None, project: MockProject | None = None, **kwargs: Any
-    ) -> MockModel | None:
-        """Mock Model.get; accepts model_id or project=, model_id= (kwargs)."""
-        mid = model_id or (kwargs.get("model_id") if kwargs else None)
+        project: StubProject | None = None, model_id: str | None = None, **kwargs: Any
+    ) -> StubModel | None:
+        """Stub Model.get; signature matches SDK (project, model_id)."""
+        mid = model_id or kwargs.get("model_id")
+        proj = project or kwargs.get("project")
         if mid == "standalone_model":
             return standalone_model
         if mid in ("model_1", "model_2", "model_3"):
             return (
-                next((m for m in project._models if m.id == mid), None)
-                if project and hasattr(project, "_models")
+                next((m for m in proj._models if m.id == mid), None)
+                if proj and hasattr(proj, "_models")
                 else standalone_model
             )
         return standalone_model
 
-    def get_deployment(deployment_id: str | None = None, **kwargs: Any) -> MockDeployment:
-        """Mock Deployment.get; accepts deployment_id as positional or keyword."""
+    def get_deployment(deployment_id: str | None = None, **kwargs: Any) -> StubDeployment:
+        """Stub Deployment.get; accepts deployment_id as positional or keyword."""
         did = deployment_id or kwargs.get("deployment_id")
-        return MockDeployment(
+        return StubDeployment(
             did or "stub_deployment_id", project_id="test_project_123", model_id="model_1"
         )
 
-    # Configure the mock methods
+    # Configure the stub methods
     client.Project.get = get_project
     client.Model.get = get_model
     client.Deployment.get = get_deployment
