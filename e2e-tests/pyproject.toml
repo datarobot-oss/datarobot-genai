@@ -34,7 +34,7 @@ line-length = 100
 indent-width = 4
 
 [tool.setuptools]
-py-modules = ["dragent", "drmcp"]
+packages = ["dragent", "drmcp"]
 
 [tool.ruff.lint]
 select = [
