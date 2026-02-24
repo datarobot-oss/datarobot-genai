@@ -23,11 +23,6 @@ repos:
             "tests",
         ]
 
--   repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.0
-    hooks:
-    -   id: pyupgrade
-
 -   repo: local
     hooks:
     -   id: ruff-format
@@ -82,3 +77,8 @@ repos:
         language: system
         pass_filenames: false
         stages: [ pre-commit ]
+
+-   repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.0
+    hooks:
+    -   id: pyupgrade
