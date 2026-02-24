@@ -16,8 +16,11 @@ import logging
 
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
+from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+from nat.runtime.loader import WorkflowBuilder
 
+from datarobot_genai.dragent.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,17 @@ logger = logging.getLogger(__name__)
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def get_step_adaptor(self) -> StepAdaptor:
         return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
+
+    async def _create_session_manager(
+        self, builder: WorkflowBuilder, entry_function: str | None = None
+    ) -> SessionManager:
+        """Create and register a SessionManager."""
+        sm = await DRAgentAGUISessionManager.create(
+            config=self._config, shared_builder=builder, entry_function=entry_function
+        )
+        self._session_managers.append(sm)
+
+        return sm
 
 
 class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):

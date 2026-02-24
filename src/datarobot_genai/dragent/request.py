@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc. and its affiliates.
+# Copyright 2026 DataRobot, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ag_ui.core.types import RunAgentInput
-from ag_ui.core.types import to_camel
-from nat.data_models.api_server import ChatRequest
+from ag_ui.core import RunAgentInput
 from pydantic import ConfigDict
+from pydantic.alias_generators import to_camel
 
 
 class DRAgentRunAgentInput(RunAgentInput):
@@ -34,17 +33,4 @@ class DRAgentRunAgentInput(RunAgentInput):
         },
         alias_generator=to_camel,
         populate_by_name=True,
-    )
-
-
-class DRAgentChatRequest(ChatRequest):
-    model_config = ConfigDict(
-        extra="allow",
-        json_schema_extra={
-            "example": {
-                "model": "datarobot/azure/gpt-5-mini-2025-08-07",
-                "messages": [{"role": "user", "content": "who are you?"}],
-                "stream": True,
-            }
-        },
     )

@@ -16,22 +16,29 @@ import typing
 from collections.abc import AsyncGenerator
 
 from nat.cli.register_workflow import register_front_end
+from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
-from pydantic import Field
+
+from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.converters import (
+    convert_chat_response_chunk_to_dragent_chat_response_chunk,
+)
+from datarobot_genai.dragent.converters import convert_chat_response_to_dragent_chat_response
+from datarobot_genai.dragent.converters import convert_dragent_event_response_to_dragent_chunk
+from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
+from datarobot_genai.dragent.converters import (
+    convert_dragent_run_agent_input_to_chat_request_or_message,
+)
+from datarobot_genai.dragent.converters import convert_str_to_dragent_chat_response
+from datarobot_genai.dragent.converters import convert_str_to_dragent_chat_response_chunk
+from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
+from datarobot_genai.dragent.converters import convert_tool_message_to_str
 
 
 # Register frontend
 class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"):  # type: ignore
-    workflow: typing.Annotated[
-        FastApiFrontEndConfig.EndpointBase,
-        Field(description="Endpoint for the default workflow."),
-    ] = FastApiFrontEndConfig.EndpointBase(
-        method="POST",
-        openai_api_path="/chat",
-        openai_api_v1_path="/v1/chat/completions",
-        description="Executes the default NAT workflow from the loaded configuration ",
-    )
+    pass
 
 
 @register_front_end(config_type=DRAgentFastApiFrontEndConfig)
@@ -44,13 +51,13 @@ async def dragent_fastapi_front_end(
 
 
 # Register converters
-# GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request)
-# GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
-# GlobalTypeConverter.register_converter(convert_str_to_dragent_chat_response)
-# GlobalTypeConverter.register_converter(convert_dragent_event_response_to_dragent_chunk)
-# GlobalTypeConverter.register_converter(convert_chat_response_to_dragent_chat_response)
-# GlobalTypeConverter.register_converter(convert_chat_response_chunk_to_dragent_chat_response_chunk)
-# GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request_or_message)
-# GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
-# GlobalTypeConverter.register_converter(convert_str_to_dragent_chat_response_chunk)
-# GlobalTypeConverter.register_converter(convert_tool_message_to_str)
+GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request)
+GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
+GlobalTypeConverter.register_converter(convert_str_to_dragent_chat_response)
+GlobalTypeConverter.register_converter(convert_dragent_event_response_to_dragent_chunk)
+GlobalTypeConverter.register_converter(convert_chat_response_to_dragent_chat_response)
+GlobalTypeConverter.register_converter(convert_chat_response_chunk_to_dragent_chat_response_chunk)
+GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request_or_message)
+GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
+GlobalTypeConverter.register_converter(convert_str_to_dragent_chat_response_chunk)
+GlobalTypeConverter.register_converter(convert_tool_message_to_str)
