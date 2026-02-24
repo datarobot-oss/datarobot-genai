@@ -38,29 +38,46 @@ class Config(DataRobotAppFrameworkBaseSettings):
     llm_default_model: str | None = None
 
 
-config = Config()
+def default_base_url() -> str:
+    config = Config()
+    return (
+        config.datarobot_endpoint.rstrip("/")
+        if config.use_datarobot_llm_gateway
+        else config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
+    )
+
+
+def default_api_key() -> SecretStr | None:
+    config = Config()
+    return SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None
+
+
+def default_model_name() -> str:
+    config = Config()
+    return config.llm_default_model or "datarobot-deployed-llm"
 
 
 class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     api_key: OptionalSecretStr = Field(
-        default=SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None,
+        default_factory=default_api_key,
         description="DataRobot API key.",
     )
     base_url: str | None = Field(
-        default=config.datarobot_endpoint.rstrip("/")
-        if config.use_datarobot_llm_gateway
-        else config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}",
+        default_factory=default_base_url,
         description="DataRobot LLM URL.",
     )
     model_name: str = Field(
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
         description="The model name.",
-        default=config.llm_default_model or "datarobot-deployed-llm",
+        default_factory=default_model_name,
     )
-    use_datarobot_llm_gateway: bool = config.use_datarobot_llm_gateway
+    use_datarobot_llm_gateway: bool = Field(
+        default_factory=lambda: Config().use_datarobot_llm_gateway,
+        description="Whether to use the DataRobot LLM gateway.",
+    )
 
     headers: dict[str, str] | None = Field(
         description="Additional headers send to LLM deployment.",
@@ -81,11 +98,12 @@ class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gate
     """A DataRobot LLM provider to be used with an LLM client."""
 
     api_key: OptionalSecretStr = Field(
-        default=SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None,
+        default_factory=default_api_key,
         description="DataRobot API key.",
     )
     base_url: str | None = Field(
-        default=config.datarobot_endpoint.rstrip("/"), description="DataRobot LLM gateway URL."
+        default_factory=lambda: Config().datarobot_endpoint.rstrip("/"),
+        description="DataRobot LLM gateway URL.",
     )
 
 
@@ -98,15 +116,21 @@ async def datarobot_llm_gateway(
     )
 
 
+def default_llm_deployment_url() -> str:
+    config = Config()
+    return f"{config.datarobot_endpoint}/deployments/{config.llm_deployment_id}"
+
+
 class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-deployment"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     api_key: OptionalSecretStr = Field(
-        default=SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None,
+        default_factory=default_api_key,
         description="DataRobot API key.",
     )
     base_url: str | None = Field(
-        default=config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
+        default_factory=default_llm_deployment_url,
+        description="DataRobot LLM deployment URL.",
     )
     model_name: str = Field(
         validation_alias=AliasChoices("model_name", "model"),
@@ -130,11 +154,17 @@ async def datarobot_llm_deployment(
     )
 
 
+def default_nim_deployment_url() -> str:
+    config = Config()
+    return f"{config.datarobot_endpoint}/deployments/{config.nim_deployment_id}"
+
+
 class DataRobotNIMModelConfig(DataRobotLLMDeploymentModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
     """A DataRobot NIM LLM provider to be used with an LLM client."""
 
     base_url: str | None = Field(
-        default=config.datarobot_endpoint + f"/deployments/{config.nim_deployment_id}"
+        default_factory=default_nim_deployment_url,
+        description="DataRobot NIM deployment URL.",
     )
 
 
