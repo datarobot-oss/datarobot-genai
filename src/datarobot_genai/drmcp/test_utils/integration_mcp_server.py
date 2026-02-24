@@ -131,7 +131,10 @@ def _patch_get_sdk_client_for_stdio() -> None:
 
 
 def _apply_dr_client_stubs() -> None:
-    """Replace the real DataRobot client with mocks from test_utils.stubs.dr_client_stubs."""
+    """
+    Replace the real DataRobot client with stubs
+    that areself-contained (patches token + client for stdio).
+    """
     stub_dr = test_create_dr_client()
     # get_api_client() does dr.client.get_client(); stub must have that for prompt registration.
     # dr.utils.pagination.unpaginate expects client.get(...).json()
@@ -144,6 +147,8 @@ def _apply_dr_client_stubs() -> None:
 
     clients.get_sdk_client = lambda *args, **kwargs: stub_dr
     tools_datarobot_client.DataRobotClient.get_client = lambda self: stub_dr  # type: ignore[method-assign]
+    # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
+    tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
 
 
 def main() -> None:
