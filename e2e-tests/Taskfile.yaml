@@ -5,13 +5,16 @@ version: '3'
 dotenv: [".env"]
 
 vars:
-  PROJECT_SRC: "./dragent ./drmcp"
+  PROJECT_SRC: "./dragent ./drmcp ./langgraph_agent"
   TESTS_SRC: ""
 
 includes:
   dragent:
     taskfile: dragent/Taskfile.yaml
     dir: ./dragent
+  langgraph:
+    taskfile: langgraph_agent/Taskfile.yaml
+    dir: ./langgraph_agent
   lint:
     taskfile: ../.taskfiles/lint.yml
     flatten: true
@@ -24,6 +27,7 @@ tasks:
       - name: GROUP
         enum:
           - dragent-nat
+          - langgraph-nat
     cmds:
       - echo "🔧 Installing dependencies for {{.GROUP}}"
       - uv sync --group {{.GROUP}}

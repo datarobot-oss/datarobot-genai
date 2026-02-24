@@ -15,6 +15,12 @@ dependencies = [
 dragent-nat = [
     "datarobot-genai[dragent,nat]"
 ]
+langgraph-nat = [
+    "datarobot-genai[dragent,nat,langgraph]"
+]
+
+[project.entry-points.'nat.plugins']
+langgraph_agent = "langgraph_agent.register"
 
 [tool.uv]
 package = true
@@ -34,7 +40,7 @@ line-length = 100
 indent-width = 4
 
 [tool.setuptools]
-packages = ["dragent", "drmcp"]
+packages = ["dragent", "drmcp", "langgraph_agent"]
 
 [tool.ruff.lint]
 select = [
@@ -71,6 +77,9 @@ fixable = [
 "__init__.py" = [
     "D104", # Missing docstring in public package
     "F401"  # Imported but unused
+]
+"**/register.py" = [
+    "PLC0415"  # Deferred imports inside NAT register functions (intentional pattern)
 ]
 
 

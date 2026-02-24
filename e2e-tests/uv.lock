@@ -757,6 +757,26 @@ dragent = [
     { name = "ragas" },
     { name = "requests" },
 ]
+langgraph = [
+    { name = "ag-ui-protocol" },
+    { name = "datarobot" },
+    { name = "datarobot-predict" },
+    { name = "langchain-mcp-adapters" },
+    { name = "langgraph" },
+    { name = "langgraph-prebuilt" },
+    { name = "openai" },
+    { name = "opentelemetry-instrumentation-aiohttp-client" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-langchain" },
+    { name = "opentelemetry-instrumentation-openai" },
+    { name = "opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "pyarrow" },
+    { name = "pyjwt" },
+    { name = "pypdf" },
+    { name = "ragas" },
+    { name = "requests" },
+]
 nat = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
@@ -985,6 +1005,9 @@ dependencies = [
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent", "nat"] },
 ]
+langgraph-nat = [
+    { name = "datarobot-genai", extra = ["dragent", "langgraph", "nat"] },
+]
 
 [package.metadata]
 requires-dist = [
@@ -995,6 +1018,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dragent-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat"], editable = "../" }]
+langgraph-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat", "langgraph"], editable = "../" }]
 
 [[package]]
 name = "datarobot-predict"
@@ -1920,6 +1944,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/fa/088dd2e3426aa413991afb67aef4c4e79ff3c0e4c25f753842bfaf4ec43f/langchain_litellm-0.5.1.tar.gz", hash = "sha256:1af5743c424456ce12c59cbf08b4774fbc9025124b6de8249713864242db57e1", size = 18869, upload-time = "2026-02-11T00:56:40.631Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b9/6f/84c8cef2cd5a20e94222de93cc57645102087dff616d5054755b97db51b1/langchain_litellm-0.5.1-py3-none-any.whl", hash = "sha256:3726c050eaaeb0b8aad0c8ceefae549917b185d176859866375f97d1d0ed6748", size = 19954, upload-time = "2026-02-11T00:56:41.717Z" },
+]
+
+[[package]]
+name = "langchain-mcp-adapters"
+version = "0.1.14"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "mcp" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/36/0179462acf344ad18cf6d7190b7a6797e015386a3b4518fcd960bb831c61/langchain_mcp_adapters-0.1.14.tar.gz", hash = "sha256:36f8131d0b3b5ca28df03440be4dc2a3636e2f73e3e4a0a266d606ffaa12adda", size = 31119, upload-time = "2025-11-24T15:00:54.591Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/e0/eee23ea4d651d2b2dd5b1a5e1b7f66ee212940a595917a280663d5f745b9/langchain_mcp_adapters-0.1.14-py3-none-any.whl", hash = "sha256:b900d37d1a82261e408e663b7176a1a74cf0072e17ae9e4241c068093912394a", size = 21133, upload-time = "2025-11-24T15:00:53.569Z" },
 ]
 
 [[package]]
