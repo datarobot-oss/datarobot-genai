@@ -9,6 +9,7 @@ env:
 
 vars:
   PROJECT_SRC: "./src"
+  TESTS_SRC: "./tests"
 
 includes:
   lint:

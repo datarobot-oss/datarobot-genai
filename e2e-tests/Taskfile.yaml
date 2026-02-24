@@ -6,6 +6,7 @@ dotenv: [".env"]
 
 vars:
   PROJECT_SRC: "./dragent ./drmcp"
+  TESTS_SRC: ""
 
 includes:
   dragent:

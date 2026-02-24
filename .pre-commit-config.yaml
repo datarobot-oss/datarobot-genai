@@ -47,20 +47,13 @@ repos:
         pass_filenames: false
     -   id: ruff-format-e2e
         name: ruff-format-e2e
-        entry: cd e2e-tests && task fix-ruff-format
+        entry: task -d e2e-tests fix-ruff-format
         language: system
         types: [ python ]
         pass_filenames: false
     -   id: ruff-e2e
         name: ruff-e2e
-        entry: cd e2e-tests && task fix-ruff
-        language: system
-        types: [ python ]
-        require_serial: true
-        pass_filenames: false
-    -   id: mypy-e2e
-        name: mypy-e2e
-        entry: cd e2e-tests && task mypy
+        entry: task -d e2e-tests fix-ruff
         language: system
         types: [ python ]
         require_serial: true

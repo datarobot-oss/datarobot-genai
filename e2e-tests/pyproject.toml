@@ -6,7 +6,9 @@ requires-python = ">=3.12, <3.14"  # https://github.com/NVIDIA/NeMo-Agent-Toolki
 authors = [{ name = "DataRobot, Inc." }]
 
 dependencies = [
+    "mypy>=1.19.1",
     "pytest",
+    "ruff>=0.15.2",
 ]
 
 [dependency-groups]

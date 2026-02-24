@@ -28,27 +28,23 @@ tasks:
   check-ruff:
     desc: "Check ruff linter rules, but don't apply fixers. Used by CI."
     cmds:
-      - uv run ruff check {{.PROJECT_SRC}}
-      - uv run ruff check ./tests
+      - uv run ruff check {{.PROJECT_SRC}} {{.TESTS_SRC}}
     silent: true
 
   check-ruff-format:
     desc: "Check formatting with ruff."
     cmds:
-      - uv run ruff format --check {{.PROJECT_SRC}}
-      - uv run ruff format --check ./tests
+      - uv run ruff format --check {{.PROJECT_SRC}} {{.TESTS_SRC}}
     silent: true
 
   fix-ruff:
     desc: "Run ruff linter, applying fixers. Used by pre-commit."
     cmds:
-      - uv run ruff check --fix {{.PROJECT_SRC}}
-      - uv run ruff check --fix ./tests
+      - uv run ruff check --fix {{.PROJECT_SRC}} {{.TESTS_SRC}}
     silent: true
 
   fix-ruff-format:
     desc: "Run ruff linter, applying formatting fixes."
     cmds:
-      - uv run ruff format {{.PROJECT_SRC}}
-      - uv run ruff format ./tests
+      - uv run ruff format {{.PROJECT_SRC}} {{.TESTS_SRC}}
     silent: true
