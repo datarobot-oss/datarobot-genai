@@ -123,7 +123,7 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
         assert isinstance(llm, LiteLLM)
         assert llm.additional_kwargs == {
-            "api_base": "https://app.datarobot.com/api/v2/chat/completions",
+            "api_base": "https://app.datarobot.com/api/v2/deployments/None/chat/completions",
             "api_key": "some_token",
             "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
         }
