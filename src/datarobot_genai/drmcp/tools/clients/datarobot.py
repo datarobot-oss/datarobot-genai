@@ -114,7 +114,7 @@ def _select_execution_environment(
         and "Drop-In" in e.name
     ]
     if scikit:
-        env = scikit[0]
+        env = scikit[-1]
     else:
         py_envs = [
             e

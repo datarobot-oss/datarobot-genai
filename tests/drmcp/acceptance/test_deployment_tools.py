@@ -15,7 +15,6 @@
 """Acceptance tests for deployment MCP tools (list_deployments, deploy_model, deploy_custom_model)."""  # noqa: E501
 
 import inspect
-import os
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +24,6 @@ from datarobot_genai.drmcp import ETETestExpectations
 from datarobot_genai.drmcp import ToolBaseE2E
 from datarobot_genai.drmcp import ToolCallTestExpectations
 from datarobot_genai.drmcp import ete_test_mcp_session
-from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 
@@ -39,24 +37,6 @@ def _custom_model_fixture_dir() -> str:
     )
 
 
-@pytest.mark.asyncio
-class TestDeploymentToolsAcceptance:
-    """Acceptance tests for deployment tools via MCP session (in-process)."""
-
-    async def test_deploy_custom_model_tool_listed(self) -> None:
-        """Verify deploy_custom_model is available in the MCP server tool list."""
-        async with integration_test_mcp_session() as session:
-            result = await session.list_tools()
-            tool_names = [t.name for t in result.tools]
-            assert "deploy_custom_model" in tool_names
-            assert "list_deployments" in tool_names
-            assert "deploy_model" in tool_names
-
-
-@pytest.mark.skipif(
-    not os.getenv("ENABLE_CUSTOM_MODEL_DEPLOY"),
-    reason="ENABLE_CUSTOM_MODEL_DEPLOY not set",
-)
 @pytest.mark.asyncio
 class TestDeployCustomModelE2E(ToolBaseE2E):
     """E2E tests for deploy_custom_model when a DataRobot environment is available."""

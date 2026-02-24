@@ -78,24 +78,21 @@ async def deploy_model(
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    try:
-        prediction_servers = client.PredictionServer.list()
-        if not prediction_servers:
-            raise ToolError("No prediction servers available for deployment.")
-        deployment = client.Deployment.create_from_learning_model(
-            model_id=model_id,
-            label=label,
-            description=description,
-            default_prediction_server_id=prediction_servers[0].id,
-        )
-        return ToolResult(
-            structured_content={
-                "deployment_id": deployment.id,
-                "label": label,
-            },
-        )
-    except Exception as e:
-        raise ToolError(f"Error deploying model {model_id}: {type(e).__name__}: {e}")
+    prediction_servers = client.PredictionServer.list()
+    if not prediction_servers:
+        raise ToolError("No prediction servers available for deployment.")
+    deployment = client.Deployment.create_from_learning_model(
+        model_id=model_id,
+        label=label,
+        description=description,
+        default_prediction_server_id=prediction_servers[0].id,
+    )
+    return ToolResult(
+        structured_content={
+            "deployment_id": deployment.id,
+            "label": label,
+        },
+    )
 
 
 @dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "custom", "create"})
@@ -158,21 +155,18 @@ async def deploy_custom_model(
         )
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    try:
-        out = deploy_custom_model_impl(
-            client,
-            model_folder=model_folder,
-            model_file_path=resolved_path,
-            name=name,
-            target_type=target_type,
-            target_name=target_name,
-            positive_class_label=positive_class_label,
-            negative_class_label=negative_class_label,
-            class_labels=class_labels,
-            deployment_label=deployment_label,
-            execution_environment_id=execution_environment_id,
-            description=description,
-        )
-        return ToolResult(structured_content=out)
-    except Exception as e:
-        raise ToolError(f"Deploy custom model failed: {type(e).__name__}: {e}")
+    out = deploy_custom_model_impl(
+        client,
+        model_folder=model_folder,
+        model_file_path=resolved_path,
+        name=name,
+        target_type=target_type,
+        target_name=target_name,
+        positive_class_label=positive_class_label,
+        negative_class_label=negative_class_label,
+        class_labels=class_labels,
+        deployment_label=deployment_label,
+        execution_environment_id=execution_environment_id,
+        description=description,
+    )
+    return ToolResult(structured_content=out)
