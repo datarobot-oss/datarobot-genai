@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import re
 
 import pytest
@@ -20,14 +19,8 @@ from mcp import McpError
 from datarobot_genai.drmcp import integration_test_mcp_session
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
-_REQUIRES_REAL_DR_API = os.environ.get("DRMCP_INTEGRATION_USE_DR_STUBS") == "true"
-
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    _REQUIRES_REAL_DR_API,
-    reason="Requires real DataRobot API (prompts from API); skipped when using DR client stubs",
-)
 class TestMCPDRPromptManagementIntegration:
     """Integration tests for MCP DR Prompt Management integration."""
 
@@ -36,7 +29,7 @@ class TestMCPDRPromptManagementIntegration:
 
     async def test_prompt_without_version(self, prompt_template_without_versions: dict) -> None:
         """Integration test for prompt template without any versions that cannot be used in MCP."""
-        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+        async with integration_test_mcp_session(timeout=self.TIMEOUT, use_stub=False) as session:
             prompt_template_name = prompt_template_without_versions["name"]
 
             # Check if testing prompt
@@ -58,7 +51,7 @@ class TestMCPDRPromptManagementIntegration:
         self, prompt_template_with_version_without_variables: dict
     ) -> None:
         """Integration test for prompt template with version without any variables."""
-        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+        async with integration_test_mcp_session(timeout=self.TIMEOUT, use_stub=False) as session:
             prompt_template_name = prompt_template_with_version_without_variables["name"]
             prompt_template_prompt_text = prompt_template_with_version_without_variables[
                 "prompt_text"
@@ -85,7 +78,7 @@ class TestMCPDRPromptManagementIntegration:
         var_2_name = "sentences"
         var_2_value = "5"
 
-        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+        async with integration_test_mcp_session(timeout=self.TIMEOUT, use_stub=False) as session:
             prompt_template_name = prompt_template_with_version_with_variables["name"]
             prompt_template_prompt_text = prompt_template_with_version_with_variables["prompt_text"]
 
@@ -113,7 +106,7 @@ class TestMCPDRPromptManagementIntegration:
         """Integration test for prompt template with version with variables
         when not enough variables provided.
         """
-        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+        async with integration_test_mcp_session(timeout=self.TIMEOUT, use_stub=False) as session:
             prompt_template_name = prompt_template_with_version_with_variables["name"]
 
             # Check if testing prompt is in list of all prompts
@@ -144,7 +137,7 @@ class TestMCPDRPromptManagementIntegration:
     ) -> None:
         """Integration test for prompt template when duplicated names exist."""
         first_prompt_template, second_prompt_template = prompt_templates_with_duplicates
-        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+        async with integration_test_mcp_session(timeout=self.TIMEOUT, use_stub=False) as session:
             prompt_template_name_1 = first_prompt_template["name"]
             prompt_template_name_2 = second_prompt_template["name"]
 
