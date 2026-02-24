@@ -153,12 +153,10 @@ def _apply_dr_client_stubs() -> None:
 
 def main() -> None:
     """Run the integration test MCP server."""
-    # Integration tests run with stdio (no HTTP headers); patch so tools get token from env
-    if os.environ.get("MCP_SERVER_NAME") == "integration":
-        _patch_get_sdk_client_for_stdio()
-    # Use DR client stubs when requested (e.g. by integration_test_mcp_session)
     if os.environ.get("MCP_USE_CLIENT_STUBS", "true") == "true":
         _apply_dr_client_stubs()
+    elif os.environ.get("MCP_SERVER_NAME") == "integration":
+        _patch_get_sdk_client_for_stdio()
 
     # Try to detect and load user modules
     user_components = detect_user_modules()
