@@ -34,6 +34,7 @@ class TestIntegrationMCPServer:
                 result = detect_user_modules()
                 assert result is None
 
+    @patch.dict("os.environ", {"MCP_USE_CLIENT_STUBS": "false", "MCP_SERVER_NAME": ""}, clear=False)
     @patch("datarobot_genai.drmcp.test_utils.integration_mcp_server.create_mcp_server")
     @patch("datarobot_genai.drmcp.test_utils.integration_mcp_server.detect_user_modules")
     def test_main_with_user_modules(self, mock_detect, mock_create_server):
@@ -66,6 +67,7 @@ class TestIntegrationMCPServer:
         )
         mock_server.run.assert_called_once()
 
+    @patch.dict("os.environ", {"MCP_USE_CLIENT_STUBS": "false", "MCP_SERVER_NAME": ""}, clear=False)
     @patch("datarobot_genai.drmcp.test_utils.integration_mcp_server.create_mcp_server")
     @patch("datarobot_genai.drmcp.test_utils.integration_mcp_server.detect_user_modules")
     def test_main_without_user_modules(self, mock_detect, mock_create_server):
