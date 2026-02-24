@@ -15,8 +15,40 @@
 from typing import Any
 
 import pytest
+from ag_ui.core import AssistantMessage
+from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import UserMessage
 
 from datarobot_genai.core.mcp.common import MCPConfig
+
+
+def make_run_agent_input_with_history() -> RunAgentInput:
+    """Create a RunAgentInput with multi-turn chat history.
+
+    Use this for tests that verify chat history functionality across
+    different agent types (LangGraph, CrewAI, LlamaIndex, NAT).
+    """
+    return RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+@pytest.fixture
+def run_agent_input_with_history() -> RunAgentInput:
+    """Fixture providing a RunAgentInput with multi-turn chat history."""
+    return make_run_agent_input_with_history()
 
 
 @pytest.fixture

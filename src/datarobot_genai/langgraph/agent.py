@@ -14,9 +14,11 @@
 import abc
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Optional
+from typing import cast
 
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
@@ -48,6 +50,17 @@ logger = logging.getLogger(__name__)
 
 
 class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
+    """Base class for LangGraph-powered agents.
+
+    This class wires LangGraph workflows into the generic `BaseAgent` interface
+    and provides a default implementation for turning OpenAI-style chat inputs
+    into a LangGraph `Command`.
+
+    History is opt-in: prior turns are only injected when the prompt template
+    declares and uses a `{chat_history}` input variable. If the template does
+    not use `{chat_history}`, no chat history is passed to the model.
+    """
+
     @property
     @abc.abstractmethod
     def workflow(self) -> StateGraph[MessagesState]:
@@ -65,20 +78,58 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         }
 
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+        """Convert AG-UI input into a LangGraph `Command`.
+
+        By default this:
+        - Extracts the last user message content via `extract_user_prompt_content`
+          and feeds it through `prompt_template` to build the current turn.
+        - Includes prior turns only when the prompt template opts in via a
+          `{chat_history}` variable.
+        """
         user_prompt = extract_user_prompt_content(run_agent_input)
+
+        # Chat history is opt-in: the model only sees history when the prompt
+        # template declares/uses the `{chat_history}` variable.
+        input_vars = getattr(self.prompt_template, "input_variables", [])
+        try:
+            vars_list = list(input_vars)
+        except TypeError:
+            vars_list = []
+        uses_chat_history = "chat_history" in vars_list
+        history_summary = self.build_history_summary(run_agent_input) if uses_chat_history else ""
+
+        # Prefer structured dict input when available so templates can access both
+        # the original fields (e.g. {topic}) and a plain-text {chat_history}.
+        if isinstance(user_prompt, Mapping):
+            template_input: Any = dict(user_prompt)
+            template_input.setdefault("chat_history", history_summary)
+        elif vars_list:
+            # When the prompt is a bare value, best-effort map it into the declared
+            # input variables. Known variable "chat_history" always receives the
+            # history summary; all other variables receive the raw user prompt.
+            template_input = {}
+            for name in vars_list:
+                if name == "chat_history":
+                    template_input[name] = history_summary
+                else:
+                    template_input[name] = user_prompt
+        else:
+            # No declared variables: preserve pre-history behaviour.
+            template_input = user_prompt
+
+        current_messages = self.prompt_template.invoke(template_input).to_messages()
         command = Command(  # type: ignore[var-annotated]
             update={
-                "messages": self.prompt_template.invoke(user_prompt).to_messages(),
+                "messages": current_messages,
             },
         )
         return command
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        """Run the agent with the provided completion parameters.
+        """Run the agent with the provided input.
 
         Args:
-            completion_create_params: The completion request parameters including input topic and
-            settings.
+            run_agent_input: The agent run input.
 
         Returns
         -------
@@ -124,13 +175,18 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # Create and invoke the Langgraph Agentic Workflow with the inputs
         langgraph_execution_graph = self.workflow.compile()
 
-        graph_stream = langgraph_execution_graph.astream(
-            input=input_command,
-            config=self.langgraph_config,
-            debug=self.verbose,
-            # Streaming updates and messages from all the nodes
-            stream_mode=["updates", "messages"],
-            subgraphs=True,
+        graph_stream = cast(
+            AsyncGenerator[tuple[Any, str, Any], None],
+            langgraph_execution_graph.astream(
+                input=input_command,
+                # LangGraph expects a RunnableConfig, but our config is a plain dict.
+                # Cast to Any to avoid leaking LangGraph internals into this interface.
+                config=cast(Any, self.langgraph_config),
+                debug=self.verbose,
+                # Streaming updates and messages from all the nodes
+                stream_mode=["updates", "messages"],
+                subgraphs=True,
+            ),
         )
 
         usage_metrics: UsageMetrics = {
@@ -154,6 +210,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 message_event: tuple[AIMessageChunk | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
                 message = message_event[0]
                 if isinstance(message, ToolMessage):
+                    tool_message_id = (
+                        str(message.id)
+                        if getattr(message, "id", None) is not None
+                        else message.tool_call_id
+                    )
                     yield (
                         ToolCallEndEvent(
                             type=EventType.TOOL_CALL_END, tool_call_id=message.tool_call_id
@@ -164,9 +225,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     yield (
                         ToolCallResultEvent(
                             type=EventType.TOOL_CALL_RESULT,
-                            message_id=message.id,
+                            message_id=tool_message_id,
                             tool_call_id=message.tool_call_id,
-                            content=message.content,
+                            content=str(message.content),
                             role="tool",
                         ),
                         None,
@@ -179,13 +240,15 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         for tool_call_chunk in message.tool_call_chunks:
                             if name := tool_call_chunk.get("name"):
                                 # Its a tool call start message
-                                tool_call_id = tool_call_chunk["id"]
+                                tcid = tool_call_chunk.get("id")
+                                if tcid:
+                                    tool_call_id = str(tcid)
                                 yield (
                                     ToolCallStartEvent(
                                         type=EventType.TOOL_CALL_START,
                                         tool_call_id=tool_call_id,
                                         tool_call_name=name,
-                                        parent_message_id=message.id,
+                                        parent_message_id=str(message.id or ""),
                                     ),
                                     None,
                                     usage_metrics,
@@ -216,11 +279,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                     None,
                                     usage_metrics,
                                 )
-                            current_message_id = message.id
+                            current_message_id = str(message.id or "")
                             yield (
                                 TextMessageStartEvent(
                                     type=EventType.TEXT_MESSAGE_START,
-                                    message_id=message.id,
+                                    message_id=current_message_id,
                                     role="assistant",
                                 ),
                                 None,
@@ -229,8 +292,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         yield (
                             TextMessageContentEvent(
                                 type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=message.id,
-                                delta=message.content,
+                                message_id=current_message_id,
+                                delta=str(message.content),
                             ),
                             None,
                             usage_metrics,

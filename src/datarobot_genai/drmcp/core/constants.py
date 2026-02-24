@@ -31,4 +31,5 @@ MCP_CLI_OPTS: list[tuple[str, str | None, str | None]] = [
     ("confluence", None, "enable_confluence_tools"),
     ("perplexity", None, "enable_perplexity_tools"),
     ("tavily", None, "enable_tavily_tools"),
+    ("dr_docs", None, "enable_dr_docs_tools"),
 ]

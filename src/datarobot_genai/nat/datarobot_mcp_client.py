@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Literal
@@ -145,7 +144,7 @@ class DataRobotMCPStreamableHTTPClient(MCPStreamableHTTPClient):
 @register_function_group(config_type=DataRobotMCPClientConfig)
 async def datarobot_mcp_client_function_group(
     config: DataRobotMCPClientConfig, _builder: Builder
-) -> AsyncGenerator[MCPFunctionGroup]:
+) -> MCPFunctionGroup:
     """
     Connect to an MCP server and expose tools as a function group.
 
@@ -219,56 +218,51 @@ async def datarobot_mcp_client_function_group(
     group._shared_auth_provider = auth_provider
     group._client_config = config
 
-    try:
-        async with client:
-            # Expose the live MCP client on the function group instance so other components
-            # (e.g., HTTP endpoints) can reuse the already-established session instead of creating a
-            # new client per request.
-            group.mcp_client = client
-            group.mcp_client_server_name = client.server_name
-            group.mcp_client_transport = client.transport
+    async with client:
+        # Expose the live MCP client on the function group instance so other components
+        # (e.g., HTTP endpoints) can reuse the already-established session instead of creating a
+        # new client per request.
+        group.mcp_client = client
+        group.mcp_client_server_name = client.server_name
+        group.mcp_client_transport = client.transport
 
-            all_tools = await client.get_tools()
-            tool_overrides = mcp_apply_tool_alias_and_description(all_tools, config.tool_overrides)
+        all_tools = await client.get_tools()
+        tool_overrides = mcp_apply_tool_alias_and_description(all_tools, config.tool_overrides)
 
-            # Add each tool as a function to the group
-            for tool_name, tool in all_tools.items():
-                # Get override if it exists
-                override = tool_overrides.get(tool_name)
+        # Add each tool as a function to the group
+        for tool_name, tool in all_tools.items():
+            # Get override if it exists
+            override = tool_overrides.get(tool_name)
 
-                # Use override values or defaults
-                function_name = override.alias if override and override.alias else tool_name
-                description = (
-                    override.description if override and override.description else tool.description
-                )
+            # Use override values or defaults
+            function_name = override.alias if override and override.alias else tool_name
+            description = (
+                override.description if override and override.description else tool.description
+            )
 
-                # Create the tool function according to configuration
-                tool_fn = mcp_session_tool_function(tool, group)
+            # Create the tool function according to configuration
+            tool_fn = mcp_session_tool_function(tool, group)
 
-                # Normalize optional typing for linter/type-checker compatibility
-                single_fn = tool_fn.single_fn
-                if single_fn is None:
-                    # Should not happen because FunctionInfo always sets a single_fn
-                    logger.warning("Skipping tool %s because single_fn is None", function_name)
-                    continue
+            # Normalize optional typing for linter/type-checker compatibility
+            single_fn = tool_fn.single_fn
+            if single_fn is None:
+                # Should not happen because FunctionInfo always sets a single_fn
+                logger.warning("Skipping tool %s because single_fn is None", function_name)
+                continue
 
-                input_schema = tool_fn.input_schema
-                # Convert NoneType sentinel to None for FunctionGroup.add_function signature
-                if input_schema is type(None):  # noqa: E721
-                    input_schema = None
+            input_schema = tool_fn.input_schema
+            # Convert NoneType sentinel to None for FunctionGroup.add_function signature
+            if input_schema is type(None):  # noqa: E721
+                input_schema = None
 
-                # Add to group
-                logger.info("Adding tool %s to group", function_name)
-                group.add_function(
-                    name=function_name,
-                    description=description,
-                    fn=single_fn,
-                    input_schema=input_schema,
-                    converters=tool_fn.converters,
-                )
-    except Exception as e:
-        logger.warning(f"Error in MCP client function group: {e}")
-    finally:
-        # Clean up client reference on the group to avoid stale clients
-        group.mcp_client = None
+            # Add to group
+            logger.info("Adding tool %s to group", function_name)
+            group.add_function(
+                name=function_name,
+                description=description,
+                fn=single_fn,
+                input_schema=input_schema,
+                converters=tool_fn.converters,
+            )
+
         yield group
