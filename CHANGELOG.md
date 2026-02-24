@@ -4,9 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.5.8
+## 0.5.10
 
 - Created DR MCP test stubs and added stub `client` attribute integrated with MCP server
+
+## 0.5.9
+- Add MCP tool `deploy_custom_model` for deploying custom inference models (e.g. `.pkl`, `.joblib`) to DataRobot MLOps
+- Custom model deployment: validation for prediction servers (consistent with `deploy_model`), optional execution environment, model file discovery in folder.
+
+## 0.5.8
+- Added "DR docs" tools: a tool for searching DataRobot Agentic AI docs and returning most relevant doc pages (includes title, URL, content) using TF-IDF, and a tool for fetching any DataRobot docs page. Note: only supported for English documentation, not Japanese.
 
 ## 0.5.7
 
@@ -21,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.5.5
 
+## 0.5.5
 - Added upper bound to `crewai` dependency (`>=1.1.0,<2.0.0`)
 
 ## 0.5.4
