@@ -4,9 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.5.10
+## 0.5.11
 
 - Created DR MCP test stubs and added stub `client` attribute integrated with MCP server
+
+## 0.5.10
+
+- Add DataRobotMCPServer APIs to retrieve registered tools/prompts/resources.
 
 ## 0.5.9
 - Add MCP tool `deploy_custom_model` for deploying custom inference models (e.g. `.pkl`, `.joblib`) to DataRobot MLOps

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+from collections.abc import Iterator
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -26,12 +27,34 @@ from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
 @pytest.fixture
-def mock_mcp() -> MagicMock:
+def mock_fastmcp_get_tools() -> Iterator[AsyncMock]:
+    yield AsyncMock(return_value={})
+
+
+@pytest.fixture
+def mock_fastmcp_get_prompts() -> Iterator[AsyncMock]:
+    yield AsyncMock(return_value={})
+
+
+@pytest.fixture
+def mock_fastmcp_get_resources() -> Iterator[AsyncMock]:
+    yield AsyncMock(return_value={})
+
+
+@pytest.fixture
+def mock_mcp(
+    mock_fastmcp_get_prompts: AsyncMock,
+    mock_fastmcp_get_resources: AsyncMock,
+    mock_fastmcp_get_tools: AsyncMock,
+) -> MagicMock:
     """Create a mock FastMCP instance."""
     mock = MagicMock(spec=FastMCP)
     mock._list_tools_mcp = AsyncMock(
         return_value=[MagicMock(name="tool1"), MagicMock(name="tool2")]
     )
+    mock.get_tools = mock_fastmcp_get_tools
+    mock.get_prompts = mock_fastmcp_get_prompts
+    mock.get_resources = mock_fastmcp_get_resources
     # Mock low-level server for _configure_mcp_capabilities()
     mock._mcp_server = MagicMock()
     mock._mcp_server.notification_options = MagicMock()
@@ -311,6 +334,45 @@ class TestDataRobotMCPServer:
         mock_mcp._list_tools_mcp.assert_called_once()
         # Should be called twice: once for run_server, once for pre_server_shutdown
         assert mock_loop.run_until_complete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_tools(
+        self,
+        mock_fastmcp_get_tools: AsyncMock,
+        mock_mcp: MagicMock,
+    ) -> None:
+        dr_mcp_server = DataRobotMCPServer(mock_mcp)
+
+        actual_outputs = await dr_mcp_server.get_tools()
+
+        mock_fastmcp_get_tools.assert_called_once_with()
+        assert actual_outputs == mock_fastmcp_get_tools.return_value
+
+    @pytest.mark.asyncio
+    async def test_get_prompts(
+        self,
+        mock_fastmcp_get_prompts: AsyncMock,
+        mock_mcp: MagicMock,
+    ) -> None:
+        dr_mcp_server = DataRobotMCPServer(mock_mcp)
+
+        actual_outputs = await dr_mcp_server.get_prompts()
+
+        mock_fastmcp_get_prompts.assert_called_once_with()
+        assert actual_outputs == mock_fastmcp_get_prompts.return_value
+
+    @pytest.mark.asyncio
+    async def test_get_resources(
+        self,
+        mock_fastmcp_get_resources: AsyncMock,
+        mock_mcp: MagicMock,
+    ) -> None:
+        dr_mcp_server = DataRobotMCPServer(mock_mcp)
+
+        actual_outputs = await dr_mcp_server.get_resources()
+
+        mock_fastmcp_get_resources.assert_called_once_with()
+        assert actual_outputs == mock_fastmcp_get_resources.return_value
 
 
 def test_mcp_server_capabilities():

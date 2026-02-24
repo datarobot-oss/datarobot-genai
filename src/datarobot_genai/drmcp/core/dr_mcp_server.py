@@ -21,6 +21,9 @@ from collections.abc import Callable
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.prompts import Prompt
+from fastmcp.resources import Resource
+from fastmcp.tools import Tool
 from starlette.middleware import Middleware
 
 from .auth import initialize_oauth_middleware
@@ -303,6 +306,15 @@ class DataRobotMCPServer:
         except Exception as e:
             self._logger.error(f"Server error: {e}")
             raise
+
+    async def get_tools(self) -> dict[str, Tool]:
+        return await self._mcp.get_tools()
+
+    async def get_prompts(self) -> dict[str, Prompt]:
+        return await self._mcp.get_prompts()
+
+    async def get_resources(self) -> dict[str, Resource]:
+        return await self._mcp.get_resources()
 
 
 def create_mcp_server(
