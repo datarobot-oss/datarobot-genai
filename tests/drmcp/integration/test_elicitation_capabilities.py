@@ -64,7 +64,9 @@ async def test_elicitation_capability_negotiation(
 
     callback = elicitation_handler if has_elicitation_callback else None
 
-    async with integration_test_mcp_session(elicitation_callback=callback) as session:
+    async with integration_test_mcp_session(
+        elicitation_callback=callback, use_stub=False
+    ) as session:
         # Get the init result stored by integration_test_mcp_session
         init_result = session._init_result  # type: ignore[attr-defined]
 
