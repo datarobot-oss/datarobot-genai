@@ -20,12 +20,16 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontE
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.runtime.loader import WorkflowBuilder
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from pydantic import Field
 
 from datarobot_genai.dragent.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
+DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
+
 logger = logging.getLogger(__name__)
+
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def get_step_adaptor(self) -> StepAdaptor:
@@ -52,25 +56,21 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             """Health check endpoint for liveness/readiness probes."""
             return HealthResponse(status="healthy")
 
-        for path in ['/', '/ping', '/ping/', '/health', '/health/']:
-            app.add_api_route(path=path,
-                              endpoint=health_check,
-                              methods=["GET"],
-                              response_model=HealthResponse,
-                              description="Health check endpoint for liveness/readiness probes",
-                              tags=["Health"],
-                              responses={
-                                  200: {
-                                      "description": "Server is healthy",
-                                      "content": {
-                                          "application/json": {
-                                              "example": {
-                                                  "status": "healthy"
-                                              }
-                                          }
-                                      }
-                                  }
-                              })
+        for path in DATAROBOT_EXPECTED_HEALTH_ROUTES:
+            app.add_api_route(
+                path=path,
+                endpoint=health_check,
+                methods=["GET"],
+                response_model=HealthResponse,
+                description="Health check endpoint for liveness/readiness probes",
+                tags=["Health"],
+                responses={
+                    200: {
+                        "description": "Server is healthy",
+                        "content": {"application/json": {"example": {"status": "healthy"}}},
+                    }
+                },
+            )
 
             logger.info(f"Added health check endpoint at {path}")
 

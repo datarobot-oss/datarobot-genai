@@ -12,34 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import os
+from contextlib import asynccontextmanager
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nat.builder.workflow_builder import WorkflowBuilder
+from nat.data_models.config import Config
+from nat.data_models.config import GeneralConfig
+from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
-from datarobot_genai.dragent.session import DRAgentAGUISessionManager
-from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
+
+
+@pytest.fixture
+def worker():
+    config = Config(general=GeneralConfig(front_end=FastApiFrontEndConfig()))
+    with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+        return DRAgentFastApiFrontEndPluginWorker(config)
+
+
+@pytest.fixture
+def app_with_health(worker):
+    """Build the FastAPI app the same way the server does, mocking WorkflowBuilder."""
+
+    async def fake_configure(app: FastAPI, builder):
+        _ = builder
+        await worker.add_health_route(app)
+
+    @asynccontextmanager
+    async def mock_from_config(_config):
+        yield MagicMock()
+
+    with (
+        patch.object(worker, "configure", side_effect=fake_configure),
+        patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+    ):
+        yield worker.build_app()
 
 
 class TestDRAgentFastApiFrontEndPluginWorker:
-    @pytest.mark.asyncio
-    async def test_add_health_route_registers_all_paths(self, worker):
-        app = FastAPI()
-        await worker.add_health_route(app)
+    EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
-        routes = {route.path for route in app.routes}
-        for path in ['/', '/ping', '/ping/', '/health', '/health/']:
-            assert path in routes, f"Expected health route at {path}"
-
-    @pytest.mark.asyncio
-    async def test_add_health_route_returns_healthy_status(self, worker):
-        app = FastAPI()
-        await worker.add_health_route(app)
-
-        client = TestClient(app)
-        for path in ['/', '/ping', '/ping/', '/health', '/health/']:
-            response = client.get(path)
-            assert response.status_code == 200, f"Expected 200 at {path}"
-            assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
+    def test_health_routes_return_healthy_status(self, app_with_health):
+        with TestClient(app_with_health) as client:
+            for path in self.EXPECTED_HEALTH_ROUTES:
+                response = client.get(path)
+                assert response.status_code == 200, f"Expected 200 at {path}"
+                assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
