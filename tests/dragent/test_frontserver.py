@@ -25,6 +25,7 @@ from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
 @pytest.fixture
@@ -56,9 +57,12 @@ def app_with_health(worker):
 class TestDRAgentFastApiFrontEndPluginWorker:
     EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
-    def test_health_routes_return_healthy_status(self, app_with_health):
+    @pytest.mark.parametrize("path", EXPECTED_HEALTH_ROUTES)
+    def test_health_routes_return_healthy_status(self, app_with_health, path):
         with TestClient(app_with_health) as client:
-            for path in self.EXPECTED_HEALTH_ROUTES:
-                response = client.get(path)
-                assert response.status_code == 200, f"Expected 200 at {path}"
-                assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
+            response = client.get(path)
+            assert response.status_code == 200, f"Expected 200 at {path}"
+            assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
+
+    def test_step_adaptor(self, worker):
+        assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)

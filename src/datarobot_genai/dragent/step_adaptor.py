@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-from typing import Any
 from uuid import uuid4
 
 from ag_ui.core import CustomEvent
@@ -41,6 +40,7 @@ from nat.builder.context import InvocationNode
 from nat.data_models.api_server import ResponseSerializable
 from nat.data_models.intermediate_step import IntermediateStepCategory
 from nat.data_models.intermediate_step import UsageInfo
+from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
 
@@ -59,8 +59,16 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     TODO: make it configurable to support different behavior
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, config: StepAdaptorConfig) -> None:
+        # Override the config to default
+        default_config = StepAdaptorConfig()
+        if default_config != config:
+            raise ValueError(
+                f"Step config {config} is not supported for nested reasoning processing. "
+                f"Using default config {default_config}",
+                UserWarning,
+            )
+        super().__init__(default_config)
         self.function_level = 0
         self.seen_llm_new_token = False
         self.tool_call_id: str | None = None
