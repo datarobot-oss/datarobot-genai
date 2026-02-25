@@ -29,7 +29,7 @@ class TestMCPToolsIntegration:
 
     async def test_model_tools(self, classification_project: dict[str, Any]) -> None:
         """Complete integration test for ModelTools through MCP."""
-        async with integration_test_mcp_session() as session:
+        async with integration_test_mcp_session(use_stub=False) as session:
             # 1 Test listing available tools
             tools_result: ListToolsResult = await session.list_tools()
             tool_names = [tool.name for tool in tools_result.tools]

@@ -28,7 +28,7 @@ from .utils import load_env
 load_env()
 
 
-def integration_test_mcp_server_params() -> StdioServerParameters:
+def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerParameters:
     env = {
         "DATAROBOT_API_TOKEN": os.environ.get("DATAROBOT_API_TOKEN") or "test-token",
         "DATAROBOT_ENDPOINT": os.environ.get("DATAROBOT_ENDPOINT")
@@ -63,6 +63,7 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
             "PYTHONPATH": str(src_dir),
             "MCP_SERVER_NAME": "integration",
             "MCP_SERVER_PORT": "8081",
+            "MCP_USE_CLIENT_STUBS": str(use_stub).lower(),
             **env,
         },
     )
@@ -71,8 +72,9 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
 @contextlib.asynccontextmanager
 async def integration_test_mcp_session(
     server_params: StdioServerParameters | None = None,
-    timeout: int = 30,
+    timeout: int = 60,
     elicitation_callback: Any | None = None,
+    use_stub: bool = True,
 ) -> AsyncGenerator[ClientSession, None]:
     """
     Create and connect a client for the MCP server as a context manager.
@@ -91,7 +93,7 @@ async def integration_test_mcp_session(
         ConnectionError: If session initialization fails
         TimeoutError: If session initialization exceeds timeout
     """
-    server_params = server_params or integration_test_mcp_server_params()
+    server_params = server_params or integration_test_mcp_server_params(use_stub=use_stub)
 
     try:
         async with stdio_client(server_params) as (read_stream, write_stream):
