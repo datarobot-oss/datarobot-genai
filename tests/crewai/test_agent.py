@@ -32,7 +32,7 @@ from datarobot_genai.crewai.agent import CrewAIAgent
 # --- Test helpers ---
 
 
-class TestCrew:
+class CrewForTest:
     def __init__(self, output: CrewOutput | None = None, *args: Any, **kwargs: Any):
         self.args = args
         self.kwargs = kwargs
@@ -42,7 +42,7 @@ class TestCrew:
         return self.output or CrewOutput(raw="final-output")
 
 
-class TestListener:
+class ListenerForTest:
     def __init__(self, messages: list[Any] | None = None):
         self.messages = messages or []
         self.called_setup = False
@@ -52,8 +52,10 @@ class TestListener:
 
 
 @pytest.fixture
-def mock_ragas_event_listener() -> TestListener:
-    event_listener = TestListener(messages=[HumanMessage(content="hi"), AIMessage(content="there")])
+def mock_ragas_event_listener() -> ListenerForTest:
+    event_listener = ListenerForTest(
+        messages=[HumanMessage(content="hi"), AIMessage(content="there")]
+    )
     with patch(
         "datarobot_genai.crewai.agent.CrewAIRagasEventListener"
     ) as mock_ragas_event_listener:
@@ -61,7 +63,7 @@ def mock_ragas_event_listener() -> TestListener:
         yield event_listener
 
 
-class TestAgent(CrewAIAgent):
+class AgentForTest(CrewAIAgent):
     def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.crew_output = crew_output
@@ -78,7 +80,7 @@ class TestAgent(CrewAIAgent):
         return {"topic": user_prompt_content}
 
     def crew(self) -> Any:
-        return TestCrew(self.crew_output)
+        return CrewForTest(self.crew_output)
 
 
 # --- Tests for create_pipeline_interactions_from_messages ---
@@ -126,7 +128,7 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
     )
     forwarded_headers = {"header-name": "header-value"}
     authorization_context = {"x-datarobot-api-key": "scoped-token-123"}
-    agent = TestAgent(
+    agent = AgentForTest(
         out,
         api_base="https://x/",
         api_key="k",
@@ -182,13 +184,13 @@ async def test_invoke_does_not_include_chat_history_by_default(
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
-    class CapturingCrew(TestCrew):
+    class CapturingCrew(CrewForTest):
         def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
             return super().kickoff(inputs=inputs)
 
     out = CrewOutput(raw="agent result")
-    agent = TestAgent(out, api_base="https://x/", api_key="k", verbose=False)
+    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
     agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
@@ -202,12 +204,12 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
-    class CapturingCrew(TestCrew):
+    class CapturingCrew(CrewForTest):
         def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
             return super().kickoff(inputs=inputs)
 
-    class AgentWithPlaceholder(TestAgent):
+    class AgentWithPlaceholder(AgentForTest):
         def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
             return {"topic": user_prompt_content, "chat_history": ""}
 
@@ -232,12 +234,12 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
-    class CapturingCrew(TestCrew):
+    class CapturingCrew(CrewForTest):
         def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
             return super().kickoff(inputs=inputs)
 
-    class AgentWithOverride(TestAgent):
+    class AgentWithOverride(AgentForTest):
         def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
             return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
 

@@ -16,8 +16,6 @@
 from ag_ui.core import Event
 from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import TextMessageContentEvent
-from nat.data_models.api_server import ChatResponse
-from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ResponseBaseModelOutput
 
 
@@ -42,11 +40,3 @@ class DRAgentEventResponse(ResponseBaseModelOutput):
                 if isinstance(event, (TextMessageContentEvent, ReasoningMessageContentEvent))
             ]
         return []
-
-
-class DRAgentChatResponseChunk(ChatResponseChunk):
-    events: list[Event] | None = None
-
-
-class DRAgentChatResponse(ChatResponse):
-    pass
