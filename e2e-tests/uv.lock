@@ -1002,11 +1002,11 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+dragent-langgraph = [
+    { name = "datarobot-genai", extra = ["dragent", "langgraph", "nat"] },
+]
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent", "nat"] },
-]
-langgraph-nat = [
-    { name = "datarobot-genai", extra = ["dragent", "langgraph", "nat"] },
 ]
 
 [package.metadata]
@@ -1017,8 +1017,8 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "nat", "langgraph"], editable = "../" }]
 dragent-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat"], editable = "../" }]
-langgraph-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat", "langgraph"], editable = "../" }]
 
 [[package]]
 name = "datarobot-predict"

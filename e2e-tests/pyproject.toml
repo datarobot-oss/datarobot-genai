@@ -15,12 +15,13 @@ dependencies = [
 dragent-nat = [
     "datarobot-genai[dragent,nat]"
 ]
-langgraph-nat = [
+# TODO: Should be `dragent` and `langgraph` when NAT LLM adaptors move to `core`.
+dragent-langgraph = [
     "datarobot-genai[dragent,nat,langgraph]"
 ]
 
 [project.entry-points.'nat.plugins']
-langgraph_agent = "langgraph_agent.register"
+langgraph_agent = "dragent.langgraph.register"
 
 [tool.uv]
 package = true
@@ -40,7 +41,7 @@ line-length = 100
 indent-width = 4
 
 [tool.setuptools]
-packages = ["dragent", "drmcp", "langgraph_agent"]
+packages = ["dragent", "dragent.langgraph", "drmcp"]
 
 [tool.ruff.lint]
 select = [

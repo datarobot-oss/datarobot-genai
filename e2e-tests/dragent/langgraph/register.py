@@ -33,25 +33,29 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )
 async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
+    from ag_ui.core import BaseEvent
     from ag_ui.core import RunAgentInput
-    from ag_ui.core import TextMessageContentEvent
+    from datarobot_genai.dragent.response import DRAgentEventResponse
     from nat.builder.function_info import FunctionInfo
 
-    from langgraph_agent.adaptors import AGUIAdaptor
-    from langgraph_agent.myagent import MyAgent
+    from dragent.langgraph.myagent import MyAgent
 
     llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 
     agent = MyAgent(llm=llm)
-    adaptor = AGUIAdaptor(agent)
 
-    async def _response_fn(input_message: RunAgentInput) -> str:
-        """Invoke the LangGraph agent and return collected text output."""
-        text_parts: list[str] = []
-        async for event in adaptor.chat(input_message):
-            if isinstance(event, TextMessageContentEvent):
-                text_parts.append(event.delta)
-        return "".join(text_parts)
+    async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
+        """Invoke the LangGraph agent and return a DRAgentEventResponse."""
+        events = []
+        metrics = {}
+        async for event_or_str, _, metrics in agent.invoke(input_message):
+            if isinstance(event_or_str, BaseEvent):
+                events.append(event_or_str)
+
+        return DRAgentEventResponse(
+            events=events if events else None,
+            usage_metrics=metrics,
+        )
 
     yield FunctionInfo.from_fn(
         _response_fn,
