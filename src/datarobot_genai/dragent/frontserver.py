@@ -15,6 +15,8 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
+from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
@@ -31,9 +33,45 @@ DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/
 logger = logging.getLogger(__name__)
 
 
+DATAROBOT_CHAT_COMPLETIONS_PATH = "/chat/completions"
+NAT_OPENAI_API_V1_PATH_ATTR = "openai_api_v1_path"
+
+
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def get_step_adaptor(self) -> StepAdaptor:
         return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
+
+    async def add_route(
+        self,
+        app: FastAPI,
+        endpoint: FastApiFrontEndConfig.EndpointBase,
+        session_manager: SessionManager,
+    ) -> None:
+        """Register routes via NAT, then also mount at /chat/completions for DataRobot deployments."""
+        await super().add_route(app, endpoint, session_manager)
+
+        # DataRobot's gateway strips the /{org_id}/{deployment_id} prefix and forwards
+        # requests to /chat/completions (without the /v1 prefix that NAT uses by default).
+        # Find the handler NAT registered at openai_api_v1_path and re-register it at
+        # /chat/completions so DataRobot can reach it.
+        v1_path = getattr(endpoint, NAT_OPENAI_API_V1_PATH_ATTR, None)
+        if v1_path and v1_path != DATAROBOT_CHAT_COMPLETIONS_PATH:
+            v1_route = next(
+                (r for r in app.routes if isinstance(r, APIRoute) and r.path == v1_path),
+                None,
+            )
+            if v1_route:
+                app.add_api_route(
+                    path=DATAROBOT_CHAT_COMPLETIONS_PATH,
+                    endpoint=v1_route.endpoint,
+                    methods=list(v1_route.methods or ["POST"]),
+                    response_model=v1_route.response_model,
+                    description=v1_route.description,
+                    responses=v1_route.responses,
+                )
+                logger.info(
+                    f"Added DataRobot chat/completions alias: {DATAROBOT_CHAT_COMPLETIONS_PATH} -> {v1_path}"
+                )
 
     async def _create_session_manager(
         self, builder: WorkflowBuilder, entry_function: str | None = None
