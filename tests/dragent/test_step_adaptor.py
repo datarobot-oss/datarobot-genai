@@ -17,6 +17,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from ag_ui.core import CustomEvent
 from ag_ui.core import ReasoningEndEvent
 from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
@@ -79,6 +80,30 @@ def step_adaptor():
     return DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig())
 
 
+def test_step_adaptor_processes_custom_event(step_adaptor):
+    # GIVEN a custom event
+    step = IntermediateStep(
+        parent_id="root",
+        function_ancestry=InvocationNode(
+            function_id="root", function_name="root", parent_id=None, parent_name=None
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.CUSTOM_START,
+            name="custom_event",
+            UUID=str(uuid.uuid4()),
+            data=StreamEventData(input=None, output=None),
+        ),
+    )
+    # WHEN the step is processed
+    response = step_adaptor.process(step)
+    # THEN the response is a custom event
+    assert response == DRAgentEventResponse(
+        events=[CustomEvent(name=IntermediateStepType.CUSTOM_START, value=step.payload)]
+    )
+
+
+# BELOW is a huge test which covers a nested workflow. It is based on logs I captured
+# while implementing the step adaptor.
 @pytest.fixture
 def intermediate_steps_ids():
     return {

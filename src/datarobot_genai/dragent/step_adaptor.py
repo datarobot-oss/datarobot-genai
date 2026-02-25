@@ -72,12 +72,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         self.seen_llm_new_token = False
 
     def process(self, step: IntermediateStep) -> ResponseSerializable | None:
-        # Do not process steps from native agents
-        if isinstance(step, DRAgentEventResponse):
-            return step
-        if isinstance(step, str):
-            return DRAgentEventResponse(delta=step)
-
         result = super().process(step)
 
         try:
