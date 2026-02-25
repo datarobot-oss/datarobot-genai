@@ -19,9 +19,14 @@ dragent-nat = [
 dragent-langgraph = [
     "datarobot-genai[dragent,nat,langgraph]"
 ]
+# TODO: Should be `dragent` and `crewai` when NAT LLM adaptors move to `core`.
+dragent-crewai = [
+    "datarobot-genai[dragent,nat,crewai]"
+]
 
 [project.entry-points.'nat.plugins']
 langgraph_agent = "dragent.langgraph.register"
+crewai_agent = "dragent.crewai.register"
 
 [tool.uv]
 package = true
@@ -41,7 +46,7 @@ line-length = 100
 indent-width = 4
 
 [tool.setuptools]
-packages = ["dragent", "dragent.langgraph", "drmcp"]
+packages = ["dragent", "dragent.crewai", "dragent.langgraph", "drmcp"]
 
 [tool.ruff.lint]
 select = [
