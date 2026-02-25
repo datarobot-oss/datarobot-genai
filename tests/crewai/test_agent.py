@@ -74,11 +74,14 @@ class TestAgent(CrewAIAgent):
     def tasks(self) -> list[Any]:
         return [object()]
 
-    def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-        return {"topic": user_prompt_content}
+    def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+        return {"topic": user_prompt_content, "context": context}
 
     def crew(self) -> Any:
         return TestCrew(self.crew_output)
+
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> str:
+        return ""
 
 
 # --- Tests for create_pipeline_interactions_from_messages ---
@@ -208,8 +211,8 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
             return super().kickoff(inputs=inputs)
 
     class AgentWithPlaceholder(TestAgent):
-        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-            return {"topic": user_prompt_content, "chat_history": ""}
+        def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "chat_history": "", "context": context}
 
     out = CrewOutput(raw="agent result")
     agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
@@ -238,8 +241,12 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
             return super().kickoff(inputs=inputs)
 
     class AgentWithOverride(TestAgent):
-        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-            return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
+        def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+            return {
+                "topic": user_prompt_content,
+                "chat_history": "CUSTOM OVERRIDE",
+                "context": context,
+            }
 
     out = CrewOutput(raw="agent result")
     agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
@@ -248,3 +255,30 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
+
+
+async def test_invoke_with_memories(
+    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(TestCrew):
+        def kickoff(self, *, inputs: dict[str, Any]) -> CrewOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff(inputs=inputs)
+
+    class AgentWithPlaceholder(TestAgent):
+        def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "context": context}
+
+        def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> str:
+            return "Some memories"
+
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    context = captured_inputs["context"]
+    assert context == "Some memories"

@@ -75,7 +75,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose)
 
     @abc.abstractmethod
-    def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+    def make_kickoff_inputs(self, user_prompt_content: str, context: str) -> dict[str, Any]:
         """Build the inputs dict for ``Crew.kickoff``.
 
         Subclasses must implement this to provide the exact inputs required
@@ -153,9 +153,14 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         usage_metrics = self._extract_usage_metrics(crew_output)
         return response_text, pipeline_interactions, usage_metrics
 
+    @abc.abstractmethod
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> str:
+        raise NotImplementedError("Not implemented")
+
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
+        context = self.retrieve_memories_based_on_user_prompt(user_prompt_content)
         # Preserve prior template startup print for CLI parity
         try:
             print("Running agent with user prompt:", user_prompt_content, flush=True)
@@ -177,7 +182,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 crew = self.crew()
 
-                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
+                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content), context)
                 # Chat history is opt-in: only populate it if the agent/template
                 # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
                 # in prompts).

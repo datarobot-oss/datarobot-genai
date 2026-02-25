@@ -31,6 +31,7 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import BaseMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
@@ -77,6 +78,14 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
+    @abc.abstractmethod
+    def retrieve_memories_based_on_user_prompt(self, user_prompt: Any) -> list[BaseMessage]:
+        raise NotImplementedError("Not implemented")
+
+    @abc.abstractmethod
+    def store_memory(self, pipeline_interactions: "MultiTurnSample") -> None:
+        raise NotImplementedError("Not implemented")
+
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
@@ -117,10 +126,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             # No declared variables: preserve pre-history behaviour.
             template_input = user_prompt
 
-        current_messages = self.prompt_template.invoke(template_input).to_messages()
+        messages = self.retrieve_memories_based_on_user_prompt(user_prompt)
+        messages.extend(self.prompt_template.invoke(template_input).to_messages())
         command = Command(  # type: ignore[var-annotated]
             update={
-                "messages": current_messages,
+                "messages": messages,
             },
         )
         return command
@@ -142,13 +152,16 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 forwarded_headers=self.forwarded_headers,
             ) as mcp_tools:
                 self.set_mcp_tools(mcp_tools)
-                result = await self._invoke(run_agent_input)
+                input_command = self.convert_input_message(run_agent_input)
+                result = await self._invoke(input_command)
 
                 # Yield all items from the result generator
                 # The context will be closed when this generator is exhausted
                 # Cast to async generator since we know stream=True means it's a generator
-                async for item in result:
-                    yield item
+                async for response_text, pipeline_interactions, usage_metrics in result:
+                    if pipeline_interactions:
+                        self.store_memory(pipeline_interactions)
+                    yield response_text, pipeline_interactions, usage_metrics
         except RuntimeError as e:
             error_message = str(e).lower()
             if "different task" in error_message and "cancel scope" in error_message:
@@ -166,8 +179,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 # Re-raise if it's a different RuntimeError
                 raise
 
-    async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        input_command = self.convert_input_message(run_agent_input)
+    async def _invoke(self, input_command: Command) -> InvokeReturn:
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
         )
