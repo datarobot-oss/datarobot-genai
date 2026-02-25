@@ -23,14 +23,13 @@ from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
-from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
 
 
 @pytest.fixture
 def worker():
-    config = Config(general=GeneralConfig(front_end=FastApiFrontEndConfig()))
+    config = Config(general=GeneralConfig())
     with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
         return DRAgentFastApiFrontEndPluginWorker(config)
 
