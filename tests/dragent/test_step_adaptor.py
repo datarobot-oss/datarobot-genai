@@ -97,9 +97,15 @@ def test_step_adaptor_processes_custom_event(step_adaptor):
     # WHEN the step is processed
     response = step_adaptor.process(step)
     # THEN the response is a custom event
-    assert response == DRAgentEventResponse(
-        events=[CustomEvent(name=IntermediateStepType.CUSTOM_START, value=step.payload)]
+    expected_response = DRAgentEventResponse(
+        events=[CustomEvent(name=IntermediateStepType.CUSTOM_START, value=step.payload)],
+        usage_metrics={
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        },
     )
+    assert response == expected_response
 
 
 # BELOW is a huge test which covers a nested workflow. It is based on logs I captured
