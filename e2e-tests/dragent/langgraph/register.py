@@ -46,9 +46,10 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
         """Invoke the LangGraph agent and return a DRAgentEventResponse."""
-        events = []
-        metrics = {}
-        async for event_or_str, _, metrics in agent.invoke(input_message):
+        events: list[BaseEvent] = []
+        metrics: dict = {}
+        async for event_or_str, _, iteration_metrics in agent.invoke(input_message):
+            metrics = iteration_metrics
             if isinstance(event_or_str, BaseEvent):
                 events.append(event_or_str)
 
