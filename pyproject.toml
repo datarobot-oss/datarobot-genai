@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.5.12"
+version = "0.5.13"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.14"
@@ -53,6 +53,7 @@ dev = [
   "responses>=0.25.8",
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
+  "ag-ui-protocol>=0.1.9,<0.2.0", # The root tests/conftest.py imports ag_ui
 ]
 
 

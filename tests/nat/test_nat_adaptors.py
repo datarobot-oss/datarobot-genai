@@ -113,6 +113,7 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
     llm_config = DataRobotLLMDeploymentModelConfig(
         temperature=0.0,
         api_key="some_token",
+        base_url="https://app.datarobot.com/api/v2/deployments/None",
         headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
@@ -217,9 +218,15 @@ async def test_datarobot_llm_component_llamaindex():
 
 @pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
 async def test_datarobot_llm_component_llamaindex_with_identity_token(use_datarobot_llm_gateway):
+    base_url = (
+        "https://app.datarobot.com/api/v2"
+        if use_datarobot_llm_gateway
+        else "https://app.datarobot.com/api/v2/deployments/None"
+    )
     llm_config = DataRobotLLMComponentModelConfig(
         api_key="some_token",
         use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+        base_url=base_url,
         headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
     async with WorkflowBuilder() as builder:
@@ -229,7 +236,7 @@ async def test_datarobot_llm_component_llamaindex_with_identity_token(use_dataro
 
         if use_datarobot_llm_gateway:
             assert llm.additional_kwargs == {
-                "api_base": "https://app.datarobot.com/api/v2/deployments/None",
+                "api_base": "https://app.datarobot.com",
                 "api_key": "some_token",
             }
         else:
