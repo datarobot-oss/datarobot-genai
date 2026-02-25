@@ -1195,6 +1195,7 @@ drmcp = [
     { name = "aiohttp" },
     { name = "aiohttp-retry" },
     { name = "aiosignal" },
+    { name = "beautifulsoup4" },
     { name = "boto3" },
     { name = "datarobot" },
     { name = "datarobot-asgi-middleware" },
