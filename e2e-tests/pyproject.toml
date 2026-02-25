@@ -21,7 +21,8 @@ dragent-langgraph = [
 ]
 # TODO: Should be `dragent` and `crewai` when NAT LLM adaptors move to `core`.
 dragent-crewai = [
-    "datarobot-genai[dragent,nat,crewai]"
+    "datarobot-genai[dragent,nat,crewai]",
+    "nvidia-nat-crewai==1.4.1",
 ]
 # TODO: Should be `dragent` and `llamaindex` when NAT LLM adaptors move to `core`.
 dragent-llamaindex = [
@@ -35,6 +36,11 @@ llamaindex_agent = "dragent.llamaindex.register"
 
 [tool.uv]
 package = true
+
+# Override nvidia-nat-crewai's crewai<1.0.0 constraint — we use crewai>=1.1.0
+override-dependencies = [
+    "crewai>=1.1.0",
+]
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }

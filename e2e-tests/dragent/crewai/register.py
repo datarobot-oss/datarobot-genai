@@ -28,15 +28,9 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
     """
 
 
-# Workaround: NAT's profiler auto-detects frameworks by scanning source for
-# LLMFrameworkEnum member names (e.g. \bCREWAI\b). When detected, it tries to
-# import nat.plugins.crewai which doesn't exist yet (no try/except guard unlike
-# ADK/Strands/AutoGen). Constructing from the string value avoids the regex match.
-_crewai_wrapper = LLMFrameworkEnum("crewai")
-
-
 @register_function(
     config_type=CrewaiAgentConfig,
+    framework_wrappers=[LLMFrameworkEnum.CREWAI],
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput
@@ -45,7 +39,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
     from dragent.crewai.myagent import MyAgent
 
-    llm = await builder.get_llm(config.llm_name, wrapper_type=_crewai_wrapper)
+    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.CREWAI)
 
     agent = MyAgent(llm=llm)
 
