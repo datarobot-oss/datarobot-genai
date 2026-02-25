@@ -1,60 +1,24 @@
-[build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "datarobot-genai"
-version = "0.5.11"
-description = "Generic helpers for GenAI"
-readme = "README.md"
-requires-python = ">=3.10, <3.14"
-license = { text = "Apache-2.0" }
+name = "datarobot-genai-e2e-tests"
+version = "0.1.0"
+description = "E2E tests for datarobot-genai"
+requires-python = ">=3.12, <3.14"  # https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1554
 authors = [{ name = "DataRobot, Inc." }]
-dynamic = ["optional-dependencies"]
 
-# Optional dependencies (extras) are defined in setup.py
-dependencies = []
-
-[project.urls]
-Homepage = "https://github.com/datarobot-oss/datarobot-genai"
-
-[project.entry-points.'nat.plugins']
-datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
-datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
-datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
-datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
-
-[project.entry-points.'nat.front_ends']
-dragent = "datarobot_genai.dragent.register"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-datarobot_genai = ["py.typed"]
-
-[tool.uv]
-package = true
-override-dependencies = [
-  "ragas>=0.3.8,<0.4.0",
-]
-exclude-dependencies = [
-  "uv",
+dependencies = [
+    "pytest",
 ]
 
 [dependency-groups]
-dev = [
-  "ruff>=0.6.0",
-  "mypy>=1.10.0",
-  "pytest",
-  "pytest-cov",
-  "pre-commit",
-  "twine>=5.0.0",
-  "pytest-asyncio>=0.23.5",
-  "responses>=0.25.8",
-  "ipdb>=0.13.13",
-  "aioresponses>=0.7.8",
+dragent-nat = [
+    "datarobot-genai[dragent,nat]"
 ]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+datarobot-genai = { path = "../", editable = true }
 
 [tool.mypy]
 disallow_untyped_defs = true
@@ -66,6 +30,9 @@ show_absolute_path = true
 [tool.ruff]
 line-length = 100
 indent-width = 4
+
+[tool.setuptools]
+py-modules = ["dragent", "drmcp"]
 
 [tool.ruff.lint]
 select = [
@@ -126,23 +93,3 @@ convention = "numpy"
 [tool.ruff.lint.pylint]
 allow-magic-value-types = ["int", "str", "bytes"]
 max-args = 8
-
-[tool.pytest.ini_options]
-filterwarnings = []
-asyncio_mode = "auto"
-
-[tool.coverage.run]
-source = ["datarobot_genai"]
-omit = [
-    "*/__init__.py",
-    "*/test_utils/*",
-    # nat requires Python >=3.11, can't be imported on 3.10 for coverage
-    "*/nat/*",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "raise NotImplementedError",
-    "pass",
-]
-fail_under = 80

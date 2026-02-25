@@ -56,8 +56,7 @@ test_results/
 env/
 .venv
 venv/
-.env*
-!.env.ci
+.env
 ENV/
 env.bak/
 venv.bak/

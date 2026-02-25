@@ -20,7 +20,6 @@ into all other extras except 'drmcp' at build time.
 
 from setuptools import setup
 
-
 # Core dependencies shared across extras. These are merged into other extras.
 core = [
     "requests>=2.32.4,<3.0.0",
@@ -37,6 +36,11 @@ core = [
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
     "ag-ui-protocol>=0.1.9,<0.2.0",
     "pyarrow==21.0.0",
+]
+
+dragent = core + [
+    "nvidia-nat==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
 ]
 
 crewai = core + [
@@ -123,6 +127,7 @@ extras_require = {
     "pydanticai": pydanticai,
     "auth": auth,
     "drmcp": drmcp,
+    "dragent": dragent,
 }
 
 setup(extras_require=extras_require)

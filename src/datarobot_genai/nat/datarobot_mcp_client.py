@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Literal
@@ -134,7 +135,7 @@ class DataRobotMCPStreamableHTTPClient(MCPStreamableHTTPClient):
 @register_function_group(config_type=DataRobotMCPClientConfig)
 async def datarobot_mcp_client_function_group(
     config: DataRobotMCPClientConfig, _builder: Builder
-) -> MCPFunctionGroup:
+) -> AsyncGenerator[MCPFunctionGroup]:
     """
     Connect to an MCP server and expose tools as a function group.
 

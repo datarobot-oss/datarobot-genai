@@ -1,0 +1,10 @@
+---
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  run-nat:
+    desc: "🔨 Running NAT locally"
+    cmds:
+      - echo "🔨 Running NAT locally"
+      - uv run nat start dragent_fastapi --config_file nat/workflow.yaml
