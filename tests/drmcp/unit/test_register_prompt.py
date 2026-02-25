@@ -135,7 +135,9 @@ class TestRegisterPrompt:
             title=None,
             description=None,
             tags=None,
-            meta={"resource_category": DataRobotMCPPromptCategory.DYNAMICALLY_LOADED_PROMPT.name},
+            meta={
+                "resource_category": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name
+            },
         )
         mock_datarobot_mcp_server.add_prompt.assert_called_once_with(
             mock_prompt_from_function.return_value
