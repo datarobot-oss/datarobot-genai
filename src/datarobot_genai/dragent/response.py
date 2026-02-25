@@ -16,6 +16,7 @@
 from ag_ui.core import Event
 from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import TextMessageContentEvent
+from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.api_server import ResponseBaseModelOutput
 
 
@@ -40,3 +41,10 @@ class DRAgentEventResponse(ResponseBaseModelOutput):
                 if isinstance(event, (TextMessageContentEvent, ReasoningMessageContentEvent))
             ]
         return []
+
+
+def _convert_event_response_to_str(response: DRAgentEventResponse) -> str:
+    return response.get_delta()
+
+
+GlobalTypeConverter.register_converter(_convert_event_response_to_str)

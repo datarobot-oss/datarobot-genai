@@ -846,6 +846,29 @@ langgraph = [
     { name = "ragas" },
     { name = "requests" },
 ]
+llamaindex = [
+    { name = "ag-ui-protocol" },
+    { name = "datarobot" },
+    { name = "datarobot-predict" },
+    { name = "llama-index" },
+    { name = "llama-index-core" },
+    { name = "llama-index-llms-langchain" },
+    { name = "llama-index-llms-litellm" },
+    { name = "llama-index-llms-openai" },
+    { name = "llama-index-tools-mcp" },
+    { name = "openai" },
+    { name = "opentelemetry-instrumentation-aiohttp-client" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-llamaindex" },
+    { name = "opentelemetry-instrumentation-openai" },
+    { name = "opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "pyarrow" },
+    { name = "pyjwt" },
+    { name = "pypdf" },
+    { name = "ragas" },
+    { name = "requests" },
+]
 nat = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
@@ -1077,6 +1100,9 @@ dragent-crewai = [
 dragent-langgraph = [
     { name = "datarobot-genai", extra = ["dragent", "langgraph", "nat"] },
 ]
+dragent-llamaindex = [
+    { name = "datarobot-genai", extra = ["dragent", "llamaindex", "nat"] },
+]
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent", "nat"] },
 ]
@@ -1091,6 +1117,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "nat", "crewai"], editable = "../" }]
 dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "nat", "langgraph"], editable = "../" }]
+dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "nat", "llamaindex"], editable = "../" }]
 dragent-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat"], editable = "../" }]
 
 [[package]]
@@ -2531,6 +2558,19 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-index-llms-langchain"
+version = "0.7.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain" },
+    { name = "llama-index-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0b/b9/87b76f270a424d07ed8e9524576136b9de675ad50f9da3c29708e5fbfbb2/llama_index_llms_langchain-0.7.2.tar.gz", hash = "sha256:86f2e5654c22d63dfaa94772569401d6148ef146bc04c427a5673503f23db00f", size = 6067, upload-time = "2026-02-19T21:53:44.951Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/fd/bdd96add193bd8b7604edbedd94fd9c71e0ab66f70a85e7405f70d2138d7/llama_index_llms_langchain-0.7.2-py3-none-any.whl", hash = "sha256:4c8af654237b3a03f886b8effec2126d66d2b06c0352f6805ee6193d51c16aa3", size = 6116, upload-time = "2026-02-19T21:53:43.985Z" },
+]
+
+[[package]]
 name = "llama-index-llms-litellm"
 version = "0.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2610,6 +2650,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b3/77/5bfaab20e6ec8428dbf2352e18be550c957602723d69383908176b5686cd/llama_index_readers_llama_parse-0.5.1.tar.gz", hash = "sha256:2b78b73faa933e30e6c69df351e4e9f36dfe2ae142e2ab3969ddd2ac48930e37", size = 3858, upload-time = "2025-09-08T20:41:29.201Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/68/81/52410c7245dcbf1a54756a9ce3892cdd167ec0b884d696de1304ca3f452e/llama_index_readers_llama_parse-0.5.1-py3-none-any.whl", hash = "sha256:0d41450ed29b0c49c024e206ef6c8e662b1854e77a1c5faefed3b958be54f880", size = 3203, upload-time = "2025-09-08T20:41:28.438Z" },
+]
+
+[[package]]
+name = "llama-index-tools-mcp"
+version = "0.4.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "llama-index-core" },
+    { name = "mcp" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ef/67/4976abbef400c468abb27a3246ce563787bd7d09b9e4ce18b3ecef9570f0/llama_index_tools_mcp-0.4.8.tar.gz", hash = "sha256:93d3dfc388c0b8a8644eebefc25019d27f1b0f2392c474e9910a4534ffbd0e46", size = 13810, upload-time = "2026-02-24T11:50:10.476Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/08/2873ad2bed66d1c4530d00c3176a4df6af0c58faa9c0d33c074b3f51247c/llama_index_tools_mcp-0.4.8-py3-none-any.whl", hash = "sha256:f45c3237f264801a10b79eb6999e27fdfae6b86e540fb8ce0c21d94cdbd62874", size = 14948, upload-time = "2026-02-24T11:50:11.093Z" },
 ]
 
 [[package]]

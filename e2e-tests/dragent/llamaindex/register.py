@@ -20,43 +20,37 @@ from nat.cli.register_workflow import register_function
 from nat.data_models.agent import AgentBaseConfig
 
 
-class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
-    """NAT config for the CrewAI agent.
+class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
+    """NAT config for the LlamaIndex agent.
 
     Extends AgentBaseConfig which provides: llm_name, description, verbose.
     The LLM is managed by NAT and accessed via builder.get_llm().
     """
 
 
-# Workaround: NAT's profiler auto-detects frameworks by scanning source for
-# LLMFrameworkEnum member names (e.g. \bCREWAI\b). When detected, it tries to
-# import nat.plugins.crewai which doesn't exist yet (no try/except guard unlike
-# ADK/Strands/AutoGen). Constructing from the string value avoids the regex match.
-_crewai_wrapper = LLMFrameworkEnum("crewai")
-
-
 @register_function(
-    config_type=CrewaiAgentConfig,
+    config_type=LlamaindexAgentConfig,
+    framework_wrappers=[LLMFrameworkEnum.LLAMA_INDEX],
 )
-async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
+async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput
     from datarobot_genai.dragent.response import DRAgentEventResponse
     from nat.builder.function_info import FunctionInfo
 
-    from dragent.crewai.myagent import MyAgent
+    from dragent.llamaindex.myagent import MyAgent
 
-    llm = await builder.get_llm(config.llm_name, wrapper_type=_crewai_wrapper)
+    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
 
     agent = MyAgent(llm=llm)
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
-        """Invoke the CrewAI agent and return a DRAgentEventResponse."""
+        """Invoke the LlamaIndex agent and return a DRAgentEventResponse."""
         response_text = ""
         metrics: dict = {}
-        async for text, _, iteration_metrics in agent.invoke(input_message):
+        async for delta, _, iteration_metrics in agent.invoke(input_message):
             metrics = iteration_metrics
-            if isinstance(text, str):
-                response_text += text
+            if isinstance(delta, str):
+                response_text += delta
 
         return DRAgentEventResponse(
             delta=response_text if response_text else None,

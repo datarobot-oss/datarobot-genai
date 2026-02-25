@@ -18,6 +18,9 @@ includes:
   crewai:
     taskfile: dragent/crewai/Taskfile.yaml
     dir: ./dragent/crewai
+  llamaindex:
+    taskfile: dragent/llamaindex/Taskfile.yaml
+    dir: ./dragent/llamaindex
   lint:
     taskfile: ../.taskfiles/lint.yml
     flatten: true
@@ -32,6 +35,7 @@ tasks:
           - dragent-nat
           - dragent-langgraph
           - dragent-crewai
+          - dragent-llamaindex
     cmds:
       - echo "🔧 Installing dependencies for {{.GROUP}}"
       - uv sync --group {{.GROUP}}

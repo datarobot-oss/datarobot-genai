@@ -23,10 +23,15 @@ dragent-langgraph = [
 dragent-crewai = [
     "datarobot-genai[dragent,nat,crewai]"
 ]
+# TODO: Should be `dragent` and `llamaindex` when NAT LLM adaptors move to `core`.
+dragent-llamaindex = [
+    "datarobot-genai[dragent,nat,llamaindex]"
+]
 
 [project.entry-points.'nat.plugins']
 langgraph_agent = "dragent.langgraph.register"
 crewai_agent = "dragent.crewai.register"
+llamaindex_agent = "dragent.llamaindex.register"
 
 [tool.uv]
 package = true
@@ -46,7 +51,7 @@ line-length = 100
 indent-width = 4
 
 [tool.setuptools]
-packages = ["dragent", "dragent.crewai", "dragent.langgraph", "drmcp"]
+packages = ["dragent", "dragent.crewai", "dragent.langgraph", "dragent.llamaindex", "drmcp"]
 
 [tool.ruff.lint]
 select = [
