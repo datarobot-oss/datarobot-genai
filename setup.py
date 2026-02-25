@@ -108,6 +108,7 @@ drmcp = core + [
     "aiohttp-retry>=2.8.3,<3.0.0",
     "aiosignal>=1.3.1,<2.0.0",
     "fastmcp>=2.13.0.2,<3.0.0",
+    "beautifulsoup4>=4.14.3,<5.0.0",
 ]
 
 # auth is standalone set of dependencies for auth utilities only
