@@ -58,7 +58,7 @@ def convert_chat_completion_params_to_run_agent_input(
             description=tool.get("function").get("description"),
             parameters=tool.get("function").get("parameters"),
         )
-        for tool in chat_completion_params.get("tools", [])
+        for tool in chat_completion_params.get("tools", []) or []
         if tool.get("type") == "function"  # type: ignore[union-attr]
     ]
     messages: list[Message] = []
