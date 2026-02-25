@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.12
+Update MCP item metadata related enums
+- DataRobotMCPToolCategory
+- DataRobotMCPPromptCategory
+- DataRobotMCPResourceCategory
+
 ## 0.5.11
 
 - Created DR MCP test stubs and added stub `client` attribute integrated with MCP server
