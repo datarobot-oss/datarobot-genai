@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-from uuid import uuid4
 
 from ag_ui.core import CustomEvent
 from ag_ui.core import Event
@@ -71,8 +70,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         super().__init__(default_config)
         self.function_level = 0
         self.seen_llm_new_token = False
-        self.tool_call_id: str | None = None
-        self.tool_call_message_id: str | None = None
 
     def process(self, step: IntermediateStep) -> ResponseSerializable | None:
         # Do not process steps from native agents
@@ -144,8 +141,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # Text might be sent in both LLM_END and LLM_NEW_TOKEN steps
         # we need to send content only once
         elif payload.event_type == IntermediateStepType.LLM_END:
-            self._extract_tool_call(payload)
-
             if not self.seen_llm_new_token:
                 events.append(
                     TextMessageContentEvent(
@@ -164,18 +159,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         return events
 
-    def _extract_tool_call(self, payload: IntermediateStepPayload) -> None:
-        try:
-            if payload.data.payload.message.tool_calls:
-                tool_call = payload.data.payload.message.tool_calls[0]
-                self.tool_call_id = tool_call["id"]
-                self.tool_call_message_id = payload.UUID
-            else:
-                self.tool_call_id = None
-                self.tool_call_message_id = None
-        except Exception as e:
-            logger.info("Error extracting tool call: %s", e)
-
     def _handle_llm_nested_function(self, payload: IntermediateStepPayload) -> list[Event]:
         events = []
         if payload.event_type == IntermediateStepType.LLM_START:
@@ -183,8 +166,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(ReasoningMessageStartEvent(message_id=payload.UUID, role="assistant"))
             self.seen_llm_new_token = False
         elif payload.event_type == IntermediateStepType.LLM_END:
-            self._extract_tool_call(payload)
-
             if not self.seen_llm_new_token:
                 events.append(
                     ReasoningMessageContentEvent(
@@ -222,30 +203,24 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
         events = []
-        # if tool call id was not set, generate one
-        if not self.tool_call_id:
-            self.tool_call_id = str(uuid4())
+
         # run id and thread id are set on the API level, should not be set here
         if payload.event_type == IntermediateStepType.TOOL_START:
             events.append(
-                ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=self.tool_call_id)
+                ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID)
             )
-            events.append(
-                ToolCallArgsEvent(tool_call_id=self.tool_call_id, delta=payload.data.input)
-            )
+            events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=payload.data.input))
         elif payload.event_type == IntermediateStepType.TOOL_END:
-            events.append(ToolCallEndEvent(tool_call_id=self.tool_call_id))
+            events.append(ToolCallEndEvent(tool_call_id=payload.UUID))
             tool_outputs = GlobalTypeConverter.get().convert(payload.metadata.tool_outputs, str)
             events.append(
                 ToolCallResultEvent(
                     message_id=payload.UUID,
-                    tool_call_id=self.tool_call_id,
+                    tool_call_id=payload.UUID,
                     content=tool_outputs,
                     role="tool",
                 )
             )
-            self.tool_call_id = None
-            self.tool_call_message_id = None
         else:
             raise self._unknown_step_type(payload)
 
