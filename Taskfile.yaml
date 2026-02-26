@@ -42,6 +42,14 @@ tasks:
       - uv sync --all-extras --dev
     silent: true
 
+  # Use on macOS Intel (x86_64) when install fails due to lancedb (no wheel; pulled in by crewai-tools).
+  install-no-crewai:
+    desc: "🔧 Install dependencies (all extras except crewai, for macOS Intel)"
+    cmds:
+      - echo "🔧 Installing dependencies (all extras except crewai)..."
+      - uv sync --dev --extra core --extra dragent --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra auth --extra drmcp
+    silent: true
+
   build:
     desc: "Build distribution packages"
     cmds:

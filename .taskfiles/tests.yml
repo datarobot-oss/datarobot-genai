@@ -17,6 +17,19 @@ tasks:
             --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration
     silent: true
 
+  # Use when crewai extra is not installed (e.g. macOS Intel: install-no-crewai).
+  test-no-crewai:
+    desc: "Run unit tests excluding crewai (when crewai extra not installed)"
+    cmds:
+      - mkdir -p test_results
+      - |
+          uv run pytest --junitxml=test_results/test-results.xml \
+            --cov=datarobot_genai --cov-branch --no-cov-on-fail \
+            -vv -s tests \
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration \
+            --ignore=tests/crewai
+    silent: true
+
   test-module:
     desc: "Run repo unit tests via pytest for a specific module"
     requires:

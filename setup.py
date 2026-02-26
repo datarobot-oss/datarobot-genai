@@ -20,7 +20,7 @@ into all other extras except 'drmcp' at build time.
 
 from setuptools import setup
 
-# Core dependencies shared across extras. These are merged into other extras.
+# Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
@@ -28,7 +28,6 @@ core = [
     "openai>=1.76.2,<2.0.0",
     "ragas>=0.3.8,<0.4.0",
     "pyjwt>=2.10.1,<3.0.0",
-    "pypdf>=6.1.3,<7.0.0",  # CVE BUZZOK-28182
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
@@ -89,26 +88,39 @@ pydanticai = core + [
     "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
 ]
 
-# drmcp is standalone set of dependencies for MCP Server only
-drmcp = core + [
-    "datarobot-asgi-middleware>=0.2.0,<1.0.0",
-    "python-dotenv>=1.1.0,<2.0.0",
-    "boto3>=1.34.0,<2.0.0",
+# drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
+drtools = [
+    "beautifulsoup4>=4.12.0,<5.0.0",
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
     "pandas>=2.2.3,<3.0.0",
     "perplexityai>=0.27,<1.0",
+    "pypdf>=6.1.3,<7.0.0",  # CVE BUZZOK-28182; gdrive client
+    "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
+    "datarobot>=3.10.0,<4.0.0",
+    "aiohttp>=3.9.0,<4.0.0",
+    "fastmcp>=2.13.0.2,<3.0.0",
+]
+
+# drmcp is standalone set of dependencies for MCP Server only (no core).
+drmcp = drtools + [
+    "requests>=2.32.4,<3.0.0",
+    "openai>=1.76.2,<2.0.0",
+    "pyjwt>=2.10.1,<3.0.0",
+    "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
+    "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
+    "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
+    "rich>=13.0.0,<16.0.0",
+    "datarobot-asgi-middleware>=0.2.0,<1.0.0",  # not imported in drmcp; used when running server in DataRobot ASGI env
+    "python-dotenv>=1.1.0,<2.0.0",
+    "boto3>=1.34.0,<2.0.0",
     "pydantic-settings>=2.1.0,<3.0.0",
     "opentelemetry-api>=1.22.0,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
-    "aiohttp>=3.9.0,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
-    "aiosignal>=1.3.1,<2.0.0",
-    "fastmcp>=2.13.0.2,<3.0.0",
-    "beautifulsoup4>=4.14.3,<5.0.0",
 ]
 
 # auth is standalone set of dependencies for auth utilities only
@@ -128,6 +140,7 @@ extras_require = {
     "pydanticai": pydanticai,
     "auth": auth,
     "drmcp": drmcp,
+    "drtools": drtools,
     "dragent": dragent,
 }
 

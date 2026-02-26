@@ -113,14 +113,18 @@ async def test_datarobot_llm_deployment_llamaindex():
 
 
 async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
-    llm_config = DataRobotLLMDeploymentModelConfig(
-        temperature=0.0,
-        api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
-    )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
+    # Pin endpoint so test is independent of .env (e.g. DATAROBOT_ENDPOINT)
+    with patch.dict(
+        os.environ, {"DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2"}, clear=False
+    ):
+        llm_config = DataRobotLLMDeploymentModelConfig(
+            temperature=0.0,
+            api_key="some_token",
+            headers={"X-DataRobot-Identity-Token": "identity-token-123"},
+        )
+        async with WorkflowBuilder() as builder:
+            await builder.add_llm("datarobot_llm", llm_config)
+            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
         assert isinstance(llm, LiteLLM)
         assert llm.additional_kwargs == {
             "api_base": "https://app.datarobot.com/api/v2/deployments/None/chat/completions",
@@ -220,9 +224,14 @@ async def test_datarobot_llm_component_llamaindex():
 
 @pytest.mark.parametrize("use_datarobot_llm_gateway", [True, False])
 async def test_datarobot_llm_component_llamaindex_with_identity_token(use_datarobot_llm_gateway):
+    # Pin endpoint so test is independent of .env (e.g. DATAROBOT_ENDPOINT)
     with patch.dict(
         os.environ,
-        {"USE_DATAROBOT_LLM_GATEWAY": str(use_datarobot_llm_gateway), "LLM_DEPLOYMENT_ID": "123"},
+        {
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+            "USE_DATAROBOT_LLM_GATEWAY": str(use_datarobot_llm_gateway),
+            "LLM_DEPLOYMENT_ID": "123",
+        },
         clear=False,
     ):
         llm_config = DataRobotLLMComponentModelConfig(
@@ -232,7 +241,7 @@ async def test_datarobot_llm_component_llamaindex_with_identity_token(use_dataro
         async with WorkflowBuilder() as builder:
             await builder.add_llm("datarobot_llm", llm_config)
             llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
-            assert isinstance(llm, LiteLLM)
+        assert isinstance(llm, LiteLLM)
 
         if use_datarobot_llm_gateway:
             assert llm.additional_kwargs == {

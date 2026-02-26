@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.14
+- Fix unit tests to not depend on .env
+- Update MCP dependencies to remove core extra
+- Fix root conftest loads without error for drmcp tests by using inline imports.
+
 ## 0.5.13
 - Add `dragent`: frontserver for DataRobot Agents
 - Add placeholder for E2E tests of `dragent` and `drmcp`

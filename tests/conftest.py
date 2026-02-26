@@ -15,20 +15,21 @@
 from typing import Any
 
 import pytest
-from ag_ui.core import AssistantMessage
-from ag_ui.core import RunAgentInput
-from ag_ui.core import SystemMessage as AgSystemMessage
-from ag_ui.core import UserMessage
 
 from datarobot_genai.core.mcp.common import MCPConfig
 
 
-def make_run_agent_input_with_history() -> RunAgentInput:
-    """Create a RunAgentInput with multi-turn chat history.
+def make_run_agent_input_with_history() -> Any:
+    """Create a RunAgentInput with multi-turn chat history for agent tests.
 
     Use this for tests that verify chat history functionality across
-    different agent types (LangGraph, CrewAI, LlamaIndex, NAT).
+    drmcp tools tests don't use ag-ui-protocol dependency.
     """
+    from ag_ui.core import AssistantMessage
+    from ag_ui.core import RunAgentInput
+    from ag_ui.core import SystemMessage as AgSystemMessage
+    from ag_ui.core import UserMessage
+
     return RunAgentInput(
         messages=[
             AgSystemMessage(id="sys_1", content="You are a helper."),
@@ -46,7 +47,7 @@ def make_run_agent_input_with_history() -> RunAgentInput:
 
 
 @pytest.fixture
-def run_agent_input_with_history() -> RunAgentInput:
+def run_agent_input_with_history() -> Any:
     """Fixture providing a RunAgentInput with multi-turn chat history."""
     return make_run_agent_input_with_history()
 
