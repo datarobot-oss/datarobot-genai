@@ -58,6 +58,7 @@ env/
 venv/
 .env*
 !.env.ci
+!.env.sample
 ENV/
 env.bak/
 venv.bak/

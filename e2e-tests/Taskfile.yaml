@@ -1,0 +1,29 @@
+---
+# https://taskfile.dev
+version: '3'
+
+dotenv: [".env"]
+
+vars:
+  PROJECT_SRC: "./dragent ./drmcp"
+  TESTS_SRC: ""
+
+includes:
+  dragent:
+    taskfile: dragent/Taskfile.yaml
+    dir: ./dragent
+  lint:
+    taskfile: ../.taskfiles/lint.yml
+    flatten: true
+
+tasks:
+  install:
+    desc: "🔧 Install dependencies for a specific group of functionality"
+    requires:
+      vars:
+      - name: GROUP
+        enum:
+          - dragent-nat
+    cmds:
+      - echo "🔧 Installing dependencies for {{.GROUP}}"
+      - uv sync --group {{.GROUP}}

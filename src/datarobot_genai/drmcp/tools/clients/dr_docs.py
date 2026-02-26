@@ -252,7 +252,7 @@ async def _fetch_sitemap_urls(session: aiohttp.ClientSession) -> list[str]:
 def _title_from_url(url: str) -> str:
     """Generate a human-readable title from a URL path."""
     # Extract the path after /en/docs/
-    path = url.split("/en/docs/")[-1] if "/en/docs/" in url else url
+    path = url.rsplit("/en/docs/", maxsplit=1)[-1] if "/en/docs/" in url else url
     # Remove file extensions and trailing slashes
     path = re.sub(r"\.(html|htm)$", "", path).strip("/")
     if not path:

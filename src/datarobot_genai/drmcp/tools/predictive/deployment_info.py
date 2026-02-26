@@ -82,7 +82,7 @@ async def get_deployment_info(
         "model_type": model_type,
         "target": target,
         "target_type": target_type,
-        "features": sorted(features, key=lambda x: (x.get("importance") or 0), reverse=True),
+        "features": sorted(features, key=lambda x: x.get("importance") or 0, reverse=True),
         "total_features": len(features),
     }
 

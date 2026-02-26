@@ -20,7 +20,6 @@ into all other extras except 'drmcp' at build time.
 
 from setuptools import setup
 
-
 # Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
@@ -38,10 +37,15 @@ core = [
     "pyarrow==21.0.0",
 ]
 
+dragent = core + [
+    "nvidia-nat==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
+]
+
 crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
-    "crewai>=1.1.0,<2.0.0",
+    "crewai[litellm]>=1.1.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "pybase64>=1.4.2,<2.0.0",
@@ -137,6 +141,7 @@ extras_require = {
     "auth": auth,
     "drmcp": drmcp,
     "drtools": drtools,
+    "dragent": dragent,
 }
 
 setup(extras_require=extras_require)
