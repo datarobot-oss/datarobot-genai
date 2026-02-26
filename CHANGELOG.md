@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.5.13
 - Fix unit tests to not depend on .env
 - Update MCP dependencies to remove core extra
+- Fix root conftest loads without error for drmcp tests by using inline imports.
 
 ## 0.5.12
 Update MCP item metadata related enums

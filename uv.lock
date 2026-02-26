@@ -1319,7 +1319,6 @@ pydanticai = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "ag-ui-protocol" },
     { name = "aioresponses" },
     { name = "ipdb" },
     { name = "mypy" },
@@ -1489,7 +1488,6 @@ provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "pydantic
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "ag-ui-protocol", specifier = ">=0.1.9,<0.2.0" },
     { name = "aioresponses", specifier = ">=0.7.8" },
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "mypy", specifier = ">=1.10.0" },
