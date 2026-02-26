@@ -12,15 +12,6 @@ includes:
   dragent:
     taskfile: dragent/Taskfile.yaml
     dir: ./dragent
-  langgraph:
-    taskfile: dragent/langgraph/Taskfile.yaml
-    dir: ./dragent/langgraph
-  crewai:
-    taskfile: dragent/crewai/Taskfile.yaml
-    dir: ./dragent/crewai
-  llamaindex:
-    taskfile: dragent/llamaindex/Taskfile.yaml
-    dir: ./dragent/llamaindex
   lint:
     taskfile: ../.taskfiles/lint.yml
     flatten: true
