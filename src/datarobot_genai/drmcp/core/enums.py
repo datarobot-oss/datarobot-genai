@@ -17,14 +17,56 @@ from enum import auto
 
 class DataRobotMCPToolCategory(Enum):
     USER_TOOL = auto()  # tools created by users
-    INTEGRATION_TOOL = auto()  # tools as a wrapper of external service
-    DYNAMICALLY_LOADED_TOOL = auto()  # tools dynamically loaded after MCP server is up
+    BUILD_IN_TOOL = auto()  # tools as a wrapper of external service
+    USER_TOOL_DEPLOYMENT = auto()  # tools dynamically loaded after MCP server is up
+    UNKNOWN = auto()  # tools without category
+
+    @staticmethod
+    def from_string(enum_str: str) -> "DataRobotMCPToolCategory":
+        enum_str_map = {
+            "USER_TOOL": DataRobotMCPToolCategory.USER_TOOL,
+            "BUILD_IN_TOOL": DataRobotMCPToolCategory.BUILD_IN_TOOL,
+            "USER_TOOL_DEPLOYMENT": DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT,
+            "UNKNOWN": DataRobotMCPToolCategory.UNKNOWN,
+        }
+        if enum_str not in enum_str_map:
+            error_msg = f"Enum string should be one of {', '.join(enum_str_map.keys())}"
+            raise ValueError(error_msg)
+
+        return enum_str_map[enum_str]
 
 
 class DataRobotMCPPromptCategory(Enum):
     USER_PROMPT = auto()  # prompt created by users
-    DYNAMICALLY_LOADED_PROMPT = auto()  # prompts dynamically loaded after MCP server is up
+    USER_PROMPT_TEMPLATE_VERSION = auto()  # prompts dynamically loaded after MCP server is up
+    UNKNOWN = auto()  # prompts without category
+
+    @staticmethod
+    def from_string(enum_str: str) -> "DataRobotMCPPromptCategory":
+        enum_str_map = {
+            "USER_PROMPT": DataRobotMCPPromptCategory.USER_PROMPT,
+            "USER_PROMPT_TEMPLATE_VERSION": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION,
+            "UNKNOWN": DataRobotMCPPromptCategory.UNKNOWN,
+        }
+        if enum_str not in enum_str_map:
+            error_msg = f"Enum string should be one of {', '.join(enum_str_map.keys())}"
+            raise ValueError(error_msg)
+
+        return enum_str_map[enum_str]
 
 
 class DataRobotMCPResourceCategory(Enum):
     USER_RESOURCE = auto()  # resource created by users
+    UNKNOWN = auto()  # resources without category
+
+    @staticmethod
+    def from_string(enum_str: str) -> "DataRobotMCPResourceCategory":
+        enum_str_map = {
+            "USER_RESOURCE": DataRobotMCPResourceCategory.USER_RESOURCE,
+            "UNKNOWN": DataRobotMCPResourceCategory.UNKNOWN,
+        }
+        if enum_str not in enum_str_map:
+            error_msg = f"Enum string should be one of {', '.join(enum_str_map.keys())}"
+            raise ValueError(error_msg)
+
+        return enum_str_map[enum_str]
