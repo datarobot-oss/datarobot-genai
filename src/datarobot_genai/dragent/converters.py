@@ -15,11 +15,13 @@
 import logging
 
 from ag_ui.core import RunAgentInput
+from ag_ui.core import TextMessageChunkEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import Message
 
+from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.dragent.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.response import DRAgentEventResponse
@@ -69,12 +71,25 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
     return convert_chat_completion_params_to_run_agent_input(chat_request_dict)
 
 
+# --- Output converters ---
+
+
+def convert_str_to_dragent_event_response(
+    response: str,
+) -> DRAgentEventResponse:
+    return DRAgentEventResponse(
+        delta=response,
+        usage_metrics=default_usage_metrics(),
+        events=[TextMessageChunkEvent(delta=response)],
+    )
+
+
+def convert_event_response_to_str(response: DRAgentEventResponse) -> str:
+    return response.get_delta()
+
+
 # --- Various converters ---
 
 
 def convert_tool_message_to_str(message: ToolMessage) -> str:
     return message.content
-
-
-def convert_event_response_to_str(response: DRAgentEventResponse) -> str:
-    return response.get_delta()
