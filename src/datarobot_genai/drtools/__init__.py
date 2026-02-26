@@ -17,31 +17,10 @@ DataRobot Tools Library.
 
 A reusable library for building tools with DataRobot integration.
 
-All subpackages are importable from this module, for example::
+Subpackages are loaded on first use to avoid pulling in unused dependencies.
+Import by full path, for example::
 
-    from datarobot_genai.drtools import confluence
-    from datarobot_genai.drtools import dr_docs
-    from datarobot_genai.drtools import predictive
+    from datarobot_genai.drtools.clients.datarobot import DataRobotClient
+    from datarobot_genai.drtools.dr_docs import search_datarobot_agentic_docs
+    from datarobot_genai.drtools.predictive import ...
 """
-
-from datarobot_genai.drtools import clients
-from datarobot_genai.drtools import confluence
-from datarobot_genai.drtools import dr_docs
-from datarobot_genai.drtools import gdrive
-from datarobot_genai.drtools import jira
-from datarobot_genai.drtools import microsoft_graph
-from datarobot_genai.drtools import perplexity
-from datarobot_genai.drtools import predictive
-from datarobot_genai.drtools import tavily
-
-__all__ = [
-    "clients",
-    "confluence",
-    "dr_docs",
-    "gdrive",
-    "jira",
-    "microsoft_graph",
-    "perplexity",
-    "predictive",
-    "tavily",
-]
