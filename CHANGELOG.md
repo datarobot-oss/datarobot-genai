@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.13
+- Add `dragent`: frontserver for DataRobot Agents
+- Add placeholder for E2E tests of `dragent` and `drmcp`
+
 ## 0.5.12
 Update MCP item metadata related enums
 - DataRobotMCPToolCategory
@@ -11,11 +15,9 @@ Update MCP item metadata related enums
 - DataRobotMCPResourceCategory
 
 ## 0.5.11
-
 - Created DR MCP test stubs and added stub `client` attribute integrated with MCP server
 
 ## 0.5.10
-
 - Add DataRobotMCPServer APIs to retrieve registered tools/prompts/resources.
 
 ## 0.5.9

@@ -3,4 +3,4 @@
 /tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
 
-* @datarobot-oss/buzok @cavitcakir @jpclemens0
+* @datarobot-oss/buzok

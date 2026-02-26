@@ -990,14 +990,14 @@ class TestMetadataRoute:
         self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[mock_prompt1, mock_prompt2])
         self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[mock_resource1, mock_resource2])
 
-        mock_get_tool_tags.side_effect = (
-            lambda tool: {"tag1", "tag2"} if tool == mock_tool1 else {"tag3"}
+        mock_get_tool_tags.side_effect = lambda tool: (
+            {"tag1", "tag2"} if tool == mock_tool1 else {"tag3"}
         )
-        mock_get_prompt_tags.side_effect = (
-            lambda prompt: {"prompt_tag1"} if prompt == mock_prompt1 else set()
+        mock_get_prompt_tags.side_effect = lambda prompt: (
+            {"prompt_tag1"} if prompt == mock_prompt1 else set()
         )
-        mock_get_resource_tags.side_effect = (
-            lambda resource: {"resource_tag1"} if resource == mock_resource1 else set()
+        mock_get_resource_tags.side_effect = lambda resource: (
+            {"resource_tag1"} if resource == mock_resource1 else set()
         )
 
         # Create mock config

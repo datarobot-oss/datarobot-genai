@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.5.12"
+version = "0.5.13"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.10, <3.14"
@@ -24,7 +24,8 @@ datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 
-
+[project.entry-points.'nat.front_ends']
+dragent = "datarobot_genai.dragent.register"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -36,6 +37,7 @@ datarobot_genai = ["py.typed"]
 package = true
 override-dependencies = [
   "ragas>=0.3.8,<0.4.0",
+  "onnxruntime==1.23.1; python_version == '3.10'",
 ]
 exclude-dependencies = [
   "uv",
@@ -54,7 +56,6 @@ dev = [
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
 ]
-
 
 [tool.mypy]
 disallow_untyped_defs = true

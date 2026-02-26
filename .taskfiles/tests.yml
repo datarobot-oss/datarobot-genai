@@ -1,5 +1,8 @@
 version: '3'
 
+env:
+  PYTHONWARNINGS: "ignore::UserWarning,ignore::RuntimeWarning"
+
 tasks:
   test:
     desc: "Run repo unit tests via pytest"
@@ -7,40 +10,33 @@ tasks:
       - mkdir -p test_results
       - |
           set -e
-          PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
-          if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
-            NAT_IGNORED_TESTS=tests/nat
-            COV_FAIL_UNDER=75
-          else
-            NAT_IGNORED_TESTS=tests/nat/integration
-            COV_FAIL_UNDER=80
-          fi
+          COV_FAIL_UNDER=80
           uv run pytest --junitxml=test_results/test-results.xml \
             --cov=datarobot_genai --cov-branch --cov-fail-under=${COV_FAIL_UNDER} --no-cov-on-fail \
             -vv -s tests \
-            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration
     silent: true
 
   test-module:
     desc: "Run repo unit tests via pytest for a specific module"
+    requires:
+      vars:
+        - name: MODULE
+          enum:
+            - core
+            - crewai
+            - langgraph
+            - llamaindex
+            - drmcp
+            - nat
+            - dragent
     cmds:
       - mkdir -p test_results
       - |
-          set -e
-          if [ -z "${MODULE}" ]; then
-            echo "MODULE is required (e.g., MODULE=langgraph)"
-            exit 2
-          fi
-          echo "pytest path: tests/${MODULE}"
-          PYTHON_MINOR_VERSION=$(uv run python -c 'import sys; print(sys.version_info.minor)')
-          if [ "$PYTHON_MINOR_VERSION" = "10" ]; then
-            NAT_IGNORED_TESTS=tests/nat
-          else
-            NAT_IGNORED_TESTS=tests/nat/integration
-          fi
-          uv run pytest tests/${MODULE} \
+          echo "pytest path: tests/{{.MODULE}}"
+          uv run pytest tests/{{.MODULE}} \
             --junitxml=test_results/test-results.xml -vv -s \
-            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=${NAT_IGNORED_TESTS}
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration
     silent: true
 
   smoke-extras-none:

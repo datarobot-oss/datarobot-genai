@@ -126,7 +126,7 @@ class SchemaResolver:
                 f"Only '#/$defs/...' references are supported."
             )
 
-        def_name = ref_path.split("/")[-1]
+        def_name = ref_path.rsplit("/", 1)[-1]
         if def_name not in self.definitions:
             raise SchemaValidationError(f"Reference '{ref_path}' not found in definitions")
 

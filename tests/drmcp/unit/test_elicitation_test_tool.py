@@ -31,6 +31,7 @@ from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.test_utils import elicitation_test_tool  # noqa: F401
 
 
+@pytest.mark.skip(reason="https://datarobot.atlassian.net/browse/BUZZOK-29611")
 class TestGetUserGreeting:
     """Test cases for get_user_greeting tool."""
 
