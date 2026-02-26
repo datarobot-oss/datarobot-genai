@@ -8,7 +8,7 @@ on:
     - cron: '0 3 * * *'
 
 env:
-  TASK_VERSION: 3.40.1
+  TASK_VERSION: 3.48.0
 
 jobs:
   lint:
