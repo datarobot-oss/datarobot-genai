@@ -145,9 +145,10 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(TextMessageEndEvent(message_id=payload.UUID))
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
             self.seen_llm_new_token = True
-            events.append(
-                TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-            )
+            if payload.data.chunk != "":
+                events.append(
+                    TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
+                )
         else:
             raise self._unknown_step_type(payload)
 
