@@ -95,6 +95,10 @@ def convert_tool_message_to_str(message: ToolMessage) -> str:
     return message.content
 
 
+def convert_event_response_to_str(response: DRAgentEventResponse) -> str:
+    return response.get_delta()
+
+
 def convert_str_to_run_agent_input(input_str: str) -> RunAgentInput:
     return RunAgentInput(
         thread_id="cli",
