@@ -16,6 +16,7 @@ import logging
 
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import UserMessage
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -92,3 +93,15 @@ def convert_str_to_dragent_event_response(
 
 def convert_tool_message_to_str(message: ToolMessage) -> str:
     return message.content
+
+
+def convert_str_to_run_agent_input(input_str: str) -> RunAgentInput:
+    return RunAgentInput(
+        thread_id="cli",
+        run_id="cli",
+        messages=[UserMessage(id="1", content=input_str)],
+        tools=[],
+        context=[],
+        forwarded_props={},
+        state={},
+    )
