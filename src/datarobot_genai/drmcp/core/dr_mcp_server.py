@@ -18,6 +18,7 @@ import importlib
 import logging
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -97,7 +98,7 @@ class DataRobotMCPServer:
             lifecycle: Optional lifecycle handler (defaults to BaseServerLifecycle())
             additional_module_paths: Optional list of (directory, package_prefix) tuples for
                 loading additional modules
-            load_native_mcp_tools: If True, load tools from drmcp/tools (default False)
+            load_native_mcp_tools: If True, load tools from datarobot_genai.drtools (default False)
         """
         # Initialize config and logging
         self._config = get_config()
@@ -147,12 +148,12 @@ class DataRobotMCPServer:
                 )
 
         # Load native MCP tools modules (only when load_native_mcp_tools is True)
-        base_dir = os.path.dirname(os.path.dirname(__file__))
+        base_dir = Path(__file__).parent.parent
         if load_native_mcp_tools:
             for tool_type, tool_config in TOOL_CONFIGS.items():
                 if is_tool_enabled(tool_type, self._config):
                     _import_modules_from_dir(
-                        os.path.join(base_dir, "tools", tool_config["directory"]),
+                        os.path.join(base_dir.parent, "drtools", tool_config["directory"]),
                         tool_config["package_prefix"],
                     )
 
@@ -334,7 +335,7 @@ def create_mcp_server(
         lifecycle: Optional lifecycle handler
         additional_module_paths: Optional list of (directory, package_prefix) tuples
         transport: Transport type ("streamable-http" or "stdio")
-        load_native_mcp_tools: If True, load tools from drmcp/tools (default False)
+        load_native_mcp_tools: If True, load tools from datarobot_genai.drtools (default False)
 
     Returns
     -------

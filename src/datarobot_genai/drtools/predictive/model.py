@@ -22,8 +22,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
-from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 

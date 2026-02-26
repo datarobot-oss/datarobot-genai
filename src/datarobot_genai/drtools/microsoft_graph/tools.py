@@ -23,9 +23,9 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import get_microsoft_graph_access_token
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url
+from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphClient
+from datarobot_genai.drtools.clients.microsoft_graph import get_microsoft_graph_access_token
+from datarobot_genai.drtools.clients.microsoft_graph import validate_site_url
 
 logger = logging.getLogger(__name__)
 

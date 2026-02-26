@@ -18,18 +18,18 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.jira import Issue
-from datarobot_genai.drmcp.tools.jira.tools import jira_create_issue
-from datarobot_genai.drmcp.tools.jira.tools import jira_get_issue
-from datarobot_genai.drmcp.tools.jira.tools import jira_search_issues
-from datarobot_genai.drmcp.tools.jira.tools import jira_transition_issue
-from datarobot_genai.drmcp.tools.jira.tools import jira_update_issue
+from datarobot_genai.drtools.clients.jira import Issue
+from datarobot_genai.drtools.jira.tools import jira_create_issue
+from datarobot_genai.drtools.jira.tools import jira_get_issue
+from datarobot_genai.drtools.jira.tools import jira_search_issues
+from datarobot_genai.drtools.jira.tools import jira_transition_issue
+from datarobot_genai.drtools.jira.tools import jira_update_issue
 
 
 @pytest.fixture
 def get_atlassian_access_token_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.jira.tools.get_atlassian_access_token",
+        "datarobot_genai.drtools.jira.tools.get_atlassian_access_token",
         return_value="token",
     ):
         yield
@@ -38,7 +38,7 @@ def get_atlassian_access_token_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_search_issues_mock() -> Iterator[list[Issue]]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.search_jira_issues"
+        "datarobot_genai.drtools.clients.jira.JiraClient.search_jira_issues"
     ) as jira_client_search_issues:
         issues = [
             Issue(
@@ -65,7 +65,7 @@ def jira_client_search_issues_mock() -> Iterator[list[Issue]]:
 @pytest.fixture
 def jira_client_search_issues_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.search_jira_issues"
+        "datarobot_genai.drtools.clients.jira.JiraClient.search_jira_issues"
     ) as jira_client_search_issue:
         jira_client_search_issue.side_effect = ValueError("Dummy error")
         yield
@@ -74,7 +74,7 @@ def jira_client_search_issues_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_get_issue_mock() -> Iterator[Issue]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue"
     ) as jira_client_get_issue:
         issue = Issue(
             **{
@@ -99,7 +99,7 @@ def jira_client_get_issue_mock() -> Iterator[Issue]:
 @pytest.fixture
 def jira_client_get_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue"
     ) as jira_client_get_issue:
         jira_client_get_issue.side_effect = ValueError("Dummy error")
         yield
@@ -108,7 +108,7 @@ def jira_client_get_issue_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_get_issue_types_mock() -> Iterator[dict[str, str]]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_jira_issue_types"
+        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue_types"
     ) as jira_client_get_issue_types:
         issue_types = {"Bug": "1", "Story": "2"}
         jira_client_get_issue_types.return_value = issue_types
@@ -118,7 +118,7 @@ def jira_client_get_issue_types_mock() -> Iterator[dict[str, str]]:
 @pytest.fixture
 def jira_client_get_issue_types_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_jira_issue_types"
+        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue_types"
     ) as jira_client_get_issue_types:
         jira_client_get_issue_types.side_effect = ValueError("Dummy error")
         yield
@@ -127,7 +127,7 @@ def jira_client_get_issue_types_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_create_issue_mock() -> Iterator[str]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.create_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.create_jira_issue"
     ) as jira_client_create_issue:
         new_issue_key = "PROJ-123"
         jira_client_create_issue.return_value = new_issue_key
@@ -137,7 +137,7 @@ def jira_client_create_issue_mock() -> Iterator[str]:
 @pytest.fixture
 def jira_client_create_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.create_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.create_jira_issue"
     ) as jira_client_create_issue:
         jira_client_create_issue.side_effect = ValueError("Dummy error")
         yield
@@ -146,7 +146,7 @@ def jira_client_create_issue_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_update_issue_mock() -> Iterator[list[str]]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.update_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.update_jira_issue"
     ) as jira_client_update_issue:
         fields_list = ["summary"]
         jira_client_update_issue.return_value = fields_list
@@ -156,7 +156,7 @@ def jira_client_update_issue_mock() -> Iterator[list[str]]:
 @pytest.fixture
 def jira_client_update_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.update_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.update_jira_issue"
     ) as jira_client_update_issue:
         jira_client_update_issue.side_effect = ValueError("Dummy error")
         yield
@@ -165,7 +165,7 @@ def jira_client_update_issue_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_get_available_transitions_mock() -> Iterator[dict[str, str]]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_available_jira_transitions"
+        "datarobot_genai.drtools.clients.jira.JiraClient.get_available_jira_transitions"
     ) as jira_client_get_available_transitions:
         avialble_transtions = {"Open": "1", "Closed": "2"}
         jira_client_get_available_transitions.return_value = avialble_transtions
@@ -175,7 +175,7 @@ def jira_client_get_available_transitions_mock() -> Iterator[dict[str, str]]:
 @pytest.fixture
 def jira_client_get_available_transitions_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.get_available_jira_transitions"
+        "datarobot_genai.drtools.clients.jira.JiraClient.get_available_jira_transitions"
     ) as jira_client_get_available_transitions:
         jira_client_get_available_transitions.side_effect = ValueError("Dummy error")
         yield
@@ -183,14 +183,14 @@ def jira_client_get_available_transitions_error_mock() -> Iterator[None]:
 
 @pytest.fixture
 def jira_client_transition_issue_mock() -> Iterator[None]:
-    with patch("datarobot_genai.drmcp.tools.clients.jira.JiraClient.transition_jira_issue"):
+    with patch("datarobot_genai.drtools.clients.jira.JiraClient.transition_jira_issue"):
         yield
 
 
 @pytest.fixture
 def jira_client_transition_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.jira.JiraClient.transition_jira_issue"
+        "datarobot_genai.drtools.clients.jira.JiraClient.transition_jira_issue"
     ) as jira_client_transition_issue:
         jira_client_transition_issue.side_effect = ValueError("Dummy error")
         yield

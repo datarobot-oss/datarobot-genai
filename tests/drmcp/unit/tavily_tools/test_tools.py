@@ -17,18 +17,18 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyCrawlResults
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyMapResults
-from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResults
-from datarobot_genai.drmcp.tools.tavily.tools import tavily_crawl
-from datarobot_genai.drmcp.tools.tavily.tools import tavily_map
-from datarobot_genai.drmcp.tools.tavily.tools import tavily_search
+from datarobot_genai.drtools.clients.tavily import TavilyCrawlResults
+from datarobot_genai.drtools.clients.tavily import TavilyMapResults
+from datarobot_genai.drtools.clients.tavily import TavilySearchResults
+from datarobot_genai.drtools.tavily.tools import tavily_crawl
+from datarobot_genai.drtools.tavily.tools import tavily_map
+from datarobot_genai.drtools.tavily.tools import tavily_search
 
 
 @pytest.fixture
 def mock_tavily_auth() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.tavily.tools.get_tavily_access_token",
+        "datarobot_genai.drtools.tavily.tools.get_tavily_access_token",
         return_value="test-api-key",
     ):
         yield
@@ -54,7 +54,7 @@ class TestTavilySearch:
             }
         )
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.TavilyClient.search") as mock:
+        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.search") as mock:
             mock.return_value = mock_response
             result = await tavily_search(query="test query")
 
@@ -73,7 +73,7 @@ class TestTavilySearch:
             }
         )
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.TavilyClient.search") as mock:
+        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.search") as mock:
             mock.return_value = mock_response
             result = await tavily_search(query="test", include_images=True, include_answer=True)
 
@@ -94,7 +94,7 @@ class TestTavilyMap:
             }
         )
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.TavilyClient.map_") as mock:
+        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.map_") as mock:
             mock.return_value = mock_response
             result = await tavily_map(url="https://example.com", include_usage=True)
 
@@ -113,7 +113,7 @@ class TestTavilyMap:
             }
         )
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.TavilyClient.map_") as mock:
+        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.map_") as mock:
             mock.return_value = mock_response
             result = await tavily_map(url="https://example.com", include_usage=True)
 
@@ -142,7 +142,7 @@ class TestTavilyCrawl:
             }
         )
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.TavilyClient.crawl") as mock:
+        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.crawl") as mock:
             mock.return_value = mock_response
             result = await tavily_crawl(url="https://example.com")
 

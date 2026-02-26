@@ -24,8 +24,8 @@ import pytest
 from dotenv import load_dotenv
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.datarobot import deploy_custom_model_impl
-from datarobot_genai.drmcp.tools.predictive import deployment
+from datarobot_genai.drtools.clients.datarobot import deploy_custom_model_impl
+from datarobot_genai.drtools.predictive import deployment
 
 
 def test_load_dotenv() -> None:
@@ -40,11 +40,11 @@ async def test_list_deployments_success() -> None:
     mock_client.Deployment.list.return_value = [mock_dep1, mock_dep2]
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.list_deployments()
@@ -58,11 +58,11 @@ async def test_list_deployments_empty() -> None:
     mock_client.Deployment.list.return_value = []
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.list_deployments()
@@ -72,7 +72,7 @@ async def test_list_deployments_empty() -> None:
 @pytest.mark.asyncio
 async def test_list_deployments_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
@@ -89,11 +89,11 @@ async def test_get_model_info_from_deployment_success() -> None:
     mock_client.Deployment.get.return_value = mock_deployment
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.get_model_info_from_deployment(deployment_id="dep_id")
@@ -108,11 +108,11 @@ async def test_get_model_info_from_deployment_not_found() -> None:
     mock_client.Deployment.get.side_effect = Exception("404 client error: {'message': 'Not Found'}")
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(ToolError) as exc_info:
@@ -126,7 +126,7 @@ async def test_get_model_info_from_deployment_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_model_info_from_deployment_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
@@ -144,11 +144,11 @@ async def test_deploy_model_success() -> None:
     mock_client.Deployment.create_from_learning_model.return_value = mock_deployment
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.deploy_model(
@@ -164,11 +164,11 @@ async def test_deploy_model_no_prediction_servers() -> None:
     mock_client.PredictionServer.list.return_value = []
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(ToolError) as exc_info:
@@ -182,11 +182,11 @@ async def test_deploy_model_error() -> None:
     mock_client.PredictionServer.list.side_effect = Exception("fail servers")
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(ToolError) as exc_info:
@@ -243,13 +243,13 @@ async def test_deploy_custom_model_mocked_success() -> None:
     }
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
+            "datarobot_genai.drtools.predictive.deployment.deploy_custom_model_impl",
             return_value=out,
         ),
     ):
@@ -319,13 +319,13 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
     out = {"deployment_id": "d", "label": "L"}
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
         patch(
-            "datarobot_genai.drmcp.tools.predictive.deployment.deploy_custom_model_impl",
+            "datarobot_genai.drtools.predictive.deployment.deploy_custom_model_impl",
             return_value=out,
         ),
     ):

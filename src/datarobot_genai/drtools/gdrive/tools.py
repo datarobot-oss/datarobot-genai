@@ -22,12 +22,12 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.gdrive import LIMIT
-from datarobot_genai.drmcp.tools.clients.gdrive import MAX_PAGE_SIZE
-from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS
-from datarobot_genai.drmcp.tools.clients.gdrive import SUPPORTED_FIELDS_STR
-from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveClient
-from datarobot_genai.drmcp.tools.clients.gdrive import get_gdrive_access_token
+from datarobot_genai.drtools.clients.gdrive import LIMIT
+from datarobot_genai.drtools.clients.gdrive import MAX_PAGE_SIZE
+from datarobot_genai.drtools.clients.gdrive import SUPPORTED_FIELDS
+from datarobot_genai.drtools.clients.gdrive import SUPPORTED_FIELDS_STR
+from datarobot_genai.drtools.clients.gdrive import GoogleDriveClient
+from datarobot_genai.drtools.clients.gdrive import get_gdrive_access_token
 
 logger = logging.getLogger(__name__)
 

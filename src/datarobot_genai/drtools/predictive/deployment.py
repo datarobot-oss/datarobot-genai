@@ -20,12 +20,12 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.datarobot import MODEL_EXTENSIONS
-from datarobot_genai.drmcp.tools.clients.datarobot import REQUIRED_FILES
-from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
-from datarobot_genai.drmcp.tools.clients.datarobot import deploy_custom_model_impl
-from datarobot_genai.drmcp.tools.clients.datarobot import find_model_file_in_folder
-from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.clients.datarobot import MODEL_EXTENSIONS
+from datarobot_genai.drtools.clients.datarobot import REQUIRED_FILES
+from datarobot_genai.drtools.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.clients.datarobot import deploy_custom_model_impl
+from datarobot_genai.drtools.clients.datarobot import find_model_file_in_folder
+from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
