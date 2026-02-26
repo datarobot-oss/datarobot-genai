@@ -120,7 +120,7 @@ def to_custom_model_streaming_response(
         while True:
             try:
                 (
-                    response_text_or_event,
+                    event,
                     pipeline_interactions,
                     usage_metrics,
                 ) = thread_pool_executor.submit(
@@ -129,12 +129,10 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                if isinstance(response_text_or_event, BaseEvent):
+                if isinstance(event, BaseEvent):
                     content = ""
-                    if isinstance(
-                        response_text_or_event, (TextMessageContentEvent, TextMessageChunkEvent)
-                    ):
-                        content = response_text_or_event.delta or content
+                    if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+                        content = event.delta or content
                     choice = ChunkChoice(
                         index=0,
                         delta=ChoiceDelta(role="assistant", content=content),
@@ -150,7 +148,7 @@ def to_custom_model_streaming_response(
                         usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
                         if usage_metrics
                         else None,
-                        event=response_text_or_event,
+                        event=event,
                     )
             except StopAsyncIteration:
                 break

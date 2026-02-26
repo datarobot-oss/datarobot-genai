@@ -166,6 +166,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         # Partial AG-UI: workflow lifecycle + text message events
         yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, default_usage_metrics()
 
+        pipeline_interactions: MultiTurnSample | None = None
+        usage_metrics = default_usage_metrics()
+
         # Use MCP context manager to handle connection lifecycle
         with mcp_tools_context(
             authorization_context=self.authorization_context,

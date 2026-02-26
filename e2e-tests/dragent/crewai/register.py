@@ -33,6 +33,7 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
     framework_wrappers=[LLMFrameworkEnum.CREWAI],
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
+    from ag_ui.core import Event
     from ag_ui.core import RunAgentInput
     from datarobot_genai.dragent.response import DRAgentEventResponse
     from nat.builder.function_info import FunctionInfo
@@ -45,8 +46,8 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
         """Invoke the CrewAI agent and return a DRAgentEventResponse."""
-        events: list = []
-        metrics: dict = {}
+        events: list[Event] = []
+        metrics: dict[str, int] = {}
         async for event, _, iteration_metrics in agent.invoke(input_message):
             metrics = iteration_metrics
             events.append(event)

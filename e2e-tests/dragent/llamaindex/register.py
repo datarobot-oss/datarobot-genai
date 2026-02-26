@@ -33,6 +33,7 @@ class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
     framework_wrappers=[LLMFrameworkEnum.LLAMA_INDEX],
 )
 async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> AsyncGenerator:
+    from ag_ui.core import Event
     from ag_ui.core import RunAgentInput
     from datarobot_genai.dragent.response import DRAgentEventResponse
     from nat.builder.function_info import FunctionInfo
@@ -45,8 +46,8 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
         """Invoke the LlamaIndex agent and return a DRAgentEventResponse."""
-        events: list = []
-        metrics: dict = {}
+        events: list[Event] = []
+        metrics: dict[str, int] = {}
         async for event, _, iteration_metrics in agent.invoke(input_message):
             metrics = iteration_metrics
             events.append(event)
