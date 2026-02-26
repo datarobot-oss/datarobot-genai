@@ -44,8 +44,8 @@ class TestGetUserGreeting:
         # Mock the context (even though we don't use it, FastMCP requires it)
         mock_ctx = MagicMock(spec=Context)
 
-        # Patch get_context in the tool module where it's used
-        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+        # Patch get_context where resolve_dependencies looks it up (tool.run path)
+        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
             # Call the tool with username provided
             tool_result = await tool.run({"username": "testuser"})
             result = tool_result.structured_content
@@ -65,8 +65,8 @@ class TestGetUserGreeting:
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data="accepted_user"))
 
-        # Patch get_context in the tool module where it's used
-        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+        # Patch get_context where resolve_dependencies looks it up (tool.run path)
+        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
             tool_result = await tool.run({})
             result = tool_result.structured_content
 
@@ -86,8 +86,8 @@ class TestGetUserGreeting:
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
 
-        # Patch get_context in the tool module where it's used
-        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+        # Patch get_context where resolve_dependencies looks it up (tool.run path)
+        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
             tool_result = await tool.run({})
             result = tool_result.structured_content
 
@@ -106,8 +106,8 @@ class TestGetUserGreeting:
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.elicit = AsyncMock(return_value=CancelledElicitation())
 
-        # Patch get_context in the tool module where it's used
-        with patch("fastmcp.tools.tool.get_context", return_value=mock_ctx):
+        # Patch get_context where resolve_dependencies looks it up (tool.run path)
+        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
             tool_result = await tool.run({})
             result = tool_result.structured_content
 
