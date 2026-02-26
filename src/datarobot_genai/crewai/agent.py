@@ -204,15 +204,15 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 )
                 usage_metrics = self._extract_usage_metrics(crew_output)
 
-                message_id = str(uuid.uuid4())
-                yield TextMessageStartEvent(message_id=message_id), None, usage_metrics
                 if response_text:
+                    message_id = str(uuid.uuid4())
+                    yield TextMessageStartEvent(message_id=message_id), None, usage_metrics
                     yield (
                         TextMessageContentEvent(message_id=message_id, delta=response_text),
                         None,
                         usage_metrics,
                     )
-                yield TextMessageEndEvent(message_id=message_id), None, usage_metrics
+                    yield TextMessageEndEvent(message_id=message_id), None, usage_metrics
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),

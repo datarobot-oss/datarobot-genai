@@ -32,6 +32,8 @@ from typing import TypeVar
 
 from ag_ui.core import BaseEvent
 from ag_ui.core import Event
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from openai.types import CompletionUsage
@@ -129,6 +131,11 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
+                # Skip run lifecycle events — they don't carry content for streaming.
+                # Their metadata is still tracked above for the final stop chunk.
+                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                    continue
+
                 if isinstance(event, BaseEvent):
                     content = ""
                     if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
@@ -191,7 +198,7 @@ def to_custom_model_streaming_response(
 
 
 def streaming_iterator_to_custom_model_streaming_response(
-    streaming_response_iterator: Iterator[tuple[str, MultiTurnSample | None, dict[str, int]]],
+    streaming_response_iterator: Iterator[tuple[Event, MultiTurnSample | None, dict[str, int]]],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
@@ -201,20 +208,30 @@ def streaming_iterator_to_custom_model_streaming_response(
     last_pipeline_interactions = None
     last_usage_metrics = None
 
+    required_usage_metrics = default_usage_metrics()
+
     while True:
         try:
             (
-                response_text,
+                event,
                 pipeline_interactions,
                 usage_metrics,
             ) = next(streaming_response_iterator)
             last_pipeline_interactions = pipeline_interactions
             last_usage_metrics = usage_metrics
 
-            if response_text:
+            # Skip run lifecycle events — they don't carry content for streaming.
+            # Their metadata is still tracked above for the final stop chunk.
+            if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                continue
+
+            if isinstance(event, BaseEvent):
+                content = ""
+                if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+                    content = event.delta or content
                 choice = ChunkChoice(
                     index=0,
-                    delta=ChoiceDelta(role="assistant", content=response_text),
+                    delta=ChoiceDelta(role="assistant", content=content),
                     finish_reason=None,
                 )
                 yield CustomModelStreamingResponse(
@@ -223,7 +240,10 @@ def streaming_iterator_to_custom_model_streaming_response(
                     created=created,
                     model=model,
                     choices=[choice],
-                    usage=CompletionUsage(**usage_metrics) if usage_metrics else None,
+                    usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
+                    if usage_metrics
+                    else None,
+                    event=event,
                 )
         except StopIteration:
             break
@@ -239,7 +259,9 @@ def streaming_iterator_to_custom_model_streaming_response(
         created=created,
         model=model,
         choices=[choice],
-        usage=CompletionUsage(**last_usage_metrics) if last_usage_metrics else None,
+        usage=CompletionUsage.model_validate(required_usage_metrics | last_usage_metrics)
+        if last_usage_metrics
+        else None,
         pipeline_interactions=last_pipeline_interactions.model_dump_json()
         if last_pipeline_interactions
         else None,

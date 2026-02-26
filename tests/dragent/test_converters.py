@@ -24,10 +24,8 @@ from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_t
 from datarobot_genai.dragent.converters import (
     convert_dragent_run_agent_input_to_chat_request_or_message,
 )
-from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
 from datarobot_genai.dragent.request import DRAgentRunAgentInput
-from datarobot_genai.dragent.response import DRAgentEventResponse
 
 # --- Input converters: AG-UI -> NAT ---
 
@@ -167,28 +165,6 @@ def test_convert_chat_request_to_run_agent_input() -> None:
     assert result.messages[0].content == "Hello"
     assert len(result.tools) == 1
     assert result.tools[0].name == "get_weather"
-
-
-# --- Output converters: str -> DRAgentEventResponse ---
-
-
-def test_convert_str_to_dragent_event_response() -> None:
-    # GIVEN a response string
-    delta = "streaming delta"
-
-    # WHEN converting to DRAgentEventResponse
-    result = convert_str_to_dragent_event_response(delta)
-
-    # THEN result has delta, default usage_metrics, and events
-    assert isinstance(result, DRAgentEventResponse)
-    assert result.delta == delta
-    assert result.usage_metrics is not None
-    assert result.usage_metrics["prompt_tokens"] == 0
-    assert result.usage_metrics["completion_tokens"] == 0
-    assert result.usage_metrics["total_tokens"] == 0
-    assert result.events is not None
-    assert len(result.events) == 1
-    assert result.events[0].delta == delta
 
 
 # --- Various converters ---

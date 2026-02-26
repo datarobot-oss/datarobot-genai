@@ -93,9 +93,8 @@ def test_to_custom_model_streaming_response_success() -> None:
     finally:
         loop.close()
 
-    # Expect 6 event chunks + 1 final stop chunk = 7
+    # RunStarted/RunFinished are skipped; 4 event chunks + 1 final stop chunk = 5
     assert all(isinstance(c, CustomModelStreamingResponse) for c in chunks)
-    # Find content chunks
     content_chunks = [c for c in chunks if c.choices[0].delta.content]
     assert content_chunks[0].choices[0].delta.content == "hello "
     assert content_chunks[1].choices[0].delta.content == "world"

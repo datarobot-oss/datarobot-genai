@@ -69,8 +69,7 @@ def test_to_custom_model_streaming_response_sequence() -> None:
         )
         chunks = list(response_generator)
     assert isinstance(chunks[0], CustomModelStreamingResponse)
-    # First content chunk is RunStartedEvent (content="")
-    # Find the first TextMessageContentEvent chunk
+    # RunStartedEvent and RunFinishedEvent are skipped — first chunk is TextMessageStart
     content_chunks = [c for c in chunks if c.choices[0].delta.content]
     assert content_chunks[0].choices[0].delta.content == "Hello "
     assert content_chunks[0].choices[0].finish_reason is None

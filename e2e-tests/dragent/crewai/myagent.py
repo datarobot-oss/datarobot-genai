@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from datetime import datetime
+from functools import cached_property
 from typing import Any
 
 from crewai import Agent
@@ -32,7 +33,7 @@ class MyAgent(CrewAIAgent):
         super().__init__(**kwargs)
         self._llm = llm
 
-    @property
+    @cached_property
     def agents(self) -> list[Any]:
         """Planner and writer agents."""
         planner = Agent(

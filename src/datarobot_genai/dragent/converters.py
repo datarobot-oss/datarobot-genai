@@ -15,13 +15,11 @@
 import logging
 
 from ag_ui.core import RunAgentInput
-from ag_ui.core import TextMessageChunkEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import Message
 
-from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.dragent.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.response import DRAgentEventResponse
@@ -69,22 +67,6 @@ def convert_dragent_run_agent_input_to_chat_request_or_message(
 def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInput:
     chat_request_dict = request.model_dump()
     return convert_chat_completion_params_to_run_agent_input(chat_request_dict)
-
-
-# --- Output converters ---
-
-## --- NAT chat completions -> dragent AG-UI ---
-
-
-def convert_str_to_dragent_event_response(
-    response: str,
-) -> DRAgentEventResponse:
-    return DRAgentEventResponse(
-        delta=response,
-        usage_metrics=default_usage_metrics(),
-        pipeline_interactions=None,
-        events=[TextMessageChunkEvent(delta=response)],
-    )
 
 
 # --- Various converters ---
