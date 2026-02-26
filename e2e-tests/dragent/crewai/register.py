@@ -45,15 +45,14 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
         """Invoke the CrewAI agent and return a DRAgentEventResponse."""
-        response_text = ""
+        events: list = []
         metrics: dict = {}
-        async for text, _, iteration_metrics in agent.invoke(input_message):
+        async for event, _, iteration_metrics in agent.invoke(input_message):
             metrics = iteration_metrics
-            if isinstance(text, str):
-                response_text += text
+            events.append(event)
 
         return DRAgentEventResponse(
-            delta=response_text if response_text else None,
+            events=events if events else None,
             usage_metrics=metrics,
         )
 

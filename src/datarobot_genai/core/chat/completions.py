@@ -110,16 +110,13 @@ async def agent_chat_completion_wrapper(
         pipeline_interactions = None
         usage_metrics = default_usage_metrics()
 
-        async for delta, pipeline_interactions, usage_metrics in agent.invoke(run_agent_input):
+        async for event, pipeline_interactions, usage_metrics in agent.invoke(run_agent_input):
             # When we work in non-streaming mode, we only send back the final message
             # It is because of limitation of completions interface we can not send back the
             # intermediate messages
-            if isinstance(delta, TextMessageStartEvent):
+            if isinstance(event, TextMessageStartEvent):
                 final_response = ""
-            if isinstance(delta, TextMessageContentEvent):
-                final_response += delta.delta
-            # Agents which are not AGUI agents will return strings with content
-            if isinstance(delta, str):
-                final_response += delta
+            elif isinstance(event, TextMessageContentEvent):
+                final_response += event.delta
 
         return final_response, pipeline_interactions, usage_metrics

@@ -45,15 +45,14 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
         """Invoke the LlamaIndex agent and return a DRAgentEventResponse."""
-        response_text = ""
+        events: list = []
         metrics: dict = {}
-        async for delta, _, iteration_metrics in agent.invoke(input_message):
+        async for event, _, iteration_metrics in agent.invoke(input_message):
             metrics = iteration_metrics
-            if isinstance(delta, str):
-                response_text += delta
+            events.append(event)
 
         return DRAgentEventResponse(
-            delta=response_text if response_text else None,
+            events=events if events else None,
             usage_metrics=metrics,
         )
 

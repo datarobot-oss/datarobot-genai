@@ -33,7 +33,6 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )
 async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
-    from ag_ui.core import BaseEvent
     from ag_ui.core import RunAgentInput
     from datarobot_genai.dragent.response import DRAgentEventResponse
     from nat.builder.function_info import FunctionInfo
@@ -46,12 +45,11 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
 
     async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
         """Invoke the LangGraph agent and return a DRAgentEventResponse."""
-        events: list[BaseEvent] = []
+        events: list = []
         metrics: dict = {}
-        async for event_or_str, _, iteration_metrics in agent.invoke(input_message):
+        async for event, _, iteration_metrics in agent.invoke(input_message):
             metrics = iteration_metrics
-            if isinstance(event_or_str, BaseEvent):
-                events.append(event_or_str)
+            events.append(event)
 
         return DRAgentEventResponse(
             events=events if events else None,

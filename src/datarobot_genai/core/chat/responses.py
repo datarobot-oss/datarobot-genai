@@ -98,7 +98,7 @@ def to_custom_model_streaming_response(
     thread_pool_executor: ThreadPoolExecutor,
     event_loop: AbstractEventLoop,
     streaming_response_generator: AsyncGenerator[
-        tuple[str | Event, MultiTurnSample | None, dict[str, int]], None
+        tuple[Event, MultiTurnSample | None, dict[str, int]]
     ],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
@@ -129,23 +129,7 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                if isinstance(response_text_or_event, str) and response_text_or_event:
-                    choice = ChunkChoice(
-                        index=0,
-                        delta=ChoiceDelta(role="assistant", content=response_text_or_event),
-                        finish_reason=None,
-                    )
-                    yield CustomModelStreamingResponse(
-                        id=completion_id,
-                        object="chat.completion.chunk",
-                        created=created,
-                        model=model,
-                        choices=[choice],
-                        usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
-                        if usage_metrics
-                        else None,
-                    )
-                elif isinstance(response_text_or_event, BaseEvent):
+                if isinstance(response_text_or_event, BaseEvent):
                     content = ""
                     if isinstance(
                         response_text_or_event, (TextMessageContentEvent, TextMessageChunkEvent)
