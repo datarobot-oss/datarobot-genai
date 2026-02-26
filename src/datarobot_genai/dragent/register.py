@@ -26,7 +26,6 @@ from datarobot_genai.dragent.converters import (
     convert_dragent_run_agent_input_to_chat_request_or_message,
 )
 from datarobot_genai.dragent.converters import convert_event_response_to_str
-from datarobot_genai.dragent.converters import convert_str_to_run_agent_input
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
 
 
@@ -49,5 +48,4 @@ GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_r
 GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
 GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request_or_message)
 GlobalTypeConverter.register_converter(convert_tool_message_to_str)
-GlobalTypeConverter.register_converter(convert_str_to_run_agent_input)
 GlobalTypeConverter.register_converter(convert_event_response_to_str)

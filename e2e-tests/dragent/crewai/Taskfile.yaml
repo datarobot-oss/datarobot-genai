@@ -8,9 +8,3 @@ tasks:
     cmds:
       - echo "Running CrewAI agent via NAT"
       - uv run nat start dragent_fastapi --config_file workflow.yaml
-  run:
-    desc: "Run CrewAI agent with a single query"
-    requires:
-      vars: [INPUT]
-    cmds:
-      - uv run nat run --config_file workflow.yaml --input "{{.INPUT}}"
