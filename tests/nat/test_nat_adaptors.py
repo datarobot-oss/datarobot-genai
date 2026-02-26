@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-from unittest.mock import patch
-
 import pytest
 from crewai import LLM
 from langchain_openai import ChatOpenAI
