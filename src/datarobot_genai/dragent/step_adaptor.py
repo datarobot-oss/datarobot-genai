@@ -140,11 +140,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             if not self.seen_llm_new_token and payload_text:
                 # LLM produced text without streaming — emit start + content + end together
                 events.append(TextMessageStartEvent(message_id=payload.UUID))
-                events.append(
-                    TextMessageContentEvent(
-                        message_id=payload.UUID, delta=payload_text
-                    )
-                )
+                events.append(TextMessageContentEvent(message_id=payload.UUID, delta=payload_text))
                 events.append(TextMessageEndEvent(message_id=payload.UUID))
             elif self.seen_llm_new_token:
                 # Do not emit payload.text here to avoid duplicating already streamed chunks.
