@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from crewai import Agent
+from crewai import Crew
 from crewai import Task
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import CrewAIAgent
@@ -83,34 +84,40 @@ class MyAgent(CrewAIAgent):
 
     @property
     def tasks(self) -> list[Any]:
-        """Plan then write tasks."""
-        planner, writer = self.agents
+        """Plan then write tasks — only used via ``crew()`` below."""
+        return self._tasks_for(self.agents)
 
-        plan_task = Task(
-            description=(
-                "Research and create a structured outline for a blog article about: {topic}. "
-                "Prior conversation context (may be empty): {chat_history}"
-            ),
-            expected_output=(
-                "A structured outline with 10-15 key points, 2-3 sources, "
-                "and a brief suggested structure."
-            ),
-            agent=planner,
-        )
+    def crew(self) -> Crew:
+        """Build a Crew ensuring agents and tasks share the same object references."""
+        agents = self.agents
+        return Crew(agents=agents, tasks=self._tasks_for(agents), verbose=self.verbose)
 
-        write_task = Task(
-            description=(
-                "Using the planner's outline, write a compelling blog post about: {topic}. "
-                "Prior conversation context (may be empty): {chat_history}"
+    def _tasks_for(self, agents: list[Any]) -> list[Any]:
+        planner, writer = agents
+        return [
+            Task(
+                description=(
+                    "Research and create a structured outline for a blog article about: {topic}. "
+                    "Prior conversation context (may be empty): {chat_history}"
+                ),
+                expected_output=(
+                    "A structured outline with 10-15 key points, 2-3 sources, "
+                    "and a brief suggested structure."
+                ),
+                agent=planner,
             ),
-            expected_output=(
-                "A well-structured blog post in markdown format, under 500 words, "
-                "with an engaging introduction, insightful body, and summarizing conclusion."
+            Task(
+                description=(
+                    "Using the planner's outline, write a compelling blog post about: {topic}. "
+                    "Prior conversation context (may be empty): {chat_history}"
+                ),
+                expected_output=(
+                    "A well-structured blog post in markdown format, under 500 words, "
+                    "with an engaging introduction, insightful body, and summarizing conclusion."
+                ),
+                agent=writer,
             ),
-            agent=writer,
-        )
-
-        return [plan_task, write_task]
+        ]
 
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
         """Build inputs for Crew.kickoff.
