@@ -32,7 +32,9 @@ from typing import Any
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
-from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from crewai import Crew
 from crewai.events import crewai_event_bus
 from crewai.tools import BaseTool
@@ -203,11 +205,14 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 usage_metrics = self._extract_usage_metrics(crew_output)
 
                 if response_text:
+                    message_id = str(uuid.uuid4())
+                    yield TextMessageStartEvent(message_id=message_id), None, usage_metrics
                     yield (
-                        TextMessageChunkEvent(message_id=str(uuid.uuid4()), delta=response_text),
+                        TextMessageContentEvent(message_id=message_id, delta=response_text),
                         None,
                         usage_metrics,
                     )
+                    yield TextMessageEndEvent(message_id=message_id), None, usage_metrics
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),
