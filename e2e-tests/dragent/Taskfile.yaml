@@ -4,7 +4,25 @@ version: '3'
 
 tasks:
   run-nat:
-    desc: "🔨 Running NAT locally"
+    desc: "🔨 Running NAT agent"
     cmds:
-      - echo "🔨 Running NAT locally"
+      - echo "🔨 Running NAT agent"
       - uv run nat start dragent_fastapi --config_file nat/workflow.yaml --port {{.AGENT_PORT | default "8080"}}
+  run-crewai:
+    desc: "🔨 Running CrewAI agent via NAT"
+    dir: ./crewai
+    cmds:
+      - echo "🔨 Running CrewAI agent via NAT"
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT | default "8080"}}
+  run-langgraph:
+    desc: "🔨 Running LangGraph agent via NAT"
+    dir: ./langgraph
+    cmds:
+      - echo "🔨 Running LangGraph agent via NAT"
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT | default "8080"}}
+  run-llamaindex:
+    desc: "🔨 Running LlamaIndex agent via NAT"
+    dir: ./llamaindex
+    cmds:
+      - echo "🔨 Running LlamaIndex agent via NAT"
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT | default "8080"}}

@@ -15,6 +15,23 @@ dependencies = [
 dragent-nat = [
     "datarobot-genai[dragent,nat]"
 ]
+# TODO: Should be `dragent` and `langgraph` when NAT LLM adaptors move to `core`.
+dragent-langgraph = [
+    "datarobot-genai[dragent,nat,langgraph]"
+]
+# TODO: Should be `dragent` and `crewai` when NAT LLM adaptors move to `core`.
+dragent-crewai = [
+    "datarobot-genai[dragent,nat,crewai]",
+]
+# TODO: Should be `dragent` and `llamaindex` when NAT LLM adaptors move to `core`.
+dragent-llamaindex = [
+    "datarobot-genai[dragent,nat,llamaindex]"
+]
+
+[project.entry-points.'nat.plugins']
+langgraph_agent = "dragent.langgraph.register"
+crewai_agent = "dragent.crewai.register"
+llamaindex_agent = "dragent.llamaindex.register"
 
 [tool.uv]
 package = true

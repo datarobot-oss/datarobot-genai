@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Unify `InvokeReturn` type from `str | Event` to `Event` across all agent implementations
 - All agents (CrewAI, LangGraph, LlamaIndex, NAT) now emit AG-UI lifecycle events
 - Remove `str` code path from streaming/completions layer
+- Add e2e test scaffolding for CrewAI, LangGraph, and LlamaIndex agent frameworks
 
 ## 0.5.15
 - Restructure the tools and move them to drtools instead of drmcp.tools
