@@ -23,6 +23,7 @@ from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import Tool
@@ -130,7 +131,7 @@ async def agent_chat_completion_wrapper(
             # intermediate messages.
             if isinstance(event, TextMessageStartEvent):
                 final_response = ""
-            elif isinstance(event, TextMessageContentEvent):
+            elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
                 final_response += event.delta
             elif isinstance(event, RunFinishedEvent):
                 received_run_finished = True
