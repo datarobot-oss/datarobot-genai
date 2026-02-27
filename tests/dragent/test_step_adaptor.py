@@ -792,6 +792,101 @@ def test_llm_end_with_text_and_no_new_tokens_emits_content_event(step_adaptor):
     assert content_events[0].delta == "response text"
 
 
+def test_llm_streaming_lifecycle_emits_single_start_and_end(step_adaptor):
+    """Streaming emits one start on first non-empty token and one end at LLM_END."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+
+    first = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="a")
+    )
+    second = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="b")
+    )
+    end = step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_END, msg_id, text="ab"))
+
+    assert first is not None and second is not None and end is not None
+    assert [type(e) for e in (first.events or [])] == [
+        TextMessageStartEvent,
+        TextMessageContentEvent,
+    ]
+    assert [type(e) for e in (second.events or [])] == [TextMessageContentEvent]
+    assert [type(e) for e in (end.events or [])] == [TextMessageEndEvent]
+
+
+def test_llm_end_ignores_payload_text_after_streaming(step_adaptor):
+    """LLM_END should not emit content when chunks were already streamed."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="a"))
+    response = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_END, msg_id, text="final full text")
+    )
+
+    assert response is not None
+    event_types = [type(e) for e in (response.events or [])]
+    assert event_types == [TextMessageEndEvent]
+
+
+def test_llm_state_resets_between_turns(step_adaptor):
+    """A new LLM_START resets state so next stream emits start again."""
+    first_id = str(uuid.uuid4())
+    second_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, first_id))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, first_id, chunk="x"))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_END, first_id, text="x"))
+
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, second_id))
+    response = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, second_id, chunk="y")
+    )
+
+    assert response is not None
+    assert [type(e) for e in (response.events or [])] == [
+        TextMessageStartEvent,
+        TextMessageContentEvent,
+    ]
+
+
+def test_llm_start_emits_no_events(step_adaptor):
+    """LLM_START on primary function should emit no text events."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    response = step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_llm_end_with_missing_payload_text_emits_no_events(step_adaptor):
+    """LLM_END should be safe when payload text container is missing."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+    step = _make_llm_step(IntermediateStepType.LLM_END, msg_id, text=None)
+    step.payload.data.payload = None
+    response = step_adaptor.process(step)
+
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_handle_llm_primary_function_raises_for_unsupported_event(step_adaptor):
+    """Unsupported event types should raise from primary LLM handler."""
+    payload = _make_llm_step(IntermediateStepType.CUSTOM_START, str(uuid.uuid4())).payload
+
+    with pytest.raises(ValueError):
+        step_adaptor._handle_llm_primary_function(payload)
+
+
 def test_adaptor_processes_nested_reasoning_steps(
     step_adaptor, intermediate_steps_for_nested_reasoning, expected_responses
 ):
