@@ -32,6 +32,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import datarobot as dr
+import datarobot_predict.deployment as _dr_predict_deployment
 from datarobot.context import Context as DRContext
 
 from datarobot_genai.drmcp import create_mcp_server
@@ -39,6 +40,9 @@ from datarobot_genai.drmcp.core import clients
 from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
+from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
+    test_create_prediction_result,
+)
 from datarobot_genai.drmcp.tools.clients import datarobot as tools_datarobot_client
 
 # Import elicitation test tool to register it with the MCP server
@@ -130,11 +134,16 @@ def _patch_get_sdk_client_for_stdio() -> None:
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
 
 
+def _apply_predict_stubs() -> None:
+    """Patch datarobot_predict.deployment.predict so predict_realtime works with StubDeployment."""
+    try:
+        _dr_predict_deployment.predict = test_create_prediction_result
+    except ImportError:
+        pass
+
+
 def _apply_dr_client_stubs() -> None:
-    """
-    Replace the real DataRobot client with stubs
-    that areself-contained (patches token + client for stdio).
-    """
+    """Replace the real DataRobot client with stubs (patches token + client for stdio)."""
     stub_dr = test_create_dr_client()
     # get_api_client() does dr.client.get_client(); stub must have that for prompt registration.
     # dr.utils.pagination.unpaginate expects client.get(...).json()
@@ -149,12 +158,14 @@ def _apply_dr_client_stubs() -> None:
     tools_datarobot_client.DataRobotClient.get_client = lambda self: stub_dr  # type: ignore[method-assign]
     # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
+    _apply_predict_stubs()
 
 
 def main() -> None:
     """Run the integration test MCP server."""
     if os.environ.get("MCP_USE_CLIENT_STUBS", "true") == "true":
         _apply_dr_client_stubs()
+        _apply_predict_stubs()
     elif os.environ.get("MCP_SERVER_NAME") == "integration":
         _patch_get_sdk_client_for_stdio()
 

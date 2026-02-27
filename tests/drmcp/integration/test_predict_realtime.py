@@ -45,7 +45,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for time series regression with forecast point."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -84,7 +84,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for time series regression with historical date range."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -117,7 +117,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, multiseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for multiseries time series regression."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = multiseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "multiseries_regression_predict.csv"
 
@@ -155,7 +155,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for regular real-time prediction (non-time series specific)."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -186,7 +186,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for error handling with invalid parameters."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -237,7 +237,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for predict_realtime with explanation parameters."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -283,7 +283,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test combining time series forecasting with explanations."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -334,7 +334,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, classification_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for basic text classification prediction."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = classification_project["deployment_id"]
             predict_file = test_data_dir / "text_classification_predict.csv"
 
@@ -426,7 +426,7 @@ class TestMCPRealtimePredictToolsIntegration:
         """Integration test for predict_realtime with custom endpoint and
         passthrough_columns='all'.
         """
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
@@ -478,7 +478,7 @@ class TestMCPRealtimePredictToolsIntegration:
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
     ) -> None:
         """Integration test for predict_realtime with max_ngram_explanations parameter."""
-        async with integration_test_mcp_session(use_stub=False) as session:
+        async with integration_test_mcp_session() as session:
             deployment_id = timeseries_regression_project["deployment_id"]
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 

@@ -55,6 +55,8 @@ def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerPara
     server_script = str(script_dir / "integration_mcp_server.py")
     # Add src/ directory to Python path so datarobot_genai can be imported
     src_dir = script_dir.parent.parent.parent
+    stub_flag = str(use_stub).lower()
+    os.environ["MCP_USE_CLIENT_STUBS"] = stub_flag
 
     return StdioServerParameters(
         command="uv",
@@ -63,7 +65,7 @@ def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerPara
             "PYTHONPATH": str(src_dir),
             "MCP_SERVER_NAME": "integration",
             "MCP_SERVER_PORT": "8081",
-            "MCP_USE_CLIENT_STUBS": str(use_stub).lower(),
+            "MCP_USE_CLIENT_STUBS": stub_flag,
             **env,
         },
     )
