@@ -146,11 +146,12 @@ def expected_responses(intermediate_steps_ids, payloads):
         DRAgentEventResponse(events=[RunStartedEvent(run_id="", thread_id="")]),
         DRAgentEventResponse(events=[StepStartedEvent(step_name="tool_calling_agent")]),
         DRAgentEventResponse(
-            events=[TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"])],
+            events=[],
             model="vertex_ai/claude-3-5-haiku@20241022",
         ),
         DRAgentEventResponse(
             events=[
+                TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"]),
                 TextMessageContentEvent(
                     message_id=intermediate_steps_ids["agent_message_id"],
                     delta=payloads["agent_llm_text"],
@@ -666,6 +667,224 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
             ),
         ),
     ]
+
+
+def _make_llm_step(event_type, uuid, *, text=None, chunk=None, tool_calls=None):
+    """Build an LLM-related IntermediateStep."""
+    root_ancestry = InvocationNode(
+        function_id="root", function_name="root", parent_id=None, parent_name=None
+    )
+    payload_ns = SimpleNamespace(
+        text=text,
+        message=SimpleNamespace(tool_calls=tool_calls or []),
+    )
+    return IntermediateStep(
+        parent_id="root",
+        function_ancestry=root_ancestry,
+        payload=IntermediateStepPayload(
+            event_type=event_type,
+            name="test-model",
+            UUID=uuid,
+            data=StreamEventData(input=None, output=text, payload=payload_ns, chunk=chunk),
+        ),
+    )
+
+
+def _enter_primary_function(step_adaptor, function_name="test_function"):
+    """Enter primary function scope for LLM primary-path tests."""
+    root_ancestry = InvocationNode(
+        function_id="root", function_name="root", parent_id=None, parent_name=None
+    )
+    function_step = IntermediateStep(
+        parent_id="root",
+        function_ancestry=root_ancestry,
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.FUNCTION_START,
+            name=function_name,
+            UUID=str(uuid.uuid4()),
+            data=StreamEventData(input=None, output=None),
+        ),
+    )
+    step_adaptor.process(function_step)
+
+
+def test_llm_end_with_empty_text_skips_content_event(step_adaptor):
+    """LLM_END with empty text and no streamed tokens should emit no text events."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    # Prime the adaptor with LLM_START so seen_llm_new_token is reset
+    start_step = _make_llm_step(IntermediateStepType.LLM_START, msg_id)
+    step_adaptor.process(start_step)
+
+    # WHEN LLM_END arrives with empty text
+    end_step = _make_llm_step(IntermediateStepType.LLM_END, msg_id, text="")
+    response = step_adaptor.process(end_step)
+
+    # THEN no text events are emitted
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_llm_new_token_with_empty_chunk_skips_content_event(step_adaptor):
+    """LLM_NEW_TOKEN with an empty chunk should not emit text events."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    # Prime with LLM_START
+    start_step = _make_llm_step(IntermediateStepType.LLM_START, msg_id)
+    step_adaptor.process(start_step)
+
+    # WHEN LLM_NEW_TOKEN arrives with an empty chunk
+    token_step = _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="")
+    response = step_adaptor.process(token_step)
+
+    # THEN no text events are emitted
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_llm_end_after_only_empty_stream_chunks_emits_no_text_events(step_adaptor):
+    """LLM_END after only empty streamed chunks should emit no text events."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk=""))
+    response = step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_END, msg_id, text=""))
+
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_llm_new_token_with_non_empty_chunk_emits_content_event(step_adaptor):
+    """LLM_NEW_TOKEN with a non-empty chunk should emit a TextMessageContentEvent."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    start_step = _make_llm_step(IntermediateStepType.LLM_START, msg_id)
+    step_adaptor.process(start_step)
+
+    token_step = _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="hello")
+    response = step_adaptor.process(token_step)
+
+    assert response is not None
+    content_events = [e for e in (response.events or []) if isinstance(e, TextMessageContentEvent)]
+    assert len(content_events) == 1
+    assert content_events[0].delta == "hello"
+    assert content_events[0].message_id == msg_id
+
+
+def test_llm_end_with_text_and_no_new_tokens_emits_content_event(step_adaptor):
+    """LLM_END with non-empty text (and no prior LLM_NEW_TOKEN) should emit a content event."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    start_step = _make_llm_step(IntermediateStepType.LLM_START, msg_id)
+    step_adaptor.process(start_step)
+
+    end_step = _make_llm_step(IntermediateStepType.LLM_END, msg_id, text="response text")
+    response = step_adaptor.process(end_step)
+
+    assert response is not None
+    content_events = [e for e in (response.events or []) if isinstance(e, TextMessageContentEvent)]
+    assert len(content_events) == 1
+    assert content_events[0].delta == "response text"
+
+
+def test_llm_streaming_lifecycle_emits_single_start_and_end(step_adaptor):
+    """Streaming emits one start on first non-empty token and one end at LLM_END."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+
+    first = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="a")
+    )
+    second = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="b")
+    )
+    end = step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_END, msg_id, text="ab"))
+
+    assert first is not None and second is not None and end is not None
+    assert [type(e) for e in (first.events or [])] == [
+        TextMessageStartEvent,
+        TextMessageContentEvent,
+    ]
+    assert [type(e) for e in (second.events or [])] == [TextMessageContentEvent]
+    assert [type(e) for e in (end.events or [])] == [TextMessageEndEvent]
+
+
+def test_llm_end_ignores_payload_text_after_streaming(step_adaptor):
+    """LLM_END should not emit content when chunks were already streamed."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, msg_id, chunk="a"))
+    response = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_END, msg_id, text="final full text")
+    )
+
+    assert response is not None
+    event_types = [type(e) for e in (response.events or [])]
+    assert event_types == [TextMessageEndEvent]
+
+
+def test_llm_state_resets_between_turns(step_adaptor):
+    """A new LLM_START resets state so next stream emits start again."""
+    first_id = str(uuid.uuid4())
+    second_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, first_id))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, first_id, chunk="x"))
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_END, first_id, text="x"))
+
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, second_id))
+    response = step_adaptor.process(
+        _make_llm_step(IntermediateStepType.LLM_NEW_TOKEN, second_id, chunk="y")
+    )
+
+    assert response is not None
+    assert [type(e) for e in (response.events or [])] == [
+        TextMessageStartEvent,
+        TextMessageContentEvent,
+    ]
+
+
+def test_llm_start_emits_no_events(step_adaptor):
+    """LLM_START on primary function should emit no text events."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    response = step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_llm_end_with_missing_payload_text_emits_no_events(step_adaptor):
+    """LLM_END should be safe when payload text container is missing."""
+    msg_id = str(uuid.uuid4())
+
+    _enter_primary_function(step_adaptor)
+    step_adaptor.process(_make_llm_step(IntermediateStepType.LLM_START, msg_id))
+    step = _make_llm_step(IntermediateStepType.LLM_END, msg_id, text=None)
+    step.payload.data.payload = None
+    response = step_adaptor.process(step)
+
+    assert response is not None
+    assert (response.events or []) == []
+
+
+def test_handle_llm_primary_function_raises_for_unsupported_event(step_adaptor):
+    """Unsupported event types should raise from primary LLM handler."""
+    payload = _make_llm_step(IntermediateStepType.CUSTOM_START, str(uuid.uuid4())).payload
+
+    with pytest.raises(ValueError):
+        step_adaptor._handle_llm_primary_function(payload)
 
 
 def test_adaptor_processes_nested_reasoning_steps(

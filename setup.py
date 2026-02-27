@@ -33,7 +33,8 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
-    "ag-ui-protocol>=0.1.9,<0.2.0",
+    # Kepp the ag-ui-protocol version in sync with the version used in the fastapi_server
+    "ag-ui-protocol==0.1.13",
     "pyarrow==21.0.0",
 ]
 

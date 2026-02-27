@@ -130,24 +130,31 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         events = []
 
         if payload.event_type == IntermediateStepType.LLM_START:
-            events.append(TextMessageStartEvent(message_id=payload.UUID))
+            # Defer TextMessageStartEvent until we know the LLM produces text.
+            # This avoids empty message blocks for tool-calling LLMs.
             self.seen_llm_new_token = False
         # Text might be sent in both LLM_END and LLM_NEW_TOKEN steps
         # we need to send content only once
         elif payload.event_type == IntermediateStepType.LLM_END:
-            if not self.seen_llm_new_token:
-                events.append(
-                    TextMessageContentEvent(
-                        message_id=payload.UUID, delta=payload.data.payload.text
-                    )
-                )
-
-            events.append(TextMessageEndEvent(message_id=payload.UUID))
+            payload_text = getattr(getattr(payload.data, "payload", None), "text", None)
+            if not self.seen_llm_new_token and payload_text:
+                # LLM produced text without streaming — emit start + content + end together
+                events.append(TextMessageStartEvent(message_id=payload.UUID))
+                events.append(TextMessageContentEvent(message_id=payload.UUID, delta=payload_text))
+                events.append(TextMessageEndEvent(message_id=payload.UUID))
+            elif self.seen_llm_new_token:
+                # Do not emit payload.text here to avoid duplicating already streamed chunks.
+                events.append(TextMessageEndEvent(message_id=payload.UUID))
+            # If no tokens and no text (pure tool-call LLM), emit nothing.
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
-            self.seen_llm_new_token = True
-            events.append(
-                TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-            )
+            if payload.data.chunk:
+                if not self.seen_llm_new_token:
+                    # First non-empty token — now we know this LLM produces text, emit start.
+                    events.append(TextMessageStartEvent(message_id=payload.UUID))
+                self.seen_llm_new_token = True
+                events.append(
+                    TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
+                )
         else:
             raise self._unknown_step_type(payload)
 
