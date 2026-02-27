@@ -146,14 +146,15 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                 )
                 events.append(TextMessageEndEvent(message_id=payload.UUID))
             elif self.seen_llm_new_token:
+                # Do not emit payload.text here to avoid duplicating already streamed chunks.
                 events.append(TextMessageEndEvent(message_id=payload.UUID))
             # If no tokens and no text (pure tool-call LLM), emit nothing.
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
-            if not self.seen_llm_new_token:
-                # First token — now we know this LLM produces text, emit the start event
-                events.append(TextMessageStartEvent(message_id=payload.UUID))
-            self.seen_llm_new_token = True
             if payload.data.chunk:
+                if not self.seen_llm_new_token:
+                    # First non-empty token — now we know this LLM produces text, emit start.
+                    events.append(TextMessageStartEvent(message_id=payload.UUID))
+                self.seen_llm_new_token = True
                 events.append(
                     TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
                 )
