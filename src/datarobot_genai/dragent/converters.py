@@ -73,6 +73,8 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 
 # --- Output converters ---
 
+## --- NAT chat completions -> dragent AG-UI ---
+
 
 def convert_str_to_dragent_event_response(
     response: str,
@@ -80,12 +82,9 @@ def convert_str_to_dragent_event_response(
     return DRAgentEventResponse(
         delta=response,
         usage_metrics=default_usage_metrics(),
+        pipeline_interactions=None,
         events=[TextMessageChunkEvent(delta=response)],
     )
-
-
-def convert_event_response_to_str(response: DRAgentEventResponse) -> str:
-    return response.get_delta()
 
 
 # --- Various converters ---

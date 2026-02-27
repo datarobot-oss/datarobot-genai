@@ -95,9 +95,6 @@ fixable = [
     "D104", # Missing docstring in public package
     "F401"  # Imported but unused
 ]
-"**/register.py" = [
-    "PLC0415"  # Deferred imports inside NAT register functions (intentional pattern)
-]
 
 
 [tool.ruff.lint.isort]

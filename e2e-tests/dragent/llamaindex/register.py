@@ -33,13 +33,13 @@ class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
     framework_wrappers=[LLMFrameworkEnum.LLAMA_INDEX],
 )
 async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> AsyncGenerator:
-    from ag_ui.core import Event
-    from ag_ui.core import RunAgentInput
-    from datarobot_genai.core.agents import default_usage_metrics
-    from datarobot_genai.dragent.response import DRAgentEventResponse
-    from nat.builder.function_info import FunctionInfo
+    from ag_ui.core import Event  # noqa: PLC0415
+    from ag_ui.core import RunAgentInput  # noqa: PLC0415
+    from datarobot_genai.core.agents import default_usage_metrics  # noqa: PLC0415
+    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
+    from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
-    from dragent.llamaindex.myagent import MyAgent
+    from dragent.llamaindex.myagent import MyAgent  # noqa: PLC0415
 
     llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
 
