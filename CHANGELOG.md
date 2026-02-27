@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.5.16
+## 0.6.0
 - Unify `InvokeReturn` type from `str | Event` to `Event` across all agent implementations
 - All agents (CrewAI, LangGraph, LlamaIndex, NAT) now emit AG-UI lifecycle events
 - Remove `str` code path from streaming/completions layer
