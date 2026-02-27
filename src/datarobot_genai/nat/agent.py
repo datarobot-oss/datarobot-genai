@@ -15,10 +15,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from nat.builder.context import Context
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
@@ -161,8 +167,7 @@ class NatAgent(BaseAgent[None]):
 
         Returns
         -------
-            For streaming requests, returns a generator yielding tuples of (response_text,
-            pipeline_interactions, usage_metrics).
+            Returns a generator yielding tuples of (event, pipeline_interactions, usage_metrics).
 
         """
         # Build the user prompt from the template
@@ -186,11 +191,20 @@ class NatAgent(BaseAgent[None]):
         server_config = mcp_config.server_config
         headers = server_config["headers"] if server_config else None
 
-        default_usage_metrics: UsageMetrics = {
+        thread_id = run_agent_input.thread_id
+        run_id = run_agent_input.run_id
+        zero_metrics: UsageMetrics = {
             "completion_tokens": 0,
             "prompt_tokens": 0,
             "total_tokens": 0,
         }
+
+        # Partial AG-UI: workflow lifecycle + text message events
+        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, zero_metrics
+
+        message_id = str(uuid.uuid4())
+        text_started = False
+
         async with load_workflow(self.workflow_path, headers=headers) as workflow:
             async with workflow.run(chat_request) as runner:
                 intermediate_future = pull_intermediate_structured()
@@ -200,11 +214,22 @@ class NatAgent(BaseAgent[None]):
                     else:
                         result_text = str(result)
 
-                    yield (
-                        result_text,
-                        None,
-                        default_usage_metrics,
-                    )
+                    if result_text:
+                        if not text_started:
+                            yield (
+                                TextMessageStartEvent(message_id=message_id),
+                                None,
+                                zero_metrics,
+                            )
+                            text_started = True
+                        yield (
+                            TextMessageContentEvent(message_id=message_id, delta=result_text),
+                            None,
+                            zero_metrics,
+                        )
+
+                if text_started:
+                    yield TextMessageEndEvent(message_id=message_id), None, zero_metrics
 
                 steps = await intermediate_future
                 llm_end_steps = [
@@ -223,7 +248,11 @@ class NatAgent(BaseAgent[None]):
                         usage_metrics["completion_tokens"] += token_usage.completion_tokens
 
                 pipeline_interactions = self.create_pipeline_interactions_from_steps(steps)
-                yield "", pipeline_interactions, usage_metrics
+                yield (
+                    RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+                    pipeline_interactions,
+                    usage_metrics,
+                )
 
     async def run_nat_workflow(
         self, workflow_path: StrPath, chat_request: ChatRequest, headers: dict[str, str] | None

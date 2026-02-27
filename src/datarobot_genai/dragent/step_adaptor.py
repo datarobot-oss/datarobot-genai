@@ -103,9 +103,24 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             }
         return usage_info.token_usage.model_dump()
 
+    @staticmethod
+    def _extract_payload_text(payload: IntermediateStepPayload) -> str:
+        """Extract text from an LLM_END payload across different frameworks.
+
+        LangChain payloads expose ``.text`` (a ``TextAccessor``), while
+        LlamaIndex ``ChatResponse`` objects use ``.message.content``.
+        Always returns a plain ``str``.
+        """
+        data = payload.data.payload
+        if hasattr(data, "text"):
+            return str(data.text)
+        if hasattr(data, "message"):
+            return str(getattr(data.message, "content", data.message))
+        return str(data)
+
     def _unknown_step_type(self, payload: IntermediateStepPayload) -> Exception:
         return ValueError(
-            f"Unsupported intermediate step type: {payload.event_type}, payload: {{payload}}"
+            f"Unsupported intermediate step type: {payload.event_type}, payload: {payload}"
         )
 
     def _handle_llm(
@@ -136,18 +151,17 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # we need to send content only once
         elif payload.event_type == IntermediateStepType.LLM_END:
             if not self.seen_llm_new_token:
-                events.append(
-                    TextMessageContentEvent(
-                        message_id=payload.UUID, delta=payload.data.payload.text
-                    )
-                )
+                text = self._extract_payload_text(payload)
+                if text:
+                    events.append(TextMessageContentEvent(message_id=payload.UUID, delta=text))
 
             events.append(TextMessageEndEvent(message_id=payload.UUID))
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
             self.seen_llm_new_token = True
-            events.append(
-                TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-            )
+            if payload.data.chunk != "":
+                events.append(
+                    TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
+                )
         else:
             raise self._unknown_step_type(payload)
 
@@ -161,18 +175,17 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             self.seen_llm_new_token = False
         elif payload.event_type == IntermediateStepType.LLM_END:
             if not self.seen_llm_new_token:
-                events.append(
-                    ReasoningMessageContentEvent(
-                        message_id=payload.UUID, delta=payload.data.payload.text
-                    )
-                )
+                text = self._extract_payload_text(payload)
+                if text:
+                    events.append(ReasoningMessageContentEvent(message_id=payload.UUID, delta=text))
             events.append(ReasoningMessageEndEvent(message_id=payload.UUID))
             events.append(ReasoningEndEvent(message_id=payload.UUID))
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
             self.seen_llm_new_token = True
-            events.append(
-                ReasoningMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-            )
+            if payload.data.chunk != "":
+                events.append(
+                    ReasoningMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
+                )
         else:
             raise self._unknown_step_type(payload)
 

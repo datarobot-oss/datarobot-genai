@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from ag_ui.core import EventType
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -43,14 +45,19 @@ def test_to_custom_model_chat_response_basic() -> None:
 
 
 def test_to_custom_model_streaming_response_sequence() -> None:
-    async def gen() -> AsyncGenerator[tuple[str, Any | None, dict[str, int]], None]:
-        yield ("Hello ", None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
-        yield ("World", None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
-        # final: no text, but returns last usage + last pipeline interactions when present
+    zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    final_usage = {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+
+    async def gen() -> AsyncGenerator[tuple[Any, Any | None, dict[str, int]], None]:
+        yield (RunStartedEvent(thread_id="t", run_id="r"), None, zero_usage)
+        yield (TextMessageStartEvent(message_id="1", role="assistant"), None, zero_usage)
+        yield (TextMessageContentEvent(message_id="1", delta="Hello "), None, zero_usage)
+        yield (TextMessageContentEvent(message_id="1", delta="World"), None, zero_usage)
+        yield (TextMessageEndEvent(message_id="1"), None, zero_usage)
         yield (
-            "",
+            RunFinishedEvent(thread_id="t", run_id="r"),
             type("X", (), {"model_dump_json": lambda self: "{}"})(),
-            {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+            final_usage,
         )
 
     with ThreadPoolExecutor(1) as thread_pool_executor:
@@ -62,15 +69,17 @@ def test_to_custom_model_streaming_response_sequence() -> None:
         )
         chunks = list(response_generator)
     assert isinstance(chunks[0], CustomModelStreamingResponse)
-    assert chunks[0].choices[0].delta.content == "Hello "
-    assert chunks[0].choices[0].finish_reason is None
+    # RunStartedEvent and RunFinishedEvent are skipped — first chunk is TextMessageStart
+    content_chunks = [c for c in chunks if c.choices[0].delta.content]
+    assert content_chunks[0].choices[0].delta.content == "Hello "
+    assert content_chunks[0].choices[0].finish_reason is None
     assert chunks[-1].choices[0].finish_reason == "stop"
     assert chunks[-1].usage is not None
     assert chunks[-1].usage.total_tokens == 3
 
 
 def test_to_custom_model_streaming_response_sequence_with_event() -> None:
-    async def gen() -> AsyncGenerator[tuple[str, Any | None, dict[str, int]], None]:
+    async def gen() -> AsyncGenerator[tuple[Any, Any | None, dict[str, int]], None]:
         yield (
             TextMessageStartEvent(
                 type=EventType.TEXT_MESSAGE_START, message_id="1", role="assistant"
@@ -90,9 +99,9 @@ def test_to_custom_model_streaming_response_sequence_with_event() -> None:
             None,
             {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         )
-        # final: no text, but returns last usage + last pipeline interactions when present
+        # final: RunFinishedEvent with last usage + pipeline interactions
         yield (
-            "",
+            RunFinishedEvent(thread_id="t", run_id="r"),
             type("X", (), {"model_dump_json": lambda self: "{}"})(),
             {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         )
