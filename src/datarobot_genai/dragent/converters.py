@@ -99,13 +99,18 @@ async def invoke_agent_to_dragent_event_response(
     """Invoke an agent and collect its event stream into a DRAgentEventResponse."""
     events: list[Event] = []
     metrics = default_usage_metrics()
-    async for event, _, iteration_metrics in agent.invoke(input_message):
+    pipeline_interactions = None
+
+    async for event, iteration_interactions, iteration_metrics in agent.invoke(input_message):
         metrics = iteration_metrics
+        if iteration_interactions is not None:
+            pipeline_interactions = iteration_interactions
         events.append(event)
 
     return DRAgentEventResponse(
         events=events,
         usage_metrics=metrics,
+        pipeline_interactions=pipeline_interactions,
     )
 
 
