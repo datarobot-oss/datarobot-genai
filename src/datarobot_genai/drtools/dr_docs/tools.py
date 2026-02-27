@@ -22,7 +22,7 @@ the public documentation site using a TF-IDF search over page titles and
 body text.
 
 For use without an MCP server, import the tool functions directly from
-:mod:`datarobot_genai.drmcp.tools.dr_docs.local_tools` (or via the
+:mod:`datarobot_genai.drtools.dr_docs.local_tools` (or via the
 package ``__init__``).
 """
 
@@ -32,12 +32,12 @@ from typing import Annotated
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS
-from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS_DEFAULT
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import (
+from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS
+from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.dr_docs.local_tools import (
     fetch_datarobot_doc_page as _fetch_datarobot_doc_page,
 )
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import (
+from datarobot_genai.drtools.dr_docs.local_tools import (
     search_datarobot_agentic_docs as _search_datarobot_agentic_docs,
 )
 

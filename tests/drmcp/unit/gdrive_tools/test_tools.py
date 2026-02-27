@@ -18,22 +18,22 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
-from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveError
-from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFile
-from datarobot_genai.drmcp.tools.clients.gdrive import GoogleDriveFileContent
-from datarobot_genai.drmcp.tools.clients.gdrive import PaginatedResult
-from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_create_file
-from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_find_contents
-from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_manage_access
-from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_read_content
-from datarobot_genai.drmcp.tools.gdrive.tools import gdrive_update_metadata
+from datarobot_genai.drtools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
+from datarobot_genai.drtools.clients.gdrive import GoogleDriveError
+from datarobot_genai.drtools.clients.gdrive import GoogleDriveFile
+from datarobot_genai.drtools.clients.gdrive import GoogleDriveFileContent
+from datarobot_genai.drtools.clients.gdrive import PaginatedResult
+from datarobot_genai.drtools.gdrive.tools import gdrive_create_file
+from datarobot_genai.drtools.gdrive.tools import gdrive_find_contents
+from datarobot_genai.drtools.gdrive.tools import gdrive_manage_access
+from datarobot_genai.drtools.gdrive.tools import gdrive_read_content
+from datarobot_genai.drtools.gdrive.tools import gdrive_update_metadata
 
 
 @pytest.fixture
 def get_gdrive_access_token_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.gdrive.tools.get_gdrive_access_token",
+        "datarobot_genai.drtools.gdrive.tools.get_gdrive_access_token",
         return_value="token",
     ):
         yield
@@ -56,7 +56,7 @@ def gdrive_next_page_token() -> str:
 def gdrive_client_list_files_with_next_page_mock(
     gdrive_files: list[GoogleDriveFile], gdrive_next_page_token: str
 ) -> Iterator[PaginatedResult]:
-    with patch("datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.list_files") as mock:
+    with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.list_files") as mock:
         response = PaginatedResult(files=gdrive_files, next_page_token=gdrive_next_page_token)
         mock.return_value = response
         yield response
@@ -66,7 +66,7 @@ def gdrive_client_list_files_with_next_page_mock(
 def gdrive_client_list_files_without_next_page_mock(
     gdrive_files: list[GoogleDriveFile],
 ) -> Iterator[PaginatedResult]:
-    with patch("datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.list_files") as mock:
+    with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.list_files") as mock:
         response = PaginatedResult(files=gdrive_files, next_page_token=None)
         mock.return_value = response
         yield response
@@ -136,7 +136,7 @@ class TestGdriveReadContent:
         self, gdrive_file_content: GoogleDriveFileContent
     ) -> Iterator[GoogleDriveFileContent]:
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.read_file_content"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.return_value = gdrive_file_content
             yield gdrive_file_content
@@ -181,7 +181,7 @@ class TestGdriveReadContent:
         )
 
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.read_file_content"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.return_value = csv_content
             tool_result = await gdrive_read_content(file_id="sheet123")
@@ -207,7 +207,7 @@ class TestGdriveReadContent:
         )
 
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.read_file_content"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.return_value = text_content
             tool_result = await gdrive_read_content(file_id="txt123")
@@ -241,7 +241,7 @@ class TestGdriveReadContent:
     ) -> None:
         """Gdrive read content -- file not found raises error."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.read_file_content"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.side_effect = GoogleDriveError("File with ID 'nonexistent' not found.")
             with pytest.raises(ToolError, match="not found"):
@@ -254,7 +254,7 @@ class TestGdriveReadContent:
     ) -> None:
         """Gdrive read content -- binary file raises error."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.read_file_content"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.side_effect = GoogleDriveError(
                 "Binary files are not supported for reading. "
@@ -301,9 +301,7 @@ class TestGdriveCreateFile:
         created_file: GoogleDriveFile,
     ) -> None:
         """Gdrive create file -- happy path."""
-        with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
-        ) as mock:
+        with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.create_file") as mock:
             mock.return_value = created_file
             tool_result = await gdrive_create_file(name="My New File.txt", mime_type="text/plain")
 
@@ -323,9 +321,7 @@ class TestGdriveCreateFile:
         created_file: GoogleDriveFile,
     ) -> None:
         """Gdrive create file -- with initial content."""
-        with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
-        ) as mock:
+        with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.create_file") as mock:
             mock.return_value = created_file
             tool_result = await gdrive_create_file(
                 name="My New File.txt", mime_type="text/plain", initial_content="Hello, World!"
@@ -342,9 +338,7 @@ class TestGdriveCreateFile:
         created_google_doc: GoogleDriveFile,
     ) -> None:
         """Gdrive create file -- Google Doc with content."""
-        with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
-        ) as mock:
+        with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.create_file") as mock:
             mock.return_value = created_google_doc
             tool_result = await gdrive_create_file(
                 name="My New Document",
@@ -363,9 +357,7 @@ class TestGdriveCreateFile:
         created_folder: GoogleDriveFile,
     ) -> None:
         """Gdrive create file -- folder creation."""
-        with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
-        ) as mock:
+        with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.create_file") as mock:
             mock.return_value = created_folder
             tool_result = await gdrive_create_file(
                 name="My New Folder", mime_type=GOOGLE_DRIVE_FOLDER_MIME
@@ -408,9 +400,7 @@ class TestGdriveCreateFile:
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive create file -- GoogleDriveError is propagated."""
-        with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.create_file"
-        ) as mock:
+        with patch("datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.create_file") as mock:
             mock.side_effect = GoogleDriveError("Parent folder not found.")
             with pytest.raises(ToolError, match="Parent folder not found"):
                 await gdrive_create_file(
@@ -426,7 +416,7 @@ class TestGdriveManageAccess:
         """Gdrive add role -- happy path."""
         new_permission_id = "dummy_permission_id"
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.manage_access"
         ) as mock:
             mock.return_value = new_permission_id
             tool_result = await gdrive_manage_access(
@@ -443,7 +433,7 @@ class TestGdriveManageAccess:
     async def test_gdrive_update_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
         """Gdrive update role -- happy path."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.manage_access"
         ) as mock:
             permission_id = "dummy_permission_id"
             mock.return_value = permission_id
@@ -462,7 +452,7 @@ class TestGdriveManageAccess:
     async def test_gdrive_remove_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
         """Gdrive remove role -- happy path."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+            "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.manage_access"
         ) as mock:
             permission_id = "dummy_permission_id"
             mock.return_value = permission_id
@@ -530,7 +520,7 @@ class TestGdriveManageAccess:
         error_msg = "Dummy Drive API Error."
         with pytest.raises(ToolError, match=error_msg):
             with patch(
-                "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.manage_access"
+                "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.manage_access"
             ) as mock:
                 mock.side_effect = GoogleDriveError(error_msg)
                 await gdrive_manage_access(
@@ -544,7 +534,7 @@ class TestGdriveManageAccess:
 @pytest.fixture
 def gdrive_client_update_file_metadata_mock() -> Iterator[GoogleDriveFile]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.update_file_metadata"
+        "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.update_file_metadata"
     ) as mock:
         updated_file = GoogleDriveFile(
             id="file_123",
@@ -560,7 +550,7 @@ def gdrive_client_update_file_metadata_mock() -> Iterator[GoogleDriveFile]:
 @pytest.fixture
 def gdrive_client_update_file_metadata_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.gdrive.GoogleDriveClient.update_file_metadata"
+        "datarobot_genai.drtools.clients.gdrive.GoogleDriveClient.update_file_metadata"
     ) as mock:
         mock.side_effect = GoogleDriveError("File not found.")
         yield

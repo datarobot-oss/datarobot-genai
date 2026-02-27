@@ -21,9 +21,9 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.atlassian import get_atlassian_access_token
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceClient
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
+from datarobot_genai.drtools.clients.atlassian import get_atlassian_access_token
+from datarobot_genai.drtools.clients.confluence import ConfluenceClient
+from datarobot_genai.drtools.clients.confluence import ConfluenceError
 
 logger = logging.getLogger(__name__)
 

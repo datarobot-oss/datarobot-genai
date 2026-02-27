@@ -27,9 +27,9 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp.core.constants import MAX_INLINE_SIZE
-from datarobot_genai.drmcp.tools.predictive import predict_realtime
-from datarobot_genai.drmcp.tools.predictive.predict_realtime import make_output_settings
-from datarobot_genai.drmcp.tools.predictive.predict_realtime import predict_by_ai_catalog_rt
+from datarobot_genai.drtools.predictive import predict_realtime
+from datarobot_genai.drtools.predictive.predict_realtime import make_output_settings
+from datarobot_genai.drtools.predictive.predict_realtime import predict_by_ai_catalog_rt
 
 THRESHOLD_HIGH = 0.8
 THRESHOLD_LOW = 0.2
@@ -45,20 +45,16 @@ def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
     mock_dr_client_instance.get_client.return_value = mock_client
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient",
+            "datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient",
             return_value=mock_dr_client_instance,
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv"
-        ) as mock_read_csv,
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict"
-        ) as mock_dr_predict,
+        patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv") as mock_read_csv,
+        patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict") as mock_dr_predict,
         patch("datarobot_genai.drmcp.core.utils.boto3.client") as mock_boto3_client,
         patch(
             "datarobot_genai.drmcp.core.utils.generate_presigned_url",
@@ -711,8 +707,8 @@ async def test_predict_realtime_dataset_takes_precedence(
 class TestMakeOutputSettings:
     """Test cases for make_output_settings function."""
 
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_s3_bucket_info")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.uuid.uuid4")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.get_s3_bucket_info")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.uuid.uuid4")
     def test_make_output_settings_success(self, mock_uuid4, mock_get_s3_bucket_info):
         """Test successful creation of output settings."""
         mock_uuid4.return_value = "test-uuid-123"
@@ -724,8 +720,8 @@ class TestMakeOutputSettings:
         assert result.key == "test-prefix/test-uuid-123.csv"
         mock_get_s3_bucket_info.assert_called_once()
 
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_s3_bucket_info")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.uuid.uuid4")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.get_s3_bucket_info")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.uuid.uuid4")
     def test_make_output_settings_with_empty_prefix(self, mock_uuid4, mock_get_s3_bucket_info):
         """Test make_output_settings with empty prefix."""
         mock_uuid4.return_value = "test-uuid-456"
@@ -736,8 +732,8 @@ class TestMakeOutputSettings:
         assert result.bucket == "test-bucket"
         assert result.key == "test-uuid-456.csv"
 
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.get_s3_bucket_info")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.uuid.uuid4")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.get_s3_bucket_info")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.uuid.uuid4")
     def test_make_output_settings_with_none_prefix(self, mock_uuid4, mock_get_s3_bucket_info):
         """Test make_output_settings with None prefix."""
         mock_uuid4.return_value = "test-uuid-789"
@@ -753,12 +749,12 @@ class TestPredictByAiCatalogRt:
     """Test cases for predict_by_ai_catalog_rt function."""
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
-        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
         new_callable=AsyncMock,
         return_value="token",
     )
@@ -809,13 +805,13 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
-        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
         new_callable=AsyncMock,
         return_value="token",
     )
@@ -869,13 +865,13 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
-        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
         new_callable=AsyncMock,
         return_value="token",
     )
@@ -930,13 +926,13 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
-        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
         new_callable=AsyncMock,
         return_value="token",
     )
@@ -992,13 +988,13 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["data"] == "test_data"
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.predictions_result_response")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.make_output_settings")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.pd.read_csv")
-    @patch("datarobot_genai.drmcp.tools.predictive.predict_realtime.DataRobotClient")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
-        "datarobot_genai.drmcp.tools.predictive.predict_realtime.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
         new_callable=AsyncMock,
         return_value="token",
     )

@@ -21,12 +21,12 @@ from typing import Literal
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
-from datarobot_genai.drmcp.tools.clients.tavily import MAX_CHUNKS_PER_SOURCE
-from datarobot_genai.drmcp.tools.clients.tavily import MAX_RESULTS
-from datarobot_genai.drmcp.tools.clients.tavily import MAX_RESULTS_DEFAULT
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyClient
-from datarobot_genai.drmcp.tools.clients.tavily import get_tavily_access_token
+from datarobot_genai.drtools.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
+from datarobot_genai.drtools.clients.tavily import MAX_CHUNKS_PER_SOURCE
+from datarobot_genai.drtools.clients.tavily import MAX_RESULTS
+from datarobot_genai.drtools.clients.tavily import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.clients.tavily import TavilyClient
+from datarobot_genai.drtools.clients.tavily import get_tavily_access_token
 
 logger = logging.getLogger(__name__)
 

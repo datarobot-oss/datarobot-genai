@@ -19,18 +19,18 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.perplexity import PerplexityError
-from datarobot_genai.drmcp.tools.clients.perplexity import PerplexitySearchResult
-from datarobot_genai.drmcp.tools.clients.perplexity import PerplexityThinkResult
-from datarobot_genai.drmcp.tools.perplexity.tools import perplexity_search
-from datarobot_genai.drmcp.tools.perplexity.tools import perplexity_think
+from datarobot_genai.drtools.clients.perplexity import PerplexityError
+from datarobot_genai.drtools.clients.perplexity import PerplexitySearchResult
+from datarobot_genai.drtools.clients.perplexity import PerplexityThinkResult
+from datarobot_genai.drtools.perplexity.tools import perplexity_search
+from datarobot_genai.drtools.perplexity.tools import perplexity_think
 
 
 @pytest.fixture
 def get_perplexity_access_token_mock() -> Iterator[None]:
     """Mock Perplexity access token retrieval."""
     with patch(
-        "datarobot_genai.drmcp.tools.perplexity.tools.get_perplexity_access_token",
+        "datarobot_genai.drtools.perplexity.tools.get_perplexity_access_token",
         return_value="test_token",
     ):
         yield
@@ -79,9 +79,7 @@ def mock_client_search_success(
     mock_perplexity_search_results: list[PerplexitySearchResult],
 ) -> Iterator[AsyncMock]:
     """Mock successful client search."""
-    with patch(
-        "datarobot_genai.drmcp.tools.perplexity.tools.PerplexityClient"
-    ) as mock_client_class:
+    with patch("datarobot_genai.drtools.perplexity.tools.PerplexityClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -95,9 +93,7 @@ def mock_client_think_success(
     mock_perplexity_think_results: PerplexityThinkResult,
 ) -> Iterator[AsyncMock]:
     """Mock successful client think."""
-    with patch(
-        "datarobot_genai.drmcp.tools.perplexity.tools.PerplexityClient"
-    ) as mock_client_class:
+    with patch("datarobot_genai.drtools.perplexity.tools.PerplexityClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -218,7 +214,7 @@ class TestPerplexitySearch:
     async def test_search_oauth_error(self) -> None:
         """Test search when OAuth token retrieval fails."""
         with patch(
-            "datarobot_genai.drmcp.tools.perplexity.tools.get_perplexity_access_token",
+            "datarobot_genai.drtools.perplexity.tools.get_perplexity_access_token",
             return_value=ToolError("OAuth error"),
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -232,7 +228,7 @@ class TestPerplexitySearch:
     ) -> None:
         """Test search when client raises error."""
         with patch(
-            "datarobot_genai.drmcp.tools.perplexity.tools.PerplexityClient"
+            "datarobot_genai.drtools.perplexity.tools.PerplexityClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -251,7 +247,7 @@ class TestPerplexitySearch:
     ) -> None:
         """Test search when unexpected error occurs."""
         with patch(
-            "datarobot_genai.drmcp.tools.perplexity.tools.PerplexityClient"
+            "datarobot_genai.drtools.perplexity.tools.PerplexityClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -304,7 +300,7 @@ class TestPerplexityThink:
     async def test_think_oauth_error(self) -> None:
         """Test think when OAuth token retrieval fails."""
         with patch(
-            "datarobot_genai.drmcp.tools.perplexity.tools.get_perplexity_access_token",
+            "datarobot_genai.drtools.perplexity.tools.get_perplexity_access_token",
             return_value=ToolError("OAuth error"),
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -318,7 +314,7 @@ class TestPerplexityThink:
     ) -> None:
         """Test think when client raises error."""
         with patch(
-            "datarobot_genai.drmcp.tools.perplexity.tools.PerplexityClient"
+            "datarobot_genai.drtools.perplexity.tools.PerplexityClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -337,7 +333,7 @@ class TestPerplexityThink:
     ) -> None:
         """Test think when unexpected error occurs."""
         with patch(
-            "datarobot_genai.drmcp.tools.perplexity.tools.PerplexityClient"
+            "datarobot_genai.drtools.perplexity.tools.PerplexityClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)

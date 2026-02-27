@@ -20,8 +20,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.atlassian import get_atlassian_access_token
-from datarobot_genai.drmcp.tools.clients.jira import JiraClient
+from datarobot_genai.drtools.clients.atlassian import get_atlassian_access_token
+from datarobot_genai.drtools.clients.jira import JiraClient
 
 logger = logging.getLogger(__name__)
 

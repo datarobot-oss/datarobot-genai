@@ -18,11 +18,11 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceClient
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
-from datarobot_genai.drmcp.tools.clients.confluence import ContentSearchResult
+from datarobot_genai.drtools.clients.confluence import ConfluenceClient
+from datarobot_genai.drtools.clients.confluence import ConfluenceComment
+from datarobot_genai.drtools.clients.confluence import ConfluenceError
+from datarobot_genai.drtools.clients.confluence import ConfluencePage
+from datarobot_genai.drtools.clients.confluence import ContentSearchResult
 
 
 def make_response(
@@ -62,7 +62,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test successfully getting a page by ID."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -86,7 +86,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test getting a page that doesn't exist."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -107,7 +107,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test successfully getting a page by title."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -129,7 +129,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test getting a page by title that doesn't exist."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -154,7 +154,7 @@ class TestConfluenceClient:
             "body": {"storage": {"value": "<p>New Content</p>"}},
         }
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -187,7 +187,7 @@ class TestConfluenceClient:
             "body": {"storage": {"value": "<p>Child Content</p>"}},
         }
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -217,7 +217,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test page creation when parent page doesn't exist."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -250,7 +250,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test page creation when space doesn't exist."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -280,7 +280,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test page creation when title already exists in space."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -312,7 +312,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test page creation when user lacks permissions."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -342,7 +342,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test page creation with invalid storage format content."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -372,7 +372,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test page creation when rate limited."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -427,7 +427,7 @@ class TestConfluenceClient:
             "body": {"storage": {"value": "<p>Test comment</p>"}},
         }
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -460,7 +460,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test comment addition when page doesn't exist."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -491,7 +491,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test comment addition when user lacks permissions."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -520,7 +520,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test comment addition with invalid storage format content."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -549,7 +549,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test comment addition when rate limited."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -636,7 +636,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test successfully searching Confluence content."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -671,7 +671,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test searching Confluence content with no results."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -720,7 +720,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test search with invalid CQL query raises ConfluenceError."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -742,7 +742,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test search when rate limited raises ConfluenceError."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -762,7 +762,7 @@ class TestConfluenceClient:
     ) -> None:
         """Test search when forbidden raises ConfluenceError."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -794,7 +794,7 @@ class TestConfluenceClient:
             "version": {"number": 6},
         }
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -832,7 +832,7 @@ class TestConfluenceClient:
     async def test_update_page_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test page update when page doesn't exist (404 during title fetch)."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -871,7 +871,7 @@ class TestConfluenceClient:
             "version": {"number": 5},
         }
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -920,7 +920,7 @@ class TestConfluenceClient:
             "version": {"number": 5},
         }
         with patch(
-            "datarobot_genai.drmcp.tools.clients.confluence.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.confluence.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):

@@ -15,8 +15,8 @@
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-from datarobot_genai.drmcp.tools.dr_docs.tools import fetch_datarobot_doc_page
-from datarobot_genai.drmcp.tools.dr_docs.tools import search_datarobot_agentic_docs
+from datarobot_genai.drtools.dr_docs.tools import fetch_datarobot_doc_page
+from datarobot_genai.drtools.dr_docs.tools import search_datarobot_agentic_docs
 
 
 class TestSearchDatarobotAgenticDocs:
@@ -38,7 +38,7 @@ class TestSearchDatarobotAgenticDocs:
         ]
 
         with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.local_tools.search_docs",
+            "datarobot_genai.drtools.dr_docs.local_tools.search_docs",
             new_callable=AsyncMock,
         ) as mock_search:
             mock_search.return_value = mock_results
@@ -66,7 +66,7 @@ class TestSearchDatarobotAgenticDocs:
     async def test_search_no_results(self) -> None:
         """Test that search returns no_results status when no matches found."""
         with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.local_tools.search_docs",
+            "datarobot_genai.drtools.dr_docs.local_tools.search_docs",
             new_callable=AsyncMock,
         ) as mock_search:
             mock_search.return_value = []
@@ -92,7 +92,7 @@ class TestFetchDatarobotDocPage:
         }
 
         with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.local_tools.fetch_page_content",
+            "datarobot_genai.drtools.dr_docs.local_tools.fetch_page_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_content
@@ -119,7 +119,7 @@ class TestFetchDatarobotDocPage:
         }
 
         with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.local_tools.fetch_page_content",
+            "datarobot_genai.drtools.dr_docs.local_tools.fetch_page_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_error
@@ -140,7 +140,7 @@ class TestFetchDatarobotDocPage:
         }
 
         with patch(
-            "datarobot_genai.drmcp.tools.dr_docs.local_tools.fetch_page_content",
+            "datarobot_genai.drtools.dr_docs.local_tools.fetch_page_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_error

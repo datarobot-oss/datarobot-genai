@@ -19,7 +19,7 @@ Provides standalone tool functions that can be wrapped as LangChain or other fra
 
 Example use with LangGraph::
 
-    from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
+    from datarobot_genai.drtools.dr_docs import search_datarobot_agentic_docs
     from langchain_core.tools import tool
     search_tool = tool(search_datarobot_agentic_docs)
     agent = create_agent(model, tools=[search_tool])
@@ -35,10 +35,10 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS
-from datarobot_genai.drmcp.tools.clients.dr_docs import MAX_RESULTS_DEFAULT
-from datarobot_genai.drmcp.tools.clients.dr_docs import fetch_page_content
-from datarobot_genai.drmcp.tools.clients.dr_docs import search_docs
+from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS
+from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.clients.dr_docs import fetch_page_content
+from datarobot_genai.drtools.clients.dr_docs import search_docs
 
 logger = logging.getLogger(__name__)
 

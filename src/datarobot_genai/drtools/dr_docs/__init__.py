@@ -18,7 +18,7 @@ Exports tool functions that can be wrapped as LangChain or other framework (e.g.
 
 Example use with LangGraph::
 
-    from datarobot_genai.drmcp.tools.dr_docs import search_datarobot_agentic_docs
+    from datarobot_genai.drtools.dr_docs import search_datarobot_agentic_docs
     from langchain_core.tools import tool
     search_tool = tool(search_datarobot_agentic_docs)
     agent = create_agent(model, tools=[search_tool])
@@ -30,8 +30,8 @@ Example use with LangGraph::
     })
 """
 
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import fetch_datarobot_doc_page
-from datarobot_genai.drmcp.tools.dr_docs.local_tools import search_datarobot_agentic_docs
+from datarobot_genai.drtools.dr_docs.local_tools import fetch_datarobot_doc_page
+from datarobot_genai.drtools.dr_docs.local_tools import search_datarobot_agentic_docs
 
 __all__ = [
     "fetch_datarobot_doc_page",

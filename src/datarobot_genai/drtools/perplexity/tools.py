@@ -22,14 +22,14 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.tools.clients.perplexity import MAX_QUERIES
-from datarobot_genai.drmcp.tools.clients.perplexity import MAX_RESULTS
-from datarobot_genai.drmcp.tools.clients.perplexity import MAX_RESULTS_DEFAULT
-from datarobot_genai.drmcp.tools.clients.perplexity import MAX_SEARCH_DOMAIN_FILTER
-from datarobot_genai.drmcp.tools.clients.perplexity import MAX_TOKENS_PER_PAGE
-from datarobot_genai.drmcp.tools.clients.perplexity import MAX_TOKENS_PER_PAGE_DEFAULT
-from datarobot_genai.drmcp.tools.clients.perplexity import PerplexityClient
-from datarobot_genai.drmcp.tools.clients.perplexity import get_perplexity_access_token
+from datarobot_genai.drtools.clients.perplexity import MAX_QUERIES
+from datarobot_genai.drtools.clients.perplexity import MAX_RESULTS
+from datarobot_genai.drtools.clients.perplexity import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.clients.perplexity import MAX_SEARCH_DOMAIN_FILTER
+from datarobot_genai.drtools.clients.perplexity import MAX_TOKENS_PER_PAGE
+from datarobot_genai.drtools.clients.perplexity import MAX_TOKENS_PER_PAGE_DEFAULT
+from datarobot_genai.drtools.clients.perplexity import PerplexityClient
+from datarobot_genai.drtools.clients.perplexity import get_perplexity_access_token
 
 logger = logging.getLogger(__name__)
 

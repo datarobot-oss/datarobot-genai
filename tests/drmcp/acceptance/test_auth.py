@@ -20,7 +20,7 @@ from typing import Any
 import jwt
 import pytest
 
-# Note: get_auth_context_user_info tool is defined in datarobot_genai.drmcp.tools.test_tools
+# Note: get_auth_context_user_info tool is defined in datarobot_genai.drtools.test_tools
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations

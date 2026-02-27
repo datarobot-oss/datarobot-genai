@@ -20,8 +20,8 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.datarobot import DataRobotClient
-from datarobot_genai.drmcp.tools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 
 
 class TestGetDatarobotAccessToken:
@@ -31,7 +31,7 @@ class TestGetDatarobotAccessToken:
     async def test_returns_token_when_resolve_token_from_headers_returns_token(self) -> None:
         """Test successful token retrieval from headers."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.datarobot.resolve_token_from_headers",
+            "datarobot_genai.drtools.clients.datarobot.resolve_token_from_headers",
             return_value="bearer-token-123",
         ):
             result = await get_datarobot_access_token()
@@ -42,7 +42,7 @@ class TestGetDatarobotAccessToken:
     async def test_raises_tool_error_when_no_token(self) -> None:
         """Test that ToolError is raised when resolve_token_from_headers returns None."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.datarobot.resolve_token_from_headers",
+            "datarobot_genai.drtools.clients.datarobot.resolve_token_from_headers",
             return_value=None,
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -56,7 +56,7 @@ class TestGetDatarobotAccessToken:
     async def test_raises_tool_error_when_empty_token(self) -> None:
         """Test that ToolError is raised when resolve_token_from_headers returns empty string."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.datarobot.resolve_token_from_headers",
+            "datarobot_genai.drtools.clients.datarobot.resolve_token_from_headers",
             return_value="",
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -72,9 +72,9 @@ class TestDataRobotClient:
         client = DataRobotClient("my-token")
         assert client._token == "my-token"
 
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.DRContext")
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.dr")
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.get_credentials")
+    @patch("datarobot_genai.drtools.clients.datarobot.DRContext")
+    @patch("datarobot_genai.drtools.clients.datarobot.dr")
+    @patch("datarobot_genai.drtools.clients.datarobot.get_credentials")
     def test_get_client_calls_dr_client_with_token_and_endpoint(
         self, mock_get_credentials: MagicMock, mock_dr: MagicMock, mock_dr_context: MagicMock
     ) -> None:
@@ -92,9 +92,9 @@ class TestDataRobotClient:
         )
         assert result is mock_dr
 
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.DRContext")
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.dr")
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.get_credentials")
+    @patch("datarobot_genai.drtools.clients.datarobot.DRContext")
+    @patch("datarobot_genai.drtools.clients.datarobot.dr")
+    @patch("datarobot_genai.drtools.clients.datarobot.get_credentials")
     def test_get_client_resets_dr_context_use_case(
         self, mock_get_credentials: MagicMock, mock_dr: MagicMock, mock_dr_context: MagicMock
     ) -> None:
@@ -109,9 +109,9 @@ class TestDataRobotClient:
         # Implementation does DRContext.use_case = None
         assert mock_dr_context.use_case is None
 
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.DRContext")
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.dr")
-    @patch("datarobot_genai.drmcp.tools.clients.datarobot.get_credentials")
+    @patch("datarobot_genai.drtools.clients.datarobot.DRContext")
+    @patch("datarobot_genai.drtools.clients.datarobot.dr")
+    @patch("datarobot_genai.drtools.clients.datarobot.get_credentials")
     def test_get_client_returns_dr_module(
         self, mock_get_credentials: MagicMock, mock_dr: MagicMock, mock_dr_context: MagicMock
     ) -> None:

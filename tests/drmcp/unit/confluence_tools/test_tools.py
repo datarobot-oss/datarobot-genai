@@ -18,20 +18,20 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceComment
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluenceError
-from datarobot_genai.drmcp.tools.clients.confluence import ConfluencePage
-from datarobot_genai.drmcp.tools.clients.confluence import ContentSearchResult
-from datarobot_genai.drmcp.tools.confluence.tools import confluence_add_comment
-from datarobot_genai.drmcp.tools.confluence.tools import confluence_get_page
-from datarobot_genai.drmcp.tools.confluence.tools import confluence_search
-from datarobot_genai.drmcp.tools.confluence.tools import confluence_update_page
+from datarobot_genai.drtools.clients.confluence import ConfluenceComment
+from datarobot_genai.drtools.clients.confluence import ConfluenceError
+from datarobot_genai.drtools.clients.confluence import ConfluencePage
+from datarobot_genai.drtools.clients.confluence import ContentSearchResult
+from datarobot_genai.drtools.confluence.tools import confluence_add_comment
+from datarobot_genai.drtools.confluence.tools import confluence_get_page
+from datarobot_genai.drtools.confluence.tools import confluence_search
+from datarobot_genai.drtools.confluence.tools import confluence_update_page
 
 
 @pytest.fixture
 def get_atlassian_access_token_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.confluence.tools.get_atlassian_access_token",
+        "datarobot_genai.drtools.confluence.tools.get_atlassian_access_token",
         return_value="token",
     ):
         yield
@@ -40,7 +40,7 @@ def get_atlassian_access_token_mock() -> Iterator[None]:
 @pytest.fixture
 def confluence_client_get_page_by_id_mock() -> Iterator[ConfluencePage]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.get_page_by_id"
+        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
         page = ConfluencePage(
             page_id="12345",
@@ -57,7 +57,7 @@ def confluence_client_get_page_by_id_mock() -> Iterator[ConfluencePage]:
 @pytest.fixture
 def confluence_client_get_page_by_title_mock() -> Iterator[ConfluencePage]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.get_page_by_title"
+        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_title"
     ) as mock:
         page = ConfluencePage(
             page_id="12345",
@@ -74,7 +74,7 @@ def confluence_client_get_page_by_title_mock() -> Iterator[ConfluencePage]:
 @pytest.fixture
 def confluence_client_get_page_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.get_page_by_id"
+        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
         mock.side_effect = ConfluenceError("Page not found", status_code=404)
         yield
@@ -160,9 +160,7 @@ class TestConfluenceGetPage:
 
 @pytest.fixture
 def confluence_client_add_comment_mock() -> Iterator[ConfluenceComment]:
-    with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.add_comment"
-    ) as mock:
+    with patch("datarobot_genai.drtools.clients.confluence.ConfluenceClient.add_comment") as mock:
         comment = ConfluenceComment(
             comment_id="98765",
             page_id="12345",
@@ -174,9 +172,7 @@ def confluence_client_add_comment_mock() -> Iterator[ConfluenceComment]:
 
 @pytest.fixture
 def confluence_client_add_comment_error_mock() -> Iterator[None]:
-    with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.add_comment"
-    ) as mock:
+    with patch("datarobot_genai.drtools.clients.confluence.ConfluenceClient.add_comment") as mock:
         mock.side_effect = ConfluenceError("Page not found", status_code=404)
         yield
 
@@ -242,7 +238,7 @@ class TestConfluenceAddComment:
 @pytest.fixture
 def confluence_client_search_mock() -> Iterator[list[ContentSearchResult]]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.search_confluence_content"
+        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.search_confluence_content"
     ) as confluence_client_search:
         results = [
             ContentSearchResult(
@@ -273,7 +269,7 @@ def confluence_client_search_mock() -> Iterator[list[ContentSearchResult]]:
 @pytest.fixture
 def confluence_client_search_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.search_confluence_content"
+        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.search_confluence_content"
     ) as confluence_client_search:
         confluence_client_search.side_effect = ConfluenceError("Search failed", status_code=500)
         yield
@@ -360,7 +356,7 @@ class TestConfluenceSearch:
 @pytest.fixture
 def confluence_client_get_page_mock() -> Iterator[ConfluencePage]:
     with patch(
-        "datarobot_genai.drmcp.tools.clients.confluence.ConfluenceClient.get_page_by_id"
+        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
         page = ConfluencePage(
             page_id="12345",
@@ -428,7 +424,7 @@ def confluence_client_update_page_mock(
         version=6,
     )
     with patch(
-        "datarobot_genai.drmcp.tools.confluence.tools.ConfluenceClient.update_page",
+        "datarobot_genai.drtools.confluence.tools.ConfluenceClient.update_page",
         return_value=mock_page,
     ):
         yield mock_page
@@ -440,7 +436,7 @@ def confluence_client_update_page_error_mock(
 ) -> Iterator[None]:
     """Mock ConfluenceClient.update_page method to raise ConfluenceError."""
     with patch(
-        "datarobot_genai.drmcp.tools.confluence.tools.ConfluenceClient.update_page",
+        "datarobot_genai.drtools.confluence.tools.ConfluenceClient.update_page",
         side_effect=ConfluenceError("Page not found", status_code=404),
     ):
         yield
