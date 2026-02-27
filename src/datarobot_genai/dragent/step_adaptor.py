@@ -120,7 +120,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
     def _unknown_step_type(self, payload: IntermediateStepPayload) -> Exception:
         return ValueError(
-            f"Unsupported intermediate step type: {payload.event_type}, payload: {{payload}}"
+            f"Unsupported intermediate step type: {payload.event_type}, payload: {payload}"
         )
 
     def _handle_llm(
