@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import uuid
 
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
@@ -82,7 +83,7 @@ def convert_str_to_dragent_event_response(
     return DRAgentEventResponse(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        events=[TextMessageChunkEvent(delta=response)],
+        events=[TextMessageChunkEvent(message_id=str(uuid.uuid4()), delta=response)],
     )
 
 
