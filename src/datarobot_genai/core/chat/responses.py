@@ -34,6 +34,8 @@ from ag_ui.core import BaseEvent
 from ag_ui.core import Event
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from openai.types import CompletionUsage
@@ -131,9 +133,11 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip run lifecycle events — they don't carry content for streaming.
+                # Skip lifecycle events — they don't carry content for streaming.
                 # Their metadata is still tracked above for the final stop chunk.
-                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                if isinstance(
+                    event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
+                ):
                     continue
 
                 if isinstance(event, BaseEvent):

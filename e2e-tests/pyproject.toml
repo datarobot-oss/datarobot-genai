@@ -51,7 +51,7 @@ line-length = 100
 indent-width = 4
 
 [tool.setuptools]
-packages = ["dragent", "dragent.crewai", "dragent.langgraph", "dragent.llamaindex", "drmcp"]
+packages = ["dragent", "drmcp"]
 
 [tool.ruff.lint]
 select = [
