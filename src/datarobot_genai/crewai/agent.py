@@ -209,8 +209,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
 
-        yield (
-            RunFinishedEvent(thread_id=thread_id, run_id=run_id),
-            pipeline_interactions,
-            usage_metrics,
-        )
+                yield (
+                    RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+                    pipeline_interactions,
+                    usage_metrics,
+                )
