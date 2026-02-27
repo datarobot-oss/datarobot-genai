@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import Mapping
 from typing import Any
 from typing import cast
@@ -20,6 +21,7 @@ from uuid import uuid4
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageStartEvent
@@ -33,6 +35,8 @@ from datarobot_genai.core.agents import InvokeReturn
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import UsageMetrics
+
+logger = logging.getLogger(__name__)
 
 
 def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str, Any]) -> bool:
@@ -100,7 +104,16 @@ def convert_chat_completion_params_to_run_agent_input(
 async def agent_chat_completion_wrapper(
     agent: BaseAgent, chat_completion_params: CompletionCreateParams | Mapping[str, Any]
 ) -> InvokeReturn | tuple[str, MultiTurnSample | None, UsageMetrics]:
-    """Wrap the agent's invoke method in a chat completion wrapper."""
+    """Wrap the agent's invoke method in a chat completion wrapper.
+
+    Returns
+    -------
+    InvokeReturn
+        When streaming is requested — the raw async event generator.
+    tuple[str, MultiTurnSample | None, UsageMetrics]
+        When non-streaming — the reassembled final text, pipeline
+        interactions, and accumulated usage metrics.
+    """
     run_agent_input = convert_chat_completion_params_to_run_agent_input(chat_completion_params)
 
     if is_streaming(chat_completion_params):
@@ -109,17 +122,22 @@ async def agent_chat_completion_wrapper(
         final_response = ""
         pipeline_interactions = None
         usage_metrics = default_usage_metrics()
+        received_run_finished = False
 
-        async for delta, pipeline_interactions, usage_metrics in agent.invoke(run_agent_input):
-            # When we work in non-streaming mode, we only send back the final message
+        async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
+            # When we work in non-streaming mode, we only send back the final message.
             # It is because of limitation of completions interface we can not send back the
-            # intermediate messages
-            if isinstance(delta, TextMessageStartEvent):
+            # intermediate messages.
+            if isinstance(event, TextMessageStartEvent):
                 final_response = ""
-            if isinstance(delta, TextMessageContentEvent):
-                final_response += delta.delta
-            # Agents which are not AGUI agents will return strings with content
-            if isinstance(delta, str):
-                final_response += delta
+            elif isinstance(event, TextMessageContentEvent):
+                final_response += event.delta
+            elif isinstance(event, RunFinishedEvent):
+                received_run_finished = True
+                pipeline_interactions = iter_interactions
+                usage_metrics = iter_metrics
+
+        if not received_run_finished:
+            logger.warning("Agent stream ended without RunFinishedEvent")
 
         return final_response, pipeline_interactions, usage_metrics

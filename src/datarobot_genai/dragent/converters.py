@@ -80,7 +80,6 @@ def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
     return DRAgentEventResponse(
-        delta=response,
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
         events=[TextMessageChunkEvent(delta=response)],

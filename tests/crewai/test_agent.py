@@ -19,6 +19,11 @@ from unittest.mock import patch
 
 import pytest
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -156,14 +161,22 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
     # THEN ragas event listener was setup
     assert mock_ragas_event_listener.called_setup
 
-    # THEN there is just one event
-    assert len(events) == 1
+    # THEN events contain AG-UI lifecycle and text message events
+    # RunStarted, TextMessageStart, TextMessageContent, TextMessageEnd, RunFinished
+    assert len(events) == 5
 
-    # THEN the event is a tuple of (delta, pipeline interactions, UsageMetrics)
-    delta, pipeline_interactions, usage = events[0]
+    # THEN first event is RunStartedEvent
+    assert isinstance(events[0][0], RunStartedEvent)
 
-    # THEN delta is the expected delta
-    assert delta == "agent result"
+    # THEN text message events contain the agent result
+    assert isinstance(events[1][0], TextMessageStartEvent)
+    assert isinstance(events[2][0], TextMessageContentEvent)
+    assert events[2][0].delta == "agent result"
+    assert isinstance(events[3][0], TextMessageEndEvent)
+
+    # THEN last event is RunFinishedEvent with pipeline interactions
+    run_finished_event, pipeline_interactions, usage = events[-1]
+    assert isinstance(run_finished_event, RunFinishedEvent)
 
     # THEN pipeline interactions is not None and is a MultiTurnSample
     assert pipeline_interactions is not None

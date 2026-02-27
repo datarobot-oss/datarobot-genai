@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import ANY
 
 import pytest
+from ag_ui.core import BaseEvent
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
 from datarobot_genai.core.chat import agent_chat_completion_wrapper
@@ -85,11 +86,11 @@ async def test_run_method_with_mcp(agent_with_mcp):
     streaming_response_iterator = agent_with_mcp.invoke(run_agent_input)
 
     async for (
-        result,
+        event,
         pipeline_interactions,
         usage,
     ) in streaming_response_iterator:
-        assert isinstance(result, str)
+        assert isinstance(event, BaseEvent)
         assert usage == {
             "completion_tokens": ANY,
             "prompt_tokens": ANY,
@@ -114,11 +115,11 @@ async def test_run_method_streaming(agent):
     streaming_response_iterator = agent.invoke(run_agent_input)
 
     async for (
-        result,
+        event,
         pipeline_interactions,
         usage,
     ) in streaming_response_iterator:
-        assert isinstance(result, str)
+        assert isinstance(event, BaseEvent)
         assert usage == {
             "completion_tokens": ANY,
             "prompt_tokens": ANY,
