@@ -13,12 +13,9 @@
 # limitations under the License.
 
 import logging
-import uuid
 
 from ag_ui.core import RunAgentInput
-from ag_ui.core import TextMessageContentEvent
-from ag_ui.core import TextMessageEndEvent
-from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import TextMessageChunkEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -82,16 +79,11 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
-    message_id = str(uuid.uuid4())
     return DRAgentEventResponse(
         delta=response,
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        events=[
-            TextMessageStartEvent(message_id=message_id),
-            TextMessageContentEvent(message_id=message_id, delta=response),
-            TextMessageEndEvent(message_id=message_id),
-        ],
+        events=[TextMessageChunkEvent(delta=response)],
     )
 
 
