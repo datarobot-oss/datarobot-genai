@@ -113,9 +113,10 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     ) -> ResponseSerializable | None:
         # Find the start in the history with matching run_id
 
-        # Always treat LLM events as primary text so tokens stream to the frontend
-        # in real time, regardless of nesting depth.
-        events = self._handle_llm_primary_function(payload)
+        if self.function_level == 1:
+            events = self._handle_llm_primary_function(payload)
+        else:
+            events = self._handle_llm_nested_function(payload)
 
         response = DRAgentEventResponse(
             events=events,
