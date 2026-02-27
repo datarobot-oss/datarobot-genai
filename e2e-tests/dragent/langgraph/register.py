@@ -54,7 +54,7 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
             events.append(event)
 
         return DRAgentEventResponse(
-            events=events if events else None,
+            events=events,
             usage_metrics=metrics,
         )
 

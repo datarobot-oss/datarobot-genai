@@ -54,7 +54,7 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
             events.append(event)
 
         return DRAgentEventResponse(
-            events=events if events else None,
+            events=events,
             usage_metrics=metrics,
         )
 

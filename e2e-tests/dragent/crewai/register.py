@@ -19,6 +19,10 @@ from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_function
 from nat.data_models.agent import AgentBaseConfig
 
+# Use getattr to avoid NAT's source-code regex auto-detection of CrewAI,
+# which would force-import nvidia-nat-crewai's profiler plugin.
+_CREWAI_WRAPPER = getattr(LLMFrameworkEnum, "CREWAI")
+
 
 class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
     """NAT config for the CrewAI agent.
@@ -30,7 +34,6 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
 
 @register_function(
     config_type=CrewaiAgentConfig,
-    framework_wrappers=[LLMFrameworkEnum.CREWAI],
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import Event  # noqa: PLC0415
@@ -41,7 +44,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
     from dragent.crewai.myagent import MyAgent  # noqa: PLC0415
 
-    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.CREWAI)
+    llm = await builder.get_llm(config.llm_name, wrapper_type=_CREWAI_WRAPPER)
 
     agent = MyAgent(llm=llm)
 
@@ -54,7 +57,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
             events.append(event)
 
         return DRAgentEventResponse(
-            events=events if events else None,
+            events=events,
             usage_metrics=metrics,
         )
 
