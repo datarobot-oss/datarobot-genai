@@ -22,6 +22,8 @@ from typing import cast
 
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -195,11 +197,19 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "total_tokens": 0,
         }
 
-        return self._stream_generator(graph_stream, usage_metrics)
+        return self._stream_generator(graph_stream, usage_metrics, run_agent_input)
 
     async def _stream_generator(
-        self, graph_stream: AsyncGenerator[tuple[Any, str, Any], None], usage_metrics: UsageMetrics
+        self,
+        graph_stream: AsyncGenerator[tuple[Any, str, Any], None],
+        usage_metrics: UsageMetrics,
+        run_agent_input: RunAgentInput,
     ) -> InvokeReturn:
+        # Partial AG-UI: workflow lifecycle events
+        thread_id = run_agent_input.thread_id
+        run_id = run_agent_input.run_id
+        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, usage_metrics
+
         # Iterate over the graph stream. For message events, yield the content.
         # For update events, accumulate the usage metrics.
         events = []
@@ -324,8 +334,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
-        # yield the final response indicating completion
-        yield "", pipeline_interactions, usage_metrics
+        yield (
+            RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+            pipeline_interactions,
+            usage_metrics,
+        )
 
     @classmethod
     def create_pipeline_interactions_from_events(

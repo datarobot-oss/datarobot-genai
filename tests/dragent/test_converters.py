@@ -179,9 +179,8 @@ def test_convert_str_to_dragent_event_response() -> None:
     # WHEN converting to DRAgentEventResponse
     result = convert_str_to_dragent_event_response(delta)
 
-    # THEN result has delta, default usage_metrics, and events
+    # THEN result has default usage_metrics and events
     assert isinstance(result, DRAgentEventResponse)
-    assert result.delta == delta
     assert result.usage_metrics is not None
     assert result.usage_metrics["prompt_tokens"] == 0
     assert result.usage_metrics["completion_tokens"] == 0

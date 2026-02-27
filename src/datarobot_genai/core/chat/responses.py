@@ -32,6 +32,10 @@ from typing import TypeVar
 
 from ag_ui.core import BaseEvent
 from ag_ui.core import Event
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from openai.types import CompletionUsage
@@ -98,7 +102,7 @@ def to_custom_model_streaming_response(
     thread_pool_executor: ThreadPoolExecutor,
     event_loop: AbstractEventLoop,
     streaming_response_generator: AsyncGenerator[
-        tuple[str | Event, MultiTurnSample | None, dict[str, int]], None
+        tuple[Event, MultiTurnSample | None, dict[str, int]]
     ],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
@@ -120,7 +124,7 @@ def to_custom_model_streaming_response(
         while True:
             try:
                 (
-                    response_text_or_event,
+                    event,
                     pipeline_interactions,
                     usage_metrics,
                 ) = thread_pool_executor.submit(
@@ -129,28 +133,17 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                if isinstance(response_text_or_event, str) and response_text_or_event:
-                    choice = ChunkChoice(
-                        index=0,
-                        delta=ChoiceDelta(role="assistant", content=response_text_or_event),
-                        finish_reason=None,
-                    )
-                    yield CustomModelStreamingResponse(
-                        id=completion_id,
-                        object="chat.completion.chunk",
-                        created=created,
-                        model=model,
-                        choices=[choice],
-                        usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
-                        if usage_metrics
-                        else None,
-                    )
-                elif isinstance(response_text_or_event, BaseEvent):
+                # Skip lifecycle events — they don't carry content for streaming.
+                # Their metadata is still tracked above for the final stop chunk.
+                if isinstance(
+                    event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
+                ):
+                    continue
+
+                if isinstance(event, BaseEvent):
                     content = ""
-                    if isinstance(
-                        response_text_or_event, (TextMessageContentEvent, TextMessageChunkEvent)
-                    ):
-                        content = response_text_or_event.delta or content
+                    if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+                        content = event.delta or content
                     choice = ChunkChoice(
                         index=0,
                         delta=ChoiceDelta(role="assistant", content=content),
@@ -166,7 +159,7 @@ def to_custom_model_streaming_response(
                         usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
                         if usage_metrics
                         else None,
-                        event=response_text_or_event,
+                        event=event,
                     )
             except StopAsyncIteration:
                 break
@@ -209,7 +202,7 @@ def to_custom_model_streaming_response(
 
 
 def streaming_iterator_to_custom_model_streaming_response(
-    streaming_response_iterator: Iterator[tuple[str, MultiTurnSample | None, dict[str, int]]],
+    streaming_response_iterator: Iterator[tuple[Event, MultiTurnSample | None, dict[str, int]]],
     model: str | object | None,
 ) -> Iterator[CustomModelStreamingResponse]:
     """Convert the OpenAI ChatCompletionChunk response to CustomModelStreamingResponse."""
@@ -219,49 +212,88 @@ def streaming_iterator_to_custom_model_streaming_response(
     last_pipeline_interactions = None
     last_usage_metrics = None
 
-    while True:
-        try:
-            (
-                response_text,
-                pipeline_interactions,
-                usage_metrics,
-            ) = next(streaming_response_iterator)
-            last_pipeline_interactions = pipeline_interactions
-            last_usage_metrics = usage_metrics
+    if model is None:
+        model = "unspecified-model"
+    else:
+        model = str(model)
 
-            if response_text:
-                choice = ChunkChoice(
-                    index=0,
-                    delta=ChoiceDelta(role="assistant", content=response_text),
-                    finish_reason=None,
-                )
-                yield CustomModelStreamingResponse(
-                    id=completion_id,
-                    object="chat.completion.chunk",
-                    created=created,
-                    model=model,
-                    choices=[choice],
-                    usage=CompletionUsage(**usage_metrics) if usage_metrics else None,
-                )
-        except StopIteration:
-            break
-    # Yield final chunk indicating end of stream
-    choice = ChunkChoice(
-        index=0,
-        delta=ChoiceDelta(role="assistant"),
-        finish_reason="stop",
-    )
-    yield CustomModelStreamingResponse(
-        id=completion_id,
-        object="chat.completion.chunk",
-        created=created,
-        model=model,
-        choices=[choice],
-        usage=CompletionUsage(**last_usage_metrics) if last_usage_metrics else None,
-        pipeline_interactions=last_pipeline_interactions.model_dump_json()
-        if last_pipeline_interactions
-        else None,
-    )
+    required_usage_metrics = default_usage_metrics()
+
+    try:
+        while True:
+            try:
+                (
+                    event,
+                    pipeline_interactions,
+                    usage_metrics,
+                ) = next(streaming_response_iterator)
+                last_pipeline_interactions = pipeline_interactions
+                last_usage_metrics = usage_metrics
+
+                # Skip lifecycle events — they don't carry content for streaming.
+                # Their metadata is still tracked above for the final stop chunk.
+                if isinstance(
+                    event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
+                ):
+                    continue
+
+                if isinstance(event, BaseEvent):
+                    content = ""
+                    if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+                        content = event.delta or content
+                    choice = ChunkChoice(
+                        index=0,
+                        delta=ChoiceDelta(role="assistant", content=content),
+                        finish_reason=None,
+                    )
+                    yield CustomModelStreamingResponse(
+                        id=completion_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=model,
+                        choices=[choice],
+                        usage=CompletionUsage.model_validate(required_usage_metrics | usage_metrics)
+                        if usage_metrics
+                        else None,
+                        event=event,
+                    )
+            except StopIteration:
+                break
+        # Yield final chunk indicating end of stream
+        choice = ChunkChoice(
+            index=0,
+            delta=ChoiceDelta(role="assistant"),
+            finish_reason="stop",
+        )
+        yield CustomModelStreamingResponse(
+            id=completion_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model,
+            choices=[choice],
+            usage=CompletionUsage.model_validate(required_usage_metrics | last_usage_metrics)
+            if last_usage_metrics
+            else None,
+            pipeline_interactions=last_pipeline_interactions.model_dump_json()
+            if last_pipeline_interactions
+            else None,
+        )
+    except Exception as e:
+        tb.print_exc()
+        created = int(time.time())
+        choice = ChunkChoice(
+            index=0,
+            delta=ChoiceDelta(role="assistant", content=str(e), refusal="error"),
+            finish_reason="stop",
+        )
+        yield CustomModelStreamingResponse(
+            id=completion_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model,
+            choices=[choice],
+            usage=None,
+        )
 
 
 T = TypeVar("T")

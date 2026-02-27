@@ -25,10 +25,14 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageChunkEvent
 from crewai import Crew
 from crewai.events import crewai_event_bus
 from crewai.tools import BaseTool
@@ -144,15 +148,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             }
         return default_usage_metrics()
 
-    def _process_crew_output(
-        self, crew_output: Any, messages: list[HumanMessage | AIMessage | ToolMessage]
-    ) -> tuple[str, MultiTurnSample | None, UsageMetrics]:
-        """Process crew output into response tuple."""
-        response_text = str(crew_output.raw)
-        pipeline_interactions = self.create_pipeline_interactions_from_messages(messages)
-        usage_metrics = self._extract_usage_metrics(crew_output)
-        return response_text, pipeline_interactions, usage_metrics
-
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
@@ -162,6 +157,15 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         except Exception:
             # Printing is best-effort; proceed regardless
             pass
+
+        thread_id = run_agent_input.thread_id
+        run_id = run_agent_input.run_id
+
+        # Partial AG-UI: workflow lifecycle + text message events
+        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, default_usage_metrics()
+
+        pipeline_interactions: MultiTurnSample | None = None
+        usage_metrics = default_usage_metrics()
 
         # Use MCP context manager to handle connection lifecycle
         with mcp_tools_context(
@@ -191,4 +195,22 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         )
 
                 crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
-                yield self._process_crew_output(crew_output, ragas_event_listener.messages)
+
+                response_text = str(crew_output.raw)
+                pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                    ragas_event_listener.messages
+                )
+                usage_metrics = self._extract_usage_metrics(crew_output)
+
+                if response_text:
+                    yield (
+                        TextMessageChunkEvent(message_id=str(uuid.uuid4()), delta=response_text),
+                        None,
+                        usage_metrics,
+                    )
+
+                yield (
+                    RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+                    pipeline_interactions,
+                    usage_metrics,
+                )
