@@ -33,10 +33,9 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )
 async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
-    from ag_ui.core import Event  # noqa: PLC0415
-    from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.core.agents import default_usage_metrics  # noqa: PLC0415
-    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
+    from datarobot_genai.dragent.converters import (  # noqa: PLC0415
+        invoke_agent_to_dragent_event_response,
+    )
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     from dragent.langgraph.myagent import MyAgent  # noqa: PLC0415
@@ -45,20 +44,7 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
 
     agent = MyAgent(llm=llm)
 
-    async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
-        """Invoke the LangGraph agent and return a DRAgentEventResponse."""
-        events: list[Event] = []
-        metrics = default_usage_metrics()
-        async for event, _, iteration_metrics in agent.invoke(input_message):
-            metrics = iteration_metrics
-            events.append(event)
-
-        return DRAgentEventResponse(
-            events=events,
-            usage_metrics=metrics,
-        )
-
     yield FunctionInfo.from_fn(
-        _response_fn,
+        lambda input_message: invoke_agent_to_dragent_event_response(agent, input_message),
         description=config.description,
     )
