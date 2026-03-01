@@ -89,11 +89,11 @@ pydanticai = core + [
 ]
 
 # drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
+# pandas is not listed here; it is pulled in transitively by datarobot and datarobot-predict.
 drtools = [
     "beautifulsoup4>=4.12.0,<5.0.0",
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
-    "pandas>=2.2.3,<3.0.0",
     "perplexityai>=0.27,<1.0",
     "pypdf>=6.1.3,<7.0.0",  # CVE BUZZOK-28182; gdrive client
     "datarobot-predict>=1.13.2,<2.0.0",
