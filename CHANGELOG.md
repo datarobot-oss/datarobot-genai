@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.16
+- [MODEL-22567] Clean drmcp/drtools dependencies: reduce direct pandas usage
+  - Refactor `deployment_info.py` to use stdlib `csv` and helpers only (pandas removed from this module)
+  - Add `drtools/predictive/csv_utils.py` for CSV/row-based helpers (`read_csv_to_rows`, `is_numeric_column`, etc.)
+  - Replace `pd.to_datetime()` with `datetime.fromisoformat()` in `predict_realtime.py`
+  - Remove explicit pandas from `drtools` extra in setup.py (pandas remains transitive via datarobot/datarobot-predict)
+  - Update `test_deployment_info.py` to use stdlib CSV writing instead of pandas for fixtures
+
 ## 0.5.15
 - Restructure the tools and move them to drtools instead of drmcp.tools
 

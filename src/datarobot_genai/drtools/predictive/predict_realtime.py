@@ -298,12 +298,16 @@ async def predict_realtime(
     # Add time series parameters if applicable
     if is_time_series:
         if forecast_point:
-            forecast_point_dt = pd.to_datetime(forecast_point)
+            forecast_point_dt = datetime.fromisoformat(str(forecast_point).replace("Z", "+00:00"))
             predict_kwargs["time_series_type"] = TimeSeriesType.FORECAST
             predict_kwargs["forecast_point"] = forecast_point_dt
         elif forecast_range_start and forecast_range_end:
-            predictions_start_date_dt = pd.to_datetime(forecast_range_start)
-            predictions_end_date_dt = pd.to_datetime(forecast_range_end)
+            predictions_start_date_dt = datetime.fromisoformat(
+                str(forecast_range_start).replace("Z", "+00:00")
+            )
+            predictions_end_date_dt = datetime.fromisoformat(
+                str(forecast_range_end).replace("Z", "+00:00")
+            )
             predict_kwargs["time_series_type"] = TimeSeriesType.HISTORICAL
             predict_kwargs["predictions_start_date"] = predictions_start_date_dt
             predict_kwargs["predictions_end_date"] = predictions_end_date_dt

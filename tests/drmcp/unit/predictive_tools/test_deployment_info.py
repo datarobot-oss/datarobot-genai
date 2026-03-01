@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import csv
 import json
 import tempfile
 from typing import Any
@@ -19,7 +20,6 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-import pandas as pd
 import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
@@ -31,6 +31,16 @@ from datarobot_genai.drtools.predictive.deployment_info import get_deployment_in
 from datarobot_genai.drtools.predictive.deployment_info import validate_prediction_data
 
 IMPORTANCE_THRESHOLD_TEST = 0.8
+
+
+def _write_csv(path: str, rows: list[dict[str, Any]]) -> None:
+    """Write a list of dicts to a CSV file (replaces pd.DataFrame().to_csv())."""
+    if not rows:
+        return
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _extract_content(result_obj: ToolResult | ToolError) -> str:
@@ -231,16 +241,16 @@ async def test_validate_prediction_data_valid(
     mock_client = MagicMock()
     mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-    # Create test CSV
+    # Create test CSV with stdlib
     test_file = tmp_path / "test_data.csv"
-    df = pd.DataFrame(
-        {
-            "temperature": [70, 75, 80],
-            "humidity": [60, 65, 70],
-            "date": ["2024-01-01", "2024-01-02", "2024-01-03"],
-        }
+    _write_csv(
+        str(test_file),
+        [
+            {"temperature": 70, "humidity": 60, "date": "2024-01-01"},
+            {"temperature": 75, "humidity": 65, "date": "2024-01-02"},
+            {"temperature": 80, "humidity": 70, "date": "2024-01-03"},
+        ],
     )
-    df.to_csv(test_file, index=False)
 
     # Mock feature info
     features_info = {
@@ -314,27 +324,31 @@ async def test_validate_prediction_data_missing_important_feature(
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # Only notimp present
-    df = pd.DataFrame({"notimp": ["", ""]})
-    test_file = tmp_path / "test3.csv"
-    df.to_csv(test_file, index=False)
-    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    _write_csv(str(tmp_path / "test3.csv"), [{"notimp": ""}, {"notimp": ""}])
+    result_obj = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test3.csv")
+    )
     result = _extract_content(result_obj)
     assert "Missing important feature: imp" in result
     assert "status" in result and "invalid" not in result
     # If present but all missing, info not warning
-    df2 = pd.DataFrame({"imp": [None, None], "notimp": ["", ""]})
-    test_file2 = tmp_path / "test4.csv"
-    df2.to_csv(test_file2, index=False)
-    result_obj2 = await validate_prediction_data(deployment_id="id", file_path=str(test_file2))
+    _write_csv(
+        str(tmp_path / "test4.csv"), [{"imp": None, "notimp": ""}, {"imp": None, "notimp": ""}]
+    )
+    result_obj2 = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test4.csv")
+    )
     result2 = _extract_content(result_obj2)
     assert "is entirely missing or empty (this is allowed)" in result2
     # If present and not all missing, type check applies
-    df3 = pd.DataFrame({"imp": ["bad", "bad"], "notimp": ["", ""]})
-    test_file3 = tmp_path / "test5.csv"
-    df3.to_csv(test_file3, index=False)
-    result_obj3 = await validate_prediction_data(deployment_id="id", file_path=str(test_file3))
+    _write_csv(
+        str(tmp_path / "test5.csv"), [{"imp": "bad", "notimp": ""}, {"imp": "bad", "notimp": ""}]
+    )
+    result_obj3 = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test5.csv")
+    )
     result3 = _extract_content(result_obj3)
-    assert "should be numeric but is object" in result3
+    assert "should be numeric but is string" in result3
 
 
 # Additional tests for coverage
@@ -487,7 +501,7 @@ async def test_validate_prediction_data_missing_feature(
     }
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     test_file = tmp_path / "test.csv"
-    pd.DataFrame({"bar": [1, 2]}).to_csv(test_file, index=False)
+    _write_csv(str(test_file), [{"bar": 1}, {"bar": 2}])
     result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
     result = _extract_content(result_obj)
     assert "Missing important feature" in result
@@ -511,7 +525,7 @@ async def test_validate_prediction_data_extra_columns(
     }
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     test_file = tmp_path / "test.csv"
-    pd.DataFrame({"foo": [1, 2], "extra": [3, 4]}).to_csv(test_file, index=False)
+    _write_csv(str(test_file), [{"foo": 1, "extra": 3}, {"foo": 2, "extra": 4}])
     result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
     result = _extract_content(result_obj)
     assert "Extra columns found" in result
@@ -535,7 +549,7 @@ async def test_validate_prediction_data_type_mismatch(
     }
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     test_file = tmp_path / "test.csv"
-    pd.DataFrame({"foo": ["a", "b"]}).to_csv(test_file, index=False)
+    _write_csv(str(test_file), [{"foo": "a"}, {"foo": "b"}])
     result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
     result = _extract_content(result_obj)
     assert "should be numeric" in result
@@ -565,7 +579,7 @@ async def test_validate_prediction_data_time_series_missing(
     }
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     test_file = tmp_path / "test.csv"
-    pd.DataFrame({"foo": [1, 2]}).to_csv(test_file, index=False)
+    _write_csv(str(test_file), [{"foo": 1}, {"foo": 2}])
     result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
     result = _extract_content(result_obj)
     assert "Missing required datetime column" in result
@@ -601,7 +615,7 @@ async def test_validate_prediction_data_time_series_parse_error(
     }
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     test_file = tmp_path / "test.csv"
-    pd.DataFrame({"foo": [1, 2], "dt_col": ["bad", "bad"]}).to_csv(test_file, index=False)
+    _write_csv(str(test_file), [{"foo": 1, "dt_col": "bad"}, {"foo": 2, "dt_col": "bad"}])
     result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
     result = _extract_content(result_obj)
     assert "cannot be parsed as dates" in result
@@ -801,17 +815,20 @@ async def test_validate_prediction_data_missing_values(
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # All missing values (empty string)
-    df = pd.DataFrame({"cat": ["", ""], "num": [None, None], "txt": ["", ""]})
-    test_file = tmp_path / "test.csv"
-    df.to_csv(test_file, index=False)
-    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(test_file))
+    _write_csv(
+        str(tmp_path / "test.csv"),
+        [{"cat": "", "num": "", "txt": ""}, {"cat": "", "num": "", "txt": ""}],
+    )
+    result_obj = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test.csv")
+    )
     result = _extract_content(result_obj)
     assert "is entirely missing or empty (this is allowed)" in result
     # One column present, one missing
-    df2 = pd.DataFrame({"cat": ["A", "B"]})
-    test_file2 = tmp_path / "test2.csv"
-    df2.to_csv(test_file2, index=False)
-    result_obj2 = await validate_prediction_data(deployment_id="id", file_path=str(test_file2))
+    _write_csv(str(tmp_path / "test2.csv"), [{"cat": "A"}, {"cat": "B"}])
+    result_obj2 = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test2.csv")
+    )
     result2 = _extract_content(result_obj2)
     assert "Missing feature column: num" in result2
     assert "Missing feature column: txt" in result2
