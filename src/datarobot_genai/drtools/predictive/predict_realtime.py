@@ -298,9 +298,7 @@ async def predict_realtime(
     # Add time series parameters if applicable
     if is_time_series:
         if forecast_point:
-            forecast_point_dt = datetime.fromisoformat(
-                str(forecast_point).replace("Z", "+00:00")
-            )
+            forecast_point_dt = datetime.fromisoformat(str(forecast_point).replace("Z", "+00:00"))
             predict_kwargs["time_series_type"] = TimeSeriesType.FORECAST
             predict_kwargs["forecast_point"] = forecast_point_dt
         elif forecast_range_start and forecast_range_end:

@@ -185,7 +185,9 @@ async def generate_prediction_data_template(
     if not template_data:
         template_list = []
     else:
-        template_list = [{col: template_data[col][i] for col in template_data} for i in range(n_rows)]
+        template_list = [
+            {col: template_data[col][i] for col in template_data} for i in range(n_rows)
+        ]
 
     # Build structured content with template data and metadata
     structured_content = {
@@ -302,7 +304,9 @@ async def validate_prediction_data(
             validation_report["status"] = "invalid"
         else:
             dt_col_values = column_values(rows, ts_config["datetime_column"])
-            if not all_null_or_empty(dt_col_values) and not can_parse_datetime_column(dt_col_values):
+            if not all_null_or_empty(dt_col_values) and not can_parse_datetime_column(
+                dt_col_values
+            ):
                 validation_report["errors"].append(
                     f"Datetime column {ts_config['datetime_column']} cannot be parsed as dates"
                 )

@@ -325,18 +325,28 @@ async def test_validate_prediction_data_missing_important_feature(
     mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # Only notimp present
     _write_csv(str(tmp_path / "test3.csv"), [{"notimp": ""}, {"notimp": ""}])
-    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(tmp_path / "test3.csv"))
+    result_obj = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test3.csv")
+    )
     result = _extract_content(result_obj)
     assert "Missing important feature: imp" in result
     assert "status" in result and "invalid" not in result
     # If present but all missing, info not warning
-    _write_csv(str(tmp_path / "test4.csv"), [{"imp": None, "notimp": ""}, {"imp": None, "notimp": ""}])
-    result_obj2 = await validate_prediction_data(deployment_id="id", file_path=str(tmp_path / "test4.csv"))
+    _write_csv(
+        str(tmp_path / "test4.csv"), [{"imp": None, "notimp": ""}, {"imp": None, "notimp": ""}]
+    )
+    result_obj2 = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test4.csv")
+    )
     result2 = _extract_content(result_obj2)
     assert "is entirely missing or empty (this is allowed)" in result2
     # If present and not all missing, type check applies
-    _write_csv(str(tmp_path / "test5.csv"), [{"imp": "bad", "notimp": ""}, {"imp": "bad", "notimp": ""}])
-    result_obj3 = await validate_prediction_data(deployment_id="id", file_path=str(tmp_path / "test5.csv"))
+    _write_csv(
+        str(tmp_path / "test5.csv"), [{"imp": "bad", "notimp": ""}, {"imp": "bad", "notimp": ""}]
+    )
+    result_obj3 = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test5.csv")
+    )
     result3 = _extract_content(result_obj3)
     assert "should be numeric but is string" in result3
 
@@ -805,13 +815,20 @@ async def test_validate_prediction_data_missing_values(
     mock_get_features.return_value = ToolResult(structured_content=features_info)
     mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # All missing values (empty string)
-    _write_csv(str(tmp_path / "test.csv"), [{"cat": "", "num": "", "txt": ""}, {"cat": "", "num": "", "txt": ""}])
-    result_obj = await validate_prediction_data(deployment_id="id", file_path=str(tmp_path / "test.csv"))
+    _write_csv(
+        str(tmp_path / "test.csv"),
+        [{"cat": "", "num": "", "txt": ""}, {"cat": "", "num": "", "txt": ""}],
+    )
+    result_obj = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test.csv")
+    )
     result = _extract_content(result_obj)
     assert "is entirely missing or empty (this is allowed)" in result
     # One column present, one missing
     _write_csv(str(tmp_path / "test2.csv"), [{"cat": "A"}, {"cat": "B"}])
-    result_obj2 = await validate_prediction_data(deployment_id="id", file_path=str(tmp_path / "test2.csv"))
+    result_obj2 = await validate_prediction_data(
+        deployment_id="id", file_path=str(tmp_path / "test2.csv")
+    )
     result2 = _extract_content(result_obj2)
     assert "Missing feature column: num" in result2
     assert "Missing feature column: txt" in result2
