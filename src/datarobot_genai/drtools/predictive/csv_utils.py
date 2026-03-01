@@ -29,10 +29,12 @@ def read_csv_to_rows(
         csv_string: CSV content as string, or None.
         file_path: Path to CSV file, or None.
 
-    Returns:
+    Returns
+    -------
         (rows, column_names). rows is list of dicts; column_names from header.
 
-    Raises:
+    Raises
+    ------
         ValueError: If neither csv_string nor file_path is provided.
     """
     if csv_string is not None:
