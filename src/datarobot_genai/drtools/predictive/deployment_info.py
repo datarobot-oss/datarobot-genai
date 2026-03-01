@@ -14,7 +14,6 @@
 
 """Tools for retrieving deployment metadata and data requirements."""
 
-import io
 import json
 import logging
 from datetime import datetime
@@ -22,7 +21,6 @@ from datetime import timedelta
 from typing import Annotated
 from typing import Any
 
-import pandas as pd
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
@@ -30,6 +28,11 @@ from mcp.types import TextContent
 from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drtools.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.predictive.csv_utils import all_null_or_empty
+from datarobot_genai.drtools.predictive.csv_utils import can_parse_datetime_column
+from datarobot_genai.drtools.predictive.csv_utils import column_values
+from datarobot_genai.drtools.predictive.csv_utils import is_numeric_column
+from datarobot_genai.drtools.predictive.csv_utils import read_csv_to_rows
 
 logger = logging.getLogger(__name__)
 
@@ -169,16 +172,20 @@ async def generate_prediction_data_template(
         # Ensure datetime column exists
         if ts_config["datetime_column"] not in template_data:
             base_date = datetime.now()
-            dates = [base_date + timedelta(days=i) for i in range(n_rows)]
-            template_data[ts_config["datetime_column"]] = dates
+            template_data[ts_config["datetime_column"]] = [
+                (base_date + timedelta(days=i)).isoformat() for i in range(n_rows)
+            ]
 
         # Add series ID columns if multiseries
         for series_col in ts_config["series_id_columns"]:
             if series_col not in template_data:
                 template_data[series_col] = ["series_A"] * n_rows
 
-    # Create DataFrame
-    df = pd.DataFrame(template_data)
+    # Build list of dicts (same shape as DataFrame.to_dict("records"))
+    if not template_data:
+        template_list = []
+    else:
+        template_list = [{col: template_data[col][i] for col in template_data} for i in range(n_rows)]
 
     # Build structured content with template data and metadata
     structured_content = {
@@ -187,7 +194,7 @@ async def generate_prediction_data_template(
         "target": features_info["target"],
         "target_type": features_info["target_type"],
         "total_features": features_info["total_features"],
-        "template_data": df.to_dict("records"),  # Convert DataFrame to list of dicts
+        "template_data": template_list,
     }
 
     if "time_series_config" in features_info:
@@ -210,16 +217,15 @@ async def validate_prediction_data(
     | None = None,
 ) -> ToolError | ToolResult:
     """Validate if a CSV file is suitable for making predictions with a deployment."""
-    # Load the data
-    if csv_string is not None:
-        df = pd.read_csv(io.StringIO(csv_string))
-    elif file_path is not None:
-        df = pd.read_csv(file_path)
-    else:
-        raise ToolError("Must provide either file_path or csv_string.")
+    try:
+        rows, columns = read_csv_to_rows(csv_string=csv_string, file_path=file_path)
+    except ValueError as e:
+        raise ToolError(str(e))
 
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
+
+    data_columns = set(columns)
 
     # Get deployment features
     features_result = await get_deployment_features(deployment_id=deployment_id)
@@ -239,9 +245,6 @@ async def validate_prediction_data(
 
     # Check each required feature
     required_features = [f for f in features_info["features"]]
-    data_columns = set(df.columns)
-
-    # Threshold for considering a feature as important
     importance_threshold = 0.1
 
     for feature in required_features:
@@ -261,18 +264,18 @@ async def validate_prediction_data(
                 )
             continue
 
+        col_values = column_values(rows, feature_name)
         # Check for missing values (allowed)
-        if df[feature_name].isnull().all() or (df[feature_name] == "").all():
+        if all_null_or_empty(col_values):
             validation_report["info"].append(
                 f"Feature {feature_name} is entirely missing or empty (this is allowed)"
             )
             continue
 
         # Check data type compatibility (only if not all missing)
-        col_dtype = str(df[feature_name].dtype)
-        if feature["feature_type"] == "numeric" and not pd.api.types.is_numeric_dtype(
-            df[feature_name].dropna()
-        ):
+        non_null = [v for v in col_values if v is not None and v != ""]
+        col_dtype = "numeric" if is_numeric_column(non_null) else "string"
+        if feature["feature_type"] == "numeric" and not is_numeric_column(non_null):
             validation_report["warnings"].append(
                 f"Feature {feature_name} should be numeric but is {col_dtype}"
             )
@@ -297,13 +300,9 @@ async def validate_prediction_data(
                 f"Missing required datetime column: {ts_config['datetime_column']}"
             )
             validation_report["status"] = "invalid"
-        elif (
-            not df[ts_config["datetime_column"]].isnull().all()
-            and not (df[ts_config["datetime_column"]] == "").all()
-        ):
-            try:
-                pd.to_datetime(df[ts_config["datetime_column"]])
-            except ValueError:
+        else:
+            dt_col_values = column_values(rows, ts_config["datetime_column"])
+            if not all_null_or_empty(dt_col_values) and not can_parse_datetime_column(dt_col_values):
                 validation_report["errors"].append(
                     f"Datetime column {ts_config['datetime_column']} cannot be parsed as dates"
                 )
@@ -320,8 +319,8 @@ async def validate_prediction_data(
     # Add summary
     validation_report["summary"] = {
         "file_path": file_path,
-        "rows": len(df),
-        "columns": len(df.columns),
+        "rows": len(rows),
+        "columns": len(columns),
         "deployment_id": deployment_id,
         "model_type": features_info["model_type"],
     }
