@@ -37,11 +37,9 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.dragent.converters import (  # noqa: PLC0415
-        invoke_agent_to_dragent_event_response,
-    )
     from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
+    from nat.data_models.api_server import GlobalTypeConverter  # noqa: PLC0415
 
     from dragent.crewai.myagent import MyAgent  # noqa: PLC0415
 
@@ -49,8 +47,11 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
     agent = MyAgent(llm=llm)
 
-    async def _response_fn(input_message: RunAgentInput) -> DRAgentEventResponse:
-        return await invoke_agent_to_dragent_event_response(agent, input_message)
+    async def _response_fn(
+        input_message: RunAgentInput,
+    ) -> AsyncGenerator[DRAgentEventResponse, None]:
+        async for event, _, _ in agent.invoke(input_message):
+            yield GlobalTypeConverter.get().convert(event, DRAgentEventResponse)
 
     yield FunctionInfo.from_fn(
         _response_fn,

@@ -14,15 +14,11 @@
 
 import logging
 import uuid
-from typing import TYPE_CHECKING
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from langchain_core.messages import ToolMessage
-
-if TYPE_CHECKING:
-    from datarobot_genai.core.agents.base import BaseAgent
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import Message
@@ -92,25 +88,10 @@ def convert_str_to_dragent_event_response(
     )
 
 
-async def invoke_agent_to_dragent_event_response(
-    agent: "BaseAgent",
-    input_message: RunAgentInput,
-) -> DRAgentEventResponse:
-    """Invoke an agent and collect its event stream into a DRAgentEventResponse."""
-    events: list[Event] = []
-    metrics = default_usage_metrics()
-    pipeline_interactions = None
-
-    async for event, iteration_interactions, iteration_metrics in agent.invoke(input_message):
-        metrics = iteration_metrics
-        if iteration_interactions is not None:
-            pipeline_interactions = iteration_interactions
-        events.append(event)
-
+def convert_event_to_dragent_event_response(event: Event) -> DRAgentEventResponse:
     return DRAgentEventResponse(
-        events=events,
-        usage_metrics=metrics,
-        pipeline_interactions=pipeline_interactions,
+        events=[event],
+        usage_metrics=default_usage_metrics(),
     )
 
 
