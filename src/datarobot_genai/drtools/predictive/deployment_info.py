@@ -315,8 +315,7 @@ async def validate_prediction_data(
                         validation_report["status"] = "invalid"
                 except Exception:
                     validation_report["errors"].append(
-                        f"Datetime column {ts_config['datetime_column']} "
-                        f"cannot be parsed as dates"
+                        f"Datetime column {ts_config['datetime_column']} cannot be parsed as dates"
                     )
                     validation_report["status"] = "invalid"
 
