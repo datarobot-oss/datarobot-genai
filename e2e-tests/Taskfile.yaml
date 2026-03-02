@@ -24,6 +24,9 @@ tasks:
       - name: GROUP
         enum:
           - dragent-nat
+          - dragent-langgraph
+          - dragent-crewai
+          - dragent-llamaindex
     cmds:
       - echo "🔧 Installing dependencies for {{.GROUP}}"
       - uv sync --group {{.GROUP}}
