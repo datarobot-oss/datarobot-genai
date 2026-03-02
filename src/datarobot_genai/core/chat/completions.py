@@ -126,7 +126,7 @@ async def agent_chat_completion_wrapper(
         received_run_finished = False
 
         async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
-            # When we work in non-streaming mode, we only send back the final message.
+            # When we work in non-streaming mode, we only send back the final message
             # It is because of limitation of completions interface we can not send back the
             # intermediate messages.
             if isinstance(event, TextMessageStartEvent):
