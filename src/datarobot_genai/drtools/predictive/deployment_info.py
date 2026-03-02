@@ -87,7 +87,7 @@ async def get_deployment_info(
     }
 
     # Add time series specific information if applicable
-    if project and hasattr(project, "datetime_partitioning"):
+    if project and getattr(project, "datetime_partitioning", None) is not None:
         partition = project.datetime_partitioning
         result["time_series_config"] = {
             "datetime_column": partition.datetime_partition_column,
