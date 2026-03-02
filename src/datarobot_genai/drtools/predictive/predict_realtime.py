@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-import pandas as pd
+import polars as pl
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
 from fastmcp.exceptions import ToolError
@@ -76,22 +76,22 @@ async def predict_by_ai_catalog_rt(
     # 2. Next: if there is a method returning a local file path
     elif hasattr(dataset, "download"):
         path = dataset.download("dataset.csv")
-        df = pd.read_csv(path)
+        df = pl.read_csv(path).to_pandas()
 
     # 3. Next: if there is a method returning a local file path
     elif hasattr(dataset, "get_file"):
         path = dataset.get_file()
-        df = pd.read_csv(path)
+        df = pl.read_csv(path).to_pandas()
 
     # 4. Bytes fallback
     elif hasattr(dataset, "get_bytes"):
         raw = dataset.get_bytes()
-        df = pd.read_csv(io.BytesIO(raw))
+        df = pl.read_csv(io.BytesIO(raw)).to_pandas()
 
     # 5. Last resort: expose URL then fetch manually
     else:
         url = dataset.url
-        df = pd.read_csv(url)
+        df = pl.read_csv(url).to_pandas()
 
     deployment = client.Deployment.get(deployment_id=deployment_id)
     result = dr_predict(deployment, df, timeout=timeout or 600)
@@ -262,23 +262,23 @@ async def predict_realtime(
     if dataset is not None:
         # Try CSV first
         try:
-            df = pd.read_csv(io.StringIO(dataset))
+            pl_df = pl.read_csv(io.StringIO(dataset))
         except Exception:
             # Try JSON
             try:
                 data = json.loads(dataset)
-                df = pd.DataFrame(data)
+                pl_df = pl.DataFrame(data)
             except Exception as e:
-                raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}")
+                raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}") from e
     elif file_path is not None:
-        df = pd.read_csv(file_path)
+        pl_df = pl.read_csv(file_path)
     else:
         raise ValueError("Either file_path or dataset must be provided.")
 
     # Normalize column names: strip leading/trailing whitespace
-    df.columns = df.columns.str.strip()
+    pl_df = pl_df.rename({c: c.strip() for c in pl_df.columns})
 
-    if series_id_column and series_id_column not in df.columns:
+    if series_id_column and series_id_column not in pl_df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 
     token = await get_datarobot_access_token()
@@ -288,7 +288,8 @@ async def predict_realtime(
     # Check if this is a time series prediction or regular prediction
     is_time_series = bool(forecast_point or (forecast_range_start and forecast_range_end))
 
-    # Start with base prediction parameters
+    # Convert to pandas at the predict API boundary
+    df = pl_df.to_pandas()
     predict_kwargs = {
         "deployment": deployment,
         "data_frame": df,
