@@ -391,40 +391,42 @@ async def test_langgraph_non_streaming(run_agent_input):
         if isinstance(response_event, BaseEvent):
             events.append(response_event)
 
-    assert len(events) == 12
-    assert events[0].type == EventType.TOOL_CALL_START
-    assert events[0].tool_call_id == "tool_call_111"
-    assert events[0].tool_call_name == "get_info_about_city"
-    assert events[0].parent_message_id == "000"
-    assert events[1].type == EventType.TOOL_CALL_ARGS
+    assert len(events) == 14
+    assert events[0].type == EventType.RUN_STARTED
+    assert events[1].type == EventType.TOOL_CALL_START
     assert events[1].tool_call_id == "tool_call_111"
-    assert events[1].delta == "{'name': 'Paris'}"
-    assert events[2].type == EventType.TOOL_CALL_END
+    assert events[1].tool_call_name == "get_info_about_city"
+    assert events[1].parent_message_id == "000"
+    assert events[2].type == EventType.TOOL_CALL_ARGS
     assert events[2].tool_call_id == "tool_call_111"
-    assert events[3].type == EventType.TOOL_CALL_RESULT
+    assert events[2].delta == "{'name': 'Paris'}"
+    assert events[3].type == EventType.TOOL_CALL_END
     assert events[3].tool_call_id == "tool_call_111"
-    assert events[3].content == "Paris is the capital city of France."
-    assert events[3].role == "tool"
-    assert events[4].type == EventType.TEXT_MESSAGE_START
-    assert events[4].message_id == "111"
-    assert events[5].type == EventType.TEXT_MESSAGE_CONTENT
-    assert events[5].delta == "Here is the information"
+    assert events[4].type == EventType.TOOL_CALL_RESULT
+    assert events[4].tool_call_id == "tool_call_111"
+    assert events[4].content == "Paris is the capital city of France."
+    assert events[4].role == "tool"
+    assert events[5].type == EventType.TEXT_MESSAGE_START
     assert events[5].message_id == "111"
     assert events[6].type == EventType.TEXT_MESSAGE_CONTENT
-    assert events[6].delta == " you requested about Paris....."
+    assert events[6].delta == "Here is the information"
     assert events[6].message_id == "111"
-    assert events[7].type == EventType.TEXT_MESSAGE_END
+    assert events[7].type == EventType.TEXT_MESSAGE_CONTENT
+    assert events[7].delta == " you requested about Paris....."
     assert events[7].message_id == "111"
-    assert events[8].type == EventType.TEXT_MESSAGE_START
-    assert events[8].message_id == "222"
-    assert events[9].type == EventType.TEXT_MESSAGE_CONTENT
-    assert events[9].delta == "Paris is the capital"
+    assert events[8].type == EventType.TEXT_MESSAGE_END
+    assert events[8].message_id == "111"
+    assert events[9].type == EventType.TEXT_MESSAGE_START
     assert events[9].message_id == "222"
     assert events[10].type == EventType.TEXT_MESSAGE_CONTENT
-    assert events[10].delta == " city of France."
+    assert events[10].delta == "Paris is the capital"
     assert events[10].message_id == "222"
-    assert events[11].type == EventType.TEXT_MESSAGE_END
+    assert events[11].type == EventType.TEXT_MESSAGE_CONTENT
+    assert events[11].delta == " city of France."
     assert events[11].message_id == "222"
+    assert events[12].type == EventType.TEXT_MESSAGE_END
+    assert events[12].message_id == "222"
+    assert events[13].type == EventType.RUN_FINISHED
 
     assert pipeline_interactions is not None
     assert usage_metrics is not None

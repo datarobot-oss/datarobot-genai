@@ -683,10 +683,8 @@ def test_adaptor_processes_nested_reasoning_steps(
     )
 
     for i, (actual_resp, expected_resp) in enumerate(zip(actual_responses, expected_responses)):
-        assert len(actual_resp.events or []) == len(expected_resp.events or []), (
+        assert len(actual_resp.events) == len(expected_resp.events), (
             f"Response {i}: event count mismatch"
         )
-        for j, (actual_ev, expected_ev) in enumerate(
-            zip(actual_resp.events or [], expected_resp.events or [])
-        ):
+        for j, (actual_ev, expected_ev) in enumerate(zip(actual_resp.events, expected_resp.events)):
             assert actual_ev == expected_ev, f"Response {i} event {j}: {actual_ev} != {expected_ev}"

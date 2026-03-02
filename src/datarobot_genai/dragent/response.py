@@ -14,29 +14,10 @@
 
 
 from ag_ui.core import Event
-from ag_ui.core import ReasoningMessageContentEvent
-from ag_ui.core import TextMessageContentEvent
 from nat.data_models.api_server import ResponseBaseModelOutput
 
 
 class DRAgentEventResponse(ResponseBaseModelOutput):
-    events: list[Event] | None = None
+    events: list[Event] = []
     model: str | None = None
-    delta: str | None = None
     usage_metrics: dict[str, int] | None = None
-
-    def get_delta(self) -> str:
-        if self.delta is not None:
-            return self.delta
-        if self.events is not None:
-            return "\n".join([event.delta for event in self.events_with_delta()])
-        return ""
-
-    def events_with_delta(self) -> list[Event]:
-        if self.events is not None:
-            return [
-                event
-                for event in self.events
-                if isinstance(event, (TextMessageContentEvent, ReasoningMessageContentEvent))
-            ]
-        return []

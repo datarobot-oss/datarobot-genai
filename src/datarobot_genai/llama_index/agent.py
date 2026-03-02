@@ -15,11 +15,17 @@ from __future__ import annotations
 
 import abc
 import inspect
+import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -113,6 +119,12 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             # Printing is best-effort; proceed regardless
             pass
 
+        thread_id = run_agent_input.thread_id
+        run_id = run_agent_input.run_id
+
+        # Partial AG-UI: workflow lifecycle + text message events
+        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, default_usage_metrics()
+
         workflow = self.build_workflow()
         handler = workflow.run(user_msg=input_message)
 
@@ -120,6 +132,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         events: list[Any] = []
         current_agent_name: str | None = None
+        message_id = str(uuid.uuid4())
+        text_started = False
+
         async for event in handler.stream_events():
             events.append(event)
             # Best-effort extraction of incremental text from LlamaIndex events
@@ -136,8 +151,14 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 delta = None
 
             if delta:
-                # Yield token/content delta with current (accumulated) usage metrics
-                yield delta, None, usage_metrics
+                if not text_started:
+                    yield TextMessageStartEvent(message_id=message_id), None, usage_metrics
+                    text_started = True
+                yield (
+                    TextMessageContentEvent(message_id=message_id, delta=delta),
+                    None,
+                    usage_metrics,
+                )
 
             # Best-effort debug/event messages printed to CLI (do not stream as content)
             try:
@@ -190,6 +211,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 # Ignore best-effort debug rendering errors
                 pass
 
+        if text_started:
+            yield TextMessageEndEvent(message_id=message_id), None, usage_metrics
+
         # After streaming completes, build final interactions and finish chunk
         # Extract state from workflow context (supports sync/async get or attribute)
         state = None
@@ -209,10 +233,12 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         _ = self.extract_response_text(state, events)
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-        # Final empty chunk indicates end of stream, carrying interactions and usage
-        # Usage is empty because llamaindex does not report it
-        # TODO: find a way to count usage
-        yield "", pipeline_interactions, usage_metrics
+        # TODO: find a way to count usage (LlamaIndex does not report it)
+        yield (
+            RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+            pipeline_interactions,
+            usage_metrics,
+        )
 
     @classmethod
     def create_pipeline_interactions_from_events(

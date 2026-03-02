@@ -22,7 +22,12 @@ from unittest.mock import patch
 import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
 from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
@@ -227,43 +232,39 @@ async def test_invoke_mcp_headers(agent, run_agent_input):
     assert isinstance(streaming_response_iterator, AsyncGenerator)
     events = [event async for event in streaming_response_iterator]
 
-    # THEN: the events are tuples of (result, pipeline interactions, usage)
-    deltas, pipeline_interactions_list, usage_list = zip(*events)
+    # THEN: events follow AG-UI lifecycle pattern
+    # RunStarted, TextMessageStart, TextMessageContent(chunk1), TextMessageContent(chunk2),
+    # TextMessageEnd, RunFinished
+    ag_events, pipeline_interactions_list, usage_list = zip(*events)
 
-    # THEN: the deltas are the expected result
-    assert deltas == ("chunk1", "chunk2", "")
+    # THEN: first event is RunStartedEvent
+    assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: the pipeline interactions are the expected pipeline interactions
-    assert pipeline_interactions_list == (
-        None,
-        None,
-        MultiTurnSample(
-            user_input=[
-                HumanMessage(content="user prompt"),
-                AIMessage(content="LLM response"),
-                AIMessage(content="LLM response"),
-            ]
-        ),
+    # THEN: text message events contain the chunks
+    assert isinstance(ag_events[1], TextMessageStartEvent)
+    assert isinstance(ag_events[2], TextMessageContentEvent)
+    assert ag_events[2].delta == "chunk1"
+    assert isinstance(ag_events[3], TextMessageContentEvent)
+    assert ag_events[3].delta == "chunk2"
+    assert isinstance(ag_events[4], TextMessageEndEvent)
+
+    # THEN: last event is RunFinishedEvent with pipeline interactions
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+    assert isinstance(pipeline_interactions_list[-1], MultiTurnSample)
+    assert pipeline_interactions_list[-1] == MultiTurnSample(
+        user_input=[
+            HumanMessage(content="user prompt"),
+            AIMessage(content="LLM response"),
+            AIMessage(content="LLM response"),
+        ]
     )
 
-    # THEN: the usage is the expected usage
-    assert usage_list == (
-        {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0,
-        },
-        {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0,
-        },
-        {
-            "completion_tokens": 2,
-            "prompt_tokens": 2,
-            "total_tokens": 4,
-        },
-    )
+    # THEN: final usage has accumulated token counts
+    assert usage_list[-1] == {
+        "completion_tokens": 2,
+        "prompt_tokens": 2,
+        "total_tokens": 4,
+    }
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "patch_environment_variables")
@@ -278,11 +279,10 @@ async def test_streaming_mcp_headers(
     assert isinstance(streaming_response_iterator, AsyncGenerator)
     events = [event async for event in streaming_response_iterator]
 
-    # THEN: the events are tuples of (result, pipeline interactions, usage)
-    deltas, _, _ = zip(*events)
-
-    # THEN: the deltas are the expected result
-    assert deltas == ("chunk1", "chunk2", "")
+    # THEN: events follow AG-UI lifecycle with text content chunks
+    ag_events, _, _ = zip(*events)
+    content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert [e.delta for e in content_events] == ["chunk1", "chunk2"]
 
     # THEN: the mcp load workflow is called with the expected headers
     expected_headers = {
