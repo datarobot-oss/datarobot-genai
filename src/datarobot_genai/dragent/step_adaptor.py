@@ -108,8 +108,8 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         """Extract text from an LLM_END payload across different frameworks.
 
         LangChain payloads expose ``.text`` (a ``TextAccessor``), while
-        LlamaIndex ``ChatResponse`` objects use ``.message.content``.
-        Always returns a plain ``str``.
+        LlamaIndex ``ChatResponse`` objects use ``.message.content``
+        Always returns a plain ``str``
         """
         data = payload.data.payload
         if hasattr(data, "text"):

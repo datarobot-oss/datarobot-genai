@@ -133,7 +133,7 @@ class TestSummarizeToolCalls:
 
 
 # ---------------------------------------------------------------------------
-# extract_history_messages — max_history truncation
+# extract_history_messages - max_history truncation
 # ---------------------------------------------------------------------------
 
 
@@ -224,7 +224,7 @@ class TestExtractHistoryMessagesTruncation:
 
 
 # ---------------------------------------------------------------------------
-# extract_history_messages — single user message edge case
+# extract_history_messages - single user message edge case
 # ---------------------------------------------------------------------------
 
 

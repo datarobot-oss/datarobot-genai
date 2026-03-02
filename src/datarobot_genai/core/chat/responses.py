@@ -133,8 +133,8 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip lifecycle events — they don't carry content for streaming.
-                # Their metadata is still tracked above for the final stop chunk.
+                # Skip lifecycle events - they don't carry content for streaming
+                # Their metadata is still tracked above for the final stop chunk
                 if isinstance(
                     event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
                 ):
@@ -230,8 +230,8 @@ def streaming_iterator_to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip lifecycle events — they don't carry content for streaming.
-                # Their metadata is still tracked above for the final stop chunk.
+                # Skip lifecycle events - they don't carry content for streaming
+                # Their metadata is still tracked above for the final stop chunk
                 if isinstance(
                     event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
                 ):

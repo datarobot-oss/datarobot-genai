@@ -110,9 +110,9 @@ async def agent_chat_completion_wrapper(
     Returns
     -------
     InvokeReturn
-        When streaming is requested — the raw async event generator.
+        When streaming is requested - the raw async event generator
     tuple[str, MultiTurnSample | None, UsageMetrics]
-        When non-streaming — the reassembled final text, pipeline
+        When non-streaming - the reassembled final text, pipeline
         interactions, and accumulated usage metrics.
     """
     run_agent_input = convert_chat_completion_params_to_run_agent_input(chat_completion_params)
@@ -128,7 +128,7 @@ async def agent_chat_completion_wrapper(
         async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
             # When we work in non-streaming mode, we only send back the final message
             # It is because of limitation of completions interface we can not send back the
-            # intermediate messages.
+            # intermediate messages
             if isinstance(event, TextMessageStartEvent):
                 final_response = ""
             elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
