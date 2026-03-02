@@ -15,15 +15,15 @@
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-from datarobot_genai.drmcp.tools.clients.dr_docs import DocPage
-from datarobot_genai.drmcp.tools.clients.dr_docs import _compute_tf
-from datarobot_genai.drmcp.tools.clients.dr_docs import _DocsIndex
-from datarobot_genai.drmcp.tools.clients.dr_docs import _extract_html_content
-from datarobot_genai.drmcp.tools.clients.dr_docs import _fetch_sitemap_urls
-from datarobot_genai.drmcp.tools.clients.dr_docs import _title_from_url
-from datarobot_genai.drmcp.tools.clients.dr_docs import _tokenize
-from datarobot_genai.drmcp.tools.clients.dr_docs import fetch_page_content
-from datarobot_genai.drmcp.tools.clients.dr_docs import search_docs
+from datarobot_genai.drtools.clients.dr_docs import DocPage
+from datarobot_genai.drtools.clients.dr_docs import _compute_tf
+from datarobot_genai.drtools.clients.dr_docs import _DocsIndex
+from datarobot_genai.drtools.clients.dr_docs import _extract_html_content
+from datarobot_genai.drtools.clients.dr_docs import _fetch_sitemap_urls
+from datarobot_genai.drtools.clients.dr_docs import _title_from_url
+from datarobot_genai.drtools.clients.dr_docs import _tokenize
+from datarobot_genai.drtools.clients.dr_docs import fetch_page_content
+from datarobot_genai.drtools.clients.dr_docs import search_docs
 
 # Reusable agentic-ai mock sitemaps (must contain AGENTIC_AI_PATH to pass the filter)
 _SITEMAP_ONE_PAGE = """<?xml version="1.0" encoding="UTF-8"?>
@@ -51,7 +51,7 @@ class TestFetchSitemapUrls:
     async def test_fetch_sitemap_urls_namespaced(self) -> None:
         """Parses a standard namespaced sitemap."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = _SITEMAP_TWO_PAGES
@@ -72,7 +72,7 @@ class TestFetchSitemapUrls:
         </urlset>"""
 
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = sitemap
@@ -466,7 +466,7 @@ class TestSearchAgenticDocs:
     async def test_search_agentic_docs_builds_index(self) -> None:
         """Test that search_docs builds index if needed."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
 
@@ -494,7 +494,7 @@ class TestSearchAgenticDocs:
 
     async def test_search_agentic_docs_returns_dicts(self) -> None:
         """Test that search_docs returns list of dicts."""
-        import datarobot_genai.drmcp.tools.clients.dr_docs as dr_docs_module
+        import datarobot_genai.drtools.clients.dr_docs as dr_docs_module
 
         # Force index rebuild by marking it as stale
         dr_docs_module._index._built_at = 0
@@ -521,7 +521,7 @@ class TestSearchAgenticDocs:
             return page_html.get(url)
 
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             side_effect=_side_effect,
         ):
             # "develop" only appears in one page → non-zero IDF → at least one result
@@ -536,7 +536,7 @@ class TestSearchAgenticDocs:
     async def test_search_agentic_docs_clamps_max_results(self) -> None:
         """Test that max_results is clamped to valid range."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = _SITEMAP_ONE_PAGE
@@ -568,7 +568,7 @@ class TestFetchPageContent:
         """
 
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_html
@@ -590,7 +590,7 @@ class TestFetchPageContent:
     async def test_fetch_page_content_fetch_failure(self) -> None:
         """Test handling fetch failure."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = None
@@ -611,7 +611,7 @@ class TestFetchPageContent:
         """
 
         with patch(
-            "datarobot_genai.drmcp.tools.clients.dr_docs._fetch_url_raw_text_content",
+            "datarobot_genai.drtools.clients.dr_docs._fetch_url_raw_text_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_html

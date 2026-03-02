@@ -205,7 +205,7 @@ class UsageMetrics(TypedDict):
 
 # Canonical return type for all agent invoke implementations
 InvokeReturn: TypeAlias = AsyncGenerator[
-    tuple[str | Event, Optional["MultiTurnSample"], UsageMetrics], None
+    tuple[Event, Optional["MultiTurnSample"], UsageMetrics], None
 ]
 
 

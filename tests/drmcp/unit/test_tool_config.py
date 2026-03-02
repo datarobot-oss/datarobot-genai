@@ -57,7 +57,7 @@ class TestToolConfigs:
         assert config["name"] == "predictive"
         assert config["oauth_check"] is None
         assert config["directory"] == "predictive"
-        assert config["package_prefix"] == "datarobot_genai.drmcp.tools.predictive"
+        assert config["package_prefix"] == "datarobot_genai.drtools.predictive"
         assert config["config_field_name"] == "enable_predictive_tools"
 
     def test_jira_tool_config(self) -> None:
@@ -66,7 +66,7 @@ class TestToolConfigs:
         assert config["name"] == "jira"
         assert config["oauth_check"] is not None
         assert config["directory"] == "jira"
-        assert config["package_prefix"] == "datarobot_genai.drmcp.tools.jira"
+        assert config["package_prefix"] == "datarobot_genai.drtools.jira"
         assert config["config_field_name"] == "enable_jira_tools"
 
     def test_confluence_tool_config(self) -> None:
@@ -75,7 +75,7 @@ class TestToolConfigs:
         assert config["name"] == "confluence"
         assert config["oauth_check"] is not None
         assert config["directory"] == "confluence"
-        assert config["package_prefix"] == "datarobot_genai.drmcp.tools.confluence"
+        assert config["package_prefix"] == "datarobot_genai.drtools.confluence"
         assert config["config_field_name"] == "enable_confluence_tools"
 
     def test_microsoft_graph_tool_config(self) -> None:
@@ -84,7 +84,7 @@ class TestToolConfigs:
         assert config["name"] == "microsoft_graph"
         assert config["oauth_check"] is not None
         assert config["directory"] == "microsoft_graph"
-        assert config["package_prefix"] == "datarobot_genai.drmcp.tools.microsoft_graph"
+        assert config["package_prefix"] == "datarobot_genai.drtools.microsoft_graph"
         assert config["config_field_name"] == "enable_microsoft_graph_tools"
 
     def test_jira_oauth_check_callable(self) -> None:

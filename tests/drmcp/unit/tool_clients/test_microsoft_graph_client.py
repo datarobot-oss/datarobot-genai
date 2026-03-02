@@ -17,10 +17,10 @@ from unittest import mock
 import httpx
 import pytest
 
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphClient
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphItem
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import validate_site_url
+from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphClient
+from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphError
+from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphItem
+from datarobot_genai.drtools.clients.microsoft_graph import validate_site_url
 
 # MIME type constant for Word documents
 WORD_DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

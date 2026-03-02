@@ -23,11 +23,6 @@ repos:
             "tests",
         ]
 
--   repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.0
-    hooks:
-    -   id: pyupgrade
-
 -   repo: local
     hooks:
     -   id: ruff-format
@@ -50,6 +45,19 @@ repos:
         types: [ python ]
         require_serial: true
         pass_filenames: false
+    -   id: ruff-format-e2e
+        name: ruff-format-e2e
+        entry: task -d e2e-tests fix-ruff-format
+        language: system
+        types: [ python ]
+        pass_filenames: false
+    -   id: ruff-e2e
+        name: ruff-e2e
+        entry: task -d e2e-tests fix-ruff
+        language: system
+        types: [ python ]
+        require_serial: true
+        pass_filenames: false
     -   id: fix-licenses
         name: fix-licenses
         entry: task fix-licenses-files --
@@ -62,3 +70,8 @@ repos:
         language: system
         pass_filenames: false
         stages: [ pre-commit ]
+
+-   repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.0
+    hooks:
+    -   id: pyupgrade

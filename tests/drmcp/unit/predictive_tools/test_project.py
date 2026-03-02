@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.predictive import project
+from datarobot_genai.drtools.predictive import project
 
 
 @pytest.mark.asyncio
@@ -30,11 +30,11 @@ async def test_list_projects_success() -> None:
     mock_client.Project.list.return_value = [mock_proj1, mock_proj2]
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await project.list_projects()
@@ -52,11 +52,11 @@ async def test_list_projects_empty() -> None:
     mock_client.Project.list.return_value = []
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await project.list_projects()
@@ -67,7 +67,7 @@ async def test_list_projects_empty() -> None:
 @pytest.mark.asyncio
 async def test_list_projects_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
@@ -88,11 +88,11 @@ async def test_get_project_dataset_by_name_success() -> None:
     mock_client.Project.get.return_value = mock_project
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await project.get_project_dataset_by_name(
@@ -112,11 +112,11 @@ async def test_get_project_dataset_by_name_not_found() -> None:
     mock_client.Project.get.return_value = mock_project
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.project.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(ToolError) as exc_info:
@@ -130,7 +130,7 @@ async def test_get_project_dataset_by_name_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_project_dataset_by_name_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.project.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):

@@ -19,18 +19,18 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphError
-from datarobot_genai.drmcp.tools.clients.microsoft_graph import MicrosoftGraphItem
-from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_create_file
-from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_graph_search_content
-from datarobot_genai.drmcp.tools.microsoft_graph.tools import microsoft_graph_share_item
+from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphError
+from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphItem
+from datarobot_genai.drtools.microsoft_graph.tools import microsoft_create_file
+from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_search_content
+from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_share_item
 
 
 @pytest.fixture
 def get_microsoft_graph_access_token_mock() -> Iterator[None]:
     """Mock Microsoft Graph access token retrieval."""
     with patch(
-        "datarobot_genai.drmcp.tools.microsoft_graph.tools.get_microsoft_graph_access_token",
+        "datarobot_genai.drtools.microsoft_graph.tools.get_microsoft_graph_access_token",
         return_value="test_token",
     ):
         yield
@@ -67,7 +67,7 @@ def mock_graph_items() -> list[MicrosoftGraphItem]:
 def mock_client_search_success(mock_graph_items: list[MicrosoftGraphItem]) -> Iterator[AsyncMock]:
     """Mock successful client search."""
     with patch(
-        "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+        "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient"
     ) as mock_client_class:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -80,7 +80,7 @@ def mock_client_search_success(mock_graph_items: list[MicrosoftGraphItem]) -> It
 @pytest.fixture
 def mock_client_share_item_success() -> Iterator[None]:
     """Mock successful client share item method."""
-    with patch("datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient.share_item"):
+    with patch("datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient.share_item"):
         yield
 
 
@@ -197,7 +197,7 @@ class TestMicrosoftGraphSearchContent:
     async def test_search_content_oauth_error(self) -> None:
         """Test search when OAuth token retrieval fails."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.get_microsoft_graph_access_token",
+            "datarobot_genai.drtools.microsoft_graph.tools.get_microsoft_graph_access_token",
             return_value=ToolError("OAuth error"),
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -211,7 +211,7 @@ class TestMicrosoftGraphSearchContent:
     ) -> None:
         """Test search when client raises error."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+            "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -230,7 +230,7 @@ class TestMicrosoftGraphSearchContent:
     ) -> None:
         """Test search when unexpected error occurs."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+            "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -337,7 +337,7 @@ class TestMicrosoftGraphShareItem:
     async def test_share_item_oauth_error(self) -> None:
         """Test share item when OAuth token retrieval fails."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.get_microsoft_graph_access_token",
+            "datarobot_genai.drtools.microsoft_graph.tools.get_microsoft_graph_access_token",
             return_value=ToolError("OAuth error"),
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -356,7 +356,7 @@ class TestMicrosoftGraphShareItem:
     ) -> None:
         """Test share item when client raises error."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient.share_item"
+            "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient.share_item"
         ) as mock_fn:
             mock_fn.side_effect = MicrosoftGraphError("Client error")
 
@@ -376,7 +376,7 @@ class TestMicrosoftGraphShareItem:
     ) -> None:
         """Test share item when unexpected error occurs."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient.share_item"
+            "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient.share_item"
         ) as mock_fn:
             mock_fn.side_effect = Exception("Unexpected error")
 
@@ -415,7 +415,7 @@ class TestMicrosoftCreateFile:
     ) -> Iterator[AsyncMock]:
         """Mock successful client file creation with OneDrive support."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+            "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -482,7 +482,7 @@ class TestMicrosoftCreateFile:
     ) -> None:
         """Test error handling for client exceptions."""
         with patch(
-            "datarobot_genai.drmcp.tools.microsoft_graph.tools.MicrosoftGraphClient"
+            "datarobot_genai.drtools.microsoft_graph.tools.MicrosoftGraphClient"
         ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)

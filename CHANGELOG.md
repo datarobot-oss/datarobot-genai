@@ -4,12 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.5.11
+## 0.6.1
+- Add e2e test scaffolding for CrewAI, LangGraph, and LlamaIndex agent frameworks
 
+## 0.6.0
+- Unify `InvokeReturn` type from `str | Event` to `Event` across all agent implementations
+- All agents (CrewAI, LangGraph, LlamaIndex, NAT) now emit AG-UI lifecycle events
+- Remove `str` code path from streaming/completions layer
+
+## 0.5.15
+- Restructure the tools and move them to drtools instead of drmcp.tools
+
+## 0.5.14
+- Fix unit tests to not depend on .env
+- Update MCP dependencies to remove core extra
+- Fix root conftest loads without error for drmcp tests by using inline imports.
+
+## 0.5.13
+- Add `dragent`: frontserver for DataRobot Agents
+- Add placeholder for E2E tests of `dragent` and `drmcp`
+
+## 0.5.12
+Update MCP item metadata related enums
+- DataRobotMCPToolCategory
+- DataRobotMCPPromptCategory
+- DataRobotMCPResourceCategory
+
+## 0.5.11
 - Created DR MCP test stubs and added stub `client` attribute integrated with MCP server
 
 ## 0.5.10
-
 - Add DataRobotMCPServer APIs to retrieve registered tools/prompts/resources.
 
 ## 0.5.9

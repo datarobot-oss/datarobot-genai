@@ -24,7 +24,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.tools.predictive import predict
+from datarobot_genai.drtools.predictive import predict
 
 FEATURE_VALUE = 0.5
 
@@ -33,21 +33,19 @@ FEATURE_VALUE = 0.5
 def patch_predict_dependencies() -> Generator[dict[str, Any], None, None]:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.get_or_create_s3_credential"
+            "datarobot_genai.drtools.predictive.predict.get_or_create_s3_credential"
         ) as mock_cred,
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.make_output_settings",
+            "datarobot_genai.drtools.predictive.predict.make_output_settings",
             side_effect=lambda cred: {
                 "url": "s3://bucket/key",
                 "credential_id": "cid",
                 "type": "s3",
             },
         ),
+        patch("datarobot_genai.drtools.predictive.predict.dr.BatchPredictionJob") as mock_batch_job,
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.dr.BatchPredictionJob"
-        ) as mock_batch_job,
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.generate_presigned_url",
+            "datarobot_genai.drtools.predictive.predict.generate_presigned_url",
             return_value="https://dummy-presigned-url",
         ),
     ):
@@ -82,13 +80,13 @@ async def test_predict_by_ai_catalog(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.predict.uuid.uuid4", return_value="uuid"),
+        patch("datarobot_genai.drtools.predictive.predict.uuid.uuid4", return_value="uuid"),
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.predict.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
     ):
         mock_job = MagicMock()
         mock_job.id = "jobid"
@@ -112,13 +110,13 @@ async def test_predict_from_project_data(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
     with (
-        patch("datarobot_genai.drmcp.tools.predictive.predict.uuid.uuid4", return_value="uuid"),
+        patch("datarobot_genai.drtools.predictive.predict.uuid.uuid4", return_value="uuid"),
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.predict.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = MagicMock()
         mock_job = MagicMock()
@@ -249,11 +247,11 @@ async def test_get_prediction_explanations_basic() -> None:
     mock_client.Model.get.return_value = mock_model
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.predict.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result_json = await predict.get_prediction_explanations(
@@ -276,11 +274,11 @@ async def test_get_prediction_explanations_empty() -> None:
     mock_client.Model.get.return_value = mock_model
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.predict.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result_json = await predict.get_prediction_explanations(
@@ -304,11 +302,11 @@ async def test_get_prediction_explanations_sdk_error() -> None:
     mock_client.Model.get.return_value = mock_model
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.predict.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.predict.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result_json = await predict.get_prediction_explanations(

@@ -21,9 +21,9 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.predictive import model
-from datarobot_genai.drmcp.tools.predictive.model import ModelEncoder
-from datarobot_genai.drmcp.tools.predictive.model import model_to_dict
+from datarobot_genai.drtools.predictive import model
+from datarobot_genai.drtools.predictive.model import ModelEncoder
+from datarobot_genai.drtools.predictive.model import model_to_dict
 
 
 def _patch_model_client(mock_client: MagicMock):
@@ -32,11 +32,11 @@ def _patch_model_client(mock_client: MagicMock):
     """
     return (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.model.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.model.DataRobotClient"),
+        patch("datarobot_genai.drtools.predictive.model.DataRobotClient"),
     )
 
 
@@ -92,7 +92,7 @@ async def test_get_best_model_project_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_best_model_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.model.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
@@ -168,7 +168,7 @@ async def test_score_dataset_with_model_model_not_found() -> None:
 @pytest.mark.asyncio
 async def test_score_dataset_with_model_error() -> None:
     with patch(
-        "datarobot_genai.drmcp.tools.predictive.model.get_datarobot_access_token",
+        "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
@@ -264,7 +264,7 @@ class TestModelEncoder:
         model.metrics = {"AUC": 0.85}
 
         # Mock the isinstance check to return True for Model
-        with patch("datarobot_genai.drmcp.tools.predictive.model.isinstance", return_value=True):
+        with patch("datarobot_genai.drtools.predictive.model.isinstance", return_value=True):
             encoder = ModelEncoder()
             result = encoder.default(model)
 
@@ -291,7 +291,7 @@ class TestModelEncoder:
         model.metrics = {"AUC": 0.85}
 
         # Mock the isinstance check to return True for Model
-        with patch("datarobot_genai.drmcp.tools.predictive.model.isinstance", return_value=True):
+        with patch("datarobot_genai.drtools.predictive.model.isinstance", return_value=True):
             data = {"model": model, "other": "value"}
             result = json.dumps(data, cls=ModelEncoder)
 

@@ -29,7 +29,6 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
 
-from . import tools
 from .core.clients import get_sdk_client
 from .core.config import MCPServerConfig
 from .core.config import get_config
@@ -81,6 +80,5 @@ __all__ = [
     "ToolBaseE2E",
     "ToolCallTestExpectations",
     "integration_test_mcp_session",
-    "tools",
     "dr_mcp_integration_tool",
 ]

@@ -15,13 +15,13 @@
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-from datarobot_genai.drmcp.tools.clients.s3 import get_s3_bucket_info
+from datarobot_genai.drtools.clients.s3 import get_s3_bucket_info
 
 
 def test_get_s3_bucket_info() -> None:
     mock_creds = MagicMock()
     mock_creds.aws_predictions_s3_bucket = "bucket"
     mock_creds.aws_predictions_s3_prefix = "prefix"
-    with patch("datarobot_genai.drmcp.tools.clients.s3.get_credentials", return_value=mock_creds):
+    with patch("datarobot_genai.drtools.clients.s3.get_credentials", return_value=mock_creds):
         result = get_s3_bucket_info()
         assert result == {"bucket": "bucket", "prefix": "prefix"}

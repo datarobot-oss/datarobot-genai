@@ -19,12 +19,12 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyClient
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyCrawlResults
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyExtractResults
-from datarobot_genai.drmcp.tools.clients.tavily import TavilyMapResults
-from datarobot_genai.drmcp.tools.clients.tavily import TavilySearchResults
-from datarobot_genai.drmcp.tools.clients.tavily import get_tavily_access_token
+from datarobot_genai.drtools.clients.tavily import TavilyClient
+from datarobot_genai.drtools.clients.tavily import TavilyCrawlResults
+from datarobot_genai.drtools.clients.tavily import TavilyExtractResults
+from datarobot_genai.drtools.clients.tavily import TavilyMapResults
+from datarobot_genai.drtools.clients.tavily import TavilySearchResults
+from datarobot_genai.drtools.clients.tavily import get_tavily_access_token
 
 
 class TestGetTavilyAccessToken:
@@ -34,7 +34,7 @@ class TestGetTavilyAccessToken:
     async def test_returns_api_key_from_headers(self) -> None:
         """Test getting API key from HTTP headers."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.tavily.get_http_headers",
+            "datarobot_genai.drtools.clients.tavily.get_http_headers",
             return_value={"x-tavily-api-key": "test-api-key-123"},
         ):
             result = await get_tavily_access_token()
@@ -44,7 +44,7 @@ class TestGetTavilyAccessToken:
     async def test_raises_error_when_missing(self) -> None:
         """Test that missing API key raises ToolError."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.tavily.get_http_headers",
+            "datarobot_genai.drtools.clients.tavily.get_http_headers",
             return_value={},
         ):
             with pytest.raises(ToolError, match="Tavily API key not found"):
@@ -59,7 +59,7 @@ class TestTavilyClient:
         """Test that search calls the underlying SDK."""
         mock_response = {"results": [], "response_time": 0.5}
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.search = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -95,7 +95,7 @@ class TestTavilyClientExtract:
             "response_time": 1.5,
         }
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.extract = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -111,7 +111,7 @@ class TestTavilyClientExtract:
         """Test extract converts single URL to list."""
         mock_response = {"results": [], "response_time": 0.5}
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.extract = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -127,7 +127,7 @@ class TestTavilyClientExtract:
         """Test extract includes chunks_per_source when query is provided."""
         mock_response = {"results": [], "response_time": 0.5}
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.extract = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -146,7 +146,7 @@ class TestTavilyClientExtract:
         """Test extract excludes chunks_per_source when query is not provided."""
         mock_response = {"results": [], "response_time": 0.5}
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.extract = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -213,7 +213,7 @@ class TestTavilyClientMap:
             "usage": {"credits": 4},
         }
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.map = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -253,7 +253,7 @@ class TestTavilyClientCrawl:
             "response_time": 2.5,
         }
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.crawl = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client
@@ -294,7 +294,7 @@ class TestTavilyClientCrawl:
         """Test crawl includes optional params when provided."""
         mock_response = {"base_url": "https://example.com", "results": [], "response_time": 0.5}
 
-        with patch("datarobot_genai.drmcp.tools.clients.tavily.AsyncTavilyClient") as mock_class:
+        with patch("datarobot_genai.drtools.clients.tavily.AsyncTavilyClient") as mock_class:
             mock_client = MagicMock()
             mock_client.crawl = AsyncMock(return_value=mock_response)
             mock_class.return_value = mock_client

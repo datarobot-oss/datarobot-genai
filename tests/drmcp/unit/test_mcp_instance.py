@@ -262,7 +262,7 @@ class TestMCPToolDecorator:
 
         assert not mock_dr_mcp_tool.call_args.args
         assert mock_dr_mcp_tool.call_args.kwargs == {
-            "tool_category": DataRobotMCPToolCategory.INTEGRATION_TOOL,
+            "tool_category": DataRobotMCPToolCategory.BUILD_IN_TOOL,
             expected_kwarg_key: expected_kwarg_value,
         }
 

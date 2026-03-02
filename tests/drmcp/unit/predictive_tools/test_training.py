@@ -21,7 +21,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.tools.predictive import training
+from datarobot_genai.drtools.predictive import training
 
 
 @pytest.mark.asyncio
@@ -40,11 +40,11 @@ async def test_analyze_dataset() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
@@ -92,13 +92,13 @@ async def test_suggest_use_cases() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.analyze_dataset",
+            "datarobot_genai.drtools.predictive.training.analyze_dataset",
             return_value=mock_insights,
         ),
     ):
@@ -138,13 +138,13 @@ async def test_get_exploratory_insights() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.analyze_dataset",
+            "datarobot_genai.drtools.predictive.training.analyze_dataset",
             return_value=mock_insights,
         ),
     ):
@@ -175,11 +175,11 @@ async def test_start_autopilot_new_project() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Dataset.create_from_url.return_value = mock_dataset
@@ -208,11 +208,11 @@ async def test_start_autopilot_existing_project() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Project.get.return_value = mock_project
@@ -249,11 +249,11 @@ async def test_get_model_roc_curve() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Project.get.return_value = mock_project
@@ -282,11 +282,11 @@ async def test_get_model_feature_impact() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Project.get.return_value = mock_project
@@ -317,11 +317,11 @@ async def test_get_model_lift_chart() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Project.get.return_value = mock_project
@@ -344,11 +344,11 @@ async def test_start_autopilot_validation() -> None:
     # Test missing dataset info for new project
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = MagicMock()
         with pytest.raises(
@@ -395,11 +395,11 @@ async def test_suggest_use_cases_dataset_not_found() -> None:
 
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.training.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.training.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
     ):
         mock_client = MagicMock()
         mock_client.Dataset.get.side_effect = MockClientError(

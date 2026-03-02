@@ -128,7 +128,7 @@ def test_convert_chat_completion_params_to_run_agent_input() -> None:
     }
 
 
-class TestAGUIAgent(BaseAgent):
+class AGUIAgent(BaseAgent):
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         events = [
             (
@@ -185,7 +185,7 @@ async def test_agent_chat_completion_wrapper_streaming() -> None:
     }
 
     # WHEN calling the agent chat completion wrapper
-    generator = await agent_chat_completion_wrapper(TestAGUIAgent(), params)
+    generator = await agent_chat_completion_wrapper(AGUIAgent(), params)
 
     # THEN the generator returns an async generator
     assert isinstance(generator, AsyncGenerator)
@@ -221,7 +221,7 @@ async def test_agent_chat_completion_wrapper_non_streaming() -> None:
 
     # WHEN calling the agent chat completion wrapper
     response, pipeline_interactions, usage_metrics = await agent_chat_completion_wrapper(
-        TestAGUIAgent(), params
+        AGUIAgent(), params
     )
 
     # THEN the response is the expected response

@@ -20,21 +20,19 @@ import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.tools.predictive import data
+from datarobot_genai.drtools.predictive import data
 
 
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_success() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
-        patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=True),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
@@ -60,13 +58,11 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
 async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
@@ -94,13 +90,11 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
 async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
@@ -124,11 +118,11 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
 async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient"),
     ):
         with pytest.raises(
             ToolError,
@@ -144,11 +138,11 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
 async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient"),
     ):
         with pytest.raises(
             ToolError,
@@ -166,12 +160,12 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
 async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch("datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"),
-        patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=False),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient"),
+        patch("datarobot_genai.drtools.predictive.data.os.path.exists", return_value=False),
     ):
         with pytest.raises(
             ToolError,
@@ -184,14 +178,12 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
 async def test_upload_dataset_to_ai_catalog_error() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
-        patch("datarobot_genai.drmcp.tools.predictive.data.os.path.exists", return_value=True),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
         mock_client.Dataset.create_from_file.side_effect = Exception("fail")
@@ -206,13 +198,11 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
 async def test_list_ai_catalog_items_success() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_ds1 = MagicMock()
@@ -235,13 +225,11 @@ async def test_list_ai_catalog_items_success() -> None:
 async def test_list_ai_catalog_items_empty() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_client.Dataset.list.return_value = []
@@ -255,13 +243,11 @@ async def test_list_ai_catalog_items_empty() -> None:
 async def test_list_ai_catalog_items_error() -> None:
     with (
         patch(
-            "datarobot_genai.drmcp.tools.predictive.data.get_datarobot_access_token",
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
             new_callable=AsyncMock,
             return_value="token",
         ),
-        patch(
-            "datarobot_genai.drmcp.tools.predictive.data.DataRobotClient"
-        ) as mock_data_robot_client,
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
         mock_client.Dataset.list.side_effect = Exception("fail")

@@ -18,8 +18,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from datarobot_genai.drmcp.tools.clients.jira import Issue
-from datarobot_genai.drmcp.tools.clients.jira import JiraClient
+from datarobot_genai.drtools.clients.jira import Issue
+from datarobot_genai.drtools.clients.jira import JiraClient
 
 
 def make_response(status_code: int, json_data: dict | None, cloud_id: str) -> httpx.Response:
@@ -88,7 +88,7 @@ class TestJiraClient:
     ) -> None:
         """Test successfully searching issues."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -112,7 +112,7 @@ class TestJiraClient:
     ) -> None:
         """Test successfully getting an issue."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -131,7 +131,7 @@ class TestJiraClient:
     async def test_get_issue_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test getting an issue that doesn't exist."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -151,7 +151,7 @@ class TestJiraClient:
     ) -> None:
         """Test successfully getting an issue type."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -172,7 +172,7 @@ class TestJiraClient:
     ) -> None:
         """Test successfully creating an issue."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):
@@ -196,7 +196,7 @@ class TestJiraClient:
     async def test_update_issue_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test successfully updating an issue."""
         with patch(
-            "datarobot_genai.drmcp.tools.clients.jira.get_atlassian_cloud_id",
+            "datarobot_genai.drtools.clients.jira.get_atlassian_cloud_id",
             new_callable=AsyncMock,
             return_value=mock_cloud_id,
         ):

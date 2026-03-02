@@ -428,7 +428,7 @@ def dr_mcp_integration_tool(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         return dr_mcp_tool(
-            tool_category=DataRobotMCPToolCategory.INTEGRATION_TOOL,
+            tool_category=DataRobotMCPToolCategory.BUILD_IN_TOOL,
             **mcp_tool_init_args,
         )(func)
 
@@ -479,7 +479,7 @@ async def register_tools(
     description: str | None = None,
     tags: set[str] | None = None,
     deployment_id: str | None = None,
-    tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.DYNAMICALLY_LOADED_TOOL,
+    tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT,
 ) -> Tool:
     """
     Register new tools after server has started.
@@ -544,7 +544,7 @@ async def register_prompt(
     tags: set[str] | None = None,
     meta: dict[str, Any] | None = None,
     prompt_template: tuple[str, str] | None = None,
-    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.DYNAMICALLY_LOADED_PROMPT,  # noqa: E501
+    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION,  # noqa: E501
 ) -> Prompt:
     """
     Register new prompt after server has started.

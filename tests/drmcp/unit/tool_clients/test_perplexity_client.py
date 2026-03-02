@@ -21,8 +21,8 @@ from perplexity.types import Choice
 from perplexity.types import StreamChunk
 from perplexity.types import search_create_response
 
-from datarobot_genai.drmcp.tools.clients.perplexity import PerplexityClient
-from datarobot_genai.drmcp.tools.clients.perplexity import PerplexityError
+from datarobot_genai.drtools.clients.perplexity import PerplexityClient
+from datarobot_genai.drtools.clients.perplexity import PerplexityError
 
 
 def make_response(
@@ -89,7 +89,7 @@ class TestPerplexityClient:
         mock_perplexity_sdk_search_results: search_create_response.SearchCreateResponse,
     ) -> None:
         """Test search."""
-        with patch("datarobot_genai.drmcp.tools.clients.perplexity.AsyncPerplexity") as mock:
+        with patch("datarobot_genai.drtools.clients.perplexity.AsyncPerplexity") as mock:
             mock_sdk_client = mock.return_value
             mock_sdk_client.close = AsyncMock()
             mock_sdk_client.search.create = AsyncMock(
@@ -144,7 +144,7 @@ class TestPerplexityClient:
         mock_perplexity_sdk_think_results: StreamChunk,
     ) -> None:
         """Test search."""
-        with patch("datarobot_genai.drmcp.tools.clients.perplexity.AsyncPerplexity") as mock:
+        with patch("datarobot_genai.drtools.clients.perplexity.AsyncPerplexity") as mock:
             mock_sdk_client = mock.return_value
             mock_sdk_client.close = AsyncMock()
             mock_sdk_client.chat.completions.create = AsyncMock(

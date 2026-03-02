@@ -19,7 +19,12 @@ from unittest.mock import MagicMock
 import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
 from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -200,13 +205,23 @@ async def test_llama_index_agent_invoke(
     assert isinstance(resp, AsyncGenerator)
     events = [event async for event in resp]
 
-    # THEN: the events are tuples of (delta, None, UsageMetrics)
-    deltas, pipeline_interactions, usage = zip(*events)
+    # THEN: the events follow AG-UI lifecycle pattern
+    ag_events, pipeline_interactions, usage = zip(*events)
 
-    # THEN: the deltas are the expected deltas
-    assert deltas == ("Hello ", "World\n", "Hello ", "World Again\n", "")
+    # THEN: first event is RunStartedEvent
+    assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: the last pipeline interaction is the expected pipeline interaction
+    # THEN: text message events contain the expected deltas
+    assert isinstance(ag_events[1], TextMessageStartEvent)
+    content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
+
+    # THEN: TextMessageEnd is present
+    end_events = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
+    assert len(end_events) == 1
+
+    # THEN: last event is RunFinishedEvent with pipeline interactions
+    assert isinstance(ag_events[-1], RunFinishedEvent)
     assert isinstance(pipeline_interactions[-1], MultiTurnSample)
 
     # THEN: the last usage is the expected usage
