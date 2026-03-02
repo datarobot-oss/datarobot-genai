@@ -23,8 +23,8 @@ import pandas as pd
 class StubPredictionResult(NamedTuple):
     """Stub for datarobot_predict PredictionResult (dataframe + response_headers)."""
 
-    dataframe: pd.DataFrame = pd.DataFrame()
-    response_headers: dict[str, Any] = {}
+    dataframe: pd.DataFrame
+    response_headers: dict[str, Any]
 
 
 def test_create_prediction_result(
@@ -60,8 +60,10 @@ def test_create_prediction_result(
     else:
         n_rows = n_in
 
-    # Build output with target row count (repeat input rows if needed)
-    if n_rows <= n_in:
+    # Build output with target row count
+    if n_in == 0:
+        out_df = pd.DataFrame(index=range(n_rows))
+    elif n_rows <= n_in:
         out_df = data_frame.iloc[:n_rows].copy()
     else:
         out_df = pd.concat([data_frame] * (n_rows // n_in + 1), ignore_index=True).iloc[:n_rows]
