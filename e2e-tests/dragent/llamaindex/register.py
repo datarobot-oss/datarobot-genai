@@ -36,7 +36,6 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
     from ag_ui.core import RunAgentInput  # noqa: PLC0415
     from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
-    from nat.data_models.api_server import GlobalTypeConverter  # noqa: PLC0415
 
     from dragent.llamaindex.myagent import MyAgent  # noqa: PLC0415
 
@@ -47,8 +46,12 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> AsyncGenerator[DRAgentEventResponse, None]:
-        async for event, _, _ in agent.invoke(input_message):
-            yield GlobalTypeConverter.get().convert(event, DRAgentEventResponse)
+        async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
+            yield DRAgentEventResponse(
+                events=[event],
+                usage_metrics=usage_metrics,
+                pipeline_interactions=pipeline_interactions,
+            )
 
     yield FunctionInfo.from_fn(
         _response_fn,

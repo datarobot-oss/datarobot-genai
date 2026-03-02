@@ -15,7 +15,6 @@
 import logging
 import uuid
 
-from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from langchain_core.messages import ToolMessage
@@ -85,13 +84,6 @@ def convert_str_to_dragent_event_response(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
         events=[TextMessageChunkEvent(message_id=str(uuid.uuid4()), delta=response)],
-    )
-
-
-def convert_event_to_dragent_event_response(event: Event) -> DRAgentEventResponse:
-    return DRAgentEventResponse(
-        events=[event],
-        usage_metrics=default_usage_metrics(),
     )
 
 
