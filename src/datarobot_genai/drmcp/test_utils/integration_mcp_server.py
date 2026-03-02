@@ -136,10 +136,7 @@ def _patch_get_sdk_client_for_stdio() -> None:
 
 def _apply_predict_stubs() -> None:
     """Patch datarobot_predict.deployment.predict so predict_realtime works with StubDeployment."""
-    try:
-        _dr_predict_deployment.predict = test_create_prediction_result
-    except ImportError:
-        pass
+    _dr_predict_deployment.predict = test_create_prediction_result
 
 
 def _apply_dr_client_stubs() -> None:
@@ -165,7 +162,6 @@ def main() -> None:
     """Run the integration test MCP server."""
     if os.environ.get("MCP_USE_CLIENT_STUBS", "true") == "true":
         _apply_dr_client_stubs()
-        _apply_predict_stubs()
     elif os.environ.get("MCP_SERVER_NAME") == "integration":
         _patch_get_sdk_client_for_stdio()
 
