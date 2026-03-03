@@ -138,7 +138,7 @@ class TestMCPDRPromptManagementIntegration:
 
         Uses stub prompts (use_stub=True) so no real API duplicate resources are needed.
         """
-        async with integration_test_mcp_session(timeout=self.TIMEOUT, use_stub=True) as session:
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
             prompt_template_name_1 = STUB_PROMPT_DUPLICATE_NAME
             prompt_template_name_2 = STUB_PROMPT_DUPLICATE_NAME
 
