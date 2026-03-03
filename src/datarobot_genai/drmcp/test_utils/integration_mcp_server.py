@@ -39,7 +39,6 @@ from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core import clients
 from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
-from datarobot_genai.drmcp.core.dynamic_prompts import dr_lib as _dr_lib
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
 from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
@@ -73,11 +72,6 @@ def _stub_prompt_template_versions(
 ) -> dict[str, list[Any]]:
     """Stub that matches dr_lib.get_datarobot_prompt_template_versions signature."""
     return get_stub_prompt_template_versions(prompt_template_ids)
-
-
-if os.environ.get("MCP_USE_CLIENT_STUBS", "true") == "true":
-    _dr_lib.get_datarobot_prompt_templates = get_stub_prompt_templates  # type: ignore[assignment]
-    _dr_lib.get_datarobot_prompt_template_versions = _stub_prompt_template_versions
 
 
 def detect_user_modules() -> Any:

@@ -12,20 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
 
-from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_DUPLICATE_NAME
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_NO_VARS
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_NO_VARS_TEXT
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_WITH_VARS
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_WITH_VARS_TEXT
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_WITHOUT_VERSION
-from tests.drmcp.integration.helper import create_prompt_template
-from tests.drmcp.integration.helper import delete_prompt_template
 from tests.drmcp.integration.helper import get_or_create_prompt_template
 from tests.drmcp.integration.helper import get_or_create_prompt_template_version
 
@@ -51,12 +46,6 @@ def prompt_template_text_without_variables() -> str:
 @pytest.fixture(scope="session")
 def prompt_template_name_with_version_with_variables() -> str:
     return "drmcp-integration-test-prompt-with-variables"
-
-
-@pytest.fixture(scope="session")
-def prompt_template_name_duplicate() -> str:
-    random_suffix = str(uuid.uuid4())
-    return f"drmcp-integration-test-prompt-duplicate-{random_suffix}"
 
 
 @pytest.fixture(scope="session")
@@ -125,49 +114,3 @@ def prompt_template_with_version_with_variables(
         "version_id": prompt_template_version["id"],
         "prompt_text": prompt_template_version["prompt_text"],
     }
-
-
-@pytest.fixture(scope="session")
-def prompt_templates_with_duplicates(
-    prompt_template_name_duplicate: str,
-    prompt_template_text_without_variables: str,
-    prompt_template_text_with_2_variables: str,
-) -> Iterator[tuple[dict[str, Any], dict[str, Any]]]:
-    if _use_stubs():
-        stub = {
-            "name": STUB_PROMPT_DUPLICATE_NAME,
-            "prompt_text": prompt_template_text_without_variables,
-        }
-        yield (stub, {**stub, "prompt_text": prompt_template_text_with_2_variables})
-        return
-    prompt_template_1 = create_prompt_template(prompt_template_name_duplicate)
-    prompt_template_version_1 = get_or_create_prompt_template_version(
-        prompt_template_id=prompt_template_1["id"],
-        prompt_text=prompt_template_text_without_variables,
-        variables=[],
-    )
-    prompt_template_2 = create_prompt_template(prompt_template_name_duplicate)
-    prompt_template_version_2 = get_or_create_prompt_template_version(
-        prompt_template_id=prompt_template_2["id"],
-        prompt_text=prompt_template_text_with_2_variables,
-        variables=["name", "sentences"],
-    )
-
-    yield (
-        {
-            "id": prompt_template_1["id"],
-            "name": prompt_template_name_duplicate,
-            "version_id": prompt_template_version_1["id"],
-            "prompt_text": prompt_template_version_1["prompt_text"],
-        },
-        {
-            "id": prompt_template_2["id"],
-            "name": prompt_template_name_duplicate,
-            "version_id": prompt_template_version_2["id"],
-            "prompt_text": prompt_template_version_2["prompt_text"],
-        },
-    )
-
-    # Cleanup
-    delete_prompt_template(prompt_template_1["id"])
-    delete_prompt_template(prompt_template_2["id"])
