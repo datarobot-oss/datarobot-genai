@@ -189,9 +189,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = (
-                frame.f_code.co_name
-                if frame
-                else "test_predict_realtime_dataset_string_success"
+                frame.f_code.co_name if frame else "test_predict_realtime_dataset_string_success"
             )
             await self._run_test_with_expectations(
                 prompt,
@@ -200,4 +198,3 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
                 session,
                 test_name,
             )
-

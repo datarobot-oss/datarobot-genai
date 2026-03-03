@@ -19,11 +19,10 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from dateutil import parser as dateutil_parser
-
 import polars as pl
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
+from dateutil import parser as dateutil_parser
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel
