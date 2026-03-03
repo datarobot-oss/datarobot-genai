@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 from collections.abc import Generator
 from collections.abc import Iterator
 from pathlib import Path
@@ -23,9 +24,13 @@ from datarobot.context import Context as DRContext
 
 from datarobot_genai.drmcp.core.credentials import get_credentials
 
+_STUB_DATAROBOT_API_TOKEN = "test-token"
+
 
 def _make_dr_client() -> Any:
     """Build DataRobot client from credentials (env). No HTTP context in pytest."""
+    if not os.environ.get("DATAROBOT_API_TOKEN"):
+        os.environ["DATAROBOT_API_TOKEN"] = _STUB_DATAROBOT_API_TOKEN
     creds = get_credentials()
     token = creds.datarobot.application_api_token
     if not token:
