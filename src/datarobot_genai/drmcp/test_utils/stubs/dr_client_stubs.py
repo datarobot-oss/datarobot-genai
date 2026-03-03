@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
+
+# Project id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_PROJECT_ID = "test_project_123"
 
 
 class StubModel:
@@ -25,7 +29,9 @@ class StubModel:
         self.metrics = metrics
 
     def score(self, dataset_url: str) -> MagicMock:
-        """Stub scoring method."""
+        """Stub scoring method. Raises for fake URLs so integration tests can assert errors."""
+        if "example.com" in (dataset_url or ""):
+            raise Exception("404 client error: {'message': 'Not Found'}")
         return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
 
 
@@ -91,21 +97,29 @@ class StubDRClient:
 def test_create_dr_client() -> StubDRClient:
     """Create a stub DataRobot client with test project and models."""
     client = StubDRClient()
-    # Create test project with stub models
+
+    # Metrics shape: get_best_model expects metrics[metric].get("validation")
+    def _metrics(auc: float, logloss: float) -> dict:
+        return {
+            "AUC": {"validation": auc},
+            "LogLoss": {"validation": logloss},
+        }
+
+    # Create test project with stub models (model_1 best by AUC for integration test_model)
     project = StubProject(
         "test_project_123",
         models=[
             StubModel(
                 "model_1",
                 "Keras Text Convolutional Neural Network Classifier",
-                {"AUC": 0.95, "LogLoss": 0.12},
+                _metrics(0.95, 0.12),
             ),
-            StubModel("model_2", "Random Forest", {"AUC": 0.92, "LogLoss": 0.15}),
-            StubModel("model_3", "LightGBM", {"AUC": 0.94, "LogLoss": 0.13}),
+            StubModel("model_2", "Random Forest", _metrics(0.92, 0.15)),
+            StubModel("model_3", "LightGBM", _metrics(0.94, 0.13)),
         ],
     )
     # Create standalone model
-    standalone_model = StubModel("standalone_model", "Neural Network", {"AUC": 0.88})
+    standalone_model = StubModel("standalone_model", "Neural Network", _metrics(0.88, 0.2))
 
     def get_project(project_id: str) -> StubProject | None:
         """Stub Project.get that returns appropriate project or raises exception."""
@@ -146,3 +160,8 @@ def test_create_dr_client() -> StubDRClient:
     client.Model.get = get_model
     client.Deployment.get = get_deployment
     return client
+
+
+def get_stub_classification_project() -> dict[str, Any]:
+    """Return a stub project dict for integration tests (id matches test_create_dr_client)."""
+    return {"project": SimpleNamespace(id=STUB_PROJECT_ID)}
