@@ -72,6 +72,9 @@ def _make_dr_client() -> Any:
     if not token:
         raise ValueError("Integration tests need DATAROBOT_API_TOKEN environment variable set.")
     # Skip real API init when using stub token (CI/stub mode); dr.Client() would 401.
+    # Session fixtures in this file (timeseries_regression_project, classification_project,
+    # etc.) check _is_stub_token() first and yield stub data without calling dr.*, so they
+    # never hit the API when no client is configured.
     if token != _STUB_DATAROBOT_API_TOKEN:
         dr.Client(token=token, endpoint=creds.datarobot.endpoint)
     DRContext.use_case = None
@@ -240,6 +243,7 @@ def multiseries_regression_project(
         yield _stub_project_fixture_dict(
             "stub_multiseries_project",
             "stub_multiseries_deployment",
+            target="sales",
         )
         return
 
