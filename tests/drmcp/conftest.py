@@ -35,7 +35,9 @@ def _make_dr_client() -> Any:
     token = creds.datarobot.application_api_token
     if not token:
         raise ValueError("Integration tests need DATAROBOT_API_TOKEN environment variable set.")
-    dr.Client(token=token, endpoint=creds.datarobot.endpoint)
+    # Skip real API init when using stub token (CI/stub mode); dr.Client() would 401.
+    if token != _STUB_DATAROBOT_API_TOKEN:
+        dr.Client(token=token, endpoint=creds.datarobot.endpoint)
     DRContext.use_case = None
     return dr
 
