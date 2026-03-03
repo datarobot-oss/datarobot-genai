@@ -98,6 +98,7 @@ drtools = [
     "pypdf>=6.1.3,<7.0.0",  # CVE BUZZOK-28182; gdrive client
     "polars>=1.0.0,<2.0.0",
     "pyarrow>=21.0.0,<22.0.0",
+    "python-dateutil>=2.9.0,<3.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
