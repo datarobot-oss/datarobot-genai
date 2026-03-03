@@ -19,6 +19,8 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
+from dateutil import parser as dateutil_parser
+
 import polars as pl
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
@@ -44,6 +46,14 @@ def make_output_settings() -> BucketInfo:
     bucket_info = get_s3_bucket_info()
     s3_key = f"{bucket_info['prefix']}{uuid.uuid4()}.csv"
     return BucketInfo(bucket=bucket_info["bucket"], key=s3_key)
+
+
+def _parse_datetime(value: str) -> datetime:
+    normalized = str(value).replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return dateutil_parser.parse(str(value))
 
 
 @dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
@@ -299,16 +309,12 @@ async def predict_realtime(
     # Add time series parameters if applicable
     if is_time_series:
         if forecast_point:
-            forecast_point_dt = datetime.fromisoformat(str(forecast_point).replace("Z", "+00:00"))
+            forecast_point_dt = _parse_datetime(forecast_point)
             predict_kwargs["time_series_type"] = TimeSeriesType.FORECAST
             predict_kwargs["forecast_point"] = forecast_point_dt
         elif forecast_range_start and forecast_range_end:
-            predictions_start_date_dt = datetime.fromisoformat(
-                str(forecast_range_start).replace("Z", "+00:00")
-            )
-            predictions_end_date_dt = datetime.fromisoformat(
-                str(forecast_range_end).replace("Z", "+00:00")
-            )
+            predictions_start_date_dt = _parse_datetime(forecast_range_start)
+            predictions_end_date_dt = _parse_datetime(forecast_range_end)
             predict_kwargs["time_series_type"] = TimeSeriesType.HISTORICAL
             predict_kwargs["predictions_start_date"] = predictions_start_date_dt
             predict_kwargs["predictions_end_date"] = predictions_end_date_dt
