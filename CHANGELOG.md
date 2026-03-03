@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.6.7
 - When getting api key in perplexity/tavily try to get it from 2 different headers (as fallback)
 
+>>>>>>> ee2fa10 (Updates changelog)
 ## 0.6.6
 - Refactor drtools to use Polars for data handling, removing pandas dependency
 - Enhance acceptance tests for realtime predictions with inline CSV dataset support
@@ -31,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.6.3
 - Created model stubs for MCP integration tests
+=======
+## 0.6.3
+- Added Mem0 as a dependency for agent memory
+>>>>>>> 7b1c693 (Updates changelog)
 
 ## 0.6.2
 - Created MCP predict test stubs and added stub predict client attribute integrated with MCP server
