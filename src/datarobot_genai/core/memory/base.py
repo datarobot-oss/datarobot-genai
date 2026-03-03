@@ -16,7 +16,7 @@ from abc import ABC
 from abc import abstractmethod
 
 
-class BaseMemoryService(ABC):
+class BaseMemoryClient(ABC):
     @abstractmethod
     def retrieve(
         self,

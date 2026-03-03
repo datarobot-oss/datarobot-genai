@@ -14,28 +14,26 @@
 
 from mem0 import MemoryClient
 
-from .base import BaseMemoryService
+from .base import BaseMemoryClient
 
 
-class Mem0Client(BaseMemoryService):
+class Mem0Client(BaseMemoryClient):
     def __init__(self, api_key: str):
         self._memory = MemoryClient(api_key=api_key)
 
-    @classmethod
-    def retrieve(cls, user_id: str, prompt: str) -> str:
+    def retrieve(self, user_id: str, prompt: str) -> str:
         filters = {"OR": [{"user_id": user_id}]}
 
-        user_memories = cls._memory.search(
+        user_memories = self._memory.search(
             query=prompt, filters=filters, version="v2", output_format="v1.1"
         )
         return user_memories
 
-    @classmethod
     def store(
-        cls,
+        self,
         user_id: str,
         user_message: str,
     ) -> None:
         messages = [{"role": "user", "content": user_message}]
 
-        cls._memory.add(messages, user_id=user_id, version="v2", output_format="v1.1")
+        self._memory.add(messages, user_id=user_id, version="v2", output_format="v1.1")
