@@ -67,6 +67,7 @@ class StubDeployment:
     ):
         self.id = deployment_id
         self.model = {"project_id": project_id, "id": model_id}
+        self.status = "active"
 
     def get_features(self) -> list:
         """
