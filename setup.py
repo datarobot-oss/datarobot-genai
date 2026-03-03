@@ -37,6 +37,10 @@ core = [
     "pyarrow==21.0.0",
 ]
 
+memory = [
+    "mem0ai>=1.0.4,<2.0.0; python_version < '3.13'",
+]
+
 dragent = core + [
     "nvidia-nat==1.4.1; python_version >= '3.11'",
     "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
@@ -145,6 +149,7 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
+    "memory": memory,
 }
 
 setup(extras_require=extras_require)

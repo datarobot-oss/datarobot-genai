@@ -1156,9 +1156,6 @@ wheels = [
 name = "datarobot-genai"
 version = "0.6.11"
 source = { editable = "." }
-dependencies = [
-    { name = "mem0ai" },
-]
 
 [package.optional-dependencies]
 auth = [
@@ -1307,6 +1304,9 @@ llamaindex = [
     { name = "ragas" },
     { name = "requests" },
 ]
+memory = [
+    { name = "mem0ai", marker = "python_full_version < '3.13'" },
+]
 nat = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
@@ -1421,7 +1421,7 @@ requires-dist = [
     { name = "llama-index-llms-litellm", marker = "extra == 'nat'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.6.0,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
-    { name = "mem0ai", specifier = ">=1.0.4,<2.0.0" },
+    { name = "mem0ai", marker = "python_full_version < '3.13' and extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11' and extra == 'dragent'", specifier = "==1.4.1" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
     { name = "nvidia-nat-a2a", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
@@ -1538,7 +1538,7 @@ requires-dist = [
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "pydanticai", "auth", "drmcp", "drtools", "dragent"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "pydanticai", "auth", "drmcp", "drtools", "dragent", "memory"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2340,8 +2340,8 @@ name = "h2"
 version = "4.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "hpack" },
-    { name = "hyperframe" },
+    { name = "hpack", marker = "python_full_version < '3.13'" },
+    { name = "hyperframe", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1d/17/afa56379f94ad0fe8defd37d6eb3f89a25404ffc71d4d848893d270325fc/h2-4.3.0.tar.gz", hash = "sha256:6c59efe4323fa18b47a632221a1888bd7fde6249819beda254aeca909f221bf1", size = 2152026, upload-time = "2025-08-23T18:12:19.778Z" }
 wheels = [
@@ -2445,7 +2445,7 @@ wheels = [
 
 [package.optional-dependencies]
 http2 = [
-    { name = "h2" },
+    { name = "h2", marker = "python_full_version < '3.13'" },
 ]
 
 [[package]]
@@ -4133,13 +4133,13 @@ name = "mem0ai"
 version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "openai" },
-    { name = "posthog" },
-    { name = "protobuf" },
-    { name = "pydantic" },
-    { name = "pytz" },
-    { name = "qdrant-client" },
-    { name = "sqlalchemy" },
+    { name = "openai", marker = "python_full_version < '3.13'" },
+    { name = "posthog", marker = "python_full_version < '3.13'" },
+    { name = "protobuf", marker = "python_full_version < '3.13'" },
+    { name = "pydantic", marker = "python_full_version < '3.13'" },
+    { name = "pytz", marker = "python_full_version < '3.13'" },
+    { name = "qdrant-client", marker = "python_full_version < '3.13'" },
+    { name = "sqlalchemy", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/51/be/bb17c05e5a752ca79df2fbdcef83c7eaa249004029da9fd9488def574806/mem0ai-1.0.4.tar.gz", hash = "sha256:c6201130be46c9dc2b5cf0836e7811fd604430bb39c55c9c454045722d1ed21b", size = 182968, upload-time = "2026-02-17T22:34:46.247Z" }
 wheels = [
@@ -6625,14 +6625,14 @@ name = "qdrant-client"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "grpcio" },
-    { name = "httpx", extra = ["http2"] },
+    { name = "grpcio", marker = "python_full_version < '3.13'" },
+    { name = "httpx", extra = ["http2"], marker = "python_full_version < '3.13'" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "portalocker" },
-    { name = "protobuf" },
-    { name = "pydantic" },
-    { name = "urllib3" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
+    { name = "portalocker", marker = "python_full_version < '3.13'" },
+    { name = "protobuf", marker = "python_full_version < '3.13'" },
+    { name = "pydantic", marker = "python_full_version < '3.13'" },
+    { name = "urllib3", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/20/fb/c9c4cecf6e7fdff2dbaeee0de40e93fe495379eb5fe2775b184ea45315da/qdrant_client-1.17.0.tar.gz", hash = "sha256:47eb033edb9be33a4babb4d87b0d8d5eaf03d52112dca0218db7f2030bf41ba9", size = 344839, upload-time = "2026-02-19T16:03:17.069Z" }
 wheels = [

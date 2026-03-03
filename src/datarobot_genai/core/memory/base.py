@@ -20,7 +20,6 @@ class BaseMemoryClient(ABC):
     @abstractmethod
     def retrieve(
         self,
-        *,
         user_id: str,
         prompt: str,
     ) -> str:
@@ -30,7 +29,6 @@ class BaseMemoryClient(ABC):
     @abstractmethod
     def store(
         self,
-        *,
         user_id: str,
         user_message: str,
     ) -> None:
