@@ -48,10 +48,7 @@ class Mem0Client(BaseMemoryClient):
         conditions = [{"user_id": self._memory.user_id}]
         for key, value in (
             ("run_id", run_id),
-            # ("agent_id", agent_id),
-            # Mem0 api version cannot currently store agent id
-            # in v2 api which is the recommended api.
-            # https://github.com/mem0ai/mem0/issues/3773
+            ("agent_id", agent_id),
             ("app_id", app_id),
         ):
             if value:
