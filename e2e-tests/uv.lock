@@ -781,7 +781,24 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 version = "0.6.11"
+=======
+name = "datarobot-genai"
+<<<<<<< HEAD
+<<<<<<< HEAD
+version = "0.6.8"
+=======
+<<<<<<< HEAD
+version = "0.6.5"
+=======
+version = "0.6.2"
+>>>>>>> 7b1c693 (Updates changelog)
+>>>>>>> ee2fa10 (Updates changelog)
+=======
+version = "0.6.7"
+>>>>>>> 59e1621 (Async clients and more options for memory)
+>>>>>>> 3556cdf (Async clients and more options for memory)
 source = { editable = "../" }
 
 [package.optional-dependencies]

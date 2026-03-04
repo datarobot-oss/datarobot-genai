@@ -14,23 +14,21 @@
 
 from abc import ABC
 from abc import abstractmethod
+from typing import Any
 
 
 class BaseMemoryClient(ABC):
     @abstractmethod
-    def retrieve(
+    async def retrieve(
         self,
         user_id: str,
         prompt: str,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Return relevant memory context as plain text."""
         raise NotImplementedError
 
     @abstractmethod
-    def store(
-        self,
-        user_id: str,
-        user_message: str,
-    ) -> None:
+    async def store(self, user_id: str, user_message: str, attributes: dict[str, Any]) -> None:
         """Persist conversation interaction."""
         raise NotImplementedError
