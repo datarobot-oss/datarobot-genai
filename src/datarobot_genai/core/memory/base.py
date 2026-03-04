@@ -21,14 +21,23 @@ class BaseMemoryClient(ABC):
     @abstractmethod
     async def retrieve(
         self,
-        user_id: str,
         prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
         attributes: dict[str, Any] | None = None,
     ) -> str:
         """Return relevant memory context as plain text."""
         raise NotImplementedError
 
     @abstractmethod
-    async def store(self, user_id: str, user_message: str, attributes: dict[str, Any]) -> None:
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
         """Persist conversation interaction."""
         raise NotImplementedError

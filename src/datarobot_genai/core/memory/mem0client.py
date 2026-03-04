@@ -39,11 +39,23 @@ class Mem0Client(BaseMemoryClient):
 
     async def retrieve(
         self,
-        user_id: str,
         prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
         attributes: dict[str, Any] | None = None,
     ) -> str:
-        conditions = [{"user_id": user_id}]
+        conditions = [{"user_id": self._memory.user_id}]
+        for key, value in (
+            ("run_id", run_id),
+            # ("agent_id", agent_id),
+            # Mem0 api version cannot currently store agent id
+            # in v2 api which is the recommended api.
+            # https://github.com/mem0ai/mem0/issues/3773
+            ("app_id", app_id),
+        ):
+            if value:
+                conditions.append({key: value})
 
         if attributes:
             conditions.extend({k: v} for k, v in attributes.items())
@@ -56,18 +68,24 @@ class Mem0Client(BaseMemoryClient):
 
     async def store(
         self,
-        user_id: str,
         user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
         attributes: dict[str, Any] | None = None,
     ) -> None:
 
         messages = [{"role": "user", "content": user_message}]
 
         kwargs: dict[str, Any] = {
-            "user_id": user_id,
+            "user_id": self._memory.user_id,
             "version": "v2",
             "output_format": "v1.1",
         }
+
+        for key, value in (("run_id", run_id), ("agent_id", agent_id), ("app_id", app_id)):
+            if value:
+                kwargs[key] = value
 
         if attributes:
             kwargs.update(attributes)

@@ -97,12 +97,25 @@ async def test_retrieve_without_optional_attributes_builds_user_only_filter(
     mem0client = _load_mem0client_module(monkeypatch)
     client = mem0client.Mem0Client(api_key="test-key")
 
-    result = await client.retrieve(user_id="u-1", prompt="hello")
+    result = await client.retrieve(
+        user_id="u-1",
+        prompt="hello",
+        run_id="r-1",
+        agent_id="a-1",
+        app_id="app-1",
+    )
 
     assert result == "mocked-result"
     assert client._memory.last_search_kwargs == {
         "query": "hello",
-        "filters": {"AND": [{"user_id": "u-1"}]},
+        "filters": {
+            "AND": [
+                {"user_id": "u-1"},
+                {"run_id": "r-1"},
+                {"agent_id": "a-1"},
+                {"app_id": "app-1"},
+            ]
+        },
         "version": "v2",
         "output_format": "v1.1",
     }
@@ -117,6 +130,9 @@ async def test_retrieve_with_optional_attributes_adds_them_to_filter(monkeypatch
         user_id="u-1",
         prompt="hello",
         attributes={"project_id": "p-1", "session_id": "s-1"},
+        run_id="r-1",
+        agent_id="a-1",
+        app_id="app-1",
     )
 
     assert result == "mocked-result"
@@ -125,6 +141,9 @@ async def test_retrieve_with_optional_attributes_adds_them_to_filter(monkeypatch
         "filters": {
             "AND": [
                 {"user_id": "u-1"},
+                {"run_id": "r-1"},
+                {"agent_id": "a-1"},
+                {"app_id": "app-1"},
                 {"project_id": "p-1"},
                 {"session_id": "s-1"},
             ]
@@ -139,13 +158,22 @@ async def test_store_adds_user_message(monkeypatch: Any) -> None:
     mem0client = _load_mem0client_module(monkeypatch)
     client = mem0client.Mem0Client(api_key="test-key")
 
-    await client.store(user_id="u-2", user_message="hello")
+    await client.store(
+        user_id="u-2",
+        user_message="hello",
+        run_id="r-2",
+        agent_id="a-2",
+        app_id="app-2",
+    )
 
     assert client._memory.last_add_args == ([{"role": "user", "content": "hello"}],)
     assert client._memory.last_add_kwargs == {
         "user_id": "u-2",
         "version": "v2",
         "output_format": "v1.1",
+        "run_id": "r-2",
+        "agent_id": "a-2",
+        "app_id": "app-2",
     }
 
 
@@ -157,6 +185,9 @@ async def test_store_merges_optional_attributes(monkeypatch: Any) -> None:
     await client.store(
         user_id="u-2",
         user_message="hello",
+        run_id="r-2",
+        agent_id="a-2",
+        app_id="app-2",
         attributes={"project_id": "p-1"},
     )
 
@@ -164,5 +195,8 @@ async def test_store_merges_optional_attributes(monkeypatch: Any) -> None:
         "user_id": "u-2",
         "version": "v2",
         "output_format": "v1.1",
+        "run_id": "r-2",
+        "agent_id": "a-2",
+        "app_id": "app-2",
         "project_id": "p-1",
     }
