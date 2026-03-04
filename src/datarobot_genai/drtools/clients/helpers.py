@@ -13,7 +13,7 @@ def get_api_key_from_headers(header_name: str) -> str | None:
     if api_key := headers.get(f"x-{header_name}"):
         return api_key
 
-    # Try go get from x-datarobot-{header}
+    # Try to get from x-datarobot-{header}
     if api_key := headers.get(f"x-datarobot-{header_name}"):
         return api_key
 
