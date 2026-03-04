@@ -80,6 +80,7 @@ class DataRobotMCPServer:
         credentials_factory: Callable[[], Any] | None = None,
         lifecycle: BaseServerLifecycle | None = None,
         additional_module_paths: list[tuple[str, str]] | None = None,
+        load_native_mcp_tools: bool = True,
     ):
         """
         Initialize the server.
@@ -92,7 +93,10 @@ class DataRobotMCPServer:
             lifecycle: Optional lifecycle handler (defaults to BaseServerLifecycle())
             additional_module_paths: Optional list of (directory, package_prefix) tuples for
                 loading additional modules
+            load_native_mcp_tools: If True (default), import mcp_tools subpackage and register
+                all tools from the unified registry into FastMCP. Set False to skip.
         """
+        self._load_native_mcp_tools = load_native_mcp_tools
         # Initialize config and logging
         self._config = get_config()
         MCPLogging(self._config.app_log_level)
@@ -137,6 +141,10 @@ class DataRobotMCPServer:
                     "No AWS credentials found, skipping memory manager initialization"
                 )
 
+        # Register tools from the unified mcp_tools registry
+        if self._load_native_mcp_tools:
+            self._load_mcp_tools_registry()
+
         # Load static tools modules
         base_dir = os.path.dirname(os.path.dirname(__file__))
         if self._config.enable_predictive_tools:
@@ -163,6 +171,69 @@ class DataRobotMCPServer:
         if transport == "streamable-http":
             register_routes(self._mcp)
 
+    def _is_multi_tenant(self) -> bool:
+        """Check if running in Global MCP (multi-tenant) mode.
+
+        Set MCP_SERVER_MODE=global for multi-tenant deployments.
+        Defaults to 'template' (single-tenant, in-process code execution).
+        """
+        return os.getenv("MCP_SERVER_MODE", "template") == "global"
+
+    def _load_mcp_tools_registry(self) -> None:
+        """Import mcp_tools subpackage to trigger tool registration, then wire into FastMCP.
+
+        Also registers MCP resources from drmcp/core/resources/ and configures
+        the code execution sandbox based on MCP_SERVER_MODE.
+        """
+        try:
+            import datarobot_genai.mcp_tools  # noqa: F401 — triggers all register_tool() calls
+            from datarobot_genai.mcp_tools._registry import get_all_tools, get_tools_by_category
+
+            all_tools = get_all_tools()
+            for name, tool_def in all_tools.items():
+                try:
+                    self._mcp.tool(
+                        name=name,
+                        description=tool_def.description,
+                    )(tool_def.func)
+                except Exception as e:
+                    self._logger.warning(f"Could not register mcp_tool '{name}': {e}")
+
+            by_category: dict[str, int] = {}
+            for tool_def in all_tools.values():
+                by_category[tool_def.category] = by_category.get(tool_def.category, 0) + 1
+            self._logger.info(
+                f"Registered {len(all_tools)} mcp_tools: "
+                + ", ".join(f"{cat}={cnt}" for cat, cnt in sorted(by_category.items()))
+            )
+        except ImportError as e:
+            self._logger.warning(f"mcp_tools not available (install datarobot-genai[mcp-tools]): {e}")
+            return
+
+        # Configure code execution sandbox
+        try:
+            from datarobot_genai.mcp_tools.wren_tools.code_execution import (
+                InProcessSandbox,
+                NoopSandbox,
+                set_sandbox_provider,
+            )
+
+            if self._is_multi_tenant():
+                set_sandbox_provider(NoopSandbox())
+                self._logger.info("Code execution: NoopSandbox (global/multi-tenant mode)")
+            else:
+                set_sandbox_provider(InProcessSandbox())
+                self._logger.info("Code execution: InProcessSandbox (template/single-tenant mode)")
+        except ImportError:
+            pass
+
+        # Load MCP resources (dataset://, deployment://, model://)
+        try:
+            import datarobot_genai.drmcp.core.resources  # noqa: F401 — triggers @mcp.resource registration
+            self._logger.info("Registered standard MCP resources (dataset://, deployment://, model://)")
+        except ImportError as e:
+            self._logger.warning(f"Could not load MCP resources: {e}")
+
     def run(self, show_banner: bool = False) -> None:
         """Run the DataRobot MCP server synchronously."""
         try:
@@ -184,7 +255,19 @@ class DataRobotMCPServer:
             prompts = asyncio.run(self._mcp._list_prompts_mcp())
             resources = asyncio.run(self._mcp._list_resources_mcp())
 
-            self._logger.info(f"Registered tools: {len(tools)}")
+            try:
+                from datarobot_genai.mcp_tools._registry import get_tools_by_category
+                wren_cnt = len(get_tools_by_category("wren_tools"))
+                data_ops_cnt = len(get_tools_by_category("data_ops"))
+                dr_tools_cnt = len(get_tools_by_category("dr_tools"))
+                mode = "global" if self._is_multi_tenant() else "template"
+                self._logger.info(
+                    f"Registered tools: {len(tools)} total "
+                    f"(wren_tools={wren_cnt}, data_ops={data_ops_cnt}, dr_tools={dr_tools_cnt}) "
+                    f"| mode={mode}"
+                )
+            except ImportError:
+                self._logger.info(f"Registered tools: {len(tools)}")
             for tool in tools:
                 self._logger.info(f" > {tool.name}")
             self._logger.info(f"Registered prompts: {len(prompts)}")
@@ -261,6 +344,7 @@ def create_mcp_server(
     lifecycle: BaseServerLifecycle | None = None,
     additional_module_paths: list[tuple[str, str]] | None = None,
     transport: str = "streamable-http",
+    load_native_mcp_tools: bool = True,
 ) -> DataRobotMCPServer:
     """
     Create a DataRobot MCP server.
@@ -271,6 +355,7 @@ def create_mcp_server(
         lifecycle: Optional lifecycle handler
         additional_module_paths: Optional list of (directory, package_prefix) tuples
         transport: Transport type ("streamable-http" or "stdio")
+        load_native_mcp_tools: If True (default), load tools from the mcp_tools registry
 
     Returns
     -------
@@ -306,4 +391,5 @@ def create_mcp_server(
         credentials_factory=credentials_factory,
         lifecycle=lifecycle,
         additional_module_paths=additional_module_paths,
+        load_native_mcp_tools=load_native_mcp_tools,
     )

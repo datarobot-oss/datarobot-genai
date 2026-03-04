@@ -5,4 +5,7 @@ This package provides tool implementations that can be used either:
 - Directly injected into agent frameworks (LangGraph, CrewAI, etc.)
 
 See BUZZOK-29612 for the decoupling rationale.
+
+Importing this package triggers registration of all tools in all sub-packages.
 """
+from . import data_ops, dr_tools, wren_tools  # noqa: F401 — triggers register_tool() calls
