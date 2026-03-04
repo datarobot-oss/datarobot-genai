@@ -74,17 +74,19 @@ class Mem0Client(BaseMemoryClient):
 
         messages = [{"role": "user", "content": user_message}]
 
-        kwargs: dict[str, Any] = {
-            "user_id": self._memory.user_id,
-            "version": "v2",
+        kwargs = {
+            "version": "v1",
             "output_format": "v1.1",
         }
 
-        for key, value in (("run_id", run_id), ("agent_id", agent_id), ("app_id", app_id)):
-            if value:
-                kwargs[key] = value
+        kwargs.update(attributes or {})
 
-        if attributes:
-            kwargs.update(attributes)
+        kwargs["user_id"] = self._memory.user_id
+        if run_id:
+            kwargs["run_id"] = run_id
+        if agent_id:
+            kwargs["agent_id"] = agent_id
+        if app_id:
+            kwargs["app_id"] = app_id
 
         await self._memory.add(messages, **kwargs)

@@ -785,6 +785,7 @@ wheels = [
 version = "0.6.11"
 =======
 name = "datarobot-genai"
+<<<<<<< HEAD
 version = "0.6.8"
 <<<<<<< HEAD
 =======
@@ -800,6 +801,9 @@ version = "0.6.7"
 >>>>>>> 3556cdf (Async clients and more options for memory)
 =======
 >>>>>>> aca5835 (Update Changelog.md)
+=======
+version = "0.6.10"
+>>>>>>> 31b360c (update tests)
 source = { editable = "../" }
 
 [package.optional-dependencies]

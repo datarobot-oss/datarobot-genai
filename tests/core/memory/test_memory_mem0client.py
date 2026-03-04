@@ -91,9 +91,7 @@ def _load_mem0client_module(monkeypatch: Any) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_retrieve_without_optional_attributes_builds_user_only_filter(
-    monkeypatch: Any,
-) -> None:
+async def test_retrieve_builds_filter_with_ids(monkeypatch: Any) -> None:
     mem0client = _load_mem0client_module(monkeypatch)
     client = mem0client.Mem0Client(api_key="test-key")
 
@@ -165,9 +163,9 @@ async def test_store_adds_user_message(monkeypatch: Any) -> None:
 
     assert client._memory.last_add_args == ([{"role": "user", "content": "hello"}],)
     assert client._memory.last_add_kwargs == {
-        "user_id": client._memory.user_id,
         "version": "v2",
         "output_format": "v1.1",
+        "user_id": client._memory.user_id,
         "run_id": "r-2",
         "agent_id": "a-2",
         "app_id": "app-2",
@@ -188,11 +186,11 @@ async def test_store_merges_optional_attributes(monkeypatch: Any) -> None:
     )
 
     assert client._memory.last_add_kwargs == {
-        "user_id": client._memory.user_id,
         "version": "v2",
         "output_format": "v1.1",
+        "project_id": "p-1",
+        "user_id": client._memory.user_id,
         "run_id": "r-2",
         "agent_id": "a-2",
         "app_id": "app-2",
-        "project_id": "p-1",
     }

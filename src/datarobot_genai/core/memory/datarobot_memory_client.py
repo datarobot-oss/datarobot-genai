@@ -38,7 +38,7 @@ class DataRobotMemoryClient(AsyncMemoryClient):
         if not self.api_key:
             raise ValueError("Mem0 API Key not provided. Please provide an API Key.")
 
-        self.user_id = hashlib.md5(self.api_key.encode(), usedforsecurity=False).hexdigest()
+        self.user_id = hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()
 
         if client is not None:
             self.async_client = client
