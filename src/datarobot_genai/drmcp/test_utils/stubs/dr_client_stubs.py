@@ -52,7 +52,7 @@ class StubProject:
         self._models = models or []
         self.target = "sentiment"
         self.target_type = "Binary"
-        self.datetime_partitioning = StubDatetimePartitioning()
+        self.datetime_partitioning = None
 
     def get_models(self) -> list:
         """Stub get_models (matches real API: no arguments)."""

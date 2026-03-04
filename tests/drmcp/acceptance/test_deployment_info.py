@@ -114,7 +114,7 @@ def expectations_for_validate_prediction_data_failure(
                     "deployment_id": deployment_id,
                     "file_path": nonexistent_file_path,
                 },
-                result=f"[Errno 2] No such file or directory: '{nonexistent_file_path}'",
+                result="No such file or directory",
             ),
         ],
         llm_response_content_contains_expectations=[
