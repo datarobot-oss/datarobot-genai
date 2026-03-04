@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.6
+- Refactor drtools to use Polars for data handling, removing pandas dependency
+- Enhance acceptance tests for realtime predictions with inline CSV dataset support
+
 ## 0.6.5
 - Update task file to enable integration tests
 
@@ -23,11 +27,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Unify `InvokeReturn` type from `str | Event` to `Event` across all agent implementations
 - All agents (CrewAI, LangGraph, LlamaIndex, NAT) now emit AG-UI lifecycle events
 - Remove `str` code path from streaming/completions layer
-
-## 0.5.16
-- Use polars for internal implementation; pandas only at predict API boundary
-  - Add `polars` and `pyarrow` as direct drtools dependencies; avoid transitive pandas for internals
-  - Replace `pd.to_datetime()` with `datetime.fromisoformat()` in `predict_realtime.py`
 
 ## 0.5.15
 - Restructure the tools and move them to drtools instead of drmcp.tools
