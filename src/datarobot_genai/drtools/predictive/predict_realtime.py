@@ -19,9 +19,10 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-import pandas as pd
+import polars as pl
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
+from dateutil import parser as dateutil_parser
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel
@@ -44,6 +45,14 @@ def make_output_settings() -> BucketInfo:
     bucket_info = get_s3_bucket_info()
     s3_key = f"{bucket_info['prefix']}{uuid.uuid4()}.csv"
     return BucketInfo(bucket=bucket_info["bucket"], key=s3_key)
+
+
+def _parse_datetime(value: str) -> datetime:
+    normalized = str(value).replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return dateutil_parser.parse(str(value))
 
 
 @dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
@@ -76,22 +85,22 @@ async def predict_by_ai_catalog_rt(
     # 2. Next: if there is a method returning a local file path
     elif hasattr(dataset, "download"):
         path = dataset.download("dataset.csv")
-        df = pd.read_csv(path)
+        df = pl.read_csv(path).to_pandas()
 
     # 3. Next: if there is a method returning a local file path
     elif hasattr(dataset, "get_file"):
         path = dataset.get_file()
-        df = pd.read_csv(path)
+        df = pl.read_csv(path).to_pandas()
 
     # 4. Bytes fallback
     elif hasattr(dataset, "get_bytes"):
         raw = dataset.get_bytes()
-        df = pd.read_csv(io.BytesIO(raw))
+        df = pl.read_csv(io.BytesIO(raw)).to_pandas()
 
     # 5. Last resort: expose URL then fetch manually
     else:
         url = dataset.url
-        df = pd.read_csv(url)
+        df = pl.read_csv(url).to_pandas()
 
     deployment = client.Deployment.get(deployment_id=deployment_id)
     result = dr_predict(deployment, df, timeout=timeout or 600)
@@ -262,23 +271,23 @@ async def predict_realtime(
     if dataset is not None:
         # Try CSV first
         try:
-            df = pd.read_csv(io.StringIO(dataset))
+            pl_df = pl.read_csv(io.StringIO(dataset))
         except Exception:
             # Try JSON
             try:
                 data = json.loads(dataset)
-                df = pd.DataFrame(data)
+                pl_df = pl.DataFrame(data)
             except Exception as e:
-                raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}")
+                raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}") from e
     elif file_path is not None:
-        df = pd.read_csv(file_path)
+        pl_df = pl.read_csv(file_path)
     else:
         raise ValueError("Either file_path or dataset must be provided.")
 
     # Normalize column names: strip leading/trailing whitespace
-    df.columns = df.columns.str.strip()
+    pl_df = pl_df.rename({c: c.strip() for c in pl_df.columns})
 
-    if series_id_column and series_id_column not in df.columns:
+    if series_id_column and series_id_column not in pl_df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 
     token = await get_datarobot_access_token()
@@ -288,7 +297,8 @@ async def predict_realtime(
     # Check if this is a time series prediction or regular prediction
     is_time_series = bool(forecast_point or (forecast_range_start and forecast_range_end))
 
-    # Start with base prediction parameters
+    # Convert to pandas at the predict API boundary
+    df = pl_df.to_pandas()
     predict_kwargs = {
         "deployment": deployment,
         "data_frame": df,
@@ -298,12 +308,12 @@ async def predict_realtime(
     # Add time series parameters if applicable
     if is_time_series:
         if forecast_point:
-            forecast_point_dt = pd.to_datetime(forecast_point)
+            forecast_point_dt = _parse_datetime(forecast_point)
             predict_kwargs["time_series_type"] = TimeSeriesType.FORECAST
             predict_kwargs["forecast_point"] = forecast_point_dt
         elif forecast_range_start and forecast_range_end:
-            predictions_start_date_dt = pd.to_datetime(forecast_range_start)
-            predictions_end_date_dt = pd.to_datetime(forecast_range_end)
+            predictions_start_date_dt = _parse_datetime(forecast_range_start)
+            predictions_end_date_dt = _parse_datetime(forecast_range_end)
             predict_kwargs["time_series_type"] = TimeSeriesType.HISTORICAL
             predict_kwargs["predictions_start_date"] = predictions_start_date_dt
             predict_kwargs["predictions_end_date"] = predictions_end_date_dt

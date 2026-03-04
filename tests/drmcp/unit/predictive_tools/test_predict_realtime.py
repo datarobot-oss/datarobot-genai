@@ -22,6 +22,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pandas as pd
+import polars as pl
 import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
@@ -53,7 +54,7 @@ def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
             "datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient",
             return_value=mock_dr_client_instance,
         ),
-        patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv") as mock_read_csv,
+        patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv") as mock_read_csv,
         patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict") as mock_dr_predict,
         patch("datarobot_genai.drmcp.core.utils.boto3.client") as mock_boto3_client,
         patch(
@@ -74,7 +75,7 @@ async def test_predict_realtime_forecast_point(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -107,7 +108,7 @@ async def test_predict_realtime_forecast_range_resource(
 ) -> None:
     # Create a large DataFrame to trigger resource path
     df = pd.DataFrame({"a": range(MAX_INLINE_SIZE), "b": range(MAX_INLINE_SIZE)})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -169,7 +170,7 @@ async def test_predict_timeseries_regression_forecast_point_with_intervals(
         }
     )
 
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
@@ -228,7 +229,7 @@ async def test_predict_timeseries_regression_historical_range(
         }
     )
 
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
@@ -290,7 +291,7 @@ async def test_predict_timeseries_regression_multiseries(
         }
     )
 
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
@@ -347,7 +348,7 @@ async def test_predict_timeseries_regression_large_dataset_resource(
         }
     )
 
-    patch_realtime_dependencies["mock_read_csv"].return_value = large_df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(large_df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = large_predictions
@@ -390,7 +391,7 @@ async def test_predict_timeseries_regression_series_id_validation_error(
         }
     )
 
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
 
     # Test with non-existent series_id_column
     with pytest.raises(ToolError) as exc_info:
@@ -427,7 +428,7 @@ async def test_predict_timeseries_regression_no_prediction_intervals(
         }
     )
 
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
@@ -463,7 +464,7 @@ async def test_predict_realtime_with_all_explanation_parameters(
 ) -> None:
     """Test predict_realtime with comprehensive explanation parameters."""
     df = pd.DataFrame({"text": ["hello world", "test document"], "feature": [1, 2]})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -505,7 +506,7 @@ async def test_predict_realtime_with_passthrough_columns_all(
 ) -> None:
     """Test predict_realtime with passthrough_columns='all'."""
     df = pd.DataFrame({"id": [1, 2], "feature1": [10, 20], "feature2": [100, 200]})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -531,7 +532,7 @@ async def test_predict_realtime_with_passthrough_columns_specific(
 ) -> None:
     """Test predict_realtime with specific passthrough columns."""
     df = pd.DataFrame({"id": [1, 2], "feature1": [10, 20], "feature2": [100, 200]})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -557,7 +558,7 @@ async def test_predict_realtime_with_custom_endpoint(
 ) -> None:
     """Test predict_realtime with custom prediction endpoint."""
     df = pd.DataFrame({"feature": [1, 2]})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -584,7 +585,7 @@ async def test_predict_realtime_regular_prediction_no_time_series_params(
 ) -> None:
     """Test predict_realtime for regular prediction without any time series parameters."""
     df = pd.DataFrame({"feature1": [1, 2], "feature2": [10, 20]})
-    patch_realtime_dependencies["mock_read_csv"].return_value = df
+    patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -648,6 +649,7 @@ async def test_predict_realtime_with_dataset_json(
     data = [{"a": 1, "b": 3}, {"a": 2, "b": 4}]
     json_str = json.dumps(data)
     df = pd.DataFrame(data)
+    patch_realtime_dependencies["mock_read_csv"].side_effect = Exception("not csv")
     patch_realtime_dependencies["mock_deployment_get"].return_value = MagicMock()
     mock_result = MagicMock()
     mock_result.dataframe = df
@@ -808,7 +810,7 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
         "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
@@ -836,8 +838,8 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.return_value = mock_deployment
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
-        mock_read_csv.return_value = mock_df
+        pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = pl_df
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -858,7 +860,11 @@ class TestPredictByAiCatalogRt:
         mock_dataset.download.assert_called_once_with("dataset.csv")
         mock_read_csv.assert_called_once_with("dataset.csv")
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
-        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+        mock_dr_predict.assert_called_once()
+        call_args, call_kwargs = mock_dr_predict.call_args
+        assert call_args[0] is mock_deployment
+        assert call_args[1].equals(pl_df.to_pandas())
+        assert call_kwargs["timeout"] == 600
 
         assert isinstance(result, ToolResult)
         assert result.structured_content["type"] == "inline"
@@ -868,7 +874,7 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
         "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
@@ -885,10 +891,8 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response,
     ):
         """Test predict_by_ai_catalog_rt with get_file method."""
-        # Setup mocks
         mock_client = Mock()
         mock_dataset = Mock()
-        # Remove get_as_dataframe and download attributes entirely
         del mock_dataset.get_as_dataframe
         del mock_dataset.download
         mock_dataset.get_file.return_value = "dataset.csv"
@@ -897,8 +901,8 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.return_value = mock_deployment
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
-        mock_read_csv.return_value = mock_df
+        pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = pl_df
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -911,7 +915,6 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        # Call function
         result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
 
         # Verify calls
@@ -919,7 +922,10 @@ class TestPredictByAiCatalogRt:
         mock_dataset.get_file.assert_called_once()
         mock_read_csv.assert_called_once_with("dataset.csv")
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
-        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+        mock_dr_predict.assert_called_once()
+        call_args = mock_dr_predict.call_args[0]
+        assert call_args[0] is mock_deployment
+        assert call_args[1].equals(pl_df.to_pandas())
 
         assert isinstance(result, ToolResult)
         assert result.structured_content["type"] == "inline"
@@ -929,7 +935,7 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
         "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
@@ -959,8 +965,8 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.return_value = mock_deployment
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
-        mock_read_csv.return_value = mock_df
+        pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = pl_df
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -981,7 +987,10 @@ class TestPredictByAiCatalogRt:
         mock_dataset.get_bytes.assert_called_once()
         mock_read_csv.assert_called_once()
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
-        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+        mock_dr_predict.assert_called_once()
+        call_args = mock_dr_predict.call_args[0]
+        assert call_args[0] is mock_deployment
+        assert call_args[1].equals(pl_df.to_pandas())
 
         assert isinstance(result, ToolResult)
         assert result.structured_content["type"] == "inline"
@@ -991,7 +1000,7 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.pd.read_csv")
+    @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
     @patch(
         "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
@@ -1022,8 +1031,8 @@ class TestPredictByAiCatalogRt:
         mock_client.Deployment.get.return_value = mock_deployment
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
-        mock_read_csv.return_value = mock_df
+        pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
+        mock_read_csv.return_value = pl_df
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -1043,7 +1052,10 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.assert_called_once_with("dataset123")
         mock_read_csv.assert_called_once_with("https://example.com/dataset.csv")
         mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
-        mock_dr_predict.assert_called_once_with(mock_deployment, mock_df, timeout=600)
+        mock_dr_predict.assert_called_once()
+        call_args = mock_dr_predict.call_args[0]
+        assert call_args[0] is mock_deployment
+        assert call_args[1].equals(pl_df.to_pandas())
 
         assert isinstance(result, ToolResult)
         assert result.structured_content["type"] == "inline"
