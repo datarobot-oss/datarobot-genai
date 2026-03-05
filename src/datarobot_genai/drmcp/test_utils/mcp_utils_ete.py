@@ -54,7 +54,7 @@ def get_openai_llm_client_config() -> dict[str, str]:
         raise ValueError("Missing required environment variable: OPENAI_API_DEPLOYMENT_ID")
 
     openai_model = os.environ.get("OPENAI_MODEL")
-    if not openai_model:
+    if not openai_api_deployment_id and not openai_model:
         raise ValueError("Missing required environment variable: OPENAI_MODEL")
 
     config: dict[str, str] = {
@@ -92,8 +92,7 @@ def get_dr_llm_gateway_client_config() -> dict[str, str]:
         "save_llm_responses": str(save_llm_responses),
     }
 
-    if dr_llm_gateway_model:
-        config["model"] = dr_llm_gateway_model
+    config["model"] = dr_llm_gateway_model
     if datarobot_endpoint:
         config["datarobot_endpoint"] = datarobot_endpoint
 

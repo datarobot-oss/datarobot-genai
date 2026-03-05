@@ -60,7 +60,7 @@ class OpenAILLMMCPClient(BaseLLMMCPClient):
             client = openai.AzureOpenAI(
                 api_key=openai_api_key,
                 azure_endpoint=openai_api_base,
-                api_version=config_dict.get("openai_api_version", "2024-02-15-preview"),
+                api_version=config_dict.get("openai_api_version"),
             )
             return client, openai_api_deployment_id
         else:

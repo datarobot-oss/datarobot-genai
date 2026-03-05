@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.8
+- Make model required for MCP clients acceptance tests
+
 ## 0.6.7
 - When getting api key in perplexity/tavily try to get it from 2 different headers (as fallback)
 
