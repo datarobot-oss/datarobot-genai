@@ -40,26 +40,27 @@ class OpenAILLMMCPClient(BaseLLMMCPClient):
                 - openai_api_base: Optional Azure OpenAI endpoint
                 - openai_api_deployment_id: Optional Azure deployment ID
                 - openai_api_version: Optional Azure API version
-                - model: Model name (default: "gpt-3.5-turbo")
+                - model: Model name (**required** for non-Azure; not needed for Azure
+                    when deployment ID is set)
                 - save_llm_responses: Whether to save responses (default: True)
         """
         super().__init__(config)
 
     def _create_llm_client(
         self, config_dict: dict
-    ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str]:
+    ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str | None]:
         """Create the LLM client for OpenAI or Azure OpenAI."""
         openai_api_key = config_dict.get("openai_api_key")
         openai_api_base = config_dict.get("openai_api_base")
         openai_api_deployment_id = config_dict.get("openai_api_deployment_id")
-        model = config_dict.get("model", "gpt-3.5-turbo")
+        model = config_dict.get("model")
 
         if openai_api_base and openai_api_deployment_id:
             # Azure OpenAI
             client = openai.AzureOpenAI(
                 api_key=openai_api_key,
                 azure_endpoint=openai_api_base,
-                api_version=config_dict.get("openai_api_version", "2024-02-15-preview"),
+                api_version=config_dict.get("openai_api_version"),
             )
             return client, openai_api_deployment_id
         else:

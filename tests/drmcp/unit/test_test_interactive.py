@@ -31,6 +31,7 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function as ChatCompletionMessageToolCallFunction,
 )
 
+from datarobot_genai.drmcp.test_utils.clients.anthropic import AnthropicMCPClient
 from datarobot_genai.drmcp.test_utils.clients.base import LLMResponse
 from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
 from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
@@ -115,7 +116,7 @@ def mock_azure_openai_patch():
 @pytest.fixture
 def basic_client_config() -> dict:
     """Return basic client configuration."""
-    return {"openai_api_key": "test-key"}
+    return {"openai_api_key": "test-key", "model": "gpt-4"}
 
 
 @pytest.fixture
@@ -212,12 +213,19 @@ class TestLLMMCPClient:
 
     def test_init_with_defaults(self, mock_openai_patch) -> None:
         """Test OpenAILLMMCPClient initialization with default values."""
-        config = {"openai_api_key": "test-key"}
+        config = {"openai_api_key": "test-key", "model": "gpt-4"}
 
         client = OpenAILLMMCPClient(str(config))
 
-        assert client.model == "gpt-3.5-turbo"
+        assert client.model == "gpt-4"
         assert client.save_llm_responses is True
+
+    def test_init_without_model_raises_value_error(self, mock_openai_patch) -> None:
+        """Test that OpenAILLMMCPClient raises ValueError when model is not provided."""
+        config = {"openai_api_key": "test-key"}
+
+        with pytest.raises(ValueError, match="'model' is required"):
+            OpenAILLMMCPClient(str(config))
 
     @pytest.mark.asyncio
     async def test_add_mcp_tool_to_available_tools(self, llm_client, mock_session) -> None:
@@ -365,7 +373,7 @@ class TestLLMMCPClient:
         self, mock_save_file, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:
         """Test process_prompt_with_mcp_support with single LLM response (no tool calls)."""
-        config = {"openai_api_key": "test-key", "save_llm_responses": True}
+        config = {"openai_api_key": "test-key", "model": "gpt-4", "save_llm_responses": True}
         client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
@@ -388,7 +396,7 @@ class TestLLMMCPClient:
         mock_openai_client_instance,
     ) -> None:
         """Test process_prompt_with_mcp_support with tool calls."""
-        config = {"openai_api_key": "test-key", "save_llm_responses": True}
+        config = {"openai_api_key": "test-key", "model": "gpt-4", "save_llm_responses": True}
         client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
@@ -417,7 +425,7 @@ class TestLLMMCPClient:
         self, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:
         """Test that process_prompt_with_mcp_support cleans content (removes * and lowercases)."""
-        config = {"openai_api_key": "test-key", "save_llm_responses": False}
+        config = {"openai_api_key": "test-key", "model": "gpt-4", "save_llm_responses": False}
         client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
@@ -435,7 +443,7 @@ class TestLLMMCPClient:
         self, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:
         """Test process_prompt_with_mcp_support without saving responses."""
-        config = {"openai_api_key": "test-key", "save_llm_responses": False}
+        config = {"openai_api_key": "test-key", "model": "gpt-4", "save_llm_responses": False}
         client = OpenAILLMMCPClient(str(config))
 
         mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
@@ -474,7 +482,7 @@ class TestDRLLMGatewayMCPClient:
 
     def test_init_with_defaults(self, mock_openai_patch) -> None:
         """Test DRLLMGatewayMCPClient initialization with default values."""
-        config = {"datarobot_api_token": "test-token"}
+        config = {"datarobot_api_token": "test-token", "model": "gpt-4o-mini"}
 
         client = DRLLMGatewayMCPClient(str(config))
 
@@ -532,3 +540,40 @@ class TestDRLLMGatewayMCPClient:
             api_key="test-token",
             base_url="https://app.datarobot.com/api/v2/genai/llmgw",
         )
+
+    def test_init_without_model_raises_value_error(self, mock_openai_patch) -> None:
+        """Test that DRLLMGatewayMCPClient raises ValueError when model is not provided."""
+        config = {
+            "datarobot_api_token": "test-token",
+            "datarobot_endpoint": "https://app.datarobot.com/api/v2",
+        }
+
+        with pytest.raises(ValueError, match="'model' is required"):
+            DRLLMGatewayMCPClient(str(config))
+
+
+class TestAnthropicMCPClient:
+    """Test cases for AnthropicMCPClient class."""
+
+    def test_init_with_anthropic_config(self, mock_openai_patch) -> None:
+        """Test AnthropicMCPClient initialization."""
+        config = {
+            "anthropic_api_key": "sk-ant-test",
+            "model": "claude-3-5-sonnet-20241022",
+        }
+
+        client = AnthropicMCPClient(str(config))
+
+        assert client.model == "claude-3-5-sonnet-20241022"
+        assert client.save_llm_responses is True
+        mock_openai_patch.assert_called_once_with(
+            api_key="sk-ant-test",
+            base_url="https://api.anthropic.com/v1",
+        )
+
+    def test_init_without_model_raises_value_error(self, mock_openai_patch) -> None:
+        """Test that AnthropicMCPClient raises ValueError when model is not provided."""
+        config = {"anthropic_api_key": "sk-ant-test"}
+
+        with pytest.raises(ValueError, match="'model' is required"):
+            AnthropicMCPClient(str(config))
