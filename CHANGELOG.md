@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.7
+- When getting api key in perplexity/tavily try to get it from 2 different headers (as fallback)
+
 ## 0.6.6
 - Refactor drtools to use Polars for data handling, removing pandas dependency
 - Enhance acceptance tests for realtime predictions with inline CSV dataset support

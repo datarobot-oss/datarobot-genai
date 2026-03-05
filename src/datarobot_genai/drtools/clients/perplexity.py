@@ -18,7 +18,6 @@ from typing import Any
 from typing import Literal
 
 from fastmcp.exceptions import ToolError
-from fastmcp.server.dependencies import get_http_headers
 from perplexity import AsyncPerplexity
 from perplexity.types import ChatMessageInput
 from perplexity.types import StreamChunk
@@ -28,6 +27,8 @@ from perplexity.types.chat.completion_create_params import ResponseFormatRespons
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
+
+from datarobot_genai.drtools.clients.helpers import get_api_key_from_headers
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,7 @@ async def get_perplexity_access_token() -> str | ToolError:
         ```
     """
     try:
-        headers = get_http_headers()
-
-        if api_key := headers.get("x-perplexity-api-key"):
+        if api_key := get_api_key_from_headers("x-perplexity-api-key"):
             return api_key
 
         logger.warning("Perplexity API key not found in headers.")
@@ -73,7 +72,7 @@ async def get_perplexity_access_token() -> str | ToolError:
         )
     except Exception as e:
         logger.error(f"Unexpected error obtaining Perplexity API key: {e}.", exc_info=e)
-        return ToolError("An unexpected error occured while obtaining Perplexity API key.")
+        return ToolError("An unexpected error occurred while obtaining Perplexity API key.")
 
 
 class PerplexityError(Exception):
