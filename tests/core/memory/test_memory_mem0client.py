@@ -163,7 +163,7 @@ async def test_store_adds_user_message(monkeypatch: Any) -> None:
 
     assert client._memory.last_add_args == ([{"role": "user", "content": "hello"}],)
     assert client._memory.last_add_kwargs == {
-        "version": "v2",
+        "version": "v1",
         "output_format": "v1.1",
         "user_id": client._memory.user_id,
         "run_id": "r-2",
@@ -186,7 +186,7 @@ async def test_store_merges_optional_attributes(monkeypatch: Any) -> None:
     )
 
     assert client._memory.last_add_kwargs == {
-        "version": "v2",
+        "version": "v1",
         "output_format": "v1.1",
         "project_id": "p-1",
         "user_id": client._memory.user_id,
