@@ -12,7 +12,9 @@ the review may happen while you are asleep / otherwise not able to respond quick
 
 ## CHANGES
 
-<!-- Review guideline: https://datarobot.atlassian.net/wiki/spaces/BUZOK/pages/7305920528/REVIEW+BEFORE+COMMIT+Working+with+agentic+starter+application+and+its+components -->
+## Checklist
+- [ ] Reviewed [guideline](https://datarobot.atlassian.net/wiki/spaces/BUZOK/pages/7305920528/REVIEW+BEFORE+COMMIT+Working+with+agentic+starter+application+and+its+components)
+- [ ] Update Changelog
 
 <!-- Recommended Additional Sections:
 ## SCREENSHOTS
