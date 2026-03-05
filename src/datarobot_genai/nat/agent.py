@@ -19,6 +19,7 @@ import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -200,7 +201,11 @@ class NatAgent(BaseAgent[None]):
         }
 
         # Partial AG-UI: workflow lifecycle + text message events
-        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, zero_metrics
+        yield (
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
+            None,
+            zero_metrics,
+        )
 
         message_id = str(uuid.uuid4())
         text_started = False
@@ -217,19 +222,29 @@ class NatAgent(BaseAgent[None]):
                     if result_text:
                         if not text_started:
                             yield (
-                                TextMessageStartEvent(message_id=message_id),
+                                TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                                ),
                                 None,
                                 zero_metrics,
                             )
                             text_started = True
                         yield (
-                            TextMessageContentEvent(message_id=message_id, delta=result_text),
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message_id,
+                                delta=result_text,
+                            ),
                             None,
                             zero_metrics,
                         )
 
                 if text_started:
-                    yield TextMessageEndEvent(message_id=message_id), None, zero_metrics
+                    yield (
+                        TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                        None,
+                        zero_metrics,
+                    )
 
                 steps = await intermediate_future
                 llm_end_steps = [
@@ -249,7 +264,9 @@ class NatAgent(BaseAgent[None]):
 
                 pipeline_interactions = self.create_pipeline_interactions_from_steps(steps)
                 yield (
-                    RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+                    RunFinishedEvent(
+                        type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
+                    ),
                     pipeline_interactions,
                     usage_metrics,
                 )
