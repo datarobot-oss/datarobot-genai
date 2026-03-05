@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.11
+- Fixed AG-UI event serialization
+
 ## 0.6.10
 - Updated cursorbot review instructions with correct names
 

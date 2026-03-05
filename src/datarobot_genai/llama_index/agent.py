@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -123,7 +124,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         run_id = run_agent_input.run_id
 
         # Partial AG-UI: workflow lifecycle + text message events
-        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, default_usage_metrics()
+        yield (
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
+            None,
+            default_usage_metrics(),
+        )
 
         workflow = self.build_workflow()
         handler = workflow.run(user_msg=input_message)
@@ -152,10 +157,18 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
             if delta:
                 if not text_started:
-                    yield TextMessageStartEvent(message_id=message_id), None, usage_metrics
+                    yield (
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                        ),
+                        None,
+                        usage_metrics,
+                    )
                     text_started = True
                 yield (
-                    TextMessageContentEvent(message_id=message_id, delta=delta),
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=delta
+                    ),
                     None,
                     usage_metrics,
                 )
@@ -212,7 +225,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 pass
 
         if text_started:
-            yield TextMessageEndEvent(message_id=message_id), None, usage_metrics
+            yield (
+                TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                None,
+                usage_metrics,
+            )
 
         # After streaming completes, build final interactions and finish chunk
         # Extract state from workflow context (supports sync/async get or attribute)
@@ -235,7 +252,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
-            RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+            RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
             pipeline_interactions,
             usage_metrics,
         )
