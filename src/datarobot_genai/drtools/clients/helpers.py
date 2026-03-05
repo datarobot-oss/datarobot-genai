@@ -17,19 +17,15 @@ from fastmcp.server.dependencies import get_http_headers
 def get_api_key_from_headers(header_name: str) -> str | None:
     headers = get_http_headers()
 
-    # First try to get just {header}
-    if api_key := headers.get(header_name):
-        return api_key
+    candidates = [header_name]
 
-    # Then try to get x-datarobot-{header}
-    if api_key := headers.get(f"x-datarobot-{header_name}"):
-        return api_key
-
-    # If header starts with x- but not x-datarobot- we've fallback
     if header_name.startswith("x-") and not header_name.startswith("x-datarobot-"):
-        header_name = header_name[2:]
-        # Try to get x-datarobot-{header_without_x-}
-        if api_key := headers.get(f"x-datarobot-{header_name}"):
-            return api_key
+        candidates.append(f"x-datarobot-{header_name[2:]}")
+    elif not header_name.startswith("x-datarobot-"):
+        candidates.append(f"x-datarobot-{header_name}")
+
+    for name in candidates:
+        if value := headers.get(name):
+            return value
 
     return None
