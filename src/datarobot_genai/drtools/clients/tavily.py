@@ -47,7 +47,7 @@ async def get_tavily_access_token() -> str:
     ------
         ToolError: If API key is not found in headers
     """
-    if api_key := get_api_key_from_headers("tavily-api-key"):
+    if api_key := get_api_key_from_headers("x-tavily-api-key"):
         return api_key
 
     logger.warning("Tavily API key not found in headers")

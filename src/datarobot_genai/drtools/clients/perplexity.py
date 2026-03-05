@@ -62,7 +62,7 @@ async def get_perplexity_access_token() -> str | ToolError:
         ```
     """
     try:
-        if api_key := get_api_key_from_headers("perplexity-api-key"):
+        if api_key := get_api_key_from_headers("x-perplexity-api-key"):
             return api_key
 
         logger.warning("Perplexity API key not found in headers.")
