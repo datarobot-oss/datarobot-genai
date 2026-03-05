@@ -53,10 +53,16 @@ def get_openai_llm_client_config() -> dict[str, str]:
     ):  # For Azure OpenAI, we need additional variables
         raise ValueError("Missing required environment variable: OPENAI_API_DEPLOYMENT_ID")
 
+    openai_model = os.environ.get("OPENAI_MODEL")
+    if not openai_model:
+        raise ValueError("Missing required environment variable: OPENAI_MODEL")
+
     config: dict[str, str] = {
         "openai_api_key": openai_api_key,
     }
 
+    if openai_model:
+        config["model"] = openai_model
     if openai_api_base:
         config["openai_api_base"] = openai_api_base
     if openai_api_deployment_id:
@@ -77,11 +83,17 @@ def get_dr_llm_gateway_client_config() -> dict[str, str]:
     if not datarobot_api_token:
         raise ValueError("Missing required environment variable: DATAROBOT_API_TOKEN")
 
+    dr_llm_gateway_model = os.environ.get("DR_LLM_GATEWAY_MODEL")
+    if not dr_llm_gateway_model:
+        raise ValueError("Missing required environment variable: DR_LLM_GATEWAY_MODEL")
+
     config: dict[str, str] = {
         "datarobot_api_token": datarobot_api_token,
         "save_llm_responses": str(save_llm_responses),
     }
 
+    if dr_llm_gateway_model:
+        config["model"] = dr_llm_gateway_model
     if datarobot_endpoint:
         config["datarobot_endpoint"] = datarobot_endpoint
 

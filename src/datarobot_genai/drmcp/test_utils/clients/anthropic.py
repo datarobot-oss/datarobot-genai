@@ -50,15 +50,15 @@ class AnthropicMCPClient(BaseLLMMCPClient):
         Args:
             config: Configuration string or dict with:
                 - anthropic_api_key: Anthropic API key
-                - model: Model name (default: "claude-3-5-sonnet-20241022")
+                - model: Model name (**required**)
                 - save_llm_responses: Whether to save responses (default: True)
         """
         super().__init__(config)
 
-    def _create_llm_client(self, config_dict: dict) -> tuple[openai.OpenAI, str]:
+    def _create_llm_client(self, config_dict: dict) -> tuple[openai.OpenAI, str | None]:
         """Create the LLM client for Anthropic (OpenAI-compatible endpoint)."""
         anthropic_api_key = config_dict.get("anthropic_api_key")
-        model = config_dict.get("model", "claude-3-5-sonnet-20241022")
+        model = config_dict.get("model")
 
         # Anthropic provides an OpenAI-compatible endpoint
         client = openai.OpenAI(
