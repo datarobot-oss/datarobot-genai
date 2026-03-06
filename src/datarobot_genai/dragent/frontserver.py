@@ -64,7 +64,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             datarobot_endpoint = os.getenv("DATAROBOT_ENDPOINT", "")
             if not datarobot_endpoint:
                 raise ValueError("DATAROBOT_ENDPOINT must be set when MLOPS_DEPLOYMENT_ID is set")
-            return f"{datarobot_endpoint.rstrip('/')}/deployments/{mlops_deployment_id}/directAccess/a2a/"
+            base = datarobot_endpoint.rstrip("/")
+            return f"{base}/deployments/{mlops_deployment_id}/directAccess/a2a/"
         return default_url.rstrip("/") + "/a2a/"
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
