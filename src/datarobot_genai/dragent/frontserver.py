@@ -94,12 +94,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         a2a_app = a2a_server.build()
         app.mount("/a2a", a2a_app)
+        app.add_event_handler("shutdown", self._cleanup_a2a_worker)
 
         logger.info("Mounted A2A server endpoints at /a2a")
         logger.info("The A2A agent card can be accessed at: /a2a/.well-known/agent-card.json")
 
-    async def cleanup(self) -> None:
-        """Clean up resources."""
+    async def _cleanup_a2a_worker(self) -> None:
+        """Clean up A2A worker resources on shutdown."""
         if self._a2a_worker is not None:
             await self._a2a_worker.cleanup()
             logger.info("A2A worker resources cleaned up")
