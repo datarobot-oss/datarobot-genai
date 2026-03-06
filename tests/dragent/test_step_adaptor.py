@@ -693,7 +693,8 @@ def test_adaptor_processes_nested_reasoning_steps(
 
 def test_adaptor_streaming_emits_start_on_first_token(step_adaptor):
     """LLM_START followed by LLM_NEW_TOKEN tokens: TextMessageStartEvent is emitted on the
-    first token, not on LLM_START, so that it precedes the first content chunk."""
+    first token, not on LLM_START, so that it precedes the first content chunk.
+    """
     msg_id = str(uuid.uuid4())
     ancestry = InvocationNode(
         function_id="agent", function_name="agent", parent_id=None, parent_name=None

@@ -150,7 +150,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # Text might be sent in both LLM_END and LLM_NEW_TOKEN steps
         # we need to send content only once
         elif payload.event_type == IntermediateStepType.LLM_END:
-            if not self.seen_llm_new_token  and payload.data.payload.text:
+            if not self.seen_llm_new_token and payload.data.payload.text:
                 # LLM produced text without streaming — emit start + content + end together
                 text = self._extract_payload_text(payload)
                 if text:
