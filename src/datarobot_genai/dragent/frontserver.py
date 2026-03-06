@@ -20,7 +20,6 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugi
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
@@ -54,12 +53,6 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
-    def _build_a2a_front_end_config(self) -> A2AFrontEndConfig:
-        """Build an A2AFrontEndConfig from the dragent front-end config."""
-        if isinstance(self.front_end_config, A2AFrontEndConfig):
-            return self.front_end_config
-        return A2AFrontEndConfig()
-
     def _get_a2a_endpoint_url(self, default_url: str) -> str:
         """Construct the A2A endpoint URL.
 
@@ -81,9 +74,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         workflow = await builder.build()
 
-        a2a_front_end_config = self._build_a2a_front_end_config()
+        # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config,
+        # so we must pass it a full Config with the A2AFrontEndConfig substituted in.
         nat_config = self._config.model_copy(
-            update={"general": self._config.general.model_copy(update={"front_end": a2a_front_end_config})}
+            update={"general": self._config.general.model_copy(update={"front_end": self.front_end_config.a2a})}
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
