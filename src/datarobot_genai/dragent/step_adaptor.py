@@ -150,20 +150,14 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # Text might be sent in both LLM_END and LLM_NEW_TOKEN steps
         # we need to send content only once
         elif payload.event_type == IntermediateStepType.LLM_END:
-            if not self.seen_llm_new_token and payload.data.payload.text:
-                # LLM produced text without streaming — emit start + content + end together
+            if not self.seen_llm_new_token:
                 text = self._extract_payload_text(payload)
                 if text:
-                    events.append(TextMessageStartEvent(message_id=payload.UUID))
                     events.append(TextMessageContentEvent(message_id=payload.UUID, delta=text))
-            # Do not emit payload.text if the LLM has already produced text to avoid duplicating
-            # already streamed chunks.
+
             events.append(TextMessageEndEvent(message_id=payload.UUID))
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
-            if not self.seen_llm_new_token:
-                # First token — now we know this LLM produces text, emit the start event
-                events.append(TextMessageStartEvent(message_id=payload.UUID))
-                self.seen_llm_new_token = True
+            self.seen_llm_new_token = True
             if payload.data.chunk != "":
                 events.append(
                     TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
