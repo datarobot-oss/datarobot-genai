@@ -19,6 +19,7 @@ from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
+from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
 from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
 from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
@@ -30,7 +31,7 @@ from datarobot_genai.dragent.converters import convert_tool_message_to_str
 
 
 # Register frontend
-class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"):  # type: ignore
+class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, A2AFrontEndConfig, name="dragent_fastapi"):  # type: ignore
     pass
 
 
