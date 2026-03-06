@@ -151,6 +151,7 @@ def expected_responses(intermediate_steps_ids, payloads):
         ),
         DRAgentEventResponse(
             events=[
+                TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"]),
                 TextMessageContentEvent(
                     message_id=intermediate_steps_ids["agent_message_id"],
                     delta=payloads["agent_llm_text"],
