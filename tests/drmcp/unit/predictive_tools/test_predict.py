@@ -57,7 +57,6 @@ def patch_predict_dependencies() -> Generator[dict[str, Any], None, None]:
         }
 
 
-
 async def test_predict_by_file_path(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -73,7 +72,6 @@ async def test_predict_by_file_path(
     assert result.structured_content["deployment_id"] == "dep"
     assert "Scoring file file.csv" in result.structured_content["input_desc"]
     assert "s3_url" in result.structured_content
-
 
 
 async def test_predict_by_ai_catalog(
@@ -105,7 +103,6 @@ async def test_predict_by_ai_catalog(
         assert "s3_url" in result.structured_content
 
 
-
 async def test_predict_from_project_data(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -132,7 +129,6 @@ async def test_predict_from_project_data(
         assert "s3_url" in result.structured_content
 
 
-
 async def test_predict_by_file_path_timeout(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -152,7 +148,6 @@ async def test_predict_by_file_path_timeout(
     )
 
 
-
 async def test_predict_by_file_path_failure_error(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -169,7 +164,6 @@ async def test_predict_by_file_path_failure_error(
     assert "Error in predict_by_file_path: AsyncFailureError: Job failed for some reason." == str(
         exc_info.value
     )
-
 
 
 async def test_predict_by_file_path_unsuccessful_error(
@@ -232,7 +226,6 @@ def test_make_output_settings() -> None:
     assert key in out["url"]
 
 
-
 async def test_get_prediction_explanations_basic() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(
@@ -264,7 +257,6 @@ async def test_get_prediction_explanations_basic() -> None:
     assert result["explanations"][0]["feature1"] == FEATURE_VALUE
 
 
-
 async def test_get_prediction_explanations_empty() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(return_value=[])
@@ -288,7 +280,6 @@ async def test_get_prediction_explanations_empty() -> None:
     assert "explanations" in result
     assert result["explanations"] == []
     assert result["ui_panel"] == ["prediction-distribution"]
-
 
 
 async def test_get_prediction_explanations_sdk_error() -> None:

@@ -21,7 +21,6 @@ from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_DUPLICATE_NAME
 
 
-
 class TestMCPDRPromptManagementIntegration:
     """Integration tests for MCP DR Prompt Management integration."""
 
@@ -155,7 +154,6 @@ class TestMCPDRPromptManagementIntegration:
             matches = [s for s in prompts_names if pattern.search(s)]
 
             assert len(matches) == 1
-
 
 
 async def test_mcp_prompts_mapping_methods():

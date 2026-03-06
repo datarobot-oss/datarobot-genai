@@ -35,7 +35,6 @@ from mcp.types import ElicitResult
 from datarobot_genai.drmcp import integration_test_mcp_session
 
 
-
 @pytest.mark.parametrize(
     "has_elicitation_callback,should_allow_elicitation",
     [

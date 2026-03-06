@@ -94,7 +94,6 @@ def expectations_for_predict_realtime_dataset_string_success(
     )
 
 
-
 class TestPredictRealtimeE2E(ToolBaseE2E):
     """End-to-end tests for realtime prediction functionality."""
 

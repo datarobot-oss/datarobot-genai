@@ -126,7 +126,6 @@ def expectations_for_validate_prediction_data_failure(
     )
 
 
-
 class TestDeploymentInfoE2E(ToolBaseE2E):
     """End-to-end tests for deployment info functionality."""
 

@@ -114,7 +114,6 @@ def expectations_for_get_prediction_explanations_success(
     )
 
 
-
 class TestPredictE2E(ToolBaseE2E):
     """End-to-end tests for prediction-related functionality."""
 

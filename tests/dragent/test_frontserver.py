@@ -162,7 +162,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         assert a2a_config_used.host == dragent_worker.front_end_config.host
         assert a2a_config_used.port == dragent_worker.front_end_config.port
 
-    
     async def test_add_routes_patches_agent_card_url(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
@@ -175,7 +174,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             await dragent_worker.add_routes(app, mock_builder)
         assert mock_a2a_worker.create_agent_card.return_value.url == "http://localhost:8000/a2a/"
 
-    
     async def test_add_routes_mounts_a2a(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
@@ -190,7 +188,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_a2a_worker.create_agent_executor.assert_called_once()
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
-    
     async def test_add_routes_disabled(self, dragent_worker, mock_builder, patch_super_add_routes):
         app = FastAPI()
         with (
@@ -262,9 +259,7 @@ class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
 
         parent_app.router.lifespan_context = fake_lifespan
 
-        with patch.object(
-            type(dragent_worker).__bases__[0], "build_app", return_value=parent_app
-        ):
+        with patch.object(type(dragent_worker).__bases__[0], "build_app", return_value=parent_app):
             app = dragent_worker.build_app()
 
         with TestClient(app):

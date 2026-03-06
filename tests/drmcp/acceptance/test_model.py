@@ -129,7 +129,6 @@ def expectations_for_score_dataset_with_model_failure(
     )
 
 
-
 class TestModelE2E(ToolBaseE2E):
     """End-to-end tests for model-related functionality."""
 

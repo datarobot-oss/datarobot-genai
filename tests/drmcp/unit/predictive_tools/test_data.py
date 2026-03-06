@@ -23,7 +23,6 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drtools.predictive import data
 
 
-
 async def test_upload_dataset_to_ai_catalog_success() -> None:
     with (
         patch(
@@ -52,7 +51,6 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
             "dataset_version_id": None,
             "dataset_name": "somefile.csv",
         }
-
 
 
 async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
@@ -86,7 +84,6 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
         }
 
 
-
 async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
     with (
         patch(
@@ -114,7 +111,6 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
             await data.upload_dataset_to_ai_catalog(file_url="https:notavalidurl/somefile.csv")
 
 
-
 async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     with (
         patch(
@@ -132,7 +128,6 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
             ),
         ):
             await data.upload_dataset_to_ai_catalog()
-
 
 
 async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> None:
@@ -156,7 +151,6 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
             )
 
 
-
 async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
     with (
         patch(
@@ -172,7 +166,6 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
             match="Error in upload_dataset_to_ai_catalog: ToolError: File not found: nofile.csv",
         ):
             await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
-
 
 
 async def test_upload_dataset_to_ai_catalog_error() -> None:
@@ -192,7 +185,6 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
         with pytest.raises(Exception) as exc_info:
             await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
         assert "fail" in str(exc_info.value)
-
 
 
 async def test_list_ai_catalog_items_success() -> None:
@@ -221,7 +213,6 @@ async def test_list_ai_catalog_items_success() -> None:
         assert result.structured_content["datasets"]["2"] == "ds2"
 
 
-
 async def test_list_ai_catalog_items_empty() -> None:
     with (
         patch(
@@ -237,7 +228,6 @@ async def test_list_ai_catalog_items_empty() -> None:
 
         result = await data.list_ai_catalog_items()
         assert result.structured_content["datasets"] == []
-
 
 
 async def test_list_ai_catalog_items_error() -> None:

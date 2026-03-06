@@ -93,7 +93,6 @@ def expectations_for_perplexity_think_success(
 @pytest.mark.skipif(
     not os.getenv("ENABLE_PERPLEXITY_TOOLS"), reason="Perplexity tools are not enabled"
 )
-
 class TestPerplexityToolsE2E(ToolBaseE2E):
     """End-to-end tests for Perplexity tools."""
 

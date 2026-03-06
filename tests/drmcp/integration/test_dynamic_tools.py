@@ -270,7 +270,6 @@ async def test_get_mcp_tool_metadata(
     assert actual_input_schema == expected_input_schema
 
 
-
 @responses.activate
 async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
     await register_tools_of_datarobot_deployments()
@@ -279,7 +278,6 @@ async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
 
     assert "dynamic_tool_ok" in tool_names, "`dynamic_tool_ok` is missing."
     assert "dynamic_tool_error" not in tool_names, "`dynamic_tool_error` should not be registered."
-
 
 
 async def test_mcp_mapping_methods():

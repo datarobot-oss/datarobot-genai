@@ -379,7 +379,6 @@ class TestOAuthMiddleware:
 class TestGetAuthContext:
     """Test cases for must_get_auth_context function."""
 
-    
     async def test_get_auth_context_success(self) -> None:
         """Test that must_get_auth_context returns auth context when available.
 
@@ -418,7 +417,6 @@ class TestGetAuthContext:
             assert len(result.identities) == 1
             assert result.identities[0].provider_type == "datarobot"
 
-    
     async def test_get_auth_context_raises_when_missing(self) -> None:
         """Test that must_get_auth_context raises RuntimeError when auth context is missing.
 
@@ -435,7 +433,6 @@ class TestGetAuthContext:
             ):
                 await must_get_auth_context()
 
-    
     async def test_get_auth_context_raises_when_no_context(self) -> None:
         """Test that RuntimeError is raised when no active context exists.
 
@@ -449,7 +446,6 @@ class TestGetAuthContext:
             with pytest.raises(RuntimeError, match="No active context found."):
                 await must_get_auth_context()
 
-    
     async def test_get_auth_context_with_state_isolation(self) -> None:
         """Test that auth context is properly isolated in context state.
 
@@ -503,7 +499,6 @@ class TestGetAuthContext:
             assert result2.user.id == "user2"
             assert result2.user.name == "Bob"
 
-    
     async def test_get_auth_context_retrieves_correct_key(self) -> None:
         """Test that must_get_auth_context retrieves the correct state key.
 
@@ -542,7 +537,6 @@ class TestGetAuthContext:
             assert result != "other_value"
             assert result != {"some": "data"}
 
-    
     async def test_get_auth_context_with_complex_metadata(self) -> None:
         """Test that auth context with complex metadata is properly preserved.
 

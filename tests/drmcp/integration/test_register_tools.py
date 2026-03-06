@@ -15,7 +15,6 @@ import json
 from typing import Any
 from typing import cast
 
-import pytest
 from fastmcp.tools import FunctionTool
 from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
@@ -24,7 +23,6 @@ from mcp.types import TextContent
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.mcp_instance import register_tools
-
 
 
 class TestMCPRegisterToolsIntegration:

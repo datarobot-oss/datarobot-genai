@@ -616,7 +616,6 @@ class TestAsyncOAuthTokenProvider:
         with pytest.raises(OAuthProviderNotFound, match="No OAuth provider found."):
             provider._get_identity(provider_type=None)
 
-    
     async def test_get_token_single_identity(
         self, mock_datarobot_client, auth_ctx_single_identity: AuthCtx, mock_token_data: AsyncMock
     ) -> None:
@@ -631,7 +630,6 @@ class TestAsyncOAuthTokenProvider:
         args, kwargs = mock_client.refresh_access_token.call_args
         assert kwargs["identity_id"] == "ea599021-acc3-490b-b2d7-a811ae1c9759"
 
-    
     async def test_get_token_multiple_identities(
         self,
         mock_datarobot_client,
@@ -649,7 +647,6 @@ class TestAsyncOAuthTokenProvider:
         args, kwargs = mock_client.refresh_access_token.call_args
         assert kwargs["identity_id"] == "cc3f4426-9db1-4e77-bccb-72bcf7bc1ace"
 
-    
     async def test_get_token_google_oauth(
         self,
         mock_datarobot_client,
@@ -666,7 +663,6 @@ class TestAsyncOAuthTokenProvider:
         args, kwargs = mock_client.refresh_access_token.call_args
         assert kwargs["identity_id"] == "3d0edc76-95c6-4b75-9541-3fe17ccf068b"
 
-    
     async def test_get_token_unsupported_auth_type_raises(
         self, mock_datarobot_client, auth_ctx_single_identity: AuthCtx
     ) -> None:
@@ -678,7 +674,6 @@ class TestAsyncOAuthTokenProvider:
                 provider_type="provider1",  # type: ignore
             )
 
-    
     async def test_get_token_no_valid_identities_raises(
         self, mock_datarobot_client, auth_ctx_datarobot_only: AuthCtx
     ) -> None:
@@ -809,7 +804,6 @@ class TestAuthlibTokenRetriever:
         ):
             AuthlibTokenRetriever("")
 
-    
     async def test_refresh_access_token_success(self) -> None:
         """Test successfully refreshing an access token."""
         retriever = AuthlibTokenRetriever("https://app.example.com")
@@ -849,7 +843,6 @@ class TestAuthlibTokenRetriever:
             assert call_args[1]["headers"] == {"Authorization": "Bearer test-api-token"}
             assert call_args[1]["json"] == {"identity_id": identity.id}
 
-    
     async def test_refresh_access_token_without_api_token_raises_error(self) -> None:
         """Test that missing DATAROBOT_API_TOKEN raises ValueError."""
         retriever = AuthlibTokenRetriever("https://app.example.com")
@@ -868,7 +861,6 @@ class TestAuthlibTokenRetriever:
             ):
                 await retriever.refresh_access_token(identity)
 
-    
     async def test_refresh_access_token_http_error(self) -> None:
         """Test handling HTTP errors during token refresh."""
         retriever = AuthlibTokenRetriever("https://app.example.com")
@@ -890,7 +882,6 @@ class TestAuthlibTokenRetriever:
             with pytest.raises(aiohttp.ClientError):
                 await retriever.refresh_access_token(identity)
 
-    
     async def test_refresh_access_token_with_responses_mock(self) -> None:
         """Test token refresh with aioresponses mocking the authlib endpoint."""
         retriever = AuthlibTokenRetriever("https://app.example.com/api/v1/")
@@ -974,7 +965,6 @@ class TestAsyncOAuthTokenProviderWithAuthlib:
         ):
             AsyncOAuthTokenProvider(auth_ctx=auth_ctx)
 
-    
     async def test_get_token_with_authlib(self, auth_ctx_authlib: AuthCtx) -> None:
         """Test getting token using Authlib implementation."""
         provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx_authlib)
@@ -1014,7 +1004,6 @@ class TestAsyncOAuthTokenProviderWithAuthlib:
             provider = AsyncOAuthTokenProvider(auth_ctx=auth_ctx)
         assert isinstance(provider._retriever, DatarobotTokenRetriever)
 
-    
     async def test_get_token_with_multiple_identities_authlib(self) -> None:
         """Test getting token with multiple identities using Authlib."""
         auth_ctx = AuthCtx(

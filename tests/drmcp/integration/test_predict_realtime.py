@@ -17,7 +17,6 @@ from io import StringIO
 from typing import Any
 
 import pandas as pd
-import pytest
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
@@ -35,7 +34,6 @@ def _is_shap_not_supported_error(result: Any) -> bool:
         )
         return SHAP_NOT_SUPPORTED_MSG in error_text
     return False
-
 
 
 class TestMCPRealtimePredictToolsIntegration:

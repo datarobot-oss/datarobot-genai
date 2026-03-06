@@ -15,11 +15,9 @@
 import json
 from typing import Any
 
-import pytest
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
-
 
 
 class TestMCPDeploymentInfoIntegration:

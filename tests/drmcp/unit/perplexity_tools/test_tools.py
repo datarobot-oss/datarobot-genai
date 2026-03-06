@@ -105,7 +105,6 @@ def mock_client_think_success(
 class TestPerplexitySearch:
     """Test perplexity_search tool."""
 
-    
     async def test_search_success_single_query(
         self,
         get_perplexity_access_token_mock: None,
@@ -126,7 +125,6 @@ class TestPerplexitySearch:
         }
         assert result.structured_content["metadata"]["extractionLimit"] == 2048
 
-    
     async def test_search_success_list_of_queries(
         self,
         get_perplexity_access_token_mock: None,
@@ -147,7 +145,6 @@ class TestPerplexitySearch:
         }
         assert result.structured_content["metadata"]["extractionLimit"] == 2048
 
-    
     async def test_search_success_with_filters(
         self,
         get_perplexity_access_token_mock: None,
@@ -173,7 +170,6 @@ class TestPerplexitySearch:
         }
         assert result.structured_content["metadata"]["extractionLimit"] == 1000
 
-    
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [
@@ -210,7 +206,6 @@ class TestPerplexitySearch:
         with pytest.raises(ToolError, match=error_message):
             await perplexity_search(**function_kwargs)
 
-    
     async def test_search_oauth_error(self) -> None:
         """Test search when OAuth token retrieval fails."""
         with patch(
@@ -221,7 +216,6 @@ class TestPerplexitySearch:
                 await perplexity_search(query="test")
             assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
 
-    
     async def test_search_client_error(
         self,
         get_perplexity_access_token_mock: None,
@@ -240,7 +234,6 @@ class TestPerplexitySearch:
                 await perplexity_search(query="test")
             assert "client error" in str(exc_info.value).lower()
 
-    
     async def test_search_unexpected_error(
         self,
         get_perplexity_access_token_mock: None,
@@ -263,7 +256,6 @@ class TestPerplexitySearch:
 class TestPerplexityThink:
     """Test perplexity_think tool."""
 
-    
     async def test_think_success(
         self,
         get_perplexity_access_token_mock: None,
@@ -278,7 +270,6 @@ class TestPerplexityThink:
         assert result.structured_content["content"] == "Dummy answer"
         assert result.structured_content["usage"]["cost"]["totalCost"] == 250
 
-    
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [
@@ -296,7 +287,6 @@ class TestPerplexityThink:
         with pytest.raises(ToolError, match=error_message):
             await perplexity_think(**function_kwargs)
 
-    
     async def test_think_oauth_error(self) -> None:
         """Test think when OAuth token retrieval fails."""
         with patch(
@@ -307,7 +297,6 @@ class TestPerplexityThink:
                 await perplexity_think(prompt="test prompt")
             assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
 
-    
     async def test_think_client_error(
         self,
         get_perplexity_access_token_mock: None,
@@ -326,7 +315,6 @@ class TestPerplexityThink:
                 await perplexity_think(prompt="test prompt")
             assert "client error" in str(exc_info.value).lower()
 
-    
     async def test_think_unexpected_error(
         self,
         get_perplexity_access_token_mock: None,

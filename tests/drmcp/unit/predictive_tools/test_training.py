@@ -24,7 +24,6 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drtools.predictive import training
 
 
-
 async def test_analyze_dataset() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
@@ -60,7 +59,6 @@ async def test_analyze_dataset() -> None:
         assert "date_col" in insights["datetime_columns"]
         assert "text_col" in insights["text_columns"]
         assert "target" in insights["potential_targets"]
-
 
 
 async def test_suggest_use_cases() -> None:
@@ -115,7 +113,6 @@ async def test_suggest_use_cases() -> None:
         assert any(s["problem_type"] == "Regression" for s in suggestions)
 
 
-
 async def test_get_exploratory_insights() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
@@ -164,7 +161,6 @@ async def test_get_exploratory_insights() -> None:
         assert "data_types" in insights
 
 
-
 async def test_start_autopilot_new_project() -> None:
     mock_dataset = MagicMock()
     mock_dataset.id = "test_dataset_id"
@@ -199,7 +195,6 @@ async def test_start_autopilot_new_project() -> None:
         assert response["status"] == "running"
 
 
-
 async def test_start_autopilot_existing_project() -> None:
     mock_project = MagicMock()
     mock_project.id = "test_project_id"
@@ -227,7 +222,6 @@ async def test_start_autopilot_existing_project() -> None:
         assert response["target"] == "target"
         assert response["mode"] == "comprehensive"
         assert response["status"] == "running"
-
 
 
 async def test_get_model_roc_curve() -> None:
@@ -270,7 +264,6 @@ async def test_get_model_roc_curve() -> None:
         assert len(response["data"]["roc_points"]) == 1
 
 
-
 async def test_get_model_feature_impact() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -300,7 +293,6 @@ async def test_get_model_feature_impact() -> None:
 
         assert "data" in response
         assert len(response["data"]) == 2
-
 
 
 async def test_get_model_lift_chart() -> None:
@@ -336,7 +328,6 @@ async def test_get_model_lift_chart() -> None:
         assert "data" in response
         assert "bins" in response["data"]
         assert len(response["data"]["bins"]) == 2
-
 
 
 async def test_start_autopilot_validation() -> None:
@@ -380,7 +371,6 @@ async def test_start_autopilot_validation() -> None:
             match="Error in start_autopilot: ToolError: Target variable must be specified",
         ):
             await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
-
 
 
 async def test_suggest_use_cases_dataset_not_found() -> None:

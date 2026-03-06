@@ -21,12 +21,10 @@ These tests verify that the client properly handles elicitation requests:
 - Handling different response types (string, int, bool, etc.)
 """
 
-import pytest
 from mcp.types import ElicitRequestParams
 from mcp.types import ElicitResult
 
 from datarobot_genai.drmcp import integration_test_mcp_session
-
 
 
 async def test_client_accepts_elicitation():
@@ -57,7 +55,6 @@ async def test_client_accepts_elicitation():
         )
 
 
-
 async def test_client_declines_elicitation():
     """Test that client can decline elicitation requests."""
 
@@ -73,7 +70,6 @@ async def test_client_declines_elicitation():
         assert result.isError or (
             not result.isError and "declined" in str(result.content).lower()
         ), f"Tool should handle declined elicitation. Got: {result.content}"
-
 
 
 async def test_client_cancels_elicitation():
@@ -95,7 +91,6 @@ async def test_client_cancels_elicitation():
                 or "cancelled" in str(result.content).lower()
             )
         ), f"Tool should handle cancelled elicitation. Got: {result.content}"
-
 
 
 async def test_client_handles_form_schema():

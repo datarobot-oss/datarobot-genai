@@ -30,7 +30,6 @@ from datarobot_genai.drtools.clients.tavily import get_tavily_access_token
 class TestGetTavilyAccessToken:
     """Tests for get_tavily_access_token function."""
 
-    
     async def test_returns_api_key_from_headers(self) -> None:
         """Test getting API key from HTTP headers."""
         with patch(
@@ -40,7 +39,6 @@ class TestGetTavilyAccessToken:
             result = await get_tavily_access_token()
             assert result == "test-api-key-123"
 
-    
     async def test_raises_error_when_missing(self) -> None:
         """Test that missing API key raises ToolError."""
         with patch(
@@ -54,7 +52,6 @@ class TestGetTavilyAccessToken:
 class TestTavilyClient:
     """Tests for TavilyClient class."""
 
-    
     async def test_search_calls_sdk(self) -> None:
         """Test that search calls the underlying SDK."""
         mock_response = {"results": [], "response_time": 0.5}
@@ -69,14 +66,12 @@ class TestTavilyClient:
 
             assert result == TavilySearchResults(**mock_response)
 
-    
     async def test_search_validates_empty_query(self) -> None:
         """Test that empty query raises ValueError."""
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="query cannot be empty"):
                 await client.search("")
 
-    
     async def test_search_validates_max_results(self) -> None:
         """Test that invalid max_results raises ValueError."""
         async with TavilyClient("api-key") as client:
@@ -87,7 +82,6 @@ class TestTavilyClient:
 class TestTavilyClientExtract:
     """Tests for TavilyClient.extract method."""
 
-    
     async def test_extract_calls_sdk(self) -> None:
         """Test that extract calls the underlying SDK."""
         mock_response = {
@@ -106,7 +100,6 @@ class TestTavilyClientExtract:
             assert result == TavilyExtractResults(**mock_response)
             mock_client.extract.assert_called_once()
 
-    
     async def test_extract_with_single_url(self) -> None:
         """Test extract converts single URL to list."""
         mock_response = {"results": [], "response_time": 0.5}
@@ -122,7 +115,6 @@ class TestTavilyClientExtract:
             call_kwargs = mock_client.extract.call_args[1]
             assert call_kwargs["urls"] == ["https://example.com"]
 
-    
     async def test_extract_with_query_includes_chunks_per_source(self) -> None:
         """Test extract includes chunks_per_source when query is provided."""
         mock_response = {"results": [], "response_time": 0.5}
@@ -141,7 +133,6 @@ class TestTavilyClientExtract:
             assert call_kwargs["query"] == "auth setup"
             assert call_kwargs["chunks_per_source"] == 5
 
-    
     async def test_extract_without_query_excludes_chunks_per_source(self) -> None:
         """Test extract excludes chunks_per_source when query is not provided."""
         mock_response = {"results": [], "response_time": 0.5}
@@ -158,14 +149,12 @@ class TestTavilyClientExtract:
             assert "query" not in call_kwargs
             assert "chunks_per_source" not in call_kwargs
 
-    
     async def test_extract_validates_empty_urls(self) -> None:
         """Test that empty urls raises ValueError."""
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="urls cannot be empty"):
                 await client.extract([])
 
-    
     async def test_extract_validates_max_urls(self) -> None:
         """Test that too many urls raises ValueError."""
         urls = [f"https://example{i}.com" for i in range(25)]
@@ -173,28 +162,24 @@ class TestTavilyClientExtract:
             with pytest.raises(ValueError, match="Maximum number of URLs is 20"):
                 await client.extract(urls)
 
-    
     async def test_extract_validates_chunks_per_source_zero(self) -> None:
         """Test that zero chunks_per_source raises ValueError."""
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="chunks_per_source must be greater than 0"):
                 await client.extract("https://example.com", chunks_per_source=0)
 
-    
     async def test_extract_validates_chunks_per_source_max(self) -> None:
         """Test that too high chunks_per_source raises ValueError."""
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="chunks_per_source must be smaller than or equal"):
                 await client.extract("https://example.com", chunks_per_source=10)
 
-    
     async def test_extract_validates_timeout_too_low(self) -> None:
         """Test that timeout below 1.0 raises ValueError."""
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="timeout must be between"):
                 await client.extract("https://example.com", timeout=0.5)
 
-    
     async def test_extract_validates_timeout_too_high(self) -> None:
         """Test that timeout above 60.0 raises ValueError."""
         async with TavilyClient("api-key") as client:
@@ -205,7 +190,6 @@ class TestTavilyClientExtract:
 class TestTavilyClientMap:
     """Tests for TavilyClient.map_ method."""
 
-    
     async def test_map_calls_sdk(self) -> None:
         """Test that map calls the underlying SDK."""
         mock_response = {
@@ -224,7 +208,6 @@ class TestTavilyClientMap:
             assert result == TavilyMapResults.from_tavily_sdk(mock_response)
             mock_client.map.assert_called_once()
 
-    
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [
@@ -244,7 +227,6 @@ class TestTavilyClientMap:
 class TestTavilyClientCrawl:
     """Tests for TavilyClient.crawl method."""
 
-    
     async def test_crawl_calls_sdk(self) -> None:
         """Test that crawl calls the underlying SDK."""
         mock_response = {
@@ -264,14 +246,12 @@ class TestTavilyClientCrawl:
             assert result == TavilyCrawlResults.from_tavily_sdk(mock_response)
             mock_client.crawl.assert_called_once()
 
-    
     async def test_crawl_validates_empty_url(self) -> None:
         """Test that empty url raises ValueError."""
         async with TavilyClient("api-key") as client:
             with pytest.raises(ValueError, match="url cannot be empty"):
                 await client.crawl("")
 
-    
     async def test_crawl_validates_limit_range(self) -> None:
         """Test that invalid limit raises ValueError."""
         async with TavilyClient("api-key") as client:
@@ -280,7 +260,6 @@ class TestTavilyClientCrawl:
             with pytest.raises(ValueError, match="limit must be at most 500"):
                 await client.crawl("https://example.com", limit=501)
 
-    
     async def test_crawl_validates_max_depth_range(self) -> None:
         """Test that invalid max_depth raises ValueError."""
         async with TavilyClient("api-key") as client:
@@ -289,7 +268,6 @@ class TestTavilyClientCrawl:
             with pytest.raises(ValueError, match="max_depth must be at most 5"):
                 await client.crawl("https://example.com", max_depth=6)
 
-    
     async def test_crawl_with_optional_params(self) -> None:
         """Test crawl includes optional params when provided."""
         mock_response = {"base_url": "https://example.com", "results": [], "response_time": 0.5}

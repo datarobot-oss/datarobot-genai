@@ -44,7 +44,6 @@ def expectations_for_microsoft_graph_search_content_success() -> ETETestExpectat
 @pytest.mark.skipif(
     not os.getenv("ENABLE_MICROSOFT_GRAPH_TOOLS"), reason="Microsoft Graph tools are not enabled"
 )
-
 class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
     """End-to-end tests for Microsoft Graph tools."""
 

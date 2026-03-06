@@ -87,7 +87,6 @@ def expectations_for_gdrive_read_content_success(
 
 
 @pytest.mark.skipif(not os.getenv("ENABLE_GDRIVE_TOOLS"), reason="Gdrive tools are not enabled")
-
 class TestGdriveToolsE2E(ToolBaseE2E):
     """End-to-end tests for gdrive tools."""
 

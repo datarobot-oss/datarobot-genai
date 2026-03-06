@@ -85,7 +85,6 @@ def expectations_for_get_model_info_from_deployment_failure(
     )
 
 
-
 class TestDeploymentE2E(ToolBaseE2E):
     """End-to-end tests for deployment-related functionality."""
 

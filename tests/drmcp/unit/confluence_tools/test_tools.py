@@ -83,7 +83,6 @@ def confluence_client_get_page_error_mock() -> Iterator[None]:
 class TestConfluenceGetPage:
     """Confluence get page tool tests."""
 
-    
     async def test_confluence_get_page_by_id_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -106,7 +105,6 @@ class TestConfluenceGetPage:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    
     async def test_confluence_get_page_by_title_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -123,7 +121,6 @@ class TestConfluenceGetPage:
         assert structured_content["title"] == "Test Page"
         assert structured_content["space_key"] == "TEST"
 
-    
     async def test_confluence_get_page_by_title_without_space_key(
         self,
         get_atlassian_access_token_mock: None,
@@ -134,7 +131,6 @@ class TestConfluenceGetPage:
         with pytest.raises(ToolError, match="space_key.*required"):
             await confluence_get_page(page_id_or_title=page_title)
 
-    
     async def test_confluence_get_page_when_error_in_client(
         self,
         get_atlassian_access_token_mock: None,
@@ -146,7 +142,6 @@ class TestConfluenceGetPage:
         with pytest.raises(ToolError, match="Page not found"):
             await confluence_get_page(page_id_or_title=page_id)
 
-    
     async def test_confluence_get_page_empty_page_id(
         self,
         get_atlassian_access_token_mock: None,
@@ -180,7 +175,6 @@ def confluence_client_add_comment_error_mock() -> Iterator[None]:
 class TestConfluenceAddComment:
     """Confluence add comment tool tests."""
 
-    
     async def test_confluence_add_comment_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -197,7 +191,6 @@ class TestConfluenceAddComment:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    
     async def test_confluence_add_comment_empty_page_id(
         self,
         get_atlassian_access_token_mock: None,
@@ -209,7 +202,6 @@ class TestConfluenceAddComment:
         with pytest.raises(ToolError, match="page_id.*cannot be empty"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
-    
     async def test_confluence_add_comment_empty_comment_body(
         self,
         get_atlassian_access_token_mock: None,
@@ -221,7 +213,6 @@ class TestConfluenceAddComment:
         with pytest.raises(ToolError, match="comment_body.*cannot be empty"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
-    
     async def test_confluence_add_comment_when_error_in_client(
         self,
         get_atlassian_access_token_mock: None,
@@ -278,7 +269,6 @@ def confluence_client_search_error_mock() -> Iterator[None]:
 class TestConfluenceSearch:
     """Confluence search tool tests."""
 
-    
     async def test_confluence_search_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -318,7 +308,6 @@ class TestConfluenceSearch:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    
     async def test_confluence_search_when_error_in_client(
         self, get_atlassian_access_token_mock: None, confluence_client_search_error_mock: None
     ) -> None:
@@ -328,7 +317,6 @@ class TestConfluenceSearch:
         with pytest.raises(ToolError, match="Search failed"):
             await confluence_search(cql_query=cql_query)
 
-    
     async def test_confluence_search_empty_query(
         self, get_atlassian_access_token_mock: None
     ) -> None:
@@ -336,7 +324,6 @@ class TestConfluenceSearch:
         with pytest.raises(ToolError, match="cannot be empty"):
             await confluence_search(cql_query="")
 
-    
     async def test_confluence_search_max_results_too_low(
         self, get_atlassian_access_token_mock: None
     ) -> None:
@@ -344,7 +331,6 @@ class TestConfluenceSearch:
         with pytest.raises(ToolError, match="max_results.*must be between 1 and 100"):
             await confluence_search(cql_query="type=page", max_results=0)
 
-    
     async def test_confluence_search_max_results_too_high(
         self, get_atlassian_access_token_mock: None
     ) -> None:
@@ -373,7 +359,6 @@ def confluence_client_get_page_mock() -> Iterator[ConfluencePage]:
 class TestConfluenceSearchIncludeBody:
     """Confluence search with include_body parameter tests."""
 
-    
     async def test_confluence_search_with_include_body(
         self,
         get_atlassian_access_token_mock: None,
@@ -392,7 +377,6 @@ class TestConfluenceSearchIncludeBody:
         # excerpt should still be there
         assert structured_content["data"][0]["excerpt"] == "<p>Content</p>"
 
-    
     async def test_confluence_search_without_include_body(
         self,
         get_atlassian_access_token_mock: None,
@@ -445,7 +429,6 @@ def confluence_client_update_page_error_mock(
 class TestConfluenceUpdatePage:
     """Confluence update page tool tests."""
 
-    
     async def test_confluence_update_page_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -467,7 +450,6 @@ class TestConfluenceUpdatePage:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    
     async def test_confluence_update_page_empty_page_id(
         self,
         get_atlassian_access_token_mock: None,
@@ -484,7 +466,6 @@ class TestConfluenceUpdatePage:
                 version_number=version_number,
             )
 
-    
     async def test_confluence_update_page_empty_body(
         self,
         get_atlassian_access_token_mock: None,
@@ -501,7 +482,6 @@ class TestConfluenceUpdatePage:
                 version_number=version_number,
             )
 
-    
     async def test_confluence_update_page_invalid_version(
         self,
         get_atlassian_access_token_mock: None,
@@ -518,7 +498,6 @@ class TestConfluenceUpdatePage:
                 version_number=version_number,
             )
 
-    
     async def test_confluence_update_page_when_error_in_client(
         self,
         get_atlassian_access_token_mock: None,

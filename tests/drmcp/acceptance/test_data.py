@@ -107,7 +107,6 @@ def expectations_for_list_ai_catalog_items_success() -> ETETestExpectations:
     )
 
 
-
 class TestDataE2E(ToolBaseE2E):
     """End-to-end tests for data-related functionality."""
 

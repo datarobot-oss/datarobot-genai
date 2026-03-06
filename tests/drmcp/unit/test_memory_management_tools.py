@@ -18,8 +18,6 @@ from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
-import pytest
-
 from datarobot_genai.drmcp.core.memory_management.manager import MemoryResource
 from datarobot_genai.drmcp.core.memory_management.manager import ToolContext
 from datarobot_genai.drmcp.core.memory_management.memory_tools import delete_resource
@@ -31,7 +29,6 @@ from datarobot_genai.drmcp.core.memory_management.memory_tools import store_reso
 class TestMemoryManagementTools:
     """Test cases for memory management tools."""
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_success(self, mock_get_memory_manager):
         """Test store_resource with successful storage."""
@@ -59,7 +56,6 @@ class TestMemoryManagementTools:
             embedding_vector=[0.1, 0.2, 0.3],
         )
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_no_tool_context(self, mock_get_memory_manager):
         """Test store_resource without tool context."""
@@ -81,7 +77,6 @@ class TestMemoryManagementTools:
             embedding_vector=None,
         )
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_no_memory_manager(self, mock_get_memory_manager):
         """Test store_resource when memory manager is not initialized."""
@@ -91,7 +86,6 @@ class TestMemoryManagementTools:
 
         assert result == "Memory manager not initialized"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_success_with_data(self, mock_get_memory_manager):
         """Test get_resource with successful retrieval including data."""
@@ -127,7 +121,6 @@ class TestMemoryManagementTools:
         assert result_data["data"] == "test data"
         assert "created_at" in result_data
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_success_without_data(self, mock_get_memory_manager):
         """Test get_resource with successful retrieval without data."""
@@ -162,7 +155,6 @@ class TestMemoryManagementTools:
         assert "data" not in result_data
         assert "created_at" in result_data
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_with_binary_data(self, mock_get_memory_manager):
         """Test get_resource with binary data."""
@@ -191,7 +183,6 @@ class TestMemoryManagementTools:
         result_data = json.loads(result)
         assert result_data["data"] == "binary data"  # JSON converts bytes to string
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_with_unicode_decode_error(self, mock_get_memory_manager):
         """Test get_resource with unicode decode error for binary data."""
@@ -222,7 +213,6 @@ class TestMemoryManagementTools:
         # JSON serialization will convert it to a string representation
         assert result_data["data"] == "\x00\x01\x02\x03"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_not_found(self, mock_get_memory_manager):
         """Test get_resource when resource is not found."""
@@ -236,7 +226,6 @@ class TestMemoryManagementTools:
 
         assert result == "Resource not found"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_no_memory_manager(self, mock_get_memory_manager):
         """Test get_resource when memory manager is not initialized."""
@@ -246,7 +235,6 @@ class TestMemoryManagementTools:
 
         assert result == "Memory manager not initialized"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_list_resources_success(self, mock_get_memory_manager):
         """Test list_resources with successful retrieval."""
@@ -293,7 +281,6 @@ class TestMemoryManagementTools:
         assert result_data[1]["tool_context"] is None
         assert "created_at" in result_data[1]
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_list_resources_no_resources(self, mock_get_memory_manager):
         """Test list_resources when no resources are found."""
@@ -305,7 +292,6 @@ class TestMemoryManagementTools:
 
         assert result == "No resources found"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_list_resources_no_memory_manager(self, mock_get_memory_manager):
         """Test list_resources when memory manager is not initialized."""
@@ -315,7 +301,6 @@ class TestMemoryManagementTools:
 
         assert result == "Memory manager not initialized"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_delete_resource_success(self, mock_get_memory_manager):
         """Test delete_resource with successful deletion."""
@@ -332,7 +317,6 @@ class TestMemoryManagementTools:
             resource_id="resource123", memory_storage_id="storage123", agent_identifier="agent123"
         )
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_delete_resource_failure(self, mock_get_memory_manager):
         """Test delete_resource with failed deletion."""
@@ -346,7 +330,6 @@ class TestMemoryManagementTools:
 
         assert result == "Failed to delete resource resource123"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_delete_resource_no_memory_manager(self, mock_get_memory_manager):
         """Test delete_resource when memory manager is not initialized."""
@@ -356,7 +339,6 @@ class TestMemoryManagementTools:
 
         assert result == "Memory manager not initialized"
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_store_resource_with_tool_name_only(self, mock_get_memory_manager):
         """Test store_resource with tool_name but no tool_parameters."""
@@ -376,7 +358,6 @@ class TestMemoryManagementTools:
             embedding_vector=None,
         )
 
-    
     @patch("datarobot_genai.drmcp.core.memory_management.memory_tools.get_memory_manager")
     async def test_get_resource_with_non_string_data(self, mock_get_memory_manager):
         """Test get_resource with non-string data."""

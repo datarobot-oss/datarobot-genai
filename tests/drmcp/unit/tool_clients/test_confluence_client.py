@@ -56,7 +56,6 @@ class TestConfluenceClient:
             "body": {"storage": {"value": "<p>Content</p>"}},
         }
 
-    
     async def test_get_page_by_id_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_page_response: dict
     ) -> None:
@@ -80,7 +79,6 @@ class TestConfluenceClient:
                 assert result.space_key == "TEST"
                 assert result.body == "<p>Content</p>"
 
-    
     async def test_get_page_by_id_not_found(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -101,7 +99,6 @@ class TestConfluenceClient:
                     await client.get_page_by_id("nonexistent")
                 assert exc_info.value.status_code == 404
 
-    
     async def test_get_page_by_title_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_page_response: dict
     ) -> None:
@@ -123,7 +120,6 @@ class TestConfluenceClient:
                 assert result.page_id == "12345"
                 assert result.title == "Test Page"
 
-    
     async def test_get_page_by_title_not_found(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -144,7 +140,6 @@ class TestConfluenceClient:
                     await client.get_page_by_title("Nonexistent", "TEST")
                 assert exc_info.value.status_code == 404
 
-    
     async def test_create_page_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test successful page creation."""
         mock_create_response = {
@@ -175,7 +170,6 @@ class TestConfluenceClient:
                 assert result.title == "New Page"
                 assert result.space_key == "TEST"
 
-    
     async def test_create_page_with_parent(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -211,7 +205,6 @@ class TestConfluenceClient:
                 assert result.title == "Child Page"
                 assert captured_kwargs["json"]["ancestors"] == [{"id": 12345}]
 
-    
     async def test_create_page_parent_not_found(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -244,7 +237,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 404
 
-    
     async def test_create_page_space_not_found(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -274,7 +266,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 404
 
-    
     async def test_create_page_duplicate_title(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -306,7 +297,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 409
 
-    
     async def test_create_page_permission_denied(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -336,7 +326,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 403
 
-    
     async def test_create_page_invalid_content(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -366,7 +355,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 400
 
-    
     async def test_create_page_rate_limited(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -418,7 +406,6 @@ class TestConfluenceClient:
             "version": 1,
         }
 
-    
     async def test_add_comment_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test successful comment addition."""
         mock_comment_response = {
@@ -454,7 +441,6 @@ class TestConfluenceClient:
                 assert captured_kwargs["json"]["body"]["storage"]["value"] == "<p>Test comment</p>"
                 assert captured_kwargs["json"]["body"]["storage"]["representation"] == "storage"
 
-    
     async def test_add_comment_page_not_found(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -485,7 +471,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 404
 
-    
     async def test_add_comment_permission_denied(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -514,7 +499,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 403
 
-    
     async def test_add_comment_invalid_content(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -543,7 +527,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 400
 
-    
     async def test_add_comment_rate_limited(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -630,7 +613,6 @@ class TestConfluenceClient:
             ]
         }
 
-    
     async def test_search_confluence_content_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_search_response: dict
     ) -> None:
@@ -665,7 +647,6 @@ class TestConfluenceClient:
                 assert results[1].id == "67890"
                 assert results[1].title == "Another Page"
 
-    
     async def test_search_confluence_content_empty_results(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -714,7 +695,6 @@ class TestConfluenceClient:
             "url": "https://example.atlassian.net/wiki/spaces/TEST/pages/12345",
         }
 
-    
     async def test_search_confluence_content_invalid_cql(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -736,7 +716,6 @@ class TestConfluenceClient:
                         cql_query="invalid cql syntax !!!", max_results=10
                     )
 
-    
     async def test_search_confluence_content_rate_limited(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -756,7 +735,6 @@ class TestConfluenceClient:
                 with pytest.raises(ConfluenceError, match="Rate limit exceeded"):
                     await client.search_confluence_content(cql_query="type=page", max_results=10)
 
-    
     async def test_search_confluence_content_forbidden(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -776,7 +754,6 @@ class TestConfluenceClient:
                 with pytest.raises(ConfluenceError, match="Permission denied"):
                     await client.search_confluence_content(cql_query="type=page", max_results=10)
 
-    
     async def test_update_page_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test successful page update."""
         mock_get_response = {
@@ -828,7 +805,6 @@ class TestConfluenceClient:
                     captured_kwargs["json"]["body"]["storage"]["value"] == "<p>Updated content</p>"
                 )
 
-    
     async def test_update_page_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test page update when page doesn't exist (404 during title fetch)."""
         with patch(
@@ -858,7 +834,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 404
 
-    
     async def test_update_page_version_conflict(
         self, mock_access_token: str, mock_cloud_id: str
     ) -> None:
@@ -899,7 +874,6 @@ class TestConfluenceClient:
                     )
                 assert exc_info.value.status_code == 409
 
-    
     @pytest.mark.parametrize(
         ("status_code", "error_match"),
         [

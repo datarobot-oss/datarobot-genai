@@ -83,7 +83,6 @@ def expectations_for_confluence_get_page_by_title_success(
 @pytest.mark.skipif(
     not os.getenv("ENABLE_CONFLUENCE_TOOLS"), reason="Confluence tools are not enabled"
 )
-
 class TestConfluenceToolsE2E(ToolBaseE2E):
     """End-to-end tests for confluence tools."""
 

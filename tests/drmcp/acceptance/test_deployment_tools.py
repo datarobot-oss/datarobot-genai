@@ -18,8 +18,6 @@ import inspect
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from datarobot_genai.drmcp import ETETestExpectations
 from datarobot_genai.drmcp import ToolBaseE2E
 from datarobot_genai.drmcp import ToolCallTestExpectations
@@ -35,7 +33,6 @@ def _custom_model_fixture_dir() -> str:
         / "fixtures"
         / "custom_model"
     )
-
 
 
 class TestDeployCustomModelE2E(ToolBaseE2E):

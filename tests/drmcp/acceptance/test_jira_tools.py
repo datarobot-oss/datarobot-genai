@@ -155,7 +155,6 @@ def expectations_for_jira_transition_issue_success(
 
 
 @pytest.mark.skipif(not os.getenv("ENABLE_JIRA_TOOLS"), reason="Jira tools are not enabled")
-
 class TestJiraToolsE2E(ToolBaseE2E):
     """End-to-end tests for jira tools."""
 

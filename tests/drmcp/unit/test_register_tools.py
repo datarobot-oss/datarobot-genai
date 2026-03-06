@@ -104,7 +104,6 @@ def mock_mcp() -> Generator[MagicMock, None, None]:
         yield mock_mcp
 
 
-
 @patch("datarobot_genai.drmcp.core.mcp_instance.MemoryManager")
 @patch("datarobot_genai.drmcp.core.mcp_instance.get_memory_manager")
 async def test_register_tools_basic(
@@ -128,7 +127,6 @@ async def test_register_tools_basic(
     assert registered_tool.description == "Test tool description"
 
 
-
 async def test_register_tools_with_tags(mock_mcp: MagicMock) -> None:
     """Test tool registration with tags."""
 
@@ -147,7 +145,6 @@ async def test_register_tools_with_tags(mock_mcp: MagicMock) -> None:
     assert registered_tool.name == "test_tool"
     # Tags are passed to Tool.from_function and exposed via meta._fastmcp.tags by FastMCP
     assert registered_tool.tags == test_tags
-
 
 
 @patch("datarobot_genai.drmcp.core.mcp_instance.MemoryManager")
@@ -397,7 +394,6 @@ class TestRegisterTool:
         ) as mock_func:
             yield mock_func
 
-    
     async def test_check_tool_registration_status_after_it_finishes_succeeds(
         self,
         mock_datarobot_mcp_server: Mock,
@@ -415,7 +411,6 @@ class TestRegisterTool:
 
         mock_datarobot_mcp_server_list_tools_mcp.assert_called_once()
 
-    
     async def test_check_tool_registration_status_after_it_finishes_fails(
         self,
         mock_datarobot_mcp_server: Mock,
@@ -430,7 +425,6 @@ class TestRegisterTool:
             )
             mock_datarobot_mcp_server_list_tools_mcp.assert_called_once()
 
-    
     async def test_register_tools_with_proper_tool_category(
         self,
         mock_check_tool_registration_status_after_it_finishes: AsyncMock,

@@ -38,7 +38,6 @@ def module_under_test() -> str:
 class TestDataRobotMCPInstanceAdditional:
     """Additional test cases for DataRobotMCP class."""
 
-    
     async def test_set_deployment_mapping_updates_existing(self):
         """Test that set_deployment_mapping updates existing mapping and removes old tool."""
         mcp = DataRobotMCP()
@@ -50,7 +49,6 @@ class TestDataRobotMCPInstanceAdditional:
             assert mcp._deployments_map["deployment1"] == "new_tool"
             mock_remove_tool.assert_called_once_with("old_tool")
 
-    
     async def test_set_deployment_mapping_handles_remove_tool_not_found(self):
         """Test that set_deployment_mapping handles NotFoundError when removing old tool."""
         mcp = DataRobotMCP()
@@ -62,7 +60,6 @@ class TestDataRobotMCPInstanceAdditional:
 
             assert mcp._deployments_map["deployment1"] == "new_tool"
 
-    
     async def test_set_deployment_mapping_new_deployment(self):
         """Test that set_deployment_mapping works for new deployment."""
         mcp = DataRobotMCP()
@@ -72,7 +69,6 @@ class TestDataRobotMCPInstanceAdditional:
 
         assert mcp._deployments_map["deployment1"] == "new_tool"
 
-    
     async def test_set_deployment_mapping_same_tool(self):
         """Test that set_deployment_mapping works when mapping to same tool."""
         mcp = DataRobotMCP()
@@ -85,7 +81,6 @@ class TestDataRobotMCPInstanceAdditional:
             # Should not call remove_tool when mapping to same tool
             mock_remove_tool.assert_not_called()
 
-    
     async def test_remove_deployment_mapping_existing(self):
         """Test that remove_deployment_mapping removes existing mapping."""
         mcp = DataRobotMCP()
@@ -96,7 +91,6 @@ class TestDataRobotMCPInstanceAdditional:
         assert "deployment1" not in mcp._deployments_map
         assert "deployment2" in mcp._deployments_map
 
-    
     async def test_remove_deployment_mapping_nonexistent(self):
         """Test that remove_deployment_mapping handles nonexistent deployment."""
         mcp = DataRobotMCP()
@@ -107,7 +101,6 @@ class TestDataRobotMCPInstanceAdditional:
 
         assert mcp._deployments_map == {"deployment1": "tool1"}
 
-    
     async def test_remove_deployment_mapping_empty_map(self):
         """Test that remove_deployment_mapping works with empty map."""
         mcp = DataRobotMCP()
@@ -118,7 +111,6 @@ class TestDataRobotMCPInstanceAdditional:
 
         assert mcp._deployments_map == {}
 
-    
     @patch("datarobot_genai.drmcp.core.mcp_instance.logger")
     async def test_set_deployment_mapping_logs_debug_message(self, mock_logger):
         """Test that set_deployment_mapping logs debug message when updating existing mapping."""
@@ -132,7 +124,6 @@ class TestDataRobotMCPInstanceAdditional:
                 "Deployment ID deployment1 already mapped to old_tool, updating to new_tool"
             )
 
-    
     @patch("datarobot_genai.drmcp.core.mcp_instance.logger")
     async def test_set_deployment_mapping_logs_remove_tool_not_found(self, mock_logger):
         """Test that set_deployment_mapping logs debug message when remove_tool raises NotFoundError."""  # noqa: E501
