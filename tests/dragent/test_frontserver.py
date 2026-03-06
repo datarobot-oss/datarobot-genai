@@ -133,6 +133,15 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             url = worker._get_a2a_endpoint_url("http://localhost:8000/")
         assert url == "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/"
 
+    def test_get_a2a_endpoint_url_deployment_strips_trailing_slash(self, worker):
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2/",
+        }
+        with patch.dict(os.environ, env):
+            url = worker._get_a2a_endpoint_url("http://localhost:8000/")
+        assert url == "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/"
+
     def test_get_a2a_endpoint_url_deployment_missing_endpoint_raises(self, worker):
         with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "abc123"}, clear=False):
             os.environ.pop("DATAROBOT_ENDPOINT", None)
