@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._a2a_worker: A2AFrontEndPluginWorker | None = None
 
@@ -67,7 +67,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             return f"{datarobot_endpoint}/deployments/{mlops_deployment_id}/directAccess/a2a/"
         return default_url.rstrip("/") + "/a2a/"
 
-    async def add_routes(self, app: FastAPI, builder: WorkflowBuilder):
+    async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
 
         if not A2AConfig().expose_a2a_server_endpoints:
@@ -98,7 +98,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         logger.info("Mounted A2A server endpoints at /a2a")
         logger.info("The A2A agent card can be accessed at: /a2a/.well-known/agent-card.json")
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Clean up resources."""
         if self._a2a_worker is not None:
             await self._a2a_worker.cleanup()
