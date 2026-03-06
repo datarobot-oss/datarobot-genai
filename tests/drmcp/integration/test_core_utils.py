@@ -14,7 +14,6 @@
 
 """Integration tests for core/utils.py module."""
 
-import pytest
 from mcp.types import ListToolsResult
 from mcp.types import Tool as MCPTool
 
@@ -23,7 +22,6 @@ from datarobot_genai.drmcp.core.utils import get_tool_tags
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 
 
-@pytest.mark.asyncio
 class TestCoreUtilsIntegration:
     """Integration tests for core/utils.py functions."""
 

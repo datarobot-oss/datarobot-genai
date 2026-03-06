@@ -87,7 +87,6 @@ def mock_client_share_item_success() -> Iterator[None]:
 class TestMicrosoftGraphSearchContent:
     """Test microsoft_graph_search_content tool."""
 
-    @pytest.mark.asyncio
     async def test_search_content_success(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -105,7 +104,6 @@ class TestMicrosoftGraphSearchContent:
         assert result.structured_content["results"][1]["id"] == "item2"
         assert result.structured_content["results"][1]["isFolder"] is True
 
-    @pytest.mark.asyncio
     async def test_search_content_with_site_url(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -118,7 +116,6 @@ class TestMicrosoftGraphSearchContent:
         assert result.structured_content["siteUrl"] == site_url
         mock_client_search_success.search_content.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_search_content_with_site_id(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -132,7 +129,6 @@ class TestMicrosoftGraphSearchContent:
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["site_id"] == site_id
 
-    @pytest.mark.asyncio
     async def test_search_content_with_pagination(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -147,7 +143,6 @@ class TestMicrosoftGraphSearchContent:
         assert call_kwargs["from_offset"] == 50
         assert call_kwargs["size"] == 100
 
-    @pytest.mark.asyncio
     async def test_search_content_with_filters(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -160,7 +155,6 @@ class TestMicrosoftGraphSearchContent:
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["filters"] == filters
 
-    @pytest.mark.asyncio
     async def test_search_content_with_entity_types(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -173,7 +167,6 @@ class TestMicrosoftGraphSearchContent:
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["entity_types"] == entity_types
 
-    @pytest.mark.asyncio
     async def test_search_content_empty_query(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -183,7 +176,6 @@ class TestMicrosoftGraphSearchContent:
             await microsoft_graph_search_content(search_query="")
         assert "cannot be empty" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_search_content_invalid_site_url(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -193,7 +185,6 @@ class TestMicrosoftGraphSearchContent:
             await microsoft_graph_search_content(search_query="test", site_url="invalid-url")
         assert "invalid" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_search_content_oauth_error(self) -> None:
         """Test search when OAuth token retrieval fails."""
         with patch(
@@ -204,7 +195,6 @@ class TestMicrosoftGraphSearchContent:
                 await microsoft_graph_search_content(search_query="test")
             assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_search_content_client_error(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -223,7 +213,6 @@ class TestMicrosoftGraphSearchContent:
                 await microsoft_graph_search_content(search_query="test")
             assert "client error" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_search_content_unexpected_error(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -242,7 +231,6 @@ class TestMicrosoftGraphSearchContent:
                 await microsoft_graph_search_content(search_query="test")
             assert "unexpected error" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_search_content_with_include_hidden(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -254,7 +242,6 @@ class TestMicrosoftGraphSearchContent:
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["include_hidden_content"] is True
 
-    @pytest.mark.asyncio
     async def test_search_content_with_region(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -270,7 +257,6 @@ class TestMicrosoftGraphSearchContent:
 class TestMicrosoftGraphShareItem:
     """Test microsoft_graph_share_item tool."""
 
-    @pytest.mark.asyncio
     async def test_share_item_success(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -290,7 +276,6 @@ class TestMicrosoftGraphShareItem:
         assert result.structured_content["role"] == "read"
         assert result.structured_content["n"] == 2
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [
@@ -333,7 +318,6 @@ class TestMicrosoftGraphShareItem:
         with pytest.raises(ToolError, match=error_message):
             await microsoft_graph_share_item(**function_kwargs)
 
-    @pytest.mark.asyncio
     async def test_share_item_oauth_error(self) -> None:
         """Test share item when OAuth token retrieval fails."""
         with patch(
@@ -349,7 +333,6 @@ class TestMicrosoftGraphShareItem:
                 )
             assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_share_item_client_error(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -369,7 +352,6 @@ class TestMicrosoftGraphShareItem:
                 )
             assert "client error" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
     async def test_share_item_unexpected_error(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -425,7 +407,6 @@ class TestMicrosoftCreateFile:
             mock_client_class.return_value = mock_client
             yield mock_client
 
-    @pytest.mark.asyncio
     async def test_create_file_sharepoint(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -444,7 +425,6 @@ class TestMicrosoftCreateFile:
         call_kwargs = mock_client_create_success.create_file.call_args[1]
         assert call_kwargs["drive_id"] == "drive123"
 
-    @pytest.mark.asyncio
     async def test_create_file_onedrive_auto(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -463,7 +443,6 @@ class TestMicrosoftCreateFile:
         call_kwargs = mock_client_create_success.create_file.call_args[1]
         assert call_kwargs["drive_id"] == "personal_drive_123"
 
-    @pytest.mark.asyncio
     async def test_create_file_validation_errors(
         self,
         get_microsoft_graph_access_token_mock: None,
@@ -475,7 +454,6 @@ class TestMicrosoftCreateFile:
         with pytest.raises(ToolError, match="content_text is required"):
             await microsoft_create_file(file_name="test.txt", content_text="")
 
-    @pytest.mark.asyncio
     async def test_create_file_client_error(
         self,
         get_microsoft_graph_access_token_mock: None,

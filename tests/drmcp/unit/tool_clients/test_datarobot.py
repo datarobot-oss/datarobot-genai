@@ -27,7 +27,6 @@ from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 class TestGetDatarobotAccessToken:
     """Test get_datarobot_access_token function."""
 
-    @pytest.mark.asyncio
     async def test_returns_token_when_resolve_token_from_headers_returns_token(self) -> None:
         """Test successful token retrieval from headers."""
         with patch(
@@ -38,7 +37,6 @@ class TestGetDatarobotAccessToken:
         assert result == "bearer-token-123"
         assert isinstance(result, str)
 
-    @pytest.mark.asyncio
     async def test_raises_tool_error_when_no_token(self) -> None:
         """Test that ToolError is raised when resolve_token_from_headers returns None."""
         with patch(
@@ -52,7 +50,6 @@ class TestGetDatarobotAccessToken:
             exc_info.value
         )
 
-    @pytest.mark.asyncio
     async def test_raises_tool_error_when_empty_token(self) -> None:
         """Test that ToolError is raised when resolve_token_from_headers returns empty string."""
         with patch(

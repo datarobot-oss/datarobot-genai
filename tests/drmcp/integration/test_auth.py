@@ -83,7 +83,6 @@ def mock_call_next() -> AsyncMock:
     return AsyncMock(return_value=expected_result)
 
 
-@pytest.mark.asyncio
 class TestOAuthMiddlewareIntegration:
     """Integration tests for OAuthMiddleware with MiddlewareContext.
 

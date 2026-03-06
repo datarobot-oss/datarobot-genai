@@ -62,7 +62,6 @@ def test_setup_otel_env_variables() -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_trace_execution_async() -> None:
     mock_config = MagicMock()
     mock_config.otel_attributes = {"custom.attr": "test-value"}
@@ -201,7 +200,6 @@ class TestOpenTelemetryMiddleware:
 
         assert middleware.tracer is not None
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.telemetry.tracer")
     async def test_on_request_success(self, mock_tracer):
         """Test on_request method with successful request."""
@@ -229,7 +227,6 @@ class TestOpenTelemetryMiddleware:
         mock_span.set_attribute.assert_called()
         mock_span.set_status.assert_called_once()
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.telemetry.tracer")
     async def test_on_request_exception(self, mock_tracer):
         """Test on_request method with exception."""
@@ -257,7 +254,6 @@ class TestOpenTelemetryMiddleware:
         mock_span.record_exception.assert_called_once()
         mock_span.set_status.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_on_call_tool_success(self):
         """Test on_call_tool method with successful tool call."""
         middleware = OpenTelemetryMiddleware()
@@ -288,7 +284,6 @@ class TestOpenTelemetryMiddleware:
         mock_span.set_attribute.assert_called()
         mock_span.set_status.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_on_call_tool_success_no_content(self):
         """Test on_call_tool method with successful tool call but no content."""
         middleware = OpenTelemetryMiddleware()
@@ -318,7 +313,6 @@ class TestOpenTelemetryMiddleware:
         mock_span.set_attributes.assert_called_once()
         mock_span.set_status.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_on_call_tool_exception(self):
         """Test on_call_tool method with exception."""
         middleware = OpenTelemetryMiddleware()

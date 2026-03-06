@@ -32,7 +32,6 @@ from datarobot_genai.drmcp.core.mcp_instance import mcp
 class TestMakePrompt:
     """Tests for make_prompt_function - happy path."""
 
-    @pytest.mark.asyncio
     async def test_make_prompt_function(self) -> None:
         """Test making a prompt."""
         name = "dummy prompt name"
@@ -79,7 +78,6 @@ class TestToValidFunctionName:
             ("ABC 日本語", "prompt_ABC_x65e5x672cx8a9e"),  # Unicode mix with ascii
         ],
     )
-    @pytest.mark.asyncio
     async def test_to_valid_function_name(self, s: str, expected: str) -> None:
         """Test converting to valid function name."""
         assert to_valid_mcp_prompt_name(s) == expected
@@ -94,7 +92,6 @@ class TestToValidFunctionName:
 class TestRegisterPrompt:
     """Tests for register_prompt - happy path."""
 
-    @pytest.mark.asyncio
     async def test_register_prompt_from_datarobot_prompt_management(
         self,
         get_prompt_template_mock: None,
@@ -106,7 +103,6 @@ class TestRegisterPrompt:
 
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.dynamic_prompts.utils.uuid4")
     async def test_register_prompt_from_datarobot_prompt_management_duplicated_prompt_names(
         self,

@@ -70,7 +70,6 @@ def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
         }
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_forecast_point(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -102,7 +101,6 @@ async def test_predict_realtime_forecast_point(
     assert kwargs["timeout"] == 5
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_forecast_range_resource(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -145,7 +143,6 @@ async def test_predict_realtime_forecast_range_resource(
 # ============================================================================
 
 
-@pytest.mark.asyncio
 async def test_predict_timeseries_regression_forecast_point_with_intervals(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -204,7 +201,6 @@ async def test_predict_timeseries_regression_forecast_point_with_intervals(
     assert kwargs["timeout"] == 300
 
 
-@pytest.mark.asyncio
 async def test_predict_timeseries_regression_historical_range(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -264,7 +260,6 @@ async def test_predict_timeseries_regression_historical_range(
     assert kwargs["timeout"] == 600
 
 
-@pytest.mark.asyncio
 async def test_predict_timeseries_regression_multiseries(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -323,7 +318,6 @@ async def test_predict_timeseries_regression_multiseries(
     assert kwargs["timeout"] == 450
 
 
-@pytest.mark.asyncio
 async def test_predict_timeseries_regression_large_dataset_resource(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -378,7 +372,6 @@ async def test_predict_timeseries_regression_large_dataset_resource(
     assert kwargs["timeout"] == 900
 
 
-@pytest.mark.asyncio
 async def test_predict_timeseries_regression_series_id_validation_error(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -407,7 +400,6 @@ async def test_predict_timeseries_regression_series_id_validation_error(
     )
 
 
-@pytest.mark.asyncio
 async def test_predict_timeseries_regression_no_prediction_intervals(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -458,7 +450,6 @@ async def test_predict_timeseries_regression_no_prediction_intervals(
     assert kwargs["time_series_type"].name == "FORECAST"
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_with_all_explanation_parameters(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -500,7 +491,6 @@ async def test_predict_realtime_with_all_explanation_parameters(
     assert kwargs["timeout"] == 300
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_with_passthrough_columns_all(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -526,7 +516,6 @@ async def test_predict_realtime_with_passthrough_columns_all(
     assert kwargs["passthrough_columns"] == "all"
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_with_passthrough_columns_specific(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -552,7 +541,6 @@ async def test_predict_realtime_with_passthrough_columns_specific(
     assert kwargs["passthrough_columns"] == {"id", "feature1"}
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_with_custom_endpoint(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -579,7 +567,6 @@ async def test_predict_realtime_with_custom_endpoint(
     assert kwargs["prediction_endpoint"] == custom_endpoint
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_regular_prediction_no_time_series_params(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -611,7 +598,6 @@ async def test_predict_realtime_regular_prediction_no_time_series_params(
     assert kwargs["explanation_algorithm"] == "xemp"
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_with_dataset_csv(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -641,7 +627,6 @@ async def test_predict_realtime_with_dataset_csv(
     assert kwargs["data_frame"].equals(df)
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_with_dataset_json(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -675,7 +660,6 @@ async def test_predict_realtime_with_dataset_json(
     assert kwargs["data_frame"].equals(df)
 
 
-@pytest.mark.asyncio
 async def test_predict_realtime_dataset_takes_precedence(
     patch_realtime_dependencies: dict[str, Any],
 ) -> None:
@@ -750,7 +734,6 @@ class TestMakeOutputSettings:
 class TestPredictByAiCatalogRt:
     """Test cases for predict_by_ai_catalog_rt function."""
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
@@ -806,7 +789,6 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["type"] == "inline"
         assert result.structured_content["data"] == "test_data"
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
@@ -870,7 +852,6 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["type"] == "inline"
         assert result.structured_content["data"] == "test_data"
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
@@ -931,7 +912,6 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["type"] == "inline"
         assert result.structured_content["data"] == "test_data"
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
@@ -996,7 +976,6 @@ class TestPredictByAiCatalogRt:
         assert result.structured_content["type"] == "inline"
         assert result.structured_content["data"] == "test_data"
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.make_output_settings")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")

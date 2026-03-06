@@ -14,7 +14,6 @@
 
 from pathlib import Path
 
-import pytest
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
@@ -30,7 +29,6 @@ def _custom_model_fixture_dir() -> str:
     )
 
 
-@pytest.mark.asyncio
 class TestMCPDeploymentIntegration:
     """Integration tests for MCP deployment tools."""
 

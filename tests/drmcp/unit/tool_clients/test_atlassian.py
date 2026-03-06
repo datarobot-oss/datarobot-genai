@@ -34,7 +34,6 @@ from datarobot_genai.drtools.clients.atlassian import get_atlassian_cloud_id
 class TestGetAtlassianAccessToken:
     """Test get_atlassian_access_token function."""
 
-    @pytest.mark.asyncio
     async def test_get_access_token_success(self) -> None:
         """Test successful access token retrieval."""
         mock_token = "test_access_token_123"
@@ -47,7 +46,6 @@ class TestGetAtlassianAccessToken:
             assert result == mock_token
             assert isinstance(result, str)
 
-    @pytest.mark.asyncio
     async def test_get_access_token_empty_token(self) -> None:
         """Test handling of empty access token."""
         with patch(
@@ -59,7 +57,6 @@ class TestGetAtlassianAccessToken:
             assert isinstance(result, ToolError)
             assert "empty access token" in str(result).lower()
 
-    @pytest.mark.asyncio
     async def test_get_access_token_oauth_error(self) -> None:
         """Test handling of OAuthServiceClientErr."""
         oauth_error = OAuthServiceClientErr("OAuth error occurred")
@@ -72,7 +69,6 @@ class TestGetAtlassianAccessToken:
             assert isinstance(result, ToolError)
             assert "Could not obtain access token" in str(result)
 
-    @pytest.mark.asyncio
     async def test_get_access_token_unexpected_error(self) -> None:
         """Test handling of unexpected exceptions."""
         unexpected_error = ValueError("Unexpected error")
@@ -181,7 +177,6 @@ class TestFindFirstResourceWithId:
 class TestGetAtlassianCloudId:
     """Test get_atlassian_cloud_id function."""
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_with_service_type(self) -> None:
         """Test getting cloud ID with service type filter."""
         mock_resources = [
@@ -200,7 +195,6 @@ class TestGetAtlassianCloudId:
         mock_client.get.assert_awaited_once()
         assert ATLASSIAN_API_BASE in str(mock_client.get.call_args)
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_without_service_type(self) -> None:
         """Test getting cloud ID without service type (fallback)."""
         mock_resources = [
@@ -216,7 +210,6 @@ class TestGetAtlassianCloudId:
         cloud_id = await get_atlassian_cloud_id(mock_client)
         assert cloud_id == "cloud-123"
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_service_type_fallback(self) -> None:
         """Test fallback when service type not found."""
         mock_resources = [
@@ -232,7 +225,6 @@ class TestGetAtlassianCloudId:
         cloud_id = await get_atlassian_cloud_id(mock_client, service_type="jira")
         assert cloud_id == "cloud-123"  # Falls back to first resource with ID
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_no_resources(self) -> None:
         """Test error when no resources are returned."""
         mock_response = MagicMock()
@@ -245,7 +237,6 @@ class TestGetAtlassianCloudId:
         with pytest.raises(ValueError, match="No accessible resources found"):
             await get_atlassian_cloud_id(mock_client)
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_no_cloud_id_in_resources(self) -> None:
         """Test error when no resource has an ID."""
         mock_resources = [
@@ -261,7 +252,6 @@ class TestGetAtlassianCloudId:
         with pytest.raises(ValueError, match="No cloud ID found"):
             await get_atlassian_cloud_id(mock_client)
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_401_error(self) -> None:
         """Test handling of 401 authentication error."""
         mock_response = MagicMock()
@@ -276,7 +266,6 @@ class TestGetAtlassianCloudId:
         with pytest.raises(ValueError, match="Authentication failed"):
             await get_atlassian_cloud_id(mock_client)
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_other_http_error(self) -> None:
         """Test handling of other HTTP errors."""
         mock_response = MagicMock()
@@ -291,7 +280,6 @@ class TestGetAtlassianCloudId:
         with pytest.raises(ValueError, match="Failed to get Atlassian cloud ID"):
             await get_atlassian_cloud_id(mock_client)
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_network_error(self) -> None:
         """Test handling of network/request errors."""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
@@ -302,7 +290,6 @@ class TestGetAtlassianCloudId:
         with pytest.raises(ValueError, match="Network error"):
             await get_atlassian_cloud_id(mock_client)
 
-    @pytest.mark.asyncio
     async def test_get_cloud_id_url_construction(self) -> None:
         """Test that the correct URL is constructed."""
         mock_resources = [{"id": "cloud-123", "scopes": ["read:jira-work"]}]

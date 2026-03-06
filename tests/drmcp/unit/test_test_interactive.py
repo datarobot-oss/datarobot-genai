@@ -227,7 +227,6 @@ class TestLLMMCPClient:
         with pytest.raises(ValueError, match="'model' is required"):
             OpenAILLMMCPClient(str(config))
 
-    @pytest.mark.asyncio
     async def test_add_mcp_tool_to_available_tools(self, llm_client, mock_session) -> None:
         """Test adding MCP tools to available tools list."""
         mock_tool1 = create_mock_tool("tool1", "Description 1", {"type": "object"})
@@ -245,7 +244,6 @@ class TestLLMMCPClient:
         assert llm_client.available_tools[0]["function"]["name"] == "tool1"
         assert llm_client.available_tools[1]["function"]["name"] == "tool2"
 
-    @pytest.mark.asyncio
     async def test_call_mcp_tool_with_text_content(self, llm_client, mock_session) -> None:
         """Test calling MCP tool with TextContent result."""
         mock_text_content = create_mock_text_content("Tool result text")
@@ -258,7 +256,6 @@ class TestLLMMCPClient:
         assert "Content:" in result
         mock_session.call_tool.assert_called_once_with("test_tool", {"param": "value"})
 
-    @pytest.mark.asyncio
     async def test_call_mcp_tool_with_non_text_content(self, llm_client, mock_session) -> None:
         """Test calling MCP tool with non-TextContent result."""
         mock_result = create_mock_call_tool_result([{"type": "image", "data": "base64data"}])
@@ -269,7 +266,6 @@ class TestLLMMCPClient:
         assert isinstance(result, str)
         assert "image" in result or "base64data" in result
 
-    @pytest.mark.asyncio
     async def test_call_mcp_tool_with_empty_content(self, llm_client, mock_session) -> None:
         """Test calling MCP tool with empty content."""
         mock_result = create_mock_call_tool_result([])
@@ -279,7 +275,6 @@ class TestLLMMCPClient:
 
         assert "[]" in result or "Content:" in result
 
-    @pytest.mark.asyncio
     async def test_call_mcp_tool_with_none_content(self, llm_client, mock_session) -> None:
         """Test calling MCP tool with None content."""
         mock_result = create_mock_call_tool_result(None)
@@ -289,7 +284,6 @@ class TestLLMMCPClient:
 
         assert "None" in result or "[]" in result or "Content:" in result
 
-    @pytest.mark.asyncio
     async def test_process_tool_calls_with_tool_calls(self, llm_client, mock_session) -> None:
         """Test processing tool calls from LLM response."""
         mock_text_content = create_mock_text_content("Tool result")
@@ -311,7 +305,6 @@ class TestLLMMCPClient:
         assert "Tool result" in tool_results[0]
         assert len(messages) == 2  # Assistant message + tool result
 
-    @pytest.mark.asyncio
     async def test_process_tool_calls_with_error(self, llm_client, mock_session) -> None:
         """Test processing tool calls when tool call raises exception."""
         mock_session.call_tool.side_effect = Exception("Tool error")
@@ -329,7 +322,6 @@ class TestLLMMCPClient:
         assert "Error calling test_tool" in tool_results[0]
         assert len(messages) == 2
 
-    @pytest.mark.asyncio
     async def test_get_llm_response_with_tools(self, llm_client) -> None:
         """Test getting LLM response with tools enabled."""
         llm_client.available_tools = [{"type": "function", "function": {"name": "test_tool"}}]
@@ -350,7 +342,6 @@ class TestLLMMCPClient:
         assert "tools" in call_kwargs
         assert call_kwargs["tool_choice"] == "auto"
 
-    @pytest.mark.asyncio
     async def test_get_llm_response_without_tools(self, llm_client) -> None:
         """Test getting LLM response without tools."""
         mock_completion = MagicMock()
@@ -367,7 +358,6 @@ class TestLLMMCPClient:
         call_kwargs = llm_client.openai_client.chat.completions.create.call_args[1]
         assert "tools" not in call_kwargs
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.test_utils.clients.base.save_response_to_file")
     async def test_process_prompt_with_mcp_support_single_response(
         self, mock_save_file, mock_openai_patch, mock_session, mock_openai_client_instance
@@ -386,7 +376,6 @@ class TestLLMMCPClient:
         assert len(result.tool_calls) == 0
         mock_save_file.assert_called_once()
 
-    @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.test_utils.clients.base.save_response_to_file")
     async def test_process_prompt_with_mcp_support_with_tool_calls(
         self,
@@ -420,7 +409,6 @@ class TestLLMMCPClient:
         assert len(result.tool_calls) == 1
         mock_save_file.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_process_prompt_with_mcp_support_content_cleaning(
         self, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:
@@ -438,7 +426,6 @@ class TestLLMMCPClient:
         assert result.content == "final response with caps"
         assert "*" not in result.content
 
-    @pytest.mark.asyncio
     async def test_process_prompt_with_mcp_support_no_save(
         self, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:

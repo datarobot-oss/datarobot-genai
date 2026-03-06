@@ -16,8 +16,6 @@ from contextlib import contextmanager
 from http import HTTPStatus
 from uuid import uuid4
 
-import pytest
-
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_http_session
 from tests.drmcp.integration.helper import create_prompt_template
 from tests.drmcp.integration.helper import delete_prompt_template
@@ -43,7 +41,6 @@ def _create_prompt_template_with_versions() -> Iterator[tuple[str, str, str, str
     delete_prompt_template(new_prompt_api_id)
 
 
-@pytest.mark.asyncio
 class TestCustomRoutesE2E:
     """End-to-end tests for custom routes."""
 

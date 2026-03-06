@@ -15,7 +15,6 @@ import json
 from typing import Any
 from typing import cast
 
-import pytest
 from fastmcp.tools import FunctionTool
 from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
@@ -26,7 +25,6 @@ from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.mcp_instance import register_tools
 
 
-@pytest.mark.asyncio
 class TestMCPRegisterToolsIntegration:
     """Integration tests for tool registration.
     These tests are semi-integration because they use the global MCP instance instead of a session.

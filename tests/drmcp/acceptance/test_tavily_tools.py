@@ -26,7 +26,6 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 
 @pytest.mark.skipif(not os.getenv("ENABLE_TAVILY_TOOLS"), reason="Tavily tools are not enabled")
-@pytest.mark.asyncio
 class TestTavilyToolsE2E(ToolBaseE2E):
     """End-to-end tests for Tavily search tools."""
 

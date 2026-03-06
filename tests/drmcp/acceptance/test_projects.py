@@ -134,7 +134,6 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
     )
 
 
-@pytest.mark.asyncio
 class TestProjectsE2E(ToolBaseE2E):
     """End-to-end tests for project-related functionality."""
 

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.12
+- Add A2A server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`. A2A endpoints can be disabled by setting `EXPOSE_A2A_SERVER_ENDPOINTS=false`.
+
 ## 0.6.11
 - Fixed AG-UI event serialization
 

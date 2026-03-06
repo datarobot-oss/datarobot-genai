@@ -335,7 +335,6 @@ class TestDataRobotMCPServer:
         # Should be called twice: once for run_server, once for pre_server_shutdown
         assert mock_loop.run_until_complete.call_count == 2
 
-    @pytest.mark.asyncio
     async def test_get_tools(
         self,
         mock_fastmcp_get_tools: AsyncMock,
@@ -348,7 +347,6 @@ class TestDataRobotMCPServer:
         mock_fastmcp_get_tools.assert_called_once_with()
         assert actual_outputs == mock_fastmcp_get_tools.return_value
 
-    @pytest.mark.asyncio
     async def test_get_prompts(
         self,
         mock_fastmcp_get_prompts: AsyncMock,
@@ -361,7 +359,6 @@ class TestDataRobotMCPServer:
         mock_fastmcp_get_prompts.assert_called_once_with()
         assert actual_outputs == mock_fastmcp_get_prompts.return_value
 
-    @pytest.mark.asyncio
     async def test_get_resources(
         self,
         mock_fastmcp_get_resources: AsyncMock,

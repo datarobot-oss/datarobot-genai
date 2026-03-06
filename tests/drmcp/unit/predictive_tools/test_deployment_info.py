@@ -48,7 +48,6 @@ def _extract_content(result_obj: ToolResult | ToolError) -> str:
     new_callable=AsyncMock,
     return_value="token",
 )
-@pytest.mark.asyncio
 async def test_get_deployment_info_success(
     mock_get_datarobot_access_token: Any, mock_data_robot_client: Any
 ) -> None:
@@ -137,7 +136,6 @@ async def test_get_deployment_info_success(
     new_callable=AsyncMock,
     return_value="token",
 )
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template(
     mock_get_datarobot_access_token: Any,
     mock_data_robot_client: Any,
@@ -219,7 +217,6 @@ async def test_generate_prediction_data_template(
     new_callable=AsyncMock,
     return_value="token",
 )
-@pytest.mark.asyncio
 async def test_validate_prediction_data_valid(
     mock_get_datarobot_access_token: Any,
     mock_data_robot_client: Any,
@@ -294,7 +291,6 @@ async def test_validate_prediction_data_valid(
     new_callable=AsyncMock,
     return_value="token",
 )
-@pytest.mark.asyncio
 async def test_validate_prediction_data_missing_important_feature(
     mock_get_datarobot_access_token: Any,
     mock_data_robot_client: Any,
@@ -336,7 +332,6 @@ async def test_validate_prediction_data_missing_important_feature(
 
 # Additional tests for coverage
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = ToolResult(
         structured_content={"error": "something went wrong"}
@@ -347,7 +342,6 @@ async def test_generate_prediction_data_template_error(mock_get_features: Any) -
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_empty_features(
     mock_get_features: Any,
 ) -> None:
@@ -368,7 +362,6 @@ async def test_generate_prediction_data_template_empty_features(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_unknown_type(
     mock_get_features: Any,
 ) -> None:
@@ -386,7 +379,6 @@ async def test_generate_prediction_data_template_unknown_type(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_none_min_max(
     mock_get_features: Any,
 ) -> None:
@@ -407,7 +399,6 @@ async def test_generate_prediction_data_template_none_min_max(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_key_summary(
     mock_get_features: Any,
 ) -> None:
@@ -431,7 +422,6 @@ async def test_generate_prediction_data_template_key_summary(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_multiseries(
     mock_get_features: Any,
 ) -> None:
@@ -455,7 +445,6 @@ async def test_generate_prediction_data_template_multiseries(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = ToolResult(structured_content={"error": "bad deployment"})
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
@@ -467,7 +456,6 @@ async def test_validate_prediction_data_error(mock_get_features: Any) -> None:
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_missing_feature(
     mock_get_features: Any, tmp_path: Any
 ) -> None:
@@ -491,7 +479,6 @@ async def test_validate_prediction_data_missing_feature(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_extra_columns(
     mock_get_features: Any, tmp_path: Any
 ) -> None:
@@ -515,7 +502,6 @@ async def test_validate_prediction_data_extra_columns(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_type_mismatch(
     mock_get_features: Any, tmp_path: Any
 ) -> None:
@@ -539,7 +525,6 @@ async def test_validate_prediction_data_type_mismatch(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_time_series_missing(
     mock_get_features: Any, tmp_path: Any
 ) -> None:
@@ -569,7 +554,6 @@ async def test_validate_prediction_data_time_series_missing(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_time_series_parse_error(
     mock_get_features: Any, tmp_path: Any
 ) -> None:
@@ -605,7 +589,6 @@ async def test_validate_prediction_data_time_series_parse_error(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_info")
-@pytest.mark.asyncio
 async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> None:
     mock_info = ToolResult(structured_content={})
     mock_get_info.return_value = mock_info
@@ -615,7 +598,6 @@ async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> Non
     assert "features" in result and "total_features" in result
 
 
-@pytest.mark.asyncio
 async def test_get_deployment_info_custom_model() -> None:
     class DummyDeployment:
         model: dict[str, Any] = {}
@@ -647,7 +629,6 @@ async def test_get_deployment_info_custom_model() -> None:
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_categorical_defaults(
     mock_get_features: Any,
 ) -> None:
@@ -672,7 +653,6 @@ async def test_generate_prediction_data_template_categorical_defaults(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_exception(
     mock_get_features: Any,
 ) -> None:
@@ -683,7 +663,6 @@ async def test_generate_prediction_data_template_exception(
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_validate_prediction_data_file_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = ToolResult(
         structured_content={"features": [], "model_type": "Test"}
@@ -696,7 +675,6 @@ async def test_validate_prediction_data_file_error(mock_get_features: Any) -> No
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_info")
-@pytest.mark.asyncio
 async def test_get_deployment_features_error_string(mock_get_info: Any) -> None:
     """When get_deployment_info returns error dict,
     get_deployment_features returns empty features.
@@ -710,7 +688,6 @@ async def test_get_deployment_features_error_string(mock_get_info: Any) -> None:
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_info")
-@pytest.mark.asyncio
 async def test_get_deployment_features_optional_fields(mock_get_info: Any) -> None:
     base = {"features": [], "total_features": 0}
     mock_get_info.return_value = ToolResult(structured_content=base)
@@ -742,7 +719,6 @@ async def test_get_deployment_features_optional_fields(mock_get_info: Any) -> No
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
-@pytest.mark.asyncio
 async def test_generate_prediction_data_template_frequent_values(
     mock_get_features: Any,
 ) -> None:
@@ -776,7 +752,6 @@ async def test_generate_prediction_data_template_frequent_values(
     new_callable=AsyncMock,
     return_value="token",
 )
-@pytest.mark.asyncio
 async def test_validate_prediction_data_missing_values(
     mock_get_datarobot_access_token: Any,
     mock_data_robot_client: Any,
@@ -822,7 +797,6 @@ async def test_validate_prediction_data_missing_values(
     new_callable=AsyncMock,
     return_value="token",
 )
-@pytest.mark.asyncio
 async def test_validate_prediction_data_with_csv_string(
     mock_get_datarobot_access_token: Any,
     mock_data_robot_client: Any,

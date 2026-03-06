@@ -1154,7 +1154,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.6.11"
+version = "0.6.12"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1204,6 +1204,7 @@ dragent = [
     { name = "datarobot" },
     { name = "datarobot-predict" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11'" },
+    { name = "nvidia-nat-a2a", marker = "python_full_version >= '3.11'" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11'" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -1420,6 +1421,7 @@ requires-dist = [
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11' and extra == 'dragent'", specifier = "==1.4.1" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
+    { name = "nvidia-nat-a2a", marker = "python_full_version >= '3.11' and extra == 'dragent'", specifier = "==1.4.1" },
     { name = "nvidia-nat-a2a", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
     { name = "nvidia-nat-langchain", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
     { name = "nvidia-nat-llama-index", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },

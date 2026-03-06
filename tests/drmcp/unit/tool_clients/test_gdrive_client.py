@@ -103,7 +103,6 @@ class TestGoogleDriveClient:
             "webViewLink": "https://drive.google.com/file/d/txt123/view",
         }
 
-    @pytest.mark.asyncio
     async def test_get_file_metadata_success(
         self, mock_access_token: str, mock_file_metadata: dict
     ) -> None:
@@ -125,7 +124,6 @@ class TestGoogleDriveClient:
                 == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
 
-    @pytest.mark.asyncio
     async def test_get_file_metadata_not_found(self, mock_access_token: str) -> None:
         """Test getting metadata for non-existent file."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -138,7 +136,6 @@ class TestGoogleDriveClient:
             with pytest.raises(GoogleDriveError, match="not found"):
                 await client.get_file_metadata("nonexistent")
 
-    @pytest.mark.asyncio
     async def test_get_file_metadata_permission_denied(self, mock_access_token: str) -> None:
         """Test getting metadata without permission."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -151,7 +148,6 @@ class TestGoogleDriveClient:
             with pytest.raises(GoogleDriveError, match="Permission denied"):
                 await client.get_file_metadata("protected_file")
 
-    @pytest.mark.asyncio
     async def test_read_file_content_google_doc(
         self, mock_access_token: str, mock_google_doc_metadata: dict
     ) -> None:
@@ -185,7 +181,6 @@ class TestGoogleDriveClient:
             assert result.was_exported is True
             assert call_count["get"] == 2  # metadata + export
 
-    @pytest.mark.asyncio
     async def test_read_file_content_google_doc_custom_format(
         self, mock_access_token: str, mock_google_doc_metadata: dict
     ) -> None:
@@ -210,7 +205,6 @@ class TestGoogleDriveClient:
             assert result.content == plain_content
             assert result.was_exported is True
 
-    @pytest.mark.asyncio
     async def test_read_file_content_google_sheet(
         self, mock_access_token: str, mock_google_sheet_metadata: dict
     ) -> None:
@@ -234,7 +228,6 @@ class TestGoogleDriveClient:
             assert result.mime_type == "text/csv"
             assert result.content == csv_content
 
-    @pytest.mark.asyncio
     async def test_read_file_content_text_file(
         self, mock_access_token: str, mock_text_file_metadata: dict
     ) -> None:
@@ -261,7 +254,6 @@ class TestGoogleDriveClient:
             assert result.was_exported is False
             assert result.size == 512  # From mock_text_file_metadata
 
-    @pytest.mark.asyncio
     async def test_read_file_content_binary_file_error(
         self, mock_access_token: str, mock_image_metadata: dict
     ) -> None:
@@ -276,7 +268,6 @@ class TestGoogleDriveClient:
             with pytest.raises(GoogleDriveError, match="Binary files are not supported"):
                 await client.read_file_content("img123")
 
-    @pytest.mark.asyncio
     async def test_read_file_content_folder_error(self, mock_access_token: str) -> None:
         """Test that reading folders raises an error."""
         folder_metadata = {
@@ -295,7 +286,6 @@ class TestGoogleDriveClient:
             with pytest.raises(GoogleDriveError, match="Cannot read content of a folder"):
                 await client.read_file_content("folder123")
 
-    @pytest.mark.asyncio
     async def test_read_file_content_not_found(self, mock_access_token: str) -> None:
         """Test reading non-existent file."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -308,7 +298,6 @@ class TestGoogleDriveClient:
             with pytest.raises(GoogleDriveError, match="not found"):
                 await client.read_file_content("nonexistent")
 
-    @pytest.mark.asyncio
     async def test_read_file_content_pdf_text_extraction(self, mock_access_token: str) -> None:
         """Test reading PDF with text extraction."""
         pdf_metadata = {
@@ -521,7 +510,6 @@ class TestCreateFile:
             "modifiedTime": "2025-01-14T12:00:00.000Z",
         }
 
-    @pytest.mark.asyncio
     async def test_create_file_metadata_only(
         self, mock_access_token: str, mock_created_file_response: dict
     ) -> None:
@@ -551,7 +539,6 @@ class TestCreateFile:
             assert result.name == "My New File.txt"
             assert result.mime_type == "text/plain"
 
-    @pytest.mark.asyncio
     async def test_create_file_with_parent(
         self, mock_access_token: str, mock_created_file_response: dict
     ) -> None:
@@ -573,7 +560,6 @@ class TestCreateFile:
 
             assert result.id == "new_file_123"
 
-    @pytest.mark.asyncio
     async def test_create_file_with_content(
         self, mock_access_token: str, mock_created_file_response: dict
     ) -> None:
@@ -611,7 +597,6 @@ class TestCreateFile:
             assert post_url == "https://www.googleapis.com/upload/drive/v3/files"
             assert result.id == "new_file_123"
 
-    @pytest.mark.asyncio
     async def test_create_google_doc_with_content(
         self, mock_access_token: str, mock_created_google_doc_response: dict
     ) -> None:
@@ -645,7 +630,6 @@ class TestCreateFile:
             assert result.id == "new_doc_123"
             assert result.mime_type == "application/vnd.google-apps.document"
 
-    @pytest.mark.asyncio
     async def test_create_folder(
         self, mock_access_token: str, mock_created_folder_response: dict
     ) -> None:
@@ -672,7 +656,6 @@ class TestCreateFile:
             assert result.id == "new_folder_123"
             assert result.mime_type == GOOGLE_DRIVE_FOLDER_MIME
 
-    @pytest.mark.asyncio
     async def test_create_file_parent_not_found(self, mock_access_token: str) -> None:
         """Test error when parent folder doesn't exist."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -689,7 +672,6 @@ class TestCreateFile:
                     name="file.txt", mime_type="text/plain", parent_id="nonexistent_folder"
                 )
 
-    @pytest.mark.asyncio
     async def test_create_file_permission_denied(self, mock_access_token: str) -> None:
         """Test error when permission is denied."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -704,7 +686,6 @@ class TestCreateFile:
             with pytest.raises(GoogleDriveError, match="Permission denied"):
                 await client.create_file(name="file.txt", mime_type="text/plain")
 
-    @pytest.mark.asyncio
     async def test_create_file_bad_request(self, mock_access_token: str) -> None:
         """Test error for invalid parameters."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -719,7 +700,6 @@ class TestCreateFile:
             with pytest.raises(GoogleDriveError, match="Bad request"):
                 await client.create_file(name="file.txt", mime_type="invalid/mime-type")
 
-    @pytest.mark.asyncio
     async def test_create_file_rate_limited(self, mock_access_token: str) -> None:
         """Test error when rate limited."""
         async with GoogleDriveClient(mock_access_token) as client:
@@ -743,7 +723,6 @@ class TestUpdateFileMetadata:
         """Mock access token."""
         return "test_access_token_123"
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "kwargs,expected_body,response_field,expected_value",
         [
@@ -782,7 +761,6 @@ class TestUpdateFileMetadata:
             result = await client.update_file_metadata(file_id="file_123", **kwargs)
             assert getattr(result, response_field.replace("name", "name")) == expected_value
 
-    @pytest.mark.asyncio
     async def test_update_file_metadata_multiple_fields(self, mock_access_token: str) -> None:
         """Test updating multiple fields at once."""
         response_data = {"id": "file_123", "name": "New.txt", "mimeType": "text/plain"}
@@ -800,7 +778,6 @@ class TestUpdateFileMetadata:
             )
             assert result.id == "file_123"
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("invalid_name", ["", "   "])
     async def test_update_file_metadata_invalid_name_error(
         self, mock_access_token: str, invalid_name: str
@@ -810,14 +787,12 @@ class TestUpdateFileMetadata:
             with pytest.raises(GoogleDriveError, match="new_name cannot be empty"):
                 await client.update_file_metadata(file_id="file_123", new_name=invalid_name)
 
-    @pytest.mark.asyncio
     async def test_update_file_metadata_no_fields_error(self, mock_access_token: str) -> None:
         """Test error when no update fields are provided."""
         async with GoogleDriveClient(mock_access_token) as client:
             with pytest.raises(GoogleDriveError, match="At least one of"):
                 await client.update_file_metadata(file_id="file_123")
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "status_code,error_match",
         [(404, "not found"), (403, "Permission denied"), (400, "Bad request"), (429, "Rate limit")],

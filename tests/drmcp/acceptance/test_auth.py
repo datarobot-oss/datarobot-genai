@@ -87,7 +87,6 @@ def expectations_for_auth_context_tool_success(
     )
 
 
-@pytest.mark.asyncio
 class TestAuthContextE2E(ToolBaseE2E):
     """End-to-end acceptance tests for OAuth middleware and auth context propagation."""
 
