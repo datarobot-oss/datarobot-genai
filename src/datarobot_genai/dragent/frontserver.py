@@ -79,12 +79,12 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config,
         # so we must pass it a full Config with the A2AFrontEndConfig substituted in.
+        # We also inherit host/port from the FastAPI config so the agent card URL is correct.
+        a2a_config = self.front_end_config.a2a.model_copy(
+            update={"host": self.front_end_config.host, "port": self.front_end_config.port}
+        )
         nat_config = self._config.model_copy(
-            update={
-                "general": self._config.general.model_copy(
-                    update={"front_end": self.front_end_config.a2a}
-                )
-            }
+            update={"general": self._config.general.model_copy(update={"front_end": a2a_config})}
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
@@ -97,8 +97,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.mount("/a2a", a2a_app)
         app.add_event_handler("shutdown", self._cleanup_a2a_worker)
 
-        logger.info("Mounted A2A server endpoints at /a2a")
-        logger.info("The A2A agent card can be accessed at: /a2a/.well-known/agent-card.json")
+        logger.info(f"A2A endpoint URL: {agent_card.url}")
+        logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent.json")
 
     async def _cleanup_a2a_worker(self) -> None:
         """Clean up A2A worker resources on shutdown."""

@@ -148,6 +148,20 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             with pytest.raises(ValueError, match="DATAROBOT_ENDPOINT must be set"):
                 worker._get_a2a_endpoint_url("http://localhost:8000/")
 
+    async def test_add_routes_inherits_host_port_from_fastapi_config(
+        self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
+    ):
+        app = FastAPI()
+        with patch(
+            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+            return_value=mock_a2a_worker,
+        ) as mock_a2a_worker_cls:
+            await dragent_worker.add_routes(app, mock_builder)
+
+        a2a_config_used = mock_a2a_worker_cls.call_args[0][0].general.front_end
+        assert a2a_config_used.host == dragent_worker.front_end_config.host
+        assert a2a_config_used.port == dragent_worker.front_end_config.port
+
     @pytest.mark.asyncio
     async def test_add_routes_patches_agent_card_url(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
