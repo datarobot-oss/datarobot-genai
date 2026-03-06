@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.15
+- Add A2A server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`
+- Add `DRAgentFastApiFrontEndConfig` (`_type: dragent_fastapi`) with nested `a2a` config for setting agent name and description from `workflow.yaml`
+- Add `A2AConfig` to enable/disable A2A endpoints via `EXPOSE_A2A_SERVER_ENDPOINTS` env var (default: enabled)
+
+
 ## 0.6.14
 - Fix loading JSON schemas from the package directory in DRUM adapter to work from wheel or source
 - Fix dynamic tool deployment registration to filter deployments with `tool` tag name and value using strict AND logic
