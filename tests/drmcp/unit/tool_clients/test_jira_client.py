@@ -82,7 +82,7 @@ class TestJiraClient:
     def mock_issue_create_response(self) -> dict:
         return {"id": "625846", "key": "PROJ-123"}
 
-    @pytest.mark.asyncio
+    
     async def test_search_issues_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_response: dict
     ) -> None:
@@ -106,7 +106,7 @@ class TestJiraClient:
 
                 assert result == [Issue(**mock_issue_response)]
 
-    @pytest.mark.asyncio
+    
     async def test_get_issue_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_response: dict
     ) -> None:
@@ -127,7 +127,7 @@ class TestJiraClient:
 
                 assert result == Issue(**mock_issue_response)
 
-    @pytest.mark.asyncio
+    
     async def test_get_issue_not_found(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test getting an issue that doesn't exist."""
         with patch(
@@ -145,7 +145,7 @@ class TestJiraClient:
                 with pytest.raises(ValueError, match="not found"):
                     await client.get_jira_issue("not existing")
 
-    @pytest.mark.asyncio
+    
     async def test_get_issue_type_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_type_response: dict
     ) -> None:
@@ -166,7 +166,7 @@ class TestJiraClient:
 
                 assert result == {"Bug": "1", "Story": "2"}
 
-    @pytest.mark.asyncio
+    
     async def test_create_issue_success(
         self, mock_access_token: str, mock_cloud_id: str, mock_issue_create_response: dict
     ) -> None:
@@ -192,7 +192,7 @@ class TestJiraClient:
 
                 assert result == "PROJ-123"
 
-    @pytest.mark.asyncio
+    
     async def test_update_issue_success(self, mock_access_token: str, mock_cloud_id: str) -> None:
         """Test successfully updating an issue."""
         with patch(

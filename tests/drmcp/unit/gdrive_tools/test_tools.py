@@ -75,7 +75,7 @@ def gdrive_client_list_files_without_next_page_mock(
 class TestGdriveListFiles:
     """Gdrive list files tool test."""
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_find_contents_when_next_page_available_happy_path(
         self,
         get_gdrive_access_token_mock: None,
@@ -95,7 +95,7 @@ class TestGdriveListFiles:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_find_contents_when_no_more_pages_happy_path(
         self,
         get_gdrive_access_token_mock: None,
@@ -141,7 +141,7 @@ class TestGdriveReadContent:
             mock.return_value = gdrive_file_content
             yield gdrive_file_content
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_happy_path(
         self,
         get_gdrive_access_token_mock: None,
@@ -165,7 +165,7 @@ class TestGdriveReadContent:
         assert structured_content["webViewLink"] == "https://docs.google.com/document/d/doc123/edit"
         assert structured_content["wasExported"] is True
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_csv_file(
         self,
         get_gdrive_access_token_mock: None,
@@ -191,7 +191,7 @@ class TestGdriveReadContent:
         assert structured_content["content"] == "Name,Age\nAlice,30"
         assert structured_content["wasExported"] is True
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_regular_text_file(
         self,
         get_gdrive_access_token_mock: None,
@@ -216,7 +216,7 @@ class TestGdriveReadContent:
         assert json.loads(content[0].text)["wasExported"] is False
         assert structured_content["wasExported"] is False
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_empty_file_id(
         self,
         get_gdrive_access_token_mock: None,
@@ -225,7 +225,7 @@ class TestGdriveReadContent:
         with pytest.raises(ToolError, match="file_id.*cannot be empty"):
             await gdrive_read_content(file_id="")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_whitespace_file_id(
         self,
         get_gdrive_access_token_mock: None,
@@ -234,7 +234,7 @@ class TestGdriveReadContent:
         with pytest.raises(ToolError, match="file_id.*cannot be empty"):
             await gdrive_read_content(file_id="   ")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_file_not_found(
         self,
         get_gdrive_access_token_mock: None,
@@ -247,7 +247,7 @@ class TestGdriveReadContent:
             with pytest.raises(ToolError, match="not found"):
                 await gdrive_read_content(file_id="nonexistent")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_read_content_binary_file_error(
         self,
         get_gdrive_access_token_mock: None,
@@ -294,7 +294,7 @@ class TestGdriveCreateFile:
             web_view_link="https://drive.google.com/drive/folders/new_folder_123",
         )
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_file_happy_path(
         self,
         get_gdrive_access_token_mock: None,
@@ -314,7 +314,7 @@ class TestGdriveCreateFile:
             structured_content["webViewLink"] == "https://drive.google.com/file/d/new_file_123/view"
         )
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_file_with_content(
         self,
         get_gdrive_access_token_mock: None,
@@ -331,7 +331,7 @@ class TestGdriveCreateFile:
         assert json.loads(content[0].text)["id"] == "new_file_123"
         assert structured_content["id"] == "new_file_123"
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_google_doc(
         self,
         get_gdrive_access_token_mock: None,
@@ -350,7 +350,7 @@ class TestGdriveCreateFile:
         assert json.loads(content[0].text)["mimeType"] == "application/vnd.google-apps.document"
         assert structured_content["mimeType"] == "application/vnd.google-apps.document"
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_folder(
         self,
         get_gdrive_access_token_mock: None,
@@ -367,7 +367,7 @@ class TestGdriveCreateFile:
         assert json.loads(content[0].text)["mimeType"] == GOOGLE_DRIVE_FOLDER_MIME
         assert structured_content["mimeType"] == GOOGLE_DRIVE_FOLDER_MIME
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_file_empty_name(
         self,
         get_gdrive_access_token_mock: None,
@@ -376,7 +376,7 @@ class TestGdriveCreateFile:
         with pytest.raises(ToolError, match="name.*cannot be empty"):
             await gdrive_create_file(name="", mime_type="text/plain")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_file_whitespace_name(
         self,
         get_gdrive_access_token_mock: None,
@@ -385,7 +385,7 @@ class TestGdriveCreateFile:
         with pytest.raises(ToolError, match="name.*cannot be empty"):
             await gdrive_create_file(name="   ", mime_type="text/plain")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_file_empty_mime_type(
         self,
         get_gdrive_access_token_mock: None,
@@ -394,7 +394,7 @@ class TestGdriveCreateFile:
         with pytest.raises(ToolError, match="mime_type.*cannot be empty"):
             await gdrive_create_file(name="file.txt", mime_type="")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_create_file_error_handling(
         self,
         get_gdrive_access_token_mock: None,
@@ -411,7 +411,7 @@ class TestGdriveCreateFile:
 class TestGdriveManageAccess:
     """Gdrive manage access tool tests."""
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_add_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
         """Gdrive add role -- happy path."""
         new_permission_id = "dummy_permission_id"
@@ -429,7 +429,7 @@ class TestGdriveManageAccess:
         assert structured_content["affectedFileId"] == "dummy_file_id"
         assert structured_content["newPermissionId"] == new_permission_id
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_update_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
         """Gdrive update role -- happy path."""
         with patch(
@@ -448,7 +448,7 @@ class TestGdriveManageAccess:
         assert json.loads(content[0].text)["affectedFileId"] == "dummy_file_id"
         assert structured_content["affectedFileId"] == "dummy_file_id"
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_remove_role_happy_path(self, get_gdrive_access_token_mock: None) -> None:
         """Gdrive remove role -- happy path."""
         with patch(
@@ -464,7 +464,7 @@ class TestGdriveManageAccess:
         assert json.loads(content[0].text)["affectedFileId"] == "dummy_file_id"
         assert structured_content["affectedFileId"] == "dummy_file_id"
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [
@@ -511,7 +511,7 @@ class TestGdriveManageAccess:
         with pytest.raises(ToolError, match=error_message):
             await gdrive_manage_access(**function_kwargs)
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_manage_access_when_error_in_client(
         self,
         get_gdrive_access_token_mock: None,
@@ -559,7 +559,7 @@ def gdrive_client_update_file_metadata_error_mock() -> Iterator[None]:
 class TestGdriveUpdateMetadata:
     """Gdrive update metadata tool tests."""
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_update_metadata_happy_path(
         self,
         get_gdrive_access_token_mock: None,
@@ -577,7 +577,7 @@ class TestGdriveUpdateMetadata:
         assert structured_content["name"] == "Updated File.txt"
         assert structured_content["starred"] is True
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_update_metadata_empty_file_id(
         self,
         get_gdrive_access_token_mock: None,
@@ -586,7 +586,7 @@ class TestGdriveUpdateMetadata:
         with pytest.raises(ToolError, match="file_id.*cannot be empty"):
             await gdrive_update_metadata(file_id="", new_name="New.txt")
 
-    @pytest.mark.asyncio
+    
     async def test_gdrive_update_metadata_when_error_in_client(
         self,
         get_gdrive_access_token_mock: None,

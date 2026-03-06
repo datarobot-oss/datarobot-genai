@@ -24,7 +24,7 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drtools.predictive import training
 
 
-@pytest.mark.asyncio
+
 async def test_analyze_dataset() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
@@ -62,7 +62,7 @@ async def test_analyze_dataset() -> None:
         assert "target" in insights["potential_targets"]
 
 
-@pytest.mark.asyncio
+
 async def test_suggest_use_cases() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
@@ -115,7 +115,7 @@ async def test_suggest_use_cases() -> None:
         assert any(s["problem_type"] == "Regression" for s in suggestions)
 
 
-@pytest.mark.asyncio
+
 async def test_get_exploratory_insights() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
@@ -164,7 +164,7 @@ async def test_get_exploratory_insights() -> None:
         assert "data_types" in insights
 
 
-@pytest.mark.asyncio
+
 async def test_start_autopilot_new_project() -> None:
     mock_dataset = MagicMock()
     mock_dataset.id = "test_dataset_id"
@@ -199,7 +199,7 @@ async def test_start_autopilot_new_project() -> None:
         assert response["status"] == "running"
 
 
-@pytest.mark.asyncio
+
 async def test_start_autopilot_existing_project() -> None:
     mock_project = MagicMock()
     mock_project.id = "test_project_id"
@@ -229,7 +229,7 @@ async def test_start_autopilot_existing_project() -> None:
         assert response["status"] == "running"
 
 
-@pytest.mark.asyncio
+
 async def test_get_model_roc_curve() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -270,7 +270,7 @@ async def test_get_model_roc_curve() -> None:
         assert len(response["data"]["roc_points"]) == 1
 
 
-@pytest.mark.asyncio
+
 async def test_get_model_feature_impact() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -302,7 +302,7 @@ async def test_get_model_feature_impact() -> None:
         assert len(response["data"]) == 2
 
 
-@pytest.mark.asyncio
+
 async def test_get_model_lift_chart() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -338,7 +338,7 @@ async def test_get_model_lift_chart() -> None:
         assert len(response["data"]["bins"]) == 2
 
 
-@pytest.mark.asyncio
+
 async def test_start_autopilot_validation() -> None:
     """Test validation of input parameters for start_autopilot."""
     # Test missing dataset info for new project
@@ -382,7 +382,7 @@ async def test_start_autopilot_validation() -> None:
             await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
 
 
-@pytest.mark.asyncio
+
 async def test_suggest_use_cases_dataset_not_found() -> None:
     """Test that suggest_use_cases provides a clear error message when dataset is not found."""
 

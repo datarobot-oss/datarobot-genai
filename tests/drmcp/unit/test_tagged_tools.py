@@ -26,7 +26,7 @@ from datarobot_genai.drmcp.core.telemetry import get_trace_id
 from datarobot_genai.drmcp.core.telemetry import initialize_telemetry
 
 
-@pytest.mark.asyncio
+
 async def test_tagged_tool_decorator() -> None:
     """Test that the mcp.tool decorator properly applies tags."""
     mcp = DataRobotMCP(name="test")
@@ -45,7 +45,7 @@ async def test_tagged_tool_decorator() -> None:
     assert tool.meta.get("_fastmcp", {}).get("tags") == ["example", "test"]
 
 
-@pytest.mark.asyncio
+
 async def test_tagged_tool_with_additional_annotations() -> None:
     """Test that mcp.tool can handle additional annotations."""
     mcp = DataRobotMCP(name="test")
@@ -66,7 +66,7 @@ async def test_tagged_tool_with_additional_annotations() -> None:
     assert tool.tags == {"test"}
 
 
-@pytest.mark.asyncio
+
 async def test_tool_without_tags() -> None:
     """Test that tools work without tags."""
     mcp = DataRobotMCP(name="test")

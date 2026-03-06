@@ -111,7 +111,7 @@ def tool_config_with_path_params():
 class TestRegisterExternalTool:
     """Tests for register_external_tool function - happy path."""
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_tool_basic_config(
         self, mock_register_tools, basic_tool_config, mock_tool
@@ -127,7 +127,7 @@ class TestRegisterExternalTool:
         assert mock_register_tools.call_args.kwargs["description"] == "Get weather forecast"
         assert result == mock_tool
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_tool_with_tags(self, mock_register_tools, basic_tool_config, mock_tool):
         """Test registering a tool with custom tags."""
@@ -139,7 +139,7 @@ class TestRegisterExternalTool:
 
         assert mock_register_tools.call_args.kwargs["tags"] == test_tags
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_tool_with_additional_kwargs(
         self, mock_register_tools, basic_tool_config, mock_tool
@@ -157,7 +157,7 @@ class TestRegisterExternalTool:
         assert kwargs["deployment_id"] == "test-123"
         assert kwargs["custom_field"] == "value"
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_post_tool(self, mock_register_tools, post_tool_config, mock_tool):
         """Test registering a POST method tool."""
@@ -170,7 +170,7 @@ class TestRegisterExternalTool:
         assert mock_register_tools.call_args.kwargs["name"] == "create_user"
         assert result.name == "create_user"
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_tool_with_path_params(
         self, mock_register_tools, tool_config_with_path_params, mock_tool
@@ -183,7 +183,7 @@ class TestRegisterExternalTool:
         mock_register_tools.assert_called_once()
         assert mock_register_tools.call_args.kwargs["name"] == "get_user"
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_tool_callable_is_created(
         self, mock_register_tools, basic_tool_config, mock_tool
@@ -196,7 +196,7 @@ class TestRegisterExternalTool:
         mock_register_tools.assert_called_once()
         assert callable(mock_register_tools.call_args.kwargs["fn"])
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
     async def test_register_tool_uses_title_when_provided(
         self, mock_register_tools, basic_tool_config, mock_tool

@@ -22,7 +22,7 @@ from fastmcp.exceptions import ToolError
 from datarobot_genai.drtools.predictive import project
 
 
-@pytest.mark.asyncio
+
 async def test_list_projects_success() -> None:
     mock_client = MagicMock()
     mock_proj1 = MagicMock(id="1", project_name="proj1")
@@ -46,7 +46,7 @@ async def test_list_projects_success() -> None:
     assert projects_dict["2"] == "proj2"
 
 
-@pytest.mark.asyncio
+
 async def test_list_projects_empty() -> None:
     mock_client = MagicMock()
     mock_client.Project.list.return_value = []
@@ -64,7 +64,7 @@ async def test_list_projects_empty() -> None:
     assert result.structured_content == {}
 
 
-@pytest.mark.asyncio
+
 async def test_list_projects_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
@@ -76,7 +76,7 @@ async def test_list_projects_error() -> None:
         assert "Error in list_projects: Exception: fail" == str(exc_info.value)
 
 
-@pytest.mark.asyncio
+
 async def test_get_project_dataset_by_name_success() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
@@ -103,7 +103,7 @@ async def test_get_project_dataset_by_name_success() -> None:
     assert result.structured_content["dataset_id"] == "dsid"
 
 
-@pytest.mark.asyncio
+
 async def test_get_project_dataset_by_name_not_found() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
@@ -127,7 +127,7 @@ async def test_get_project_dataset_by_name_not_found() -> None:
     )
 
 
-@pytest.mark.asyncio
+
 async def test_get_project_dataset_by_name_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",

@@ -82,7 +82,7 @@ class TestPerplexityClient:
             model="sonar",
         )
 
-    @pytest.mark.asyncio
+    
     async def test_search_success(
         self,
         mock_access_token: str,
@@ -102,7 +102,7 @@ class TestPerplexityClient:
             assert results[0].url == "https://foo.com"
             assert results[1].url == "https://bar.com"
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [
@@ -137,7 +137,7 @@ class TestPerplexityClient:
             with pytest.raises(PerplexityError, match=error_message):
                 await client.search(**function_kwargs)
 
-    @pytest.mark.asyncio
+    
     async def test_think_success(
         self,
         mock_access_token: str,
@@ -157,7 +157,7 @@ class TestPerplexityClient:
             assert result.answer == "Answer"
             assert len(result.citations) == 2
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.parametrize(
         "function_kwargs,error_message",
         [

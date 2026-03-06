@@ -23,7 +23,7 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_t
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import get_stub_classification_project
 
 
-@pytest.mark.asyncio
+
 class TestMCPToolsIntegration:
     """Integration tests for MCP tools."""
 

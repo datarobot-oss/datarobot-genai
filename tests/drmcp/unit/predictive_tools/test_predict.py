@@ -57,7 +57,7 @@ def patch_predict_dependencies() -> Generator[dict[str, Any], None, None]:
         }
 
 
-@pytest.mark.asyncio
+
 async def test_predict_by_file_path(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -75,7 +75,7 @@ async def test_predict_by_file_path(
     assert "s3_url" in result.structured_content
 
 
-@pytest.mark.asyncio
+
 async def test_predict_by_ai_catalog(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -105,7 +105,7 @@ async def test_predict_by_ai_catalog(
         assert "s3_url" in result.structured_content
 
 
-@pytest.mark.asyncio
+
 async def test_predict_from_project_data(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -132,7 +132,7 @@ async def test_predict_from_project_data(
         assert "s3_url" in result.structured_content
 
 
-@pytest.mark.asyncio
+
 async def test_predict_by_file_path_timeout(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -152,7 +152,7 @@ async def test_predict_by_file_path_timeout(
     )
 
 
-@pytest.mark.asyncio
+
 async def test_predict_by_file_path_failure_error(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -171,7 +171,7 @@ async def test_predict_by_file_path_failure_error(
     )
 
 
-@pytest.mark.asyncio
+
 async def test_predict_by_file_path_unsuccessful_error(
     patch_predict_dependencies: dict[str, Any],
 ) -> None:
@@ -232,7 +232,7 @@ def test_make_output_settings() -> None:
     assert key in out["url"]
 
 
-@pytest.mark.asyncio
+
 async def test_get_prediction_explanations_basic() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(
@@ -264,7 +264,7 @@ async def test_get_prediction_explanations_basic() -> None:
     assert result["explanations"][0]["feature1"] == FEATURE_VALUE
 
 
-@pytest.mark.asyncio
+
 async def test_get_prediction_explanations_empty() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(return_value=[])
@@ -290,7 +290,7 @@ async def test_get_prediction_explanations_empty() -> None:
     assert result["ui_panel"] == ["prediction-distribution"]
 
 
-@pytest.mark.asyncio
+
 async def test_get_prediction_explanations_sdk_error() -> None:
     mock_model = MagicMock()
     mock_model.get_or_request_prediction_explanations = MagicMock(

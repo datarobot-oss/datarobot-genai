@@ -28,7 +28,7 @@ from mcp.types import ElicitResult
 from datarobot_genai.drmcp import integration_test_mcp_session
 
 
-@pytest.mark.asyncio
+
 async def test_client_accepts_elicitation():
     """Test that client can accept elicitation requests."""
     accepted_value = "testuser"
@@ -57,7 +57,7 @@ async def test_client_accepts_elicitation():
         )
 
 
-@pytest.mark.asyncio
+
 async def test_client_declines_elicitation():
     """Test that client can decline elicitation requests."""
 
@@ -75,7 +75,7 @@ async def test_client_declines_elicitation():
         ), f"Tool should handle declined elicitation. Got: {result.content}"
 
 
-@pytest.mark.asyncio
+
 async def test_client_cancels_elicitation():
     """Test that client can cancel elicitation requests."""
 
@@ -97,7 +97,7 @@ async def test_client_cancels_elicitation():
         ), f"Tool should handle cancelled elicitation. Got: {result.content}"
 
 
-@pytest.mark.asyncio
+
 async def test_client_handles_form_schema():
     """Test that client can handle elicitation requests with JSON schemas."""
 

@@ -30,7 +30,7 @@ def _custom_model_fixture_dir() -> str:
     )
 
 
-@pytest.mark.asyncio
+
 class TestMCPDeploymentIntegration:
     """Integration tests for MCP deployment tools."""
 

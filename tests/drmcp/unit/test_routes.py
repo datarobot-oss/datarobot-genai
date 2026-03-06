@@ -142,7 +142,7 @@ class TestRoutesCoverage:
             )
             assert found, f"Deployment route {route_pattern} not found in registered routes"
 
-    @pytest.mark.asyncio
+    
     async def test_health_endpoint_execution(self):
         """Test health endpoint execution."""
         # Create a mock that captures the route registration
@@ -167,7 +167,7 @@ class TestRoutesCoverage:
         assert response.status_code == 200
         assert "healthy" in response.body.decode()
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.register_tool_for_deployment_id")
     async def test_add_deployment_endpoint_execution(self, mock_register_tool):
         """Test add deployment endpoint execution."""
@@ -209,7 +209,7 @@ class TestRoutesCoverage:
         assert response.status_code in [200, 201, 404]
         assert "deploymentId" in response.body.decode() or "error" in response.body.decode()
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_registered_tool_deployments")
     async def test_list_deployments_endpoint_execution(self, mock_get_deployments):
         """Test list deployments endpoint execution."""
@@ -244,7 +244,7 @@ class TestRoutesCoverage:
         assert response.status_code == 200
         assert "deployments" in response.body.decode()
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.delete_registered_tool_deployment")
     async def test_delete_deployment_endpoint_execution(self, mock_delete_deployment):
         """Test delete deployment endpoint execution."""
@@ -280,7 +280,7 @@ class TestRoutesCoverage:
         assert response.status_code == 200
         assert "deleted successfully" in response.body.decode()
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_endpoints_execution(self, mock_get_memory_manager):
         """Test memory manager endpoints execution."""
@@ -437,7 +437,7 @@ class TestRoutesAdditionalCoverage:
 
         self.mock_mcp.custom_route = mock_custom_route
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_storage_found_scenarios(self, mock_get_memory_manager):
         """Test memory manager endpoints when storage is found."""
@@ -491,7 +491,7 @@ class TestRoutesAdditionalCoverage:
         response = await get_active_handler(self.mock_request)
         assert response.status_code == 200
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_client_error_scenarios(self, mock_get_memory_manager):
         """Test memory manager endpoints with ClientError scenarios."""
@@ -520,7 +520,7 @@ class TestRoutesAdditionalCoverage:
         response = await clear_handler(self.mock_request)
         assert response.status_code == 404
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_registered_tool_deployments")
     async def test_list_deployments_error_scenario(self, mock_get_deployments):
         """Test list deployments endpoint with error."""
@@ -534,7 +534,7 @@ class TestRoutesAdditionalCoverage:
         assert response.status_code == 500
         assert b"Failed to retrieve deployments" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.delete_registered_tool_deployment")
     async def test_delete_deployment_scenarios(self, mock_delete_deployment):
         """Test delete deployment endpoint scenarios."""
@@ -557,7 +557,7 @@ class TestRoutesAdditionalCoverage:
         response = await delete_handler(self.mock_request)
         assert response.status_code == 500
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_storage_not_found_for_activation(self, mock_get_memory_manager):
         """Test set active storage when storage is not found."""
@@ -599,7 +599,7 @@ class TestRoutesSimpleFinal:
             register_routes(self.mock_mcp)
             assert self.mock_mcp.custom_route.called
 
-    @pytest.mark.asyncio
+    
     async def test_health_endpoint_execution(self):
         """Test health check endpoint execution."""
         registered_routes = {}
@@ -619,7 +619,7 @@ class TestRoutesSimpleFinal:
         assert response.status_code == 200
         assert response.body == b'{"status":"healthy","message":"DataRobot MCP Server is running"}'
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_registered_tool_deployments")
     async def test_list_deployments_endpoint_execution(self, mock_get_deployments):
         """Test list deployments endpoint execution."""
@@ -653,7 +653,7 @@ class TestRoutesSimpleFinal:
             == response.body
         )
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_endpoints_basic(self, mock_get_memory_manager):
         """Test basic memory manager endpoints execution."""
@@ -688,7 +688,7 @@ class TestRoutesSimpleFinal:
         memory_routes = [route for route in registered_routes.keys() if "agent" in route]
         assert len(memory_routes) > 0
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_endpoints_with_errors(self, mock_get_memory_manager):
         """Test memory manager endpoints with error scenarios."""
@@ -717,7 +717,7 @@ class TestRoutesSimpleFinal:
         # Test that routes were registered
         assert len(registered_routes) > 0
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
     async def test_memory_manager_endpoints_with_other_errors(self, mock_get_memory_manager):
         """Test memory manager endpoints with other error scenarios."""
@@ -774,7 +774,7 @@ class TestPromptTemplateRoutes:
 
         self.mock_mcp.custom_route = mock_custom_route
 
-    @pytest.mark.asyncio
+    
     async def test_list_prompt_templates(self):
         """Test list prompt templates endpoint."""
         self.mock_mcp.get_prompt_mapping = AsyncMock(
@@ -805,7 +805,7 @@ class TestPromptTemplateRoutes:
             "count": 2,
         }
 
-    @pytest.mark.asyncio
+    
     async def test_list_prompt_templates_when_error(self):
         """Test list prompt templates endpoint when error occurs."""
         self.mock_mcp.get_prompt_mapping = AsyncMock(side_effect=ValueError("Dummy error"))
@@ -817,7 +817,7 @@ class TestPromptTemplateRoutes:
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
         assert b"Failed to retrieve promptTemplates" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
     async def test_delete_prompt_template(self, delete_prompt_mock: Mock):
         """Test delete prompt template endpoint."""
@@ -831,7 +831,7 @@ class TestPromptTemplateRoutes:
         assert response.status_code == HTTPStatus.OK, response.body
         assert b"Prompt with prompt template id pt1 deleted successfully" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
     async def test_delete_prompt_template_when_does_not_exist(self, delete_prompt_mock: Mock):
         """Test delete prompt template endpoint when does not exist."""
@@ -845,7 +845,7 @@ class TestPromptTemplateRoutes:
         assert response.status_code == HTTPStatus.NOT_FOUND, response.body
         assert b"Prompt with prompt template id pt1 not found" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
     async def test_delete_prompt_template_when_error(self, delete_prompt_mock: Mock):
         """Test delete prompt template endpoint when error occurs."""
@@ -859,7 +859,7 @@ class TestPromptTemplateRoutes:
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
         assert b"Failed to delete prompt" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.register_prompt_from_prompt_template_id_and_version")
     @pytest.mark.parametrize(
         "query_params,prompt_version_id",
@@ -892,7 +892,7 @@ class TestPromptTemplateRoutes:
             "promptTemplateVersionId": prompt_version_id,
         }
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.register_prompt_from_prompt_template_id_and_version")
     async def test_add_prompt_template_when_error(self, add_prompt_mock: Mock):
         """Test add prompt template endpoint when error occurs."""
@@ -906,7 +906,7 @@ class TestPromptTemplateRoutes:
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
         assert b"Failed to add prompt template" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.refresh_registered_prompt_template")
     async def test_refresh_prompt_templates(self, refresh_prompts_mock: Mock):
         """Test refresh prompt templates endpoint."""
@@ -918,7 +918,7 @@ class TestPromptTemplateRoutes:
         assert response.status_code == HTTPStatus.OK, response.body
         assert b"Prompts refreshed successfully" in response.body
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.refresh_registered_prompt_template")
     async def test_refresh_prompt_templates_when_error(self, refresh_prompts_mock: Mock):
         """Test refresh prompt templates endpoint when error occurs."""
@@ -954,7 +954,7 @@ class TestMetadataRoute:
 
         self.mock_mcp.custom_route = mock_custom_route
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_config")
     @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
@@ -1090,7 +1090,7 @@ class TestMetadataRoute:
         assert "gdrive" in config["tool_config"]
         assert "microsoft_graph" in config["tool_config"]
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_config")
     @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
@@ -1153,7 +1153,7 @@ class TestMetadataRoute:
         assert response_data["resources"]["count"] == 0
         assert response_data["resources"]["items"] == []
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_config")
     @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
@@ -1223,7 +1223,7 @@ class TestMetadataRoute:
         assert tool_config["microsoft_graph"]["oauth_required"] is True
         assert tool_config["microsoft_graph"]["oauth_configured"] is True
 
-    @pytest.mark.asyncio
+    
     async def test_metadata_route_error_scenario(self):
         """Test metadata route when error occurs."""
         # Setup mock to raise exception
@@ -1239,7 +1239,7 @@ class TestMetadataRoute:
         assert "error" in response_data
         assert "Failed to retrieve metadata" in response_data["error"]
 
-    @pytest.mark.asyncio
+    
     @patch("datarobot_genai.drmcp.core.routes.get_config")
     @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")

@@ -34,7 +34,7 @@ from datarobot_genai.drmcp.test_utils import elicitation_test_tool  # noqa: F401
 class TestGetUserGreeting:
     """Test cases for get_user_greeting tool."""
 
-    @pytest.mark.asyncio
+    
     async def test_get_user_greeting_with_username_provided(self) -> None:
         """Test get_user_greeting when username is provided (no elicitation needed)."""
         # Get the tool from the MCP instance
@@ -54,7 +54,7 @@ class TestGetUserGreeting:
         assert result["username"] == "testuser"
         assert "testuser" in result["message"]
 
-    @pytest.mark.asyncio
+    
     async def test_get_user_greeting_with_elicitation_accepted(self) -> None:
         """Test get_user_greeting when elicitation is accepted."""
         # Get the tool from the MCP instance
@@ -75,7 +75,7 @@ class TestGetUserGreeting:
         assert "accepted_user" in result["message"]
         mock_ctx.elicit.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_get_user_greeting_with_elicitation_declined(self) -> None:
         """Test get_user_greeting when elicitation is declined."""
         # Get the tool from the MCP instance
@@ -95,7 +95,7 @@ class TestGetUserGreeting:
         assert result["error"] == "Username declined by user"
         assert "cannot generate greeting" in result["message"].lower()
 
-    @pytest.mark.asyncio
+    
     async def test_get_user_greeting_with_elicitation_cancelled(self) -> None:
         """Test get_user_greeting when elicitation is cancelled."""
         # Get the tool from the MCP instance

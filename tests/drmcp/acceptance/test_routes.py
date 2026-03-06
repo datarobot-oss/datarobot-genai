@@ -43,7 +43,7 @@ def _create_prompt_template_with_versions() -> Iterator[tuple[str, str, str, str
     delete_prompt_template(new_prompt_api_id)
 
 
-@pytest.mark.asyncio
+
 class TestCustomRoutesE2E:
     """End-to-end tests for custom routes."""
 

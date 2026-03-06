@@ -60,7 +60,7 @@ def mock_get_http_headers(monkeypatch):
 class TestGetOutboundHeaders:
     """Focused tests for `get_outbound_headers` merging and filtering logic."""
 
-    @pytest.mark.asyncio
+    
     async def test_all_request_forwarded_headers_lowercase(self):
         configured_headers = register.REQUEST_FORWARDED_HEADERS
         configured_headers_lowercased = {h.lower() for h in configured_headers}
@@ -68,7 +68,7 @@ class TestGetOutboundHeaders:
             "REQUEST_FORWARDED_HEADERS must be all lowercase, to ensure case-insensitive matching."
         )
 
-    @pytest.mark.asyncio
+    
     async def test_whitelist_and_spec_override(
         self, mock_get_http_headers, incoming_headers, spec_model
     ):
@@ -85,7 +85,7 @@ class TestGetOutboundHeaders:
         # Spec headers that are not forwarded should still be present
         assert out.get("Spec-Header") == "spec-val"
 
-    @pytest.mark.asyncio
+    
     async def test_case_sensitivity_edge_case_preserves_original_keys(
         self, mock_get_http_headers, spec_model
     ):
@@ -99,7 +99,7 @@ class TestGetOutboundHeaders:
         assert out.get("X-Agent-Id") == "spec-agent"
         assert "x-agent-id" not in out
 
-    @pytest.mark.asyncio
+    
     async def test_sensitive_headers_not_forwarded_by_default(
         self, mock_get_http_headers, spec_model
     ):
@@ -115,7 +115,7 @@ class TestGetOutboundHeaders:
         # Spec headers should still be present
         assert out.get("Spec-Header") == "spec-val"
 
-    @pytest.mark.asyncio
+    
     async def test_empty_incoming_uses_spec_only(self, mock_get_http_headers, spec_model):
         mock_get_http_headers({})
 
@@ -123,7 +123,7 @@ class TestGetOutboundHeaders:
 
         assert out == {"X-Agent-Id": "spec-agent", "Spec-Header": "spec-val"}
 
-    @pytest.mark.asyncio
+    
     async def test_merge_precedence_when_keys_match_casing(self, mock_get_http_headers, spec_model):
         # When key casing matches, spec headers should take precedence
         incoming = {

@@ -32,7 +32,7 @@ def test_load_dotenv() -> None:
     load_dotenv(verbose=True)
 
 
-@pytest.mark.asyncio
+
 async def test_list_deployments_success() -> None:
     mock_client = MagicMock()
     mock_dep1 = MagicMock(id="1", label="dep1")
@@ -52,7 +52,7 @@ async def test_list_deployments_success() -> None:
         assert result.structured_content["deployments"]["2"] == "dep2"
 
 
-@pytest.mark.asyncio
+
 async def test_list_deployments_empty() -> None:
     mock_client = MagicMock()
     mock_client.Deployment.list.return_value = []
@@ -69,7 +69,7 @@ async def test_list_deployments_empty() -> None:
         assert result.structured_content["deployments"] == []
 
 
-@pytest.mark.asyncio
+
 async def test_list_deployments_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
@@ -81,7 +81,7 @@ async def test_list_deployments_error() -> None:
         assert "Error in list_deployments: Exception: fail" == str(exc_info.value)
 
 
-@pytest.mark.asyncio
+
 async def test_get_model_info_from_deployment_success() -> None:
     mock_client = MagicMock()
     mock_deployment = MagicMock()
@@ -102,7 +102,7 @@ async def test_get_model_info_from_deployment_success() -> None:
         assert result.structured_content["project_id"] == "pid"
 
 
-@pytest.mark.asyncio
+
 async def test_get_model_info_from_deployment_not_found() -> None:
     mock_client = MagicMock()
     mock_client.Deployment.get.side_effect = Exception("404 client error: {'message': 'Not Found'}")
@@ -123,7 +123,7 @@ async def test_get_model_info_from_deployment_not_found() -> None:
         )
 
 
-@pytest.mark.asyncio
+
 async def test_get_model_info_from_deployment_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
@@ -135,7 +135,7 @@ async def test_get_model_info_from_deployment_error() -> None:
         assert "Error in get_model_info_from_deployment: Exception: fail" == str(exc_info.value)
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_model_success() -> None:
     mock_client = MagicMock()
     mock_server = MagicMock(id="srv1")
@@ -158,7 +158,7 @@ async def test_deploy_model_success() -> None:
         assert result.structured_content["label"] == "Test Deployment"
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_model_no_prediction_servers() -> None:
     mock_client = MagicMock()
     mock_client.PredictionServer.list.return_value = []
@@ -176,7 +176,7 @@ async def test_deploy_model_no_prediction_servers() -> None:
         assert "No prediction servers available" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_model_error() -> None:
     mock_client = MagicMock()
     mock_client.PredictionServer.list.side_effect = Exception("fail servers")
@@ -201,14 +201,14 @@ def _custom_model_fixture_dir() -> str:
     return str(Path(__file__).resolve().parent / "fixtures" / "custom_model")
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_validation_missing_model_folder() -> None:
     with pytest.raises(ToolError) as exc_info:
         await deployment.deploy_custom_model(name="x", target_type="Binary", target_name="t")
     assert "model_folder" in str(exc_info.value).lower() or "missing" in str(exc_info.value).lower()
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_validation_missing_name() -> None:
     folder = _custom_model_fixture_dir()
     with pytest.raises(ToolError) as exc_info:
@@ -218,7 +218,7 @@ async def test_deploy_custom_model_validation_missing_name() -> None:
     assert "name" in str(exc_info.value).lower()
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_validation_folder_not_directory() -> None:
     with pytest.raises(ToolError) as exc_info:
         await deployment.deploy_custom_model(
@@ -230,7 +230,7 @@ async def test_deploy_custom_model_validation_folder_not_directory() -> None:
     assert "not a directory" in str(exc_info.value) or "nonexistent" in str(exc_info.value).lower()
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_mocked_success() -> None:
     folder = _custom_model_fixture_dir()
     model_file = os.path.join(folder, "custom.py")
@@ -266,7 +266,7 @@ async def test_deploy_custom_model_mocked_success() -> None:
     assert result.structured_content["custom_model_id"] == "cm1"
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_no_model_file_raises_tool_error() -> None:
     fixture_dir = Path(_custom_model_fixture_dir())
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -284,7 +284,7 @@ async def test_deploy_custom_model_no_model_file_raises_tool_error() -> None:
         assert "model_file_path" in err
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_explicit_model_file_path_nonexistent_raises_error() -> None:
     """model_file_path given but file missing: raise ToolError (no silent fallback)."""
     fixture_dir = Path(_custom_model_fixture_dir())
@@ -312,7 +312,7 @@ async def test_deploy_custom_model_explicit_model_file_path_nonexistent_raises_e
         assert nonexistent in err or "nonexistent" in err.lower()
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds() -> None:
     folder = _custom_model_fixture_dir()
     provided_path = os.path.join(folder, "custom.py")
@@ -340,7 +340,7 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
     assert result.structured_content["deployment_id"] == "d"
 
 
-@pytest.mark.asyncio
+
 async def test_deploy_custom_model_impl_no_prediction_servers_raises_error() -> None:
     """deploy_custom_model_impl checks prediction servers first; no resources created when none."""
     fixture_dir = Path(_custom_model_fixture_dir())

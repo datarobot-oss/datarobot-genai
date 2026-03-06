@@ -173,7 +173,7 @@ class TestMicrosoftGraphClient:
             ]
         }
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_success(
         self, mock_access_token: str, mock_search_response: dict
     ) -> None:
@@ -191,7 +191,7 @@ class TestMicrosoftGraphClient:
                 assert results[1].id == "item2"
                 assert results[1].is_folder is True
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_with_site_url(
         self, mock_access_token: str, mock_search_response: dict
     ) -> None:
@@ -217,7 +217,7 @@ class TestMicrosoftGraphClient:
                 results = await client.search_content("test query")
                 assert len(results) == 2
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_empty_query(self, mock_access_token: str) -> None:
         """Test search with empty query raises error."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -225,7 +225,7 @@ class TestMicrosoftGraphClient:
                 await client.search_content("")
             assert "cannot be empty" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_size_validation(
         self, mock_access_token: str, mock_search_response: dict
     ) -> None:
@@ -241,7 +241,7 @@ class TestMicrosoftGraphClient:
                 # Verify the request was made (size validation happens before request)
                 assert True  # If we get here, size was validated
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_http_error_403(self, mock_access_token: str) -> None:
         """Test search with 403 Forbidden error."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -258,7 +258,7 @@ class TestMicrosoftGraphClient:
                     await client.search_content("test")
                 assert "403" in str(exc_info.value) or "permissions" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_http_error_400(self, mock_access_token: str) -> None:
         """Test search with 400 Bad Request error."""
         error_response = {"error": {"message": "Invalid request parameters"}}
@@ -276,7 +276,7 @@ class TestMicrosoftGraphClient:
                     await client.search_content("test")
                 assert "400" in str(exc_info.value) or "invalid" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
+    
     async def test_get_site_id_from_url(self, mock_access_token: str) -> None:
         """Test getting site ID from site URL."""
         site_url = "https://tenant.sharepoint.com/sites/sitename"
@@ -293,7 +293,7 @@ class TestMicrosoftGraphClient:
                 site_id2 = await client._get_site_id()
                 assert site_id2 == "site123"
 
-    @pytest.mark.asyncio
+    
     async def test_get_site_id_root_site(self, mock_access_token: str) -> None:
         """Test getting root site ID when no site_url provided."""
         root_site_response = {"id": "root123"}
@@ -304,7 +304,7 @@ class TestMicrosoftGraphClient:
                 site_id = await client._get_site_id()
                 assert site_id == "root123"
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_with_filters(
         self, mock_access_token: str, mock_search_response: dict
     ) -> None:
@@ -326,7 +326,7 @@ class TestMicrosoftGraphClient:
                 assert "fileType:docx" in query_string
                 assert "size>1000" in query_string
 
-    @pytest.mark.asyncio
+    
     async def test_search_content_with_entity_types(
         self, mock_access_token: str, mock_search_response: dict
     ) -> None:
@@ -371,7 +371,7 @@ class TestMicrosoftGraphClientCreateFile:
             },
         }
 
-    @pytest.mark.asyncio
+    
     async def test_create_file_success(
         self, mock_access_token: str, mock_created_file_response: dict
     ) -> None:
@@ -399,7 +399,7 @@ class TestMicrosoftGraphClientCreateFile:
                 assert call_args[1]["headers"]["Content-Type"] == "text/plain"
                 assert b"This is the report content." in call_args[1]["content"]
 
-    @pytest.mark.asyncio
+    
     async def test_create_file_validation_errors(self, mock_access_token: str) -> None:
         """Test validation errors for empty drive_id and file_name."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -409,7 +409,7 @@ class TestMicrosoftGraphClientCreateFile:
             with pytest.raises(MicrosoftGraphError, match="file_name cannot be empty"):
                 await client.create_file(drive_id="drive123", file_name="", content="Content")
 
-    @pytest.mark.asyncio
+    
     async def test_create_file_http_errors(self, mock_access_token: str) -> None:
         """Test HTTP error handling (403, 404, 409, 429)."""
         error_cases = [
@@ -471,7 +471,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
             "lastModifiedDateTime": "2025-01-15T12:00:00Z",
         }
 
-    @pytest.mark.asyncio
+    
     async def test_update_list_item_metadata_success(
         self, mock_access_token: str, mock_list_item_fields_response: dict
     ) -> None:
@@ -496,7 +496,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                 # Verify payload
                 assert call_args[1]["json"] == {"Status": "Approved", "Priority": "High"}
 
-    @pytest.mark.asyncio
+    
     async def test_update_drive_item_metadata_success(
         self, mock_access_token: str, mock_drive_item_response: dict
     ) -> None:
@@ -523,7 +523,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     "description": "Updated",
                 }
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_empty_item_id_error(self, mock_access_token: str) -> None:
         """Test validation error for empty item_id."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -543,7 +543,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     list_id="list789",
                 )
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_empty_fields_error(self, mock_access_token: str) -> None:
         """Test validation error for empty fields_to_update."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -555,7 +555,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     list_id="list789",
                 )
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_missing_context_error(self, mock_access_token: str) -> None:
         """Test validation error when neither SharePoint nor drive context provided."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -565,7 +565,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     fields_to_update={"Status": "Approved"},
                 )
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_both_contexts_error(self, mock_access_token: str) -> None:
         """Test validation error when both SharePoint and drive context provided."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -578,7 +578,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     drive_id="drive000",
                 )
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_http_error_403(self, mock_access_token: str) -> None:
         """Test HTTP 403 Forbidden error handling."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -600,7 +600,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     )
                 assert "permission denied" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_http_error_404(self, mock_access_token: str) -> None:
         """Test HTTP 404 Not Found error handling."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:
@@ -621,7 +621,7 @@ class TestMicrosoftGraphClientUpdateMetadata:
                     )
                 assert "not found" in str(exc_info.value).lower()
 
-    @pytest.mark.asyncio
+    
     async def test_update_metadata_http_error_409(self, mock_access_token: str) -> None:
         """Test HTTP 409 Conflict error handling."""
         async with MicrosoftGraphClient(access_token=mock_access_token) as client:

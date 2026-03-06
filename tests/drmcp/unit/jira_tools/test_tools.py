@@ -199,7 +199,7 @@ def jira_client_transition_issue_error_mock() -> Iterator[None]:
 class TestJiraSearchIssues:
     """Jira search issues tool test."""
 
-    @pytest.mark.asyncio
+    
     async def test_jira_search_issues_happy_path(
         self, get_atlassian_access_token_mock: None, jira_client_search_issues_mock: list[Issue]
     ) -> None:
@@ -227,7 +227,7 @@ class TestJiraSearchIssues:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    @pytest.mark.asyncio
+    
     async def test_jira_search_issues_when_error_in_client(
         self, get_atlassian_access_token_mock: None, jira_client_search_issues_error_mock: None
     ) -> None:
@@ -241,7 +241,7 @@ class TestJiraSearchIssues:
 class TestJiraGetIssue:
     """Jira get issue tool test."""
 
-    @pytest.mark.asyncio
+    
     async def test_jira_get_issue_happy_path(
         self, get_atlassian_access_token_mock: None, jira_client_get_issue_mock: Issue
     ) -> None:
@@ -264,7 +264,7 @@ class TestJiraGetIssue:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    @pytest.mark.asyncio
+    
     async def test_jira_get_issue_when_error_in_client(
         self, get_atlassian_access_token_mock: None, jira_client_get_issue_error_mock: None
     ) -> None:
@@ -278,7 +278,7 @@ class TestJiraGetIssue:
 class TestJiraCreateIssue:
     """Jira create issue tool test."""
 
-    @pytest.mark.asyncio
+    
     async def test_jira_create_issue_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -300,7 +300,7 @@ class TestJiraCreateIssue:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    @pytest.mark.asyncio
+    
     async def test_jira_create_issue_when_not_existing_issue_type(
         self,
         get_atlassian_access_token_mock: None,
@@ -320,7 +320,7 @@ class TestJiraCreateIssue:
                 description=description,
             )
 
-    @pytest.mark.asyncio
+    
     async def test_jira_create_issue_when_error_in_client_while_getting_issue_types(
         self,
         get_atlassian_access_token_mock: None,
@@ -340,7 +340,7 @@ class TestJiraCreateIssue:
                 description=description,
             )
 
-    @pytest.mark.asyncio
+    
     async def test_jira_create_issue_when_error_in_client_while_creating(
         self,
         get_atlassian_access_token_mock: None,
@@ -365,7 +365,7 @@ class TestJiraCreateIssue:
 class TestJiraUpdateIssue:
     """Jira update issue tool test."""
 
-    @pytest.mark.asyncio
+    
     async def test_jira_update_issue_happy_path(
         self, get_atlassian_access_token_mock: None, jira_client_update_issue_mock: list[str]
     ) -> None:
@@ -382,7 +382,7 @@ class TestJiraUpdateIssue:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    @pytest.mark.asyncio
+    
     async def test_jira_update_issue_when_error_in_client(
         self, get_atlassian_access_token_mock: None, jira_client_update_issue_error_mock: None
     ) -> None:
@@ -397,7 +397,7 @@ class TestJiraUpdateIssue:
 class TestJiraTransitionIssue:
     """Jira transition issue tool test."""
 
-    @pytest.mark.asyncio
+    
     async def test_jira_transition_issue_happy_path(
         self,
         get_atlassian_access_token_mock: None,
@@ -421,7 +421,7 @@ class TestJiraTransitionIssue:
         assert json.loads(content[0].text) == expected
         assert structured_content == expected
 
-    @pytest.mark.asyncio
+    
     async def test_jira_transition_issue_when_not_existing_transitions_name(
         self,
         get_atlassian_access_token_mock: None,
@@ -434,7 +434,7 @@ class TestJiraTransitionIssue:
         with pytest.raises(ToolError, match="Unexpected transition name"):
             await jira_transition_issue(issue_key=issue_key, transition_name=transition_name)
 
-    @pytest.mark.asyncio
+    
     async def test_jira_transition_issue_when_error_in_client_while_getting_available_transitions(
         self,
         get_atlassian_access_token_mock: None,
@@ -447,7 +447,7 @@ class TestJiraTransitionIssue:
         with pytest.raises(ToolError):
             await jira_transition_issue(issue_key=issue_key, transition_name=transition_name)
 
-    @pytest.mark.asyncio
+    
     async def test_jira_transition_issue_when_error_in_client_while_transitioning(
         self,
         get_atlassian_access_token_mock: None,

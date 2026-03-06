@@ -162,7 +162,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         assert a2a_config_used.host == dragent_worker.front_end_config.host
         assert a2a_config_used.port == dragent_worker.front_end_config.port
 
-    @pytest.mark.asyncio
+    
     async def test_add_routes_patches_agent_card_url(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
@@ -175,7 +175,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             await dragent_worker.add_routes(app, mock_builder)
         assert mock_a2a_worker.create_agent_card.return_value.url == "http://localhost:8000/a2a/"
 
-    @pytest.mark.asyncio
+    
     async def test_add_routes_mounts_a2a(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
@@ -190,7 +190,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_a2a_worker.create_agent_executor.assert_called_once()
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_add_routes_registers_shutdown_handler(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
@@ -204,7 +204,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         shutdown_handlers = [h for h in app.router.on_shutdown]
         assert dragent_worker._cleanup_a2a_worker in shutdown_handlers
 
-    @pytest.mark.asyncio
+    
     async def test_add_routes_disabled(self, dragent_worker, mock_builder, patch_super_add_routes):
         app = FastAPI()
         with (
@@ -244,13 +244,13 @@ class TestDRAgentFastApiFrontEndConfig:
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
-    @pytest.mark.asyncio
+    
     async def test_cleanup_closes_a2a_worker(self, dragent_worker, mock_a2a_worker):
         dragent_worker._a2a_worker = mock_a2a_worker
         await dragent_worker._cleanup_a2a_worker()
         mock_a2a_worker.cleanup.assert_awaited_once()
 
-    @pytest.mark.asyncio
+    
     async def test_cleanup_noop_when_no_a2a_worker(self, dragent_worker):
         assert dragent_worker._a2a_worker is None
         await dragent_worker._cleanup_a2a_worker()  # should not raise

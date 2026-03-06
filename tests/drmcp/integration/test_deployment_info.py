@@ -21,7 +21,7 @@ from mcp.types import TextContent
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 
 
-@pytest.mark.asyncio
+
 class TestMCPDeploymentInfoIntegration:
     """Integration tests for MCP deployment info tools (multiclass project)."""
 

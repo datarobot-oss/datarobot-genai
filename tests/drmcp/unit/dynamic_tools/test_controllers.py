@@ -99,7 +99,7 @@ def mock_external_dependencies():
 class TestToolRegistration:
     """Tests for tool registration functionality."""
 
-    @pytest.mark.asyncio
+    
     async def test_register_tool_with_deployment_description(
         self,
         deployment_id,
@@ -127,7 +127,7 @@ class TestToolRegistration:
         assert registered_tools[0].name == "weather_tool"
         assert registered_tools[0].description == "Get weather for cities"
 
-    @pytest.mark.asyncio
+    
     async def test_register_multiple_tools(
         self,
         deployment_id,
@@ -167,7 +167,7 @@ class TestToolRegistration:
 class TestDeploymentListing:
     """Tests for deployment listing functionality."""
 
-    @pytest.mark.asyncio
+    
     async def test_get_registered_deployments_with_data(self, mcp_server):
         """Test listing registered deployments when deployments exist."""
         # Setup - add test deployments directly to MCP
@@ -186,7 +186,7 @@ class TestDeploymentListing:
         internal_mappings = await mcp_server.get_deployment_mapping()
         assert internal_mappings == expected_mappings
 
-    @pytest.mark.asyncio
+    
     async def test_get_registered_deployments_when_empty(self, mcp_server):
         """Test listing registered deployments when no deployments exist."""
         result = await get_registered_tool_deployments()
@@ -201,7 +201,7 @@ class TestDeploymentListing:
 class TestDeploymentDeletion:
     """Tests for deployment deletion functionality."""
 
-    @pytest.mark.asyncio
+    
     async def test_delete_existing_deployment_with_logging(
         self,
         deployment_id,
@@ -232,7 +232,7 @@ class TestDeploymentDeletion:
         expected_log_msg = f"Deleted tool weather_tool for deployment {deployment_id}"
         mock_logger.info.assert_called_once_with(expected_log_msg)
 
-    @pytest.mark.asyncio
+    
     async def test_delete_nonexistent_deployment(
         self,
         deployment_id,
@@ -262,7 +262,7 @@ class TestDeploymentDeletion:
         expected_debug_msg = "No tool registered for deployment deployment-999"
         mock_logger.debug.assert_called_once_with(expected_debug_msg)
 
-    @pytest.mark.asyncio
+    
     async def test_delete_from_empty_deployments(self, mcp_server):
         """Test deletion when no deployments are registered."""
         result = await delete_registered_tool_deployment("any-deployment")
@@ -273,7 +273,7 @@ class TestDeploymentDeletion:
         final_mappings = await mcp_server.get_deployment_mapping()
         assert final_mappings == {}
 
-    @pytest.mark.asyncio
+    
     async def test_delete_multiple_deployments_sequentially(
         self,
         deployment_id,
@@ -324,7 +324,7 @@ class TestDeploymentDeletion:
 class TestIntegratedWorkflow:
     """Tests for complete workflow integration."""
 
-    @pytest.mark.asyncio
+    
     async def test_complete_deployment_lifecycle(
         self,
         deployment_id,

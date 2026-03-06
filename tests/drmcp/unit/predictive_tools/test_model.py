@@ -40,7 +40,7 @@ def _patch_model_client(mock_client: MagicMock):
     )
 
 
-@pytest.mark.asyncio
+
 async def test_get_best_model_success() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
@@ -61,7 +61,7 @@ async def test_get_best_model_success() -> None:
     assert result.structured_content["best_model"]["metrics"]["AUC"]["validation"] == expected_auc
 
 
-@pytest.mark.asyncio
+
 async def test_get_best_model_no_models() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
@@ -76,7 +76,7 @@ async def test_get_best_model_no_models() -> None:
             await model.get_best_model(project_id="pid", metric="AUC")
 
 
-@pytest.mark.asyncio
+
 async def test_get_best_model_project_not_found() -> None:
     mock_client = MagicMock()
     mock_client.Project.get.return_value = None
@@ -89,7 +89,7 @@ async def test_get_best_model_project_not_found() -> None:
             await model.get_best_model(project_id="pid", metric="AUC")
 
 
-@pytest.mark.asyncio
+
 async def test_get_best_model_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
@@ -101,7 +101,7 @@ async def test_get_best_model_error() -> None:
         assert "Error in get_best_model: Exception: fail" == str(exc_info.value)
 
 
-@pytest.mark.asyncio
+
 async def test_score_dataset_with_model_success() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
@@ -125,7 +125,7 @@ async def test_score_dataset_with_model_success() -> None:
     assert result.structured_content["scoring_job_id"] == "jobid"
 
 
-@pytest.mark.asyncio
+
 async def test_score_dataset_with_model_project_not_found() -> None:
     project_id = "pid"
     mock_client = MagicMock()
@@ -145,7 +145,7 @@ async def test_score_dataset_with_model_project_not_found() -> None:
     )
 
 
-@pytest.mark.asyncio
+
 async def test_score_dataset_with_model_model_not_found() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
@@ -165,7 +165,7 @@ async def test_score_dataset_with_model_model_not_found() -> None:
     )
 
 
-@pytest.mark.asyncio
+
 async def test_score_dataset_with_model_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",

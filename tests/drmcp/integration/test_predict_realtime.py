@@ -37,7 +37,7 @@ def _is_shap_not_supported_error(result: Any) -> bool:
     return False
 
 
-@pytest.mark.asyncio
+
 class TestMCPRealtimePredictToolsIntegration:
     """Integration tests for MCP realtime predict tools."""
 

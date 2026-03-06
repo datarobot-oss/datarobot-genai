@@ -23,7 +23,7 @@ from datarobot_genai.drmcp.core.utils import get_tool_tags
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 
 
-@pytest.mark.asyncio
+
 class TestCoreUtilsIntegration:
     """Integration tests for core/utils.py functions."""
 

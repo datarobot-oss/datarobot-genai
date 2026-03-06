@@ -77,7 +77,7 @@ class TestRegisterPrompt:
         ) as mock_func:
             yield mock_func
 
-    @pytest.mark.asyncio
+    
     async def test_check_prompt_registration_status_after_it_finishes_succeeds(
         self,
         mock_datarobot_mcp_server: Mock,
@@ -94,7 +94,7 @@ class TestRegisterPrompt:
 
         mock_datarobot_mcp_server.get_prompts.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_check_prompt_registration_status_after_it_finishes_fails(
         self,
         mock_datarobot_mcp_server: Mock,
@@ -108,7 +108,7 @@ class TestRegisterPrompt:
             )
             mock_datarobot_mcp_server.get_prompts.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_register_prompt_with_proper_tool_category(
         self,
         mock_check_prompt_registration_status_after_it_finishes: Mock,

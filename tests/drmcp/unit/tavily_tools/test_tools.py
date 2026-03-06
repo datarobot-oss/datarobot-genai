@@ -37,7 +37,7 @@ def mock_tavily_auth() -> Iterator[None]:
 class TestTavilySearch:
     """Tests for tavily_search tool."""
 
-    @pytest.mark.asyncio
+    
     async def test_basic_search(self, mock_tavily_auth: None) -> None:
         """Test basic search returns expected structure."""
         mock_response = TavilySearchResults.from_tavily_sdk(
@@ -61,7 +61,7 @@ class TestTavilySearch:
         _, structured = result.to_mcp_result()
         assert structured["resultCount"] == 1
 
-    @pytest.mark.asyncio
+    
     async def test_search_with_answer_and_images(self, mock_tavily_auth: None) -> None:
         """Test search with answer and images."""
         mock_response = TavilySearchResults.from_tavily_sdk(
@@ -85,7 +85,7 @@ class TestTavilySearch:
 class TestTavilyMap:
     """Tests for tavily_map tool."""
 
-    @pytest.mark.asyncio
+    
     async def test_map_default(self, mock_tavily_auth: None) -> None:
         """Test map returns expected things."""
         mock_response = TavilyMapResults(
@@ -103,7 +103,7 @@ class TestTavilyMap:
         assert len(structured["results"]) == 2
         assert structured["usageCredits"] is None
 
-    @pytest.mark.asyncio
+    
     async def test_map_with_include_usage(self, mock_tavily_auth: None) -> None:
         """Test map returns expected things."""
         mock_response = TavilyMapResults(
@@ -126,7 +126,7 @@ class TestTavilyMap:
 class TestTavilyCrawl:
     """Tests for tavily_crawl tool."""
 
-    @pytest.mark.asyncio
+    
     async def test_basic_crawl(self, mock_tavily_auth: None) -> None:
         """Test basic crawl returns expected structure."""
         mock_response = TavilyCrawlResults.from_tavily_sdk(

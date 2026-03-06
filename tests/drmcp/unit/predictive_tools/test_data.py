@@ -23,7 +23,7 @@ from fastmcp.tools.tool import ToolResult
 from datarobot_genai.drtools.predictive import data
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_success() -> None:
     with (
         patch(
@@ -54,7 +54,7 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
         }
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
     with (
         patch(
@@ -86,7 +86,7 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
         }
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
     with (
         patch(
@@ -114,7 +114,7 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
             await data.upload_dataset_to_ai_catalog(file_url="https:notavalidurl/somefile.csv")
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     with (
         patch(
@@ -134,7 +134,7 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
             await data.upload_dataset_to_ai_catalog()
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> None:
     with (
         patch(
@@ -156,7 +156,7 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
             )
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
     with (
         patch(
@@ -174,7 +174,7 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
             await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
 
 
-@pytest.mark.asyncio
+
 async def test_upload_dataset_to_ai_catalog_error() -> None:
     with (
         patch(
@@ -194,7 +194,7 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
         assert "fail" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
+
 async def test_list_ai_catalog_items_success() -> None:
     with (
         patch(
@@ -221,7 +221,7 @@ async def test_list_ai_catalog_items_success() -> None:
         assert result.structured_content["datasets"]["2"] == "ds2"
 
 
-@pytest.mark.asyncio
+
 async def test_list_ai_catalog_items_empty() -> None:
     with (
         patch(
@@ -239,7 +239,7 @@ async def test_list_ai_catalog_items_empty() -> None:
         assert result.structured_content["datasets"] == []
 
 
-@pytest.mark.asyncio
+
 async def test_list_ai_catalog_items_error() -> None:
     with (
         patch(

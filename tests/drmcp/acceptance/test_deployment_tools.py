@@ -37,7 +37,7 @@ def _custom_model_fixture_dir() -> str:
     )
 
 
-@pytest.mark.asyncio
+
 class TestDeployCustomModelE2E(ToolBaseE2E):
     """E2E tests for deploy_custom_model when a DataRobot environment is available."""
 
