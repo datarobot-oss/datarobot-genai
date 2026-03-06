@@ -79,7 +79,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config,
         # so we must pass it a full Config with the A2AFrontEndConfig substituted in.
         nat_config = self._config.model_copy(
-            update={"general": self._config.general.model_copy(update={"front_end": self.front_end_config.a2a})}
+            update={
+                "general": self._config.general.model_copy(
+                    update={"front_end": self.front_end_config.a2a}
+                )
+            }
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 

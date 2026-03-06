@@ -140,17 +140,27 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 worker._get_a2a_endpoint_url("http://localhost:8000/")
 
     @pytest.mark.asyncio
-    async def test_add_routes_patches_agent_card_url(self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes):
+    async def test_add_routes_patches_agent_card_url(
+        self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
+    ):
         app = FastAPI()
         mock_a2a_worker.create_agent_card.return_value = MagicMock(url="http://localhost:8000/")
-        with patch("datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker", return_value=mock_a2a_worker):
+        with patch(
+            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+            return_value=mock_a2a_worker,
+        ):
             await dragent_worker.add_routes(app, mock_builder)
         assert mock_a2a_worker.create_agent_card.return_value.url == "http://localhost:8000/a2a/"
 
     @pytest.mark.asyncio
-    async def test_add_routes_mounts_a2a(self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes):
+    async def test_add_routes_mounts_a2a(
+        self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
+    ):
         app = FastAPI()
-        with patch("datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker", return_value=mock_a2a_worker):
+        with patch(
+            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+            return_value=mock_a2a_worker,
+        ):
             await dragent_worker.add_routes(app, mock_builder)
 
         mock_a2a_worker.create_agent_card.assert_awaited_once()
@@ -162,7 +172,9 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         app = FastAPI()
         with (
             patch("datarobot_genai.dragent.frontserver.A2AConfig") as mock_config_cls,
-            patch("datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker") as mock_a2a_worker_cls,
+            patch(
+                "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker"
+            ) as mock_a2a_worker_cls,
         ):
             mock_config_cls.return_value.expose_a2a_server_endpoints = False
             await dragent_worker.add_routes(app, mock_builder)
@@ -205,7 +217,6 @@ class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
     async def test_cleanup_noop_when_no_a2a_worker(self, dragent_worker):
         assert dragent_worker._a2a_worker is None
         await dragent_worker.cleanup()  # should not raise
-
 
 
 class TestDRAgentFastApiFrontEndPlugin:
