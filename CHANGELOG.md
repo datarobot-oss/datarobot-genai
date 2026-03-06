@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.6.13
 - Add `x-datarobot-identity-token` to `HEADER_TOKEN_CANDIDATE_NAMES`
 
+## 0.6.12
+- Add Mem0 for storing agent memory capabilities
+
 ## 0.6.11
 - Fixed AG-UI event serialization
 
