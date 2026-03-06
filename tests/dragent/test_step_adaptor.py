@@ -689,3 +689,74 @@ def test_adaptor_processes_nested_reasoning_steps(
         )
         for j, (actual_ev, expected_ev) in enumerate(zip(actual_resp.events, expected_resp.events)):
             assert actual_ev == expected_ev, f"Response {i} event {j}: {actual_ev} != {expected_ev}"
+
+
+def test_adaptor_streaming_emits_start_on_first_token(step_adaptor):
+    """LLM_START followed by LLM_NEW_TOKEN tokens: TextMessageStartEvent is emitted on the
+    first token, not on LLM_START, so that it precedes the first content chunk."""
+    msg_id = str(uuid.uuid4())
+    ancestry = InvocationNode(
+        function_id="agent", function_name="agent", parent_id=None, parent_name=None
+    )
+
+    def make_step(event_type, chunk=""):
+        return IntermediateStep(
+            parent_id="root",
+            function_ancestry=ancestry,
+            payload=IntermediateStepPayload(
+                event_type=event_type,
+                name="claude-3-5-haiku@20241022",
+                UUID=msg_id,
+                data=StreamEventData(input=None, output=None, chunk=chunk),
+            ),
+        )
+
+    # Simulate FUNCTION_START so function_level == 1 (primary function)
+    function_step = IntermediateStep(
+        parent_id="root",
+        function_ancestry=ancestry,
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.FUNCTION_START,
+            name="agent",
+            UUID=str(uuid.uuid4()),
+            data=StreamEventData(input=None, output=None),
+        ),
+    )
+    step_adaptor.process(function_step)
+
+    # LLM_START should emit TextMessageStartEvent (before first token is known)
+    llm_start_resp = step_adaptor.process(make_step(IntermediateStepType.LLM_START))
+    assert llm_start_resp.events == [TextMessageStartEvent(message_id=msg_id)]
+
+    # First LLM_NEW_TOKEN: TextMessageStartEvent + content chunk
+    first_token_resp = step_adaptor.process(make_step(IntermediateStepType.LLM_NEW_TOKEN, "Hello"))
+    assert first_token_resp.events == [
+        TextMessageStartEvent(message_id=msg_id),
+        TextMessageContentEvent(message_id=msg_id, delta="Hello"),
+    ]
+
+    # Second LLM_NEW_TOKEN: only content chunk (no duplicate start)
+    second_token_resp = step_adaptor.process(
+        make_step(IntermediateStepType.LLM_NEW_TOKEN, " world")
+    )
+    assert second_token_resp.events == [
+        TextMessageContentEvent(message_id=msg_id, delta=" world"),
+    ]
+
+    # LLM_END: only TextMessageEndEvent (no duplicate start/content since tokens were streamed)
+    llm_end_step = IntermediateStep(
+        parent_id="root",
+        function_ancestry=ancestry,
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.LLM_END,
+            name="claude-3-5-haiku@20241022",
+            UUID=msg_id,
+            data=StreamEventData(
+                input=None,
+                output="Hello world",
+                payload=SimpleNamespace(text="Hello world", message=SimpleNamespace(tool_calls=[])),
+            ),
+        ),
+    )
+    llm_end_resp = step_adaptor.process(llm_end_step)
+    assert llm_end_resp.events == [TextMessageEndEvent(message_id=msg_id)]
