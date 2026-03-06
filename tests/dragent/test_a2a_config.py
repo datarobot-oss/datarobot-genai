@@ -27,4 +27,3 @@ class TestA2AConfig:
     def test_expose_a2a_server_endpoints_disabled(self):
         with patch.dict(os.environ, {"EXPOSE_A2A_SERVER_ENDPOINTS": "false"}):
             assert A2AConfig().expose_a2a_server_endpoints is False
-
