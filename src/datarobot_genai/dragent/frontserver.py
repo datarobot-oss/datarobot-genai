@@ -98,7 +98,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.mount("/a2a", a2a_app)
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
-        logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent.json")
+        logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
 
     def build_app(self) -> FastAPI:
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
