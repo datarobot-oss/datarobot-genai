@@ -14,6 +14,7 @@
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
@@ -95,16 +96,29 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         a2a_app = a2a_server.build()
         app.mount("/a2a", a2a_app)
-        app.add_event_handler("shutdown", self._cleanup_a2a_worker)
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent.json")
 
-    async def _cleanup_a2a_worker(self) -> None:
-        """Clean up A2A worker resources on shutdown."""
-        if self._a2a_worker is not None:
-            await self._a2a_worker.cleanup()
-            logger.info("A2A worker resources cleaned up")
+    def build_app(self) -> FastAPI:
+        """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
+        app = super().build_app()
+
+        # app.router.lifespan_context is the lifespan set by the parent's build_app().
+        # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.
+        # (app.add_event_handler("shutdown", ...) is silently ignored when a lifespan is set.)
+        parent_lifespan = app.router.lifespan_context
+
+        @asynccontextmanager
+        async def lifespan(lifespan_app: FastAPI):
+            async with parent_lifespan(lifespan_app):
+                yield
+            if self._a2a_worker is not None:
+                await self._a2a_worker.cleanup()
+                logger.info("A2A worker resources cleaned up")
+
+        app.router.lifespan_context = lifespan
+        return app
 
     async def add_health_route(self, app: FastAPI) -> None:
         """Add a health check endpoint to the FastAPI app."""

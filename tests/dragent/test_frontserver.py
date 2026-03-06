@@ -191,20 +191,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
     
-    async def test_add_routes_registers_shutdown_handler(
-        self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
-    ):
-        app = FastAPI()
-        with patch(
-            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
-            return_value=mock_a2a_worker,
-        ):
-            await dragent_worker.add_routes(app, mock_builder)
-
-        shutdown_handlers = [h for h in app.router.on_shutdown]
-        assert dragent_worker._cleanup_a2a_worker in shutdown_handlers
-
-    
     async def test_add_routes_disabled(self, dragent_worker, mock_builder, patch_super_add_routes):
         app = FastAPI()
         with (
@@ -244,16 +230,45 @@ class TestDRAgentFastApiFrontEndConfig:
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
-    
-    async def test_cleanup_closes_a2a_worker(self, dragent_worker, mock_a2a_worker):
+    async def test_a2a_worker_cleanup_called_on_lifespan_exit(
+        self, dragent_worker, mock_a2a_worker
+    ):
         dragent_worker._a2a_worker = mock_a2a_worker
-        await dragent_worker._cleanup_a2a_worker()
+
+        parent_app = FastAPI()
+
+        @asynccontextmanager
+        async def fake_lifespan(app):
+            yield
+
+        parent_app.router.lifespan_context = fake_lifespan
+
+        with patch.object(dragent_worker, "build_app", wraps=dragent_worker.build_app):
+            with patch.object(
+                type(dragent_worker).__bases__[0], "build_app", return_value=parent_app
+            ):
+                app = dragent_worker.build_app()
+
+        with TestClient(app):
+            mock_a2a_worker.cleanup.assert_not_awaited()
         mock_a2a_worker.cleanup.assert_awaited_once()
 
-    
     async def test_cleanup_noop_when_no_a2a_worker(self, dragent_worker):
-        assert dragent_worker._a2a_worker is None
-        await dragent_worker._cleanup_a2a_worker()  # should not raise
+        parent_app = FastAPI()
+
+        @asynccontextmanager
+        async def fake_lifespan(app):
+            yield
+
+        parent_app.router.lifespan_context = fake_lifespan
+
+        with patch.object(
+            type(dragent_worker).__bases__[0], "build_app", return_value=parent_app
+        ):
+            app = dragent_worker.build_app()
+
+        with TestClient(app):
+            pass  # should not raise
 
 
 class TestDRAgentFastApiFrontEndPlugin:
