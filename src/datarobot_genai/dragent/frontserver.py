@@ -13,16 +13,19 @@
 # limitations under the License.
 
 import logging
+import os
 
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.dragent.a2a_config import A2AConfig
 from datarobot_genai.dragent.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -32,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._a2a_worker: A2AFrontEndPluginWorker | None = None
+
     def get_step_adaptor(self) -> StepAdaptor:
         return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
 
@@ -45,6 +52,46 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._session_managers.append(sm)
 
         return sm
+
+    def _get_a2a_endpoint_url(self, default_url: str) -> str:
+        """Construct the A2A endpoint URL.
+
+        In a DataRobot deployment, uses the deployment's direct access URL.
+        Otherwise, appends the /a2a/ mount path to the default base URL.
+        """
+        mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
+        if mlops_deployment_id:
+            datarobot_endpoint = os.getenv("DATAROBOT_ENDPOINT", "")
+            return f"{datarobot_endpoint}/deployments/{mlops_deployment_id}/directAccess/a2a/"
+        return default_url.rstrip("/") + "/a2a/"
+
+    async def add_routes(self, app: FastAPI, builder: WorkflowBuilder):
+        await super().add_routes(app, builder)
+
+        if not A2AConfig().expose_a2a_server_endpoints:
+            logger.info("A2A server endpoints are disabled")
+            return
+
+        workflow = await builder.build()
+
+        self._a2a_worker = A2AFrontEndPluginWorker(self._config)
+
+        agent_card = await self._a2a_worker.create_agent_card(workflow)
+        agent_card.url = self._get_a2a_endpoint_url(agent_card.url)
+        agent_executor = self._a2a_worker.create_agent_executor(workflow, builder)
+        a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
+
+        a2a_app = a2a_server.build()
+        app.mount("/a2a", a2a_app)
+
+        logger.info("Mounted A2A server endpoints at /a2a")
+        logger.info("The A2A agent card can be accessed at: /a2a/.well-known/agent-card.json")
+
+    async def cleanup(self):
+        """Clean up resources."""
+        if self._a2a_worker is not None:
+            await self._a2a_worker.cleanup()
+            logger.info("A2A worker resources cleaned up")
 
     async def add_health_route(self, app: FastAPI) -> None:
         """Add a health check endpoint to the FastAPI app."""
