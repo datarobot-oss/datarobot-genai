@@ -79,9 +79,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         workflow = await builder.build()
 
-        # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config,
-        # so we must pass it a full Config with the A2AFrontEndConfig substituted in.
-        # We also inherit host/port from the FastAPI config so the agent card URL is correct.
+        # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config.
+        # We must pass it a full Config with the A2AFrontEndConfig substituted in.
+        # We also inherit host/port from the FastAPI config so the agent card URL is gets mounted
+        # under the correct endpoint.
         a2a_config = self.front_end_config.a2a.model_copy(
             update={"host": self.front_end_config.host, "port": self.front_end_config.port}
         )
@@ -92,7 +93,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         agent_card = await self._a2a_worker.create_agent_card(workflow)
         # TODO: A newer NAT version adds `public_base_url` to `A2AFrontEndConfig`, which would
-        # let us set the public URL directly in the config instead of patching it here.
+        # let us set the public URL directly in the config instead of replacing it here.
         # Once we upgrade NAT, replace _get_a2a_endpoint_url with public_base_url.
         agent_card.url = self._get_a2a_endpoint_url(agent_card.url)
         agent_executor = self._a2a_worker.create_agent_executor(workflow, builder)
