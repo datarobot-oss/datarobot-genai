@@ -94,6 +94,7 @@ HEADER_TOKEN_CANDIDATE_NAMES = [
     "authorization",
     "x-datarobot-api-token",
     "x-datarobot-api-key",
+    "x-datarobot-identity-token",
 ]
 
 
