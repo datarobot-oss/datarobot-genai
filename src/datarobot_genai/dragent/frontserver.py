@@ -14,6 +14,7 @@
 
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -90,6 +91,9 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
         agent_card = await self._a2a_worker.create_agent_card(workflow)
+        # TODO: A newer NAT version adds `public_base_url` to `A2AFrontEndConfig`, which would
+        # let us set the public URL directly in the config instead of patching it here.
+        # Once we upgrade NAT, replace _get_a2a_endpoint_url with public_base_url.
         agent_card.url = self._get_a2a_endpoint_url(agent_card.url)
         agent_executor = self._a2a_worker.create_agent_executor(workflow, builder)
         a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
@@ -110,7 +114,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         parent_lifespan = app.router.lifespan_context
 
         @asynccontextmanager
-        async def lifespan(lifespan_app: FastAPI):
+        async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
             async with parent_lifespan(lifespan_app):
                 yield
             if self._a2a_worker is not None:
