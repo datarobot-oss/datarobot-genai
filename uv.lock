@@ -1154,7 +1154,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.6.13"
+version = "0.6.14"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1313,6 +1313,7 @@ nat = [
     { name = "crewai", marker = "python_full_version >= '3.11'" },
     { name = "datarobot" },
     { name = "datarobot-predict" },
+    { name = "httpx" },
     { name = "llama-index-llms-litellm" },
     { name = "nvidia-nat", marker = "python_full_version >= '3.11'" },
     { name = "nvidia-nat-a2a", marker = "python_full_version >= '3.11'" },
@@ -1411,6 +1412,7 @@ requires-dist = [
     { name = "fastmcp", marker = "extra == 'drtools'", specifier = ">=2.13.0.2,<3.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
+    { name = "httpx", marker = "extra == 'nat'", specifier = ">=0.27.0,<1.0.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
