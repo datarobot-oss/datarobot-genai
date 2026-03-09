@@ -12,6 +12,8 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
 dynamic = ["optional-dependencies"]
 
+# Optional dependencies (extras) are defined in setup.py
+
 [project.urls]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
