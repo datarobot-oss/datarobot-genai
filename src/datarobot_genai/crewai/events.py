@@ -27,6 +27,11 @@ from crewai.events.event_bus import CrewAIEventsBus
 from crewai.events.event_types import AgentExecutionCompletedEvent
 from crewai.events.event_types import AgentExecutionStartedEvent
 from crewai.events.event_types import CrewKickoffStartedEvent
+from crewai.events.event_types import AgentReasoningStartedEvent
+from crewai.events.event_types import AgentReasoningCompletedEvent
+from crewai.events.event_types import AgentReasoningFailedEvent
+from crewai.events.event_types import TaskCompletedEvent
+from crewai.events.event_types import TaskStartedEvent
 from crewai.events.event_types import ToolUsageFinishedEvent
 from crewai.events.event_types import ToolUsageStartedEvent
 
@@ -57,6 +62,27 @@ class CrewAIRagasEventListener:
         @crewai_event_bus.on(AgentExecutionCompletedEvent)
         def on_agent_execution_completed(_: Any, event: Any) -> None:
             self.messages.append(AIMessage(content=event.output, tool_calls=[]))
+
+        @crewai_event_bus.on(AgentReasoningStartedEvent)
+        def on_agent_reasoning_started(_: Any, event: Any) -> None:
+            # breakpoint()
+            self.messages.append(AIMessage(content=event.type, tool_calls=[]))
+
+        @crewai_event_bus.on(AgentReasoningCompletedEvent)
+        def on_agent_reasoning_completed(_: Any, event: Any) -> None:
+            self.messages.append(AIMessage(content=event.plan, tool_calls=[]))
+
+        @crewai_event_bus.on(TaskCompletedEvent)
+        def on_agent_task_completed(_: Any, event: Any) -> None:
+            self.messages.append(
+                AIMessage(
+                    content=f"Task output: '{json.dumps(event.output.json_dict)}'", tool_calls=[]
+                )
+            )
+
+        @crewai_event_bus.on(TaskStartedEvent)
+        def on_agent_task_started(_: Any, event: Any) -> None:
+            self.messages.append(AIMessage(content=event.context, tool_calls=[]))
 
         @crewai_event_bus.on(ToolUsageStartedEvent)
         def on_tool_usage_started(_: Any, event: Any) -> None:

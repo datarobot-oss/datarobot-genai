@@ -34,9 +34,14 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from crewai import Crew
 from crewai.events import crewai_event_bus
 from crewai.tools import BaseTool
+from crewai.types.streaming import CrewStreamingOutput
+from crewai.types.stremaing import StreamChunkType
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -161,7 +166,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
+        breakpoint()
 
+        zero_metrics: UsageMetrics = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+        }
         # Partial AG-UI: workflow lifecycle + text message events
         yield (
             RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
@@ -198,25 +209,72 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         kickoff_inputs["chat_history"] = (
                             f"\n\nPrior conversation:\n{history_summary}"
                         )
+                message_id = str(uuid.uuid4())
 
                 crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
 
-                response_text = str(crew_output.raw)
-                pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                    ragas_event_listener.messages
-                )
-                usage_metrics = self._extract_usage_metrics(crew_output)
+                if isinstance(crew_output, CrewStreamingOutput):
+                    current_task = ""
+                    text_started = False
+                    async for chunk in crew_output:
+                        # Show task transitions
+                        if chunk.task_name != current_task:
+                            current_task = chunk.task_name
+                            print(f"\n[{chunk.agent_role}] Working on: {chunk.task_name}")
+                            print("-" * 60)
 
-                if response_text:
-                    yield (
-                        TextMessageChunkEvent(
-                            type=EventType.TEXT_MESSAGE_CHUNK,
-                            message_id=str(uuid.uuid4()),
-                            delta=response_text,
-                        ),
-                        None,
-                        usage_metrics,
+                        # Display text chunks
+                        if chunk.chunk_type == StreamChunkType.TEXT:
+                            print(chunk.content, end="", flush=True)
+                            if not text_started:
+                                yield (
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                            text_started = True
+                            usage_metrics = self._extract_usage_metrics(crew_output)
+                            yield (
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
+                                    message_id=message_id,
+                                    delta=chunk.content,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
+                        # Display tool calls
+                        elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
+                            print(f"\nUsing tool: {chunk.tool_call.tool_name}")
+
+                    if text_started:
+                        yield (
+                            TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END, message_id=message_id
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                else:
+                    response_text = str(crew_output.raw)
+                    pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                        ragas_event_listener.messages
                     )
+                    usage_metrics = self._extract_usage_metrics(crew_output)
+
+                    if response_text:
+                        yield (
+                            TextMessageChunkEvent(
+                                type=EventType.TEXT_MESSAGE_CHUNK,
+                                message_id=message_id,
+                                delta=response_text,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
 
                 yield (
                     RunFinishedEvent(

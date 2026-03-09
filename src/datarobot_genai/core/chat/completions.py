@@ -124,7 +124,7 @@ async def agent_chat_completion_wrapper(
         pipeline_interactions = None
         usage_metrics = default_usage_metrics()
         received_run_finished = False
-
+        breakpoint()
         async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
             # When we work in non-streaming mode, we only send back the final message
             # It is because of limitation of completions interface we can not send back the
