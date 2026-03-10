@@ -37,7 +37,8 @@ class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"
     a2a: A2AFrontEndConfig = Field(default_factory=A2AFrontEndConfig)
     expose_a2a_server_endpoints: bool = Field(
         default=False,
-        description="Expose this agent as an A2A server endpoint.",
+        description="Expose this agent via the Agent2Agent protocol. "
+                    "A2A server endpoints are mounted under /a2a/.",
     )
 
 
