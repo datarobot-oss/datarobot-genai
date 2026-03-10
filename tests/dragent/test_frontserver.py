@@ -45,10 +45,11 @@ def dragent_worker():
     config = Config(
         general=GeneralConfig(
             front_end=DRAgentFastApiFrontEndConfig(
+                expose_a2a_server_endpoints=True,
                 a2a=A2AFrontEndConfig(
                     name="Test Agent",
                     description="A test agent",
-                )
+                ),
             )
         )
     )
@@ -191,16 +192,20 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
 
-    async def test_add_routes_disabled(self, dragent_worker, mock_builder, patch_super_add_routes):
+    async def test_add_routes_disabled(self, mock_builder, patch_super_add_routes):
+        """When expose_a2a_server_endpoints is False (default), A2A routes are not mounted."""
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(expose_a2a_server_endpoints=False)
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            disabled_worker = DRAgentFastApiFrontEndPluginWorker(config)
         app = FastAPI()
-        with (
-            patch("datarobot_genai.dragent.frontserver.A2AConfig") as mock_config_cls,
-            patch(
-                "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker"
-            ) as mock_a2a_worker_cls,
-        ):
-            mock_config_cls.return_value.expose_a2a_server_endpoints = False
-            await dragent_worker.add_routes(app, mock_builder)
+        with patch(
+            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker"
+        ) as mock_a2a_worker_cls:
+            await disabled_worker.add_routes(app, mock_builder)
             mock_a2a_worker_cls.assert_not_called()
 
 
@@ -228,6 +233,14 @@ class TestDRAgentFastApiFrontEndConfig:
         config = DRAgentFastApiFrontEndConfig()
         assert not isinstance(config, A2AFrontEndConfig)
 
+    def test_expose_a2a_server_endpoints_default_false(self):
+        config = DRAgentFastApiFrontEndConfig()
+        assert config.expose_a2a_server_endpoints is False
+
+    def test_expose_a2a_server_endpoints_can_be_enabled(self):
+        config = DRAgentFastApiFrontEndConfig(expose_a2a_server_endpoints=True)
+        assert config.expose_a2a_server_endpoints is True
+
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
     @pytest.mark.asyncio
@@ -254,7 +267,7 @@ class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
             mock_a2a_worker.cleanup.assert_not_awaited()
         mock_a2a_worker.cleanup.assert_awaited_once()
 
-    
+
     async def test_cleanup_noop_when_no_a2a_worker(self, dragent_worker):
         parent_app = FastAPI()
 
