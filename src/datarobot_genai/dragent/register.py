@@ -29,6 +29,7 @@ from datarobot_genai.dragent.converters import (
 )
 from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
+import datarobot_genai.dragent.per_user_tool_calling_agent  # noqa: F401 — registers per_user_tool_calling_agent
 
 
 # Register frontend
