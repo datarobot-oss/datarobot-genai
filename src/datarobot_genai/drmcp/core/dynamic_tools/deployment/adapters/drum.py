@@ -53,7 +53,7 @@ class DrumTargetType(str, Enum):
 
 def _load_schema_json(name: str) -> dict[str, Any]:
     """Load a JSON schema from the package schemas directory (works from wheel or source)."""
-    ref = importlib.resources.files(_DEPLOYMENT_PKG).joinpath("schemas", name)
+    ref = importlib.resources.files(_DEPLOYMENT_PKG).joinpath("schemas").joinpath(name)
     return json.loads(ref.read_text())
 
 
