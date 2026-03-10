@@ -46,6 +46,7 @@ from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.data_models.step_adaptor import StepAdaptorMode
 
 from datarobot_genai.dragent.response import DRAgentEventResponse
+from datarobot_genai.dragent.step_adaptor import DRAgentEmptyStepAdaptor
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
@@ -688,3 +689,79 @@ def test_adaptor_processes_nested_reasoning_steps(
         )
         for j, (actual_ev, expected_ev) in enumerate(zip(actual_resp.events, expected_resp.events)):
             assert actual_ev == expected_ev, f"Response {i} event {j}: {actual_ev} != {expected_ev}"
+
+
+def _make_tool_start_step(tool_call_id: str, data_input, metadata: TraceMetadata) -> IntermediateStep:
+    return IntermediateStep(
+        parent_id="root",
+        function_ancestry=InvocationNode(
+            function_id="root", function_name="root", parent_id=None, parent_name=None
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.TOOL_START,
+            name="my_tool",
+            UUID=tool_call_id,
+            data=StreamEventData(input=data_input, output=None),
+            metadata=metadata,
+        ),
+    )
+
+
+class TestHandleToolArgsEncoding:
+    """Tests for the tool_inputs / data.input fallback logic in _handle_tool."""
+
+    def test_tool_inputs_dict_used_when_present(self, step_adaptor):
+        """metadata.tool_inputs (dict) takes precedence; result must be valid JSON."""
+        tool_call_id = str(uuid.uuid4())
+        inputs = {"param": "value", "count": 3}
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input="{'param': 'value', 'count': 3}",  # LangChain-style non-JSON string
+            metadata=TraceMetadata(tool_inputs=inputs),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == json.dumps(inputs)
+
+    def test_data_input_dict_serialized_to_json(self, step_adaptor):
+        """When tool_inputs is absent, a dict data.input is JSON-serialized."""
+        tool_call_id = str(uuid.uuid4())
+        input_dict = {"key": "val"}
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input=input_dict,
+            metadata=TraceMetadata(),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == json.dumps(input_dict)
+
+    def test_data_input_none_produces_empty_json_object(self, step_adaptor):
+        """When both tool_inputs and data.input are absent, delta defaults to '{}'."""
+        tool_call_id = str(uuid.uuid4())
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input=None,
+            metadata=TraceMetadata(),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == "{}"
+
+
+class TestDRAgentEmptyStepAdaptor:
+    def test_process_always_returns_none(self):
+        adaptor = DRAgentEmptyStepAdaptor(StepAdaptorConfig())
+        step = IntermediateStep(
+            parent_id="root",
+            function_ancestry=InvocationNode(
+                function_id="root", function_name="root", parent_id=None, parent_name=None
+            ),
+            payload=IntermediateStepPayload(
+                event_type=IntermediateStepType.CUSTOM_START,
+                name="anything",
+                UUID=str(uuid.uuid4()),
+                data=StreamEventData(input=None, output=None),
+            ),
+        )
+        assert adaptor.process(step) is None
