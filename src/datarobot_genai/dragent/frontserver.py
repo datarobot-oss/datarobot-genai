@@ -27,7 +27,6 @@ from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
 
-from datarobot_genai.dragent.a2a_config import A2AConfig
 from datarobot_genai.dragent.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -73,7 +72,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
 
-        if not A2AConfig().expose_a2a_server_endpoints:
+        if not self.front_end_config.expose_a2a_server_endpoints:
             logger.info("A2A server endpoints are disabled")
             return
 

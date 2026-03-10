@@ -34,6 +34,10 @@ from datarobot_genai.dragent.converters import convert_tool_message_to_str
 # Register frontend
 class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"):  # type: ignore
     a2a: A2AFrontEndConfig = Field(default_factory=A2AFrontEndConfig)
+    expose_a2a_server_endpoints: bool = Field(
+        default=False,
+        description="Expose this agent as an A2A server endpoint.",
+    )
 
 
 @register_front_end(config_type=DRAgentFastApiFrontEndConfig)
