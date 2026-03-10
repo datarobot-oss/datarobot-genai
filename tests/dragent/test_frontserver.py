@@ -191,7 +191,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_a2a_worker.create_agent_executor.assert_called_once()
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
-
     async def test_add_routes_disabled(self, mock_builder, patch_super_add_routes):
         """When expose_a2a_server_endpoints is False (default), A2A routes are not mounted."""
         config = Config(
@@ -267,7 +266,6 @@ class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
             mock_a2a_worker.cleanup.assert_not_awaited()
         mock_a2a_worker.cleanup.assert_awaited_once()
 
-
     async def test_cleanup_noop_when_no_a2a_worker(self, dragent_worker):
         parent_app = FastAPI()
 
@@ -277,9 +275,7 @@ class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
 
         parent_app.router.lifespan_context = fake_lifespan
 
-        with patch.object(
-            type(dragent_worker).__bases__[0], "build_app", return_value=parent_app
-        ):
+        with patch.object(type(dragent_worker).__bases__[0], "build_app", return_value=parent_app):
             app = dragent_worker.build_app()
 
         with TestClient(app):
