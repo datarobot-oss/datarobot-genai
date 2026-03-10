@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.14
+- Fix CVE-2026-25580: upgrade `pydantic-ai-slim` to `>=1.56.0`, bump `openai` to `>=2.0.0` and `anthropic` to `~=0.78.0`, drop `bedrock` extra
+
 ## 0.6.13
 - Added `x-datarobot-identity-token` to `HEADER_TOKEN_CANDIDATE_NAMES`
 
