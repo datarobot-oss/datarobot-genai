@@ -35,7 +35,9 @@ from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
 
 
-class PerUserToolCallAgentWorkflowConfig(ToolCallAgentWorkflowConfig, name="per_user_tool_calling_agent"):
+class PerUserToolCallAgentWorkflowConfig(
+    ToolCallAgentWorkflowConfig, name="per_user_tool_calling_agent"
+):
     """Per-user version of tool_calling_agent.
 
     Identical to ``tool_calling_agent`` in every way except that it is instantiated
