@@ -87,6 +87,7 @@ nat = core + [
     "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
     "anyio==4.11.0",
     "httpx>=0.27.0,<1.0.0",
+    "sseclient-py>=1.8.0,<2.0.0",
 ]
 
 pydanticai = core + [
