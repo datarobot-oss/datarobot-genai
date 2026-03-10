@@ -691,7 +691,9 @@ def test_adaptor_processes_nested_reasoning_steps(
             assert actual_ev == expected_ev, f"Response {i} event {j}: {actual_ev} != {expected_ev}"
 
 
-def _make_tool_start_step(tool_call_id: str, data_input, metadata: TraceMetadata) -> IntermediateStep:
+def _make_tool_start_step(
+    tool_call_id: str, data_input, metadata: TraceMetadata
+) -> IntermediateStep:
     return IntermediateStep(
         parent_id="root",
         function_ancestry=InvocationNode(

@@ -36,7 +36,8 @@ from nat.data_models.api_server import ChatResponse
 
 
 class PerUserToolCallAgentWorkflowConfig(
-    ToolCallAgentWorkflowConfig, name="per_user_tool_calling_agent"  # type: ignore[call-arg]
+    ToolCallAgentWorkflowConfig,
+    name="per_user_tool_calling_agent",  # type: ignore[call-arg]
 ):
     """Per-user version of tool_calling_agent.
 
