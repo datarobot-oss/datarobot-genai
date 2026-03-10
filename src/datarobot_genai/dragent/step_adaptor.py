@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 
 from ag_ui.core import CustomEvent
@@ -216,7 +217,18 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(
                 ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID)
             )
-            events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=payload.data.input))
+            # Prefer metadata.tool_inputs (a proper dict, set by all framework callback
+            # handlers) over data.input, which varies by framework: LangChain sets it to
+            # a Python repr string (single-quoted, not valid JSON), LlamaIndex sets it to
+            # a dict, and Agno leaves it unset. ToolCallArgsEvent.delta must be valid JSON.
+            tool_inputs = getattr(payload.metadata, "tool_inputs", None)
+            if isinstance(tool_inputs, dict):
+                args_delta = json.dumps(tool_inputs)
+            elif payload.data.input is not None:
+                args_delta = json.dumps(payload.data.input) if not isinstance(payload.data.input, str) else payload.data.input
+            else:
+                args_delta = "{}"
+            events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=args_delta))
         elif payload.event_type == IntermediateStepType.TOOL_END:
             events.append(ToolCallEndEvent(tool_call_id=payload.UUID))
             tool_outputs = GlobalTypeConverter.get().convert(payload.metadata.tool_outputs, str)
