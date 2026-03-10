@@ -282,7 +282,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.71.1"
+version = "0.78.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -294,9 +294,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/05/4b/19620875841f692fdc35eb58bf0201c8ad8c47b8443fecbf1b225312175b/anthropic-0.71.1.tar.gz", hash = "sha256:a77d156d3e7d318b84681b59823b2dee48a8ac508a3e54e49f0ab0d074e4b0da", size = 493294, upload-time = "2025-10-28T17:28:42.213Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/51/32849a48f9b1cfe80a508fd269b20bd8f0b1357c70ba092890fde5a6a10b/anthropic-0.78.0.tar.gz", hash = "sha256:55fd978ab9b049c61857463f4c4e9e092b24f892519c6d8078cee1713d8af06e", size = 509136, upload-time = "2026-02-05T17:52:04.986Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/68/b2f988b13325f9ac9921b1e87f0b7994468014e1b5bd3bdbd2472f5baf45/anthropic-0.71.1-py3-none-any.whl", hash = "sha256:6ca6c579f0899a445faeeed9c0eb97aa4bdb751196262f9ccc96edfc0bb12679", size = 355020, upload-time = "2025-10-28T17:28:40.653Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/03/2f50931a942e5e13f80e24d83406714672c57964be593fc046d81369335b/anthropic-0.78.0-py3-none-any.whl", hash = "sha256:2a9887d2e99d1b0f9fe08857a1e9fe5d2d4030455dbf9ac65aab052e2efaeac4", size = 405485, upload-time = "2026-02-05T17:52:03.674Z" },
 ]
 
 [package.optional-dependencies]
@@ -1345,7 +1345,7 @@ pydanticai = [
     { name = "opentelemetry-instrumentation-requests" },
     { name = "opentelemetry-instrumentation-threading" },
     { name = "pyarrow" },
-    { name = "pydantic-ai-slim", extra = ["ag-ui", "anthropic", "bedrock", "cli", "cohere", "evals", "fastmcp", "google", "groq", "huggingface", "logfire", "mcp", "mistral", "openai", "retries", "vertexai"] },
+    { name = "pydantic-ai-slim", extra = ["ag-ui", "anthropic", "cli", "cohere", "evals", "fastmcp", "google", "groq", "huggingface", "logfire", "mcp", "mistral", "openai", "retries", "vertexai"] },
     { name = "pyjwt" },
     { name = "ragas" },
     { name = "requests" },
@@ -1378,7 +1378,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
-    { name = "anthropic", marker = "extra == 'crewai'", specifier = "~=0.71.0,<1.0.0" },
+    { name = "anthropic", marker = "extra == 'crewai'", specifier = "~=0.78.0" },
     { name = "anyio", marker = "extra == 'nat'", specifier = "==4.11.0" },
     { name = "azure-ai-inference", marker = "extra == 'crewai'", specifier = ">=1.0.0b9,<2.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
@@ -1430,14 +1430,14 @@ requires-dist = [
     { name = "nvidia-nat-mcp", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11' and extra == 'dragent'", specifier = "==1.4.1" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
-    { name = "openai", marker = "extra == 'core'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'crewai'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'dragent'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'drmcp'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'langgraph'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'nat'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'pydanticai'", specifier = ">=1.76.2,<2.0.0" },
+    { name = "openai", marker = "extra == 'core'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'crewai'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'dragent'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'nat'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'pydanticai'", specifier = ">=2.0.0,<=2.11.0" },
     { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
@@ -1503,7 +1503,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'auth'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drtools'", specifier = ">=2.6.1,<3.0.0" },
-    { name = "pydantic-ai-slim", extras = ["ag-ui", "anthropic", "bedrock", "cli", "cohere", "evals", "fastmcp", "google", "groq", "huggingface", "logfire", "mcp", "mistral", "openai", "retries", "vertexai"], marker = "extra == 'pydanticai'", specifier = ">=1.0.5,<1.9.0" },
+    { name = "pydantic-ai-slim", extras = ["ag-ui", "anthropic", "cli", "cohere", "evals", "fastmcp", "google", "groq", "huggingface", "logfire", "mcp", "mistral", "openai", "retries", "vertexai"], marker = "extra == 'pydanticai'", specifier = ">=1.56.0,<2.0.0" },
     { name = "pydantic-settings", marker = "extra == 'drmcp'", specifier = ">=2.1.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'core'", specifier = ">=2.10.1,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'crewai'", specifier = ">=2.10.1,<3.0.0" },
@@ -2573,7 +2573,7 @@ wheels = [
 
 [[package]]
 name = "instructor"
-version = "1.12.0"
+version = "1.14.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2582,7 +2582,6 @@ dependencies = [
     { name = "jinja2" },
     { name = "jiter" },
     { name = "openai" },
-    { name = "pre-commit" },
     { name = "pydantic" },
     { name = "pydantic-core" },
     { name = "requests" },
@@ -2590,9 +2589,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/4d/cc37bc2bb0fcd9584f4935ecb5f4b23d33c63ddeea20d899d4d99f72a69a/instructor-1.12.0.tar.gz", hash = "sha256:f0e4dd7f275120f49200df0204af6a2d4e3e2f1f698b6b8c0f776e3a8c977e54", size = 69892486, upload-time = "2025-10-27T18:47:55.191Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/ef/986d059424db204ed57b29d8c07fda35de2a2c72dee8ea7994bc90a6f767/instructor-1.14.5.tar.gz", hash = "sha256:fcb6432867f2fe4a5986e8bf389dcc64ed2ad4039a12a2dff85464e51c2f171a", size = 69950754, upload-time = "2026-01-29T14:18:50.454Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/8a/af9e30cd9ec64ab595a39996fe761cf2c7ce47475a9607559e3ddf25104a/instructor-1.12.0-py3-none-any.whl", hash = "sha256:88c2161c5ac7ccb60f9b9fc3e93e6a5750a0a28f2927d835b7d198018c3165d9", size = 157906, upload-time = "2025-10-27T18:47:52.007Z" },
+    { url = "https://files.pythonhosted.org/packages/45/04/e442e1356c97b03a6d30d2b462f7c0bdfbf207e75f6833815fd1225a75b4/instructor-1.14.5-py3-none-any.whl", hash = "sha256:2a5a31222b008c0989be1cc001e33a237f49506e80ac5833f6d36d7690bae7b1", size = 177445, upload-time = "2026-01-29T14:18:53.641Z" },
 ]
 
 [[package]]
@@ -4835,7 +4834,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "1.109.1"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -4847,9 +4846,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/a1/a303104dc55fc546a3f6914c842d3da471c64eec92043aef8f652eb6c524/openai-1.109.1.tar.gz", hash = "sha256:d173ed8dbca665892a6db099b4a2dfac624f94d20a93f46eb0b56aae940ed869", size = 564133, upload-time = "2025-09-24T13:00:53.075Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/8c/aa6aea6072f985ace9d6515046b9088ff00c157f9654da0c7b1e129d9506/openai-2.11.0.tar.gz", hash = "sha256:b3da01d92eda31524930b6ec9d7167c535e843918d7ba8a76b1c38f1104f321e", size = 624540, upload-time = "2025-12-11T19:11:58.539Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/2a/7dd3d207ec669cacc1f186fd856a0f61dbc255d24f6fdc1a6715d6051b0f/openai-1.109.1-py3-none-any.whl", hash = "sha256:6bcaf57086cf59159b8e27447e4e7dd019db5d29a438072fbd49c290c7e65315", size = 948627, upload-time = "2025-09-24T13:00:50.754Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/f1/d9251b565fce9f8daeb45611e3e0d2f7f248429e40908dcee3b6fe1b5944/openai-2.11.0-py3-none-any.whl", hash = "sha256:21189da44d2e3d027b08c7a920ba4454b8b7d6d30ae7e64d9de11dbe946d4faa", size = 1064131, upload-time = "2025-12-11T19:11:56.816Z" },
 ]
 
 [[package]]
@@ -6076,7 +6075,7 @@ email = [
 
 [[package]]
 name = "pydantic-ai-slim"
-version = "1.8.0"
+version = "1.60.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
@@ -6088,9 +6087,9 @@ dependencies = [
     { name = "pydantic-graph" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/5e/79aded9ff0d594e5876e909a390a6356d02ab2ebc8ebec663df73eb3c659/pydantic_ai_slim-1.8.0.tar.gz", hash = "sha256:fa4552f95fc4b11f4dfea48aed64d3d047ab4ec46e411bfa7206f6dc7cefe468", size = 284428, upload-time = "2025-10-29T15:38:57.66Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/97/f73f439f3d415d43f38250f76852121188d0ef6114ec702e84e7d69c301d/pydantic_ai_slim-1.60.0.tar.gz", hash = "sha256:12ba3e6ef933fcb9fc6a307dbdaa43ca15bbc1b8ec77521afd1b7a526d12330f", size = 418839, upload-time = "2026-02-17T00:33:29.672Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/c1/f4016d1c944d9820dad53cef2cd618a09c9bcbc8254fcf2da1a78b2a77f8/pydantic_ai_slim-1.8.0-py3-none-any.whl", hash = "sha256:3c7d5dd6d701cde489f7895b1a674a75f1efbd80107c48f2986afc13db684062", size = 375721, upload-time = "2025-10-29T15:38:41.584Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/40/8cb494a4d2ba62b5f92ae8bc79a2abbbf8509cb692edd4bc841695187780/pydantic_ai_slim-1.60.0-py3-none-any.whl", hash = "sha256:6865188a225a2979c82bb022a299d438d805d258c6d3f9810f7fe4e3c86af80a", size = 546410, upload-time = "2026-02-17T00:33:21.901Z" },
 ]
 
 [package.optional-dependencies]
@@ -6100,9 +6099,6 @@ ag-ui = [
 ]
 anthropic = [
     { name = "anthropic" },
-]
-bedrock = [
-    { name = "boto3" },
 ]
 cli = [
     { name = "argcomplete" },
@@ -6139,6 +6135,7 @@ mistral = [
 ]
 openai = [
     { name = "openai" },
+    { name = "tiktoken" },
 ]
 retries = [
     { name = "tenacity" },
@@ -6240,7 +6237,7 @@ wheels = [
 
 [[package]]
 name = "pydantic-evals"
-version = "1.8.0"
+version = "1.60.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -6250,14 +6247,14 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/aa/a2/01fe4c000f6835fd660407137879489823e60845996b6ae07b313d1ce584/pydantic_evals-1.8.0.tar.gz", hash = "sha256:0cc9375a3165d28e5a8119c20575ca567be36d73f61308f15aa9c13931d7e837", size = 46981, upload-time = "2025-10-29T15:38:59.098Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/2c/bed606a726b09adc9ee414bdb919ffe499edf7f8c631ba03b0ff3aa34435/pydantic_evals-1.60.0.tar.gz", hash = "sha256:ae3edd6667075acd8ef04c0d6fffb1ebe72c37ff077295fdbd6319e59284580b", size = 54214, upload-time = "2026-02-17T00:33:31.697Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/89/fd3370ae50d5bf6d38ee44204917e8025215417c51c035f27cee0b52354b/pydantic_evals-1.8.0-py3-none-any.whl", hash = "sha256:2a8a05369f9f6eba2e340537be55539fc5a2614d3ba686e6bdf4584afb613f57", size = 56125, upload-time = "2025-10-29T15:38:43.317Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/a2/60790b2c971f6ce78fea2db2b65800489982c341ad9aa6db750070a93dcd/pydantic_evals-1.60.0-py3-none-any.whl", hash = "sha256:7a7414535002cae63ba0d0d9b15c6e72c28252cf120290b18372c9852c91fcfe", size = 65278, upload-time = "2026-02-17T00:33:23.411Z" },
 ]
 
 [[package]]
 name = "pydantic-graph"
-version = "1.8.0"
+version = "1.60.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -6265,9 +6262,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/90/bc60627d328b0bdf868401383324628128c9b70db1db7a66e0605fea9726/pydantic_graph-1.8.0.tar.gz", hash = "sha256:3b9426021febde25b6e12aa5f7b62893ffa8623ce5daea0b43182d7e547c8de2", size = 56937, upload-time = "2025-10-29T15:39:00.194Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e6/1cae7cd39ab29f2eebc87c0a82c7ffcdfbe88492d2fb4afaaad91534e1ff/pydantic_graph-1.60.0.tar.gz", hash = "sha256:9710e457c2f8c113fd63629f05174e45bdca917d90c69ec8cf558649f995505f", size = 58492, upload-time = "2026-02-17T00:33:32.66Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/ce/8322172018eaf71bbffdad6cc33cade4b33b253303006c5b89741e2be0ca/pydantic_graph-1.8.0-py3-none-any.whl", hash = "sha256:b816596e133302bb36ac2577459547152f2dab284e8640da5066d240d0bdf5a5", size = 70915, upload-time = "2025-10-29T15:38:44.892Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/6c/ce1c0eca77c6efbf7c7168c05a244c2756bde876a52575f750471d522024/pydantic_graph-1.60.0-py3-none-any.whl", hash = "sha256:741fa1e48424b0def86079a01100ad0652e75882f0352cd157232b75ace468a5", size = 72345, upload-time = "2026-02-17T00:33:25.077Z" },
 ]
 
 [[package]]

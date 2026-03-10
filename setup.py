@@ -25,7 +25,7 @@ core = [
     "requests>=2.32.4,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
-    "openai>=1.76.2,<2.0.0",
+    "openai>=2.0.0,<=2.11.0",
     "ragas>=0.3.8,<0.4.0",
     "pyjwt>=2.10.1,<3.0.0",
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
@@ -47,7 +47,7 @@ dragent = core + [
 ]
 
 crewai = core + [
-    "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
+    "anthropic~=0.78.0",  # Needed for integration with anthropic endpoints; bumped from ~=0.71.0 for pydantic-ai-slim CVE-2026-25580
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.1.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
@@ -89,7 +89,8 @@ nat = core + [
 ]
 
 pydanticai = core + [
-    "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
+    # CVE-2026-25580: SSRF fix requires >=1.56.0. bedrock extra dropped due to boto3 conflict with nvidia-nat/aiobotocore.
+    "pydantic-ai-slim[ag-ui,anthropic,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.56.0,<2.0.0",
 ]
 
 # drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
@@ -113,7 +114,7 @@ drtools = [
 # drmcp is standalone set of dependencies for MCP Server only (no core).
 drmcp = drtools + [
     "requests>=2.32.4,<3.0.0",
-    "openai>=1.76.2,<2.0.0",
+    "openai>=2.0.0,<=2.11.0",
     "pyjwt>=2.10.1,<3.0.0",
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
