@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from nat.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
-from nat.builder.framework_enum import LLMFrameworkEnum
 
 from datarobot_genai.dragent.per_user_tool_calling_agent import PerUserToolCallAgentWorkflowConfig
 
