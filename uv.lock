@@ -1154,7 +1154,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.6.13"
+version = "0.6.14"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1430,14 +1430,14 @@ requires-dist = [
     { name = "nvidia-nat-mcp", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11' and extra == 'dragent'", specifier = "==1.4.1" },
     { name = "nvidia-nat-opentelemetry", marker = "python_full_version >= '3.11' and extra == 'nat'", specifier = "==1.4.1" },
-    { name = "openai", marker = "extra == 'core'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'crewai'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'dragent'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'nat'", specifier = ">=2.0.0,<=2.11.0" },
-    { name = "openai", marker = "extra == 'pydanticai'", specifier = ">=2.0.0,<=2.11.0" },
+    { name = "openai", marker = "extra == 'core'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'crewai'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'dragent'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'nat'", specifier = ">=2.11.0,<2.12.0" },
+    { name = "openai", marker = "extra == 'pydanticai'", specifier = ">=2.11.0,<2.12.0" },
     { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },

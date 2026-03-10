@@ -25,7 +25,7 @@ core = [
     "requests>=2.32.4,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
-    "openai>=2.0.0,<=2.11.0",
+    "openai>=2.11.0,<2.12.0",
     "ragas>=0.3.8,<0.4.0",
     "pyjwt>=2.10.1,<3.0.0",
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
@@ -114,7 +114,7 @@ drtools = [
 # drmcp is standalone set of dependencies for MCP Server only (no core).
 drmcp = drtools + [
     "requests>=2.32.4,<3.0.0",
-    "openai>=2.0.0,<=2.11.0",
+    "openai>=2.11.0,<2.12.0",
     "pyjwt>=2.10.1,<3.0.0",
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
