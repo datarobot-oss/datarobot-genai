@@ -123,9 +123,7 @@ def test_trace_execution_sync() -> None:
         mock_span.set_attribute.assert_any_call("gen_ai.operation.name", "execute_tool")
         mock_span.set_attribute.assert_any_call("tool.param.param1", "test")
         mock_span.set_attributes.assert_any_call({"custom.attr": "test-value"})
-        mock_span.set_attribute.assert_any_call(
-            "gen_ai.tool.call.arguments", '{"param1": "test"}'
-        )
+        mock_span.set_attribute.assert_any_call("gen_ai.tool.call.arguments", '{"param1": "test"}')
         mock_span.set_status.assert_called()
 
 

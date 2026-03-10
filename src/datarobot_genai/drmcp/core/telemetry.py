@@ -59,6 +59,16 @@ from starlette.responses import Response
 from .config import get_config
 from .credentials import get_credentials
 
+
+def _serialize_tool_arguments(value: Any) -> str:
+    """Serialize tool call arguments as JSON per OTel convention."""
+    if isinstance(value, Mapping) and not isinstance(value, str):
+        return json.dumps(dict(value))
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    return str(value)
+
+
 root_logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
 
@@ -108,7 +118,9 @@ class OpenTelemetryMiddleware(Middleware):
             span.set_attributes(
                 {
                     "gen_ai.tool.name": tool_name,
-                    "gen_ai.tool.call.arguments": str(context.message.arguments),
+                    "gen_ai.tool.call.arguments": _serialize_tool_arguments(
+                        context.message.arguments
+                    ),
                     "gen_ai.operation.name": "execute_tool",
                     "mcp.method.name": "tools/call",
                 }
@@ -295,7 +307,11 @@ def initialize_telemetry(mcp: FastMCP) -> None:
 
 
 def _add_parameters_to_span(
-    span: Span, func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+    span: Span,
+    func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    trace_type: str = "tool",
 ) -> None:
     """Add function parameters as span attributes.
 
@@ -325,7 +341,7 @@ def _add_parameters_to_span(
             span.set_attribute(f"tool.param.{name}", value)
             arguments[name] = value
 
-    if arguments:
+    if arguments and trace_type == "tool":
         span.set_attribute("gen_ai.tool.call.arguments", json.dumps(arguments))
 
 
@@ -387,15 +403,16 @@ def trace_execution(trace_name: str | None = None, trace_type: str = "tool") -> 
             tracer = trace.get_tracer(__name__)
             span = tracer.start_span(f"{trace_type}.{span_name}")
 
-            # Add standard attributes
-            span.set_attribute("gen_ai.tool.name", span_name)
+            # Add standard attributes: tool-specific only when trace_type is "tool"
             if trace_type == "tool":
+                span.set_attribute("gen_ai.tool.name", span_name)
                 span.set_attribute("gen_ai.operation.name", "execute_tool")
             else:
                 span.set_attribute("gen_ai.operation.name", trace_type)
+                span.set_attribute(f"{trace_type}.name", span_name)
 
             # Add tool parameters as span attributes
-            _add_parameters_to_span(span, func, args, kwargs)
+            _add_parameters_to_span(span, func, args, kwargs, trace_type)
 
             # Add configured attributes from config
             config = get_config()
