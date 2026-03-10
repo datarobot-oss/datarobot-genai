@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.14
+- Fix loading JSON schemas from the package directory in DRUM adapter to work from wheel or source
+- Fix dynamic tool deployment registration to filter deployments with `tool` tag name and value using strict AND logic
+- Fix configuration parsing to correctly disable predictive tools when `MCP_CLI_CONFIGS` is empty
+
 ## 0.6.13
 - Added `x-datarobot-identity-token` to `HEADER_TOKEN_CANDIDATE_NAMES`
 
