@@ -164,3 +164,127 @@ async def list_models(
             "models": [model_to_dict(model) for model in models],
         },
     )
+
+
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "details", "info", "daria"})
+async def get_model_details(
+    *,
+    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
+    model_id: Annotated[str, "The DataRobot model ID"] | None = None,
+    include_feature_impact: Annotated[bool, "Whether to include feature impact data"] = True,
+    include_roc_curve: Annotated[bool, "Whether to include ROC curve data"] = False,
+) -> ToolError | ToolResult:
+    """Get detailed information about a DataRobot model, optionally with feature impact and ROC."""
+    if not project_id:
+        raise ToolError("Project ID must be provided")
+    if not model_id:
+        raise ToolError("Model ID must be provided")
+
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
+    project = client.Project.get(project_id)
+    model = client.Model.get(project=project, model_id=model_id)
+
+    info: dict[str, Any] = {
+        "model_id": model_id,
+        "project_id": project_id,
+        "model_type": model.model_type,
+        "featurelist_name": getattr(model, "featurelist_name", None),
+        "target": project.target,
+        "metric": project.metric,
+        "metrics": model.metrics,
+        "sample_pct": getattr(model, "sample_pct", None),
+    }
+
+    if include_feature_impact:
+        try:
+            model.request_feature_impact()
+            fi = model.get_or_request_feature_impact()
+            info["feature_impact"] = fi
+        except Exception as exc:
+            info["feature_impact_error"] = str(exc)
+
+    if include_roc_curve:
+        try:
+            roc = model.get_roc_curve(source="validation")
+            info["roc_curve"] = {
+                "source": "validation",
+                "roc_points": roc.roc_points if hasattr(roc, "roc_points") else [],
+            }
+        except Exception as exc:
+            info["roc_curve_error"] = str(exc)
+
+    return ToolResult(structured_content=info)
+
+
+@dr_mcp_integration_tool(
+    tags={"predictive", "model", "read", "timeseries", "validation", "daria"}
+)
+async def is_eligible_for_timeseries_training(
+    *,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to validate"] | None = None,
+    datetime_column: Annotated[str, "The name of the datetime column"] | None = None,
+    target_column: Annotated[str, "The name of the target column"] | None = None,
+    series_id_column: Annotated[str, "The name of the series ID column"] | None = None,
+) -> ToolError | ToolResult:
+    """Check if a dataset is eligible for DataRobot time series training."""
+    if not dataset_id:
+        raise ToolError("Dataset ID must be provided")
+    if not datetime_column:
+        raise ToolError("Datetime column must be provided")
+    if not target_column:
+        raise ToolError("Target column must be provided")
+
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
+    dataset = client.Dataset.get(dataset_id)
+
+    errors: list[str] = []
+    infos: list[str] = []
+
+    try:
+        df = dataset.get_as_dataframe()
+    except Exception as exc:
+        raise ToolError(f"Could not load dataset: {exc}")
+
+    row_count = len(df)
+    infos.append(f"Row count: {row_count}")
+    if row_count < 100:
+        errors.append(
+            f"Too few rows ({row_count}): time series training requires at least 100."
+        )
+
+    if datetime_column not in df.columns:
+        errors.append(f"Datetime column '{datetime_column}' not found in dataset.")
+    else:
+        try:
+            import pandas as pd
+
+            df[datetime_column] = pd.to_datetime(df[datetime_column])
+            infos.append(f"Datetime column '{datetime_column}' parsed successfully.")
+        except Exception as exc:
+            errors.append(
+                f"Datetime column '{datetime_column}' could not be parsed: {exc}"
+            )
+
+    if series_id_column and series_id_column not in df.columns:
+        errors.append(f"Series ID column '{series_id_column}' not found in dataset.")
+
+    if target_column not in df.columns:
+        errors.append(f"Target column '{target_column}' not found in dataset.")
+
+    null_pct = df[target_column].isnull().mean() if target_column in df.columns else None
+    if null_pct is not None:
+        infos.append(f"Target null rate: {null_pct:.1%}")
+        if null_pct > 0.3:
+            errors.append(f"Target column has {null_pct:.1%} null values (>30%).")
+
+    status = "ELIGIBLE" if not errors else "NOT_ELIGIBLE"
+
+    return ToolResult(
+        structured_content={
+            "status": status,
+            "errors": errors,
+            "info": infos,
+        },
+    )
