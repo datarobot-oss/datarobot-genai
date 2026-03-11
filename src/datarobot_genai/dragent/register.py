@@ -19,7 +19,10 @@ from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
+from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
+from pydantic import Field
 
+import datarobot_genai.dragent.per_user_tool_calling_agent  # noqa: F401 — registers per_user_tool_calling_agent
 from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
 from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
 from datarobot_genai.dragent.converters import (
@@ -31,7 +34,11 @@ from datarobot_genai.dragent.converters import convert_tool_message_to_str
 
 # Register frontend
 class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"):  # type: ignore
-    pass
+    a2a: A2AFrontEndConfig | None = Field(
+        default=None,
+        description="Expose this agent via the Agent2Agent protocol. "
+        "A2A server endpoints are mounted under /a2a/.",
+    )
 
 
 @register_front_end(config_type=DRAgentFastApiFrontEndConfig)

@@ -13,12 +13,16 @@
 # limitations under the License.
 
 import logging
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
@@ -32,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._a2a_worker: A2AFrontEndPluginWorker | None = None
+
     def get_step_adaptor(self) -> StepAdaptor:
         return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
 
@@ -45,6 +53,76 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._session_managers.append(sm)
 
         return sm
+
+    def _get_a2a_endpoint_url(self, default_url: str) -> str:
+        """Construct the A2A endpoint URL.
+
+        In a DataRobot deployment, uses the deployment's direct access URL.
+        Otherwise, appends the /a2a/ mount path to the default base URL.
+        """
+        mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
+        if mlops_deployment_id:
+            datarobot_endpoint = os.getenv("DATAROBOT_ENDPOINT", "")
+            if not datarobot_endpoint:
+                raise ValueError("DATAROBOT_ENDPOINT must be set when MLOPS_DEPLOYMENT_ID is set")
+            base = datarobot_endpoint.rstrip("/")
+            return f"{base}/deployments/{mlops_deployment_id}/directAccess/a2a/"
+        return default_url.rstrip("/") + "/a2a/"
+
+    async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
+        await super().add_routes(app, builder)
+
+        if self.front_end_config.a2a is None:
+            logger.info("A2A server endpoints are disabled")
+            return
+
+        workflow = await builder.build()
+
+        # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config.
+        # We must pass it a full Config with the A2AFrontEndConfig substituted in.
+        # We also inherit host/port from the FastAPI config so the agent card URL is gets mounted
+        # under the correct endpoint.
+        a2a_config = self.front_end_config.a2a.model_copy(
+            update={"host": self.front_end_config.host, "port": self.front_end_config.port}
+        )
+        nat_config = self._config.model_copy(
+            update={"general": self._config.general.model_copy(update={"front_end": a2a_config})}
+        )
+        self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
+
+        agent_card = await self._a2a_worker.create_agent_card(workflow)
+        # TODO: A newer NAT version adds `public_base_url` to `A2AFrontEndConfig`, which would
+        # let us set the public URL directly in the config instead of replacing it here.
+        # Once we upgrade NAT, replace _get_a2a_endpoint_url with public_base_url.
+        agent_card.url = self._get_a2a_endpoint_url(agent_card.url)
+        agent_executor = self._a2a_worker.create_agent_executor(workflow, builder)
+        a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
+
+        a2a_app = a2a_server.build()
+        app.mount("/a2a", a2a_app)
+
+        logger.info(f"A2A endpoint URL: {agent_card.url}")
+        logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
+
+    def build_app(self) -> FastAPI:
+        """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
+        app = super().build_app()
+
+        # app.router.lifespan_context is the lifespan set by the parent's build_app().
+        # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.
+        # (app.add_event_handler("shutdown", ...) is silently ignored when a lifespan is set.)
+        parent_lifespan = app.router.lifespan_context
+
+        @asynccontextmanager
+        async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
+            async with parent_lifespan(lifespan_app):
+                yield
+            if self._a2a_worker is not None:
+                await self._a2a_worker.cleanup()
+                logger.info("A2A worker resources cleaned up")
+
+        app.router.lifespan_context = lifespan
+        return app
 
     async def add_health_route(self, app: FastAPI) -> None:
         """Add a health check endpoint to the FastAPI app."""
