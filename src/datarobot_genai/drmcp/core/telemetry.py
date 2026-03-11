@@ -64,7 +64,7 @@ def _serialize_tool_arguments(value: Any) -> str:
     """Serialize tool call arguments as JSON per OTel convention."""
     if isinstance(value, Mapping) and not isinstance(value, str):
         return json.dumps(dict(value))
-    if isinstance(value, (dict, list)):
+    if isinstance(value, list):
         return json.dumps(value)
     return str(value)
 
@@ -93,7 +93,7 @@ class OpenTelemetryMiddleware(Middleware):
     async def on_request(self, context: MiddlewareContext, call_next: CallNext[Any, Any]) -> Any:
         with tracer.start_as_current_span(
             f"mcp.request.{context.method}",
-            kind=SpanKind.CLIENT,
+            kind=SpanKind.SERVER,
         ) as span:
             span.set_attribute("mcp.method.name", context.method or "")
             try:
@@ -113,7 +113,7 @@ class OpenTelemetryMiddleware(Middleware):
 
         with self.tracer.start_as_current_span(
             f"tool.{tool_name}",
-            kind=SpanKind.CLIENT,
+            kind=SpanKind.SERVER,
         ) as span:
             span.set_attributes(
                 {
