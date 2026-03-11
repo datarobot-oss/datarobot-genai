@@ -34,6 +34,10 @@ class TestToolType:
         assert ToolType.JIRA.value == "jira"
         assert ToolType.CONFLUENCE.value == "confluence"
         assert ToolType.MICROSOFT_GRAPH.value == "microsoft_graph"
+        assert ToolType.USE_CASE.value == "use_case"
+        assert ToolType.VDB.value == "vdb"
+        assert ToolType.CODE_EXECUTION.value == "code_execution"
+        assert ToolType.OPTIMIZATION.value == "optimization"
 
     def test_tool_type_is_string_enum(self) -> None:
         """Test that ToolType is a string enum."""
@@ -86,6 +90,42 @@ class TestToolConfigs:
         assert config["directory"] == "microsoft_graph"
         assert config["package_prefix"] == "datarobot_genai.drtools.microsoft_graph"
         assert config["config_field_name"] == "enable_microsoft_graph_tools"
+
+    def test_use_case_tool_config(self) -> None:
+        """Test use case tool configuration."""
+        config = TOOL_CONFIGS[ToolType.USE_CASE]
+        assert config["name"] == "use_case"
+        assert config["oauth_check"] is None
+        assert config["directory"] == "use_case"
+        assert config["package_prefix"] == "datarobot_genai.drtools.use_case"
+        assert config["config_field_name"] == "enable_use_case_tools"
+
+    def test_vdb_tool_config(self) -> None:
+        """Test VDB tool configuration."""
+        config = TOOL_CONFIGS[ToolType.VDB]
+        assert config["name"] == "vdb"
+        assert config["oauth_check"] is None
+        assert config["directory"] == "vdb"
+        assert config["package_prefix"] == "datarobot_genai.drtools.vdb"
+        assert config["config_field_name"] == "enable_vdb_tools"
+
+    def test_code_execution_tool_config(self) -> None:
+        """Test code execution tool configuration."""
+        config = TOOL_CONFIGS[ToolType.CODE_EXECUTION]
+        assert config["name"] == "code_execution"
+        assert config["oauth_check"] is None
+        assert config["directory"] == "code_execution"
+        assert config["package_prefix"] == "datarobot_genai.drtools.code_execution"
+        assert config["config_field_name"] == "enable_code_execution_tools"
+
+    def test_optimization_tool_config(self) -> None:
+        """Test optimization tool configuration."""
+        config = TOOL_CONFIGS[ToolType.OPTIMIZATION]
+        assert config["name"] == "optimization"
+        assert config["oauth_check"] is None
+        assert config["directory"] == "optimization"
+        assert config["package_prefix"] == "datarobot_genai.drtools.optimization"
+        assert config["config_field_name"] == "enable_optimization_tools"
 
     def test_jira_oauth_check_callable(self) -> None:
         """Test that Jira OAuth check is a callable."""
