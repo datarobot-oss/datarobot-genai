@@ -20,6 +20,7 @@ from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.runtime.loader import PluginTypes
 from nat.runtime.loader import discover_and_register_plugins
+from nat.runtime.runner import Context
 from nat.runtime.session import SessionManager
 from nat.utils.data_models.schema_validator import validate_schema
 from nat.utils.io.yaml_tools import yaml_load
@@ -119,3 +120,17 @@ async def load_workflow(
             yield session_manager
         finally:
             await session_manager.shutdown()
+
+
+def extract_headers_from_context(headers_to_forward: list[str]) -> dict[str, str]:
+    context = Context.get()
+    headers = context.metadata.headers
+    extracted_headers: dict[str, str] = {}
+    if not headers:
+        return extracted_headers
+
+    for header in headers_to_forward:
+        if header in headers:
+            extracted_headers[header] = headers[header]
+
+    return extracted_headers

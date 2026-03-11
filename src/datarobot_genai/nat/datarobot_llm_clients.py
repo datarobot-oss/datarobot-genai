@@ -27,6 +27,8 @@ from nat.data_models.retry_mixin import RetryMixin
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from nat.utils.responses_api import validate_no_responses_api
 
+from datarobot_genai.nat.helpers import extract_headers_from_context
+
 from ..nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from ..nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
@@ -181,8 +183,12 @@ async def datarobot_llm_deployment_langchain(
     )
     config["stream_options"] = {"include_usage": True}
     config["model"] = config["model"].removeprefix("datarobot/")
+
+    context_headers = extract_headers_from_context(["X-DataRobot-Identity-Token"])
     if llm_config.headers:
-        config["default_headers"] = llm_config.headers
+        context_headers = {**context_headers, **llm_config.headers}
+
+    config["default_headers"] = context_headers
 
     client = _create_datarobot_chat_openai(config)
     yield langchain_patch_llm_based_on_config(client, config)

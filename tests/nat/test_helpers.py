@@ -16,10 +16,15 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
+from nat.builder.context import ContextState
+from nat.data_models.api_server import Request
+from nat.runtime.user_metadata import RequestAttributes
+from starlette.datastructures import Headers
 
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
 from datarobot_genai.nat.helpers import add_headers_to_datarobot_llm_deployment
 from datarobot_genai.nat.helpers import add_headers_to_datarobot_mcp_auth
+from datarobot_genai.nat.helpers import extract_headers_from_context
 from datarobot_genai.nat.helpers import load_config
 from datarobot_genai.nat.helpers import load_workflow
 
@@ -261,3 +266,49 @@ async def test_load_workflow():
                 async with load_workflow(path, headers=headers) as workflow:
                     assert workflow
                     mock_load_config.assert_called_once_with("some_path", headers=headers)
+
+
+@pytest.fixture
+def nat_context_set_headers():
+    """Set NAT context metadata (e.g. request headers) for the test; reset on teardown."""
+    context_state = ContextState.get()
+    tokens = []
+
+    def reset_context():
+        while tokens:
+            context_state._metadata.reset(tokens.pop())
+
+    def set_headers(headers):
+        """Set request headers in context. Pass a dict or None for no headers."""
+        reset_context()
+        attrs = RequestAttributes()
+        attrs._request = Request(headers=Headers(headers) if headers is not None else None)
+        tokens.append(context_state._metadata.set(attrs))
+
+    yield set_headers
+    reset_context()
+
+
+@pytest.mark.parametrize(
+    "headers,headers_to_forward,expected_headers",
+    [
+        (None, ["Authorization"], {}),
+        ({}, ["Authorization"], {}),
+        (
+            {"Authorization": "Bearer secret", "X-Request-Id": "req-123"},
+            ["Authorization"],
+            {"Authorization": "Bearer secret"},
+        ),
+        (
+            {"Authorization": "Bearer secret"},
+            ["Authorization", "X-Request-Id"],
+            {"Authorization": "Bearer secret"},
+        ),
+    ],
+)
+def test_extract_headers_from_context(
+    headers, headers_to_forward, expected_headers, nat_context_set_headers
+):
+    nat_context_set_headers(headers)
+    result = extract_headers_from_context(headers_to_forward)
+    assert result == expected_headers
