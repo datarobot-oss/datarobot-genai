@@ -225,11 +225,18 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             if isinstance(tool_inputs, dict):
                 args_delta = json.dumps(tool_inputs)
             elif payload.data.input is not None:
-                args_delta = (
-                    json.dumps(payload.data.input)
-                    if not isinstance(payload.data.input, str)
-                    else payload.data.input
-                )
+                if isinstance(payload.data.input, str):
+                    try:
+                        json.loads(payload.data.input)
+                        args_delta = payload.data.input
+                    except (json.JSONDecodeError, ValueError):
+                        logger.warning(
+                            "Tool call input is not valid JSON, falling back to empty args: %r",
+                            payload.data.input,
+                        )
+                        args_delta = "{}"
+                else:
+                    args_delta = json.dumps(payload.data.input)
             else:
                 args_delta = "{}"
             events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=args_delta))
