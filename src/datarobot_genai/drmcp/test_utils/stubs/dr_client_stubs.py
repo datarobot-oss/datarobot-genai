@@ -19,6 +19,22 @@ from unittest.mock import MagicMock
 # Project id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_PROJECT_ID = "test_project_123"
 
+# VDB deployment id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_VDB_DEPLOYMENT_ID = "stub_vdb_deployment_id"
+
+# Use case id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_USE_CASE_ID = "stub_use_case_id"
+
+
+class StubRestResponse:
+    """Stub HTTP response for client.get()/client.post() REST calls."""
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = data
+
+    def json(self) -> dict[str, Any]:
+        return self._data
+
 
 class StubModel:
     """Stub DataRobot model object."""
@@ -53,6 +69,7 @@ class StubProject:
         self.target = "sentiment"
         self.target_type = "Binary"
         self.datetime_partitioning = None
+        self.project_name = f"Project {project_id}"
 
     def get_models(self) -> list:
         """Stub get_models (matches real API: no arguments)."""
@@ -66,6 +83,7 @@ class StubDeployment:
         self, deployment_id: str, project_id: str = "test_project_123", model_id: str = "model_1"
     ):
         self.id = deployment_id
+        self.label = f"Deployment {deployment_id}"
         self.model = {"project_id": project_id, "id": model_id}
         self.status = "active"
 
@@ -85,6 +103,36 @@ class StubDeployment:
         return MagicMock()
 
 
+class StubDataset:
+    """Stub DataRobot dataset object."""
+
+    def __init__(self, dataset_id: str, name: str = "stub_dataset"):
+        self.id = dataset_id
+        self.name = name
+
+
+class StubUseCase:
+    """Stub DataRobot use case object."""
+
+    def __init__(self, use_case_id: str, name: str = "Stub Use Case"):
+        self.id = use_case_id
+        self.name = name
+
+    def list_datasets(self) -> list:
+        """Return stub datasets associated with this use case."""
+        return [StubDataset("uc_dataset_1", name="Use Case Dataset")]
+
+    def list_deployments(self) -> list:
+        """Return stub deployments associated with this use case."""
+        return [
+            StubDeployment("uc_deployment_1", project_id="test_project_123", model_id="model_1")
+        ]
+
+    def list_projects(self) -> list:
+        """Return stub projects (experiments) associated with this use case."""
+        return [StubProject("test_project_123")]
+
+
 class StubDRClient:
     """Stub DataRobot client for tests (canned responses; use with dr_client_stubs)."""
 
@@ -92,6 +140,7 @@ class StubDRClient:
         self.Project = MagicMock()
         self.Model = MagicMock()
         self.Deployment = MagicMock()
+        self.UseCase = MagicMock()
         self.client = MagicMock()
 
 
@@ -156,10 +205,62 @@ def test_create_dr_client() -> StubDRClient:
             did or "stub_deployment_id", project_id="test_project_123", model_id="model_1"
         )
 
+    # --- REST method stubs for client.get() / client.post() ---
+    def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.get() REST calls."""
+        if "deployments" in url and "predictions" not in url:
+            # list_vector_databases calls GET deployments/ to find VDB deployments
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "id": STUB_VDB_DEPLOYMENT_ID,
+                            "label": "Stub VDB Deployment",
+                            "status": "active",
+                            "capabilities": {"supportsVectorDatabaseQuerying": True},
+                            "model": {"targetType": "VectorDatabase"},
+                        },
+                        {
+                            "id": "stub_regular_deployment_id",
+                            "label": "Regular Deployment",
+                            "status": "active",
+                            "capabilities": {"supportsVectorDatabaseQuerying": False},
+                            "model": {"targetType": "Binary"},
+                        },
+                    ],
+                    "next": None,
+                }
+            )
+        return StubRestResponse({"data": [], "next": None})
+
+    def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.post() REST calls."""
+        if "deployments" in url and "predictions" in url:
+            # query_vector_database calls POST deployments/{id}/predictions/
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "page_content": "DataRobot is a leading AI platform.",
+                            "metadata": {"source": "doc1.pdf", "page": 1},
+                            "score": 0.92,
+                        },
+                        {
+                            "page_content": "AutoML makes machine learning accessible.",
+                            "metadata": {"source": "doc2.pdf", "page": 3},
+                            "score": 0.87,
+                        },
+                    ]
+                }
+            )
+        return StubRestResponse({"data": []})
+
     # Configure the stub methods
     client.Project.get = get_project
     client.Model.get = get_model
     client.Deployment.get = get_deployment
+    client.get = stub_get
+    client.post = stub_post
     return client
 
 
