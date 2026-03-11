@@ -54,7 +54,7 @@ class ModelEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "info"})
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "info", "daria"})
 async def get_best_model(
     *,
     project_id: Annotated[str, "The DataRobot project ID"] | None = None,
@@ -144,7 +144,7 @@ async def score_dataset_with_model(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "list"})
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "list", "daria"})
 async def list_models(
     *,
     project_id: Annotated[str, "The DataRobot project ID"] | None = None,

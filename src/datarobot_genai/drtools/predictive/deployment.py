@@ -30,7 +30,7 @@ from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "management", "list"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "management", "list", "daria"})
 async def list_deployments() -> ToolResult:
     """List all DataRobot deployments for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -46,7 +46,7 @@ async def list_deployments() -> ToolResult:
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "model", "info"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "model", "info", "daria"})
 async def get_model_info_from_deployment(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
@@ -63,7 +63,7 @@ async def get_model_info_from_deployment(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "model", "create"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "model", "create", "daria"})
 async def deploy_model(
     *,
     model_id: Annotated[str, "The ID of the DataRobot model to deploy"] | None = None,
