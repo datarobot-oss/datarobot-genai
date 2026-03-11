@@ -367,6 +367,26 @@ def test_create_dr_client() -> StubDRClient:
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.post() REST calls."""
+        payload = json or {}
+        # cuOpt predictions: data contains objects with "mode" key
+        if "predictions" in url and isinstance(payload.get("data"), list):
+            items = payload["data"]
+            if items and isinstance(items[0], dict) and "mode" in items[0]:
+                mode = items[0].get("mode", "solve")
+                if mode == "validate":
+                    return StubRestResponse({"valid": True, "errors": []})
+                return StubRestResponse(
+                    {
+                        "data": [
+                            {
+                                "status": "optimal",
+                                "objective_value": 42.0,
+                                "solution": {"x": 1.0, "y": 0.0},
+                                "solver_info": {"solver": "cuopt", "iterations": 10},
+                            }
+                        ]
+                    }
+                )
         if "deployments" in url and "predictions" in url:
             # query_vector_database calls POST deployments/{id}/predictions/
             return StubRestResponse(
