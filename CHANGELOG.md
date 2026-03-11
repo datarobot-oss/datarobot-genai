@@ -4,13 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.16
+- Align MCP OpenTelemetry spans with OTel semantic conventions.
+
 ## 0.6.15
 - Added Agent2Agent (A2A) server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`.
 - Extended DRAgentFastApiFrontEndConfig with configuration options for the A2A server.
 - A2A endpoints can be enabled by the `expose_a2a_server_endpoints` setting in the workflow.yaml file.
 - Added per_user_tool_calling_agent workflow type
 - Fixed `ToolCallArgsEvent.delta` encoding
-- Align MCP OpenTelemetry spans with OTel semantic conventions.
 
 ## 0.6.14
 - Fix loading JSON schemas from the package directory in DRUM adapter to work from wheel or source
