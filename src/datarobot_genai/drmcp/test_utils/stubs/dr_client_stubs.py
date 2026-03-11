@@ -19,6 +19,20 @@ from unittest.mock import MagicMock
 # Project id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_PROJECT_ID = "test_project_123"
 
+# Dataset id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_DATASET_ID = "stub_dataset_id"
+
+
+class StubRocCurve:
+    """Stub DataRobot ROC curve object."""
+
+    def __init__(self) -> None:
+        self.roc_points = [
+            {"fpr": 0.0, "tpr": 0.0, "threshold": 1.0},
+            {"fpr": 0.1, "tpr": 0.7, "threshold": 0.5},
+            {"fpr": 1.0, "tpr": 1.0, "threshold": 0.0},
+        ]
+
 
 class StubModel:
     """Stub DataRobot model object."""
@@ -27,12 +41,32 @@ class StubModel:
         self.id = model_id
         self.model_type = model_type
         self.metrics = metrics
+        self.featurelist_name = "Informative Features"
+        self.sample_pct = 64.0
 
     def score(self, dataset_url: str) -> MagicMock:
         """Stub scoring method. Raises for fake URLs so integration tests can assert errors."""
         if "example.com" in (dataset_url or ""):
             raise Exception("404 client error: {'message': 'Not Found'}")
         return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
+
+    def request_feature_impact(self) -> None:
+        """Stub request_feature_impact; no-op in tests."""
+
+    def get_or_request_feature_impact(self) -> list[dict[str, Any]]:
+        """Stub get_or_request_feature_impact; returns canned feature impact list."""
+        return [
+            {"featureName": "text_review", "impactNormalized": 1.0, "impactUnnormalized": 0.45},
+            {
+                "featureName": "product_category",
+                "impactNormalized": 0.4,
+                "impactUnnormalized": 0.18,
+            },
+        ]
+
+    def get_roc_curve(self, source: str = "validation") -> "StubRocCurve":
+        """Stub get_roc_curve; returns canned ROC curve object."""
+        return StubRocCurve()
 
 
 class StubDatetimePartitioning:
@@ -51,6 +85,7 @@ class StubProject:
         self.id = project_id
         self._models = models or []
         self.target = "sentiment"
+        self.metric = "AUC"
         self.target_type = "Binary"
         self.datetime_partitioning = None
 
@@ -85,6 +120,41 @@ class StubDeployment:
         return MagicMock()
 
 
+class StubDataset:
+    """Stub DataRobot dataset object."""
+
+    def __init__(self, dataset_id: str, name: str = "stub_dataset", row_count: int = 200):
+        self.id = dataset_id
+        self.name = name
+        self.created_at = "2025-01-01T00:00:00Z"
+        self.row_count = row_count
+
+    def get_as_dataframe(self) -> Any:
+        """Return a stub DataFrame suitable for time-series eligibility checks."""
+        import numpy as np
+        import pandas as pd
+
+        n = self.row_count
+        dates = pd.date_range("2023-01-01", periods=n, freq="D")
+        return pd.DataFrame(
+            {
+                "date": dates.strftime("%Y-%m-%d"),
+                "sales": np.random.default_rng(42).uniform(100, 1000, n),
+                "store_id": [f"store_{i % 5}" for i in range(n)],
+            }
+        )
+
+
+class StubRestResponse:
+    """Stub HTTP response for client.get()/client.post() REST calls."""
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = data
+
+    def json(self) -> dict[str, Any]:
+        return self._data
+
+
 class StubDRClient:
     """Stub DataRobot client for tests (canned responses; use with dr_client_stubs)."""
 
@@ -92,6 +162,7 @@ class StubDRClient:
         self.Project = MagicMock()
         self.Model = MagicMock()
         self.Deployment = MagicMock()
+        self.Dataset = MagicMock()
         self.client = MagicMock()
 
 
@@ -156,10 +227,120 @@ def test_create_dr_client() -> StubDRClient:
             did or "stub_deployment_id", project_id="test_project_123", model_id="model_1"
         )
 
+    # --- Dataset stubs ---
+    stub_dataset = StubDataset(STUB_DATASET_ID, name="stub_dataset.csv", row_count=200)
+
+    def get_dataset(dataset_id: str) -> StubDataset:
+        if dataset_id == STUB_DATASET_ID:
+            return stub_dataset
+        raise Exception(f"404 client error: {{'message': 'Dataset {dataset_id} not found'}}")
+
+    def list_datasets() -> list[StubDataset]:
+        return [stub_dataset]
+
+    # --- REST method stubs for client.get() / client.post() ---
+    def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.get() REST calls."""
+        if "predictionResults" in url:
+            # Stub for get_prediction_history; return canned prediction rows.
+            limit = (params or {}).get("limit", 100)
+            rows = [
+                {
+                    "rowId": i,
+                    "predictionValue": round(0.7 + i * 0.01, 2),
+                    "timestamp": f"2024-01-{i + 1:02d}T00:00:00Z",
+                }
+                for i in range(min(limit, 5))
+            ]
+            return StubRestResponse({"data": rows, "next": None})
+        if url.rstrip("/") == "deployments":
+            # Stub for list_vector_databases; return mixed deployments.
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "id": "vdb_deployment_1",
+                            "label": "Product VDB",
+                            "status": "active",
+                            "model": {"targetType": "VectorDatabase"},
+                            "capabilities": {"supportsVectorDatabaseQuerying": True},
+                        },
+                        {
+                            "id": "regular_deployment_1",
+                            "label": "Regular Model",
+                            "status": "active",
+                            "model": {"targetType": "Binary"},
+                            "capabilities": {},
+                        },
+                    ],
+                    "next": None,
+                }
+            )
+        if "useCases" in url:
+            return StubRestResponse(
+                {
+                    "data": [
+                        {"id": "uc_1", "name": "Test Use Case", "description": "Stub use case"},
+                    ],
+                    "count": 1,
+                    "next": None,
+                }
+            )
+        if "externalDataDrivers" in url and "tables" in url:
+            return StubRestResponse(
+                {"data": [{"name": "public.users"}, {"name": "public.orders"}]}
+            )
+        return StubRestResponse({"data": [], "next": None})
+
+    def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.post() REST calls."""
+        payload = json or {}
+        # cuOpt predictions: data contains objects with "mode" key
+        if "predictions" in url and isinstance(payload.get("data"), list):
+            items = payload["data"]
+            if items and isinstance(items[0], dict) and "mode" in items[0]:
+                mode = items[0].get("mode", "solve")
+                if mode == "validate":
+                    return StubRestResponse({"valid": True, "errors": []})
+                return StubRestResponse(
+                    {
+                        "data": [
+                            {
+                                "status": "optimal",
+                                "objective_value": 42.0,
+                                "solution": {"x": 1.0, "y": 0.0},
+                                "solver_info": {"solver": "cuopt", "iterations": 10},
+                            }
+                        ]
+                    }
+                )
+        # VDB predictions: payload has "query" key
+        if "predictions" in url and "query" in payload:
+            return StubRestResponse(
+                {
+                    "data": [
+                        {"page_content": "Result 1", "metadata": {"source": "doc1"}, "score": 0.9},
+                        {"page_content": "Result 2", "metadata": {"source": "doc2"}, "score": 0.8},
+                    ]
+                }
+            )
+        if "externalDataDrivers" in url and "execute" in url:
+            return StubRestResponse(
+                {
+                    "data": [{"id": 1, "name": "test"}],
+                    "columns": ["id", "name"],
+                }
+            )
+        return StubRestResponse({"data": []})
+
     # Configure the stub methods
     client.Project.get = get_project
     client.Model.get = get_model
     client.Deployment.get = get_deployment
+    client.Dataset.get = get_dataset
+    client.Dataset.list = list_datasets
+    client.get = stub_get
+    client.post = stub_post
     return client
 
 
