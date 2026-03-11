@@ -45,7 +45,6 @@ def dragent_worker():
     config = Config(
         general=GeneralConfig(
             front_end=DRAgentFastApiFrontEndConfig(
-                expose_a2a_server_endpoints=True,
                 a2a=A2AFrontEndConfig(
                     name="Test Agent",
                     description="A test agent",
@@ -192,12 +191,8 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
     async def test_add_routes_disabled(self, mock_builder, patch_super_add_routes):
-        """When expose_a2a_server_endpoints is False (default), A2A routes are not mounted."""
-        config = Config(
-            general=GeneralConfig(
-                front_end=DRAgentFastApiFrontEndConfig(expose_a2a_server_endpoints=False)
-            )
-        )
+        """When a2a is None (default), A2A routes are not mounted."""
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
         with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
             disabled_worker = DRAgentFastApiFrontEndPluginWorker(config)
         app = FastAPI()
@@ -212,9 +207,9 @@ class TestDRAgentFastApiFrontEndConfig:
     def test_is_fastapi_front_end_config(self):
         assert isinstance(DRAgentFastApiFrontEndConfig(), FastApiFrontEndConfig)
 
-    def test_has_nested_a2a_config(self):
+    def test_a2a_default_none(self):
         config = DRAgentFastApiFrontEndConfig()
-        assert isinstance(config.a2a, A2AFrontEndConfig)
+        assert config.a2a is None
 
     def test_custom_a2a_fields(self):
         config = DRAgentFastApiFrontEndConfig(
@@ -232,13 +227,9 @@ class TestDRAgentFastApiFrontEndConfig:
         config = DRAgentFastApiFrontEndConfig()
         assert not isinstance(config, A2AFrontEndConfig)
 
-    def test_expose_a2a_server_endpoints_default_false(self):
-        config = DRAgentFastApiFrontEndConfig()
-        assert config.expose_a2a_server_endpoints is False
-
-    def test_expose_a2a_server_endpoints_can_be_enabled(self):
-        config = DRAgentFastApiFrontEndConfig(expose_a2a_server_endpoints=True)
-        assert config.expose_a2a_server_endpoints is True
+    def test_a2a_enables_endpoints(self):
+        config = DRAgentFastApiFrontEndConfig(a2a=A2AFrontEndConfig())
+        assert config.a2a is not None
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:

@@ -72,7 +72,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
 
-        if not self.front_end_config.expose_a2a_server_endpoints:
+        if self.front_end_config.a2a is None:
             logger.info("A2A server endpoints are disabled")
             return
 
