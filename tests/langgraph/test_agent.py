@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import time
-import uuid
 from functools import cached_property
 from typing import Any
 from unittest.mock import AsyncMock
@@ -21,6 +19,12 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from ag_ui.core import AssistantMessage
+from ag_ui.core import BaseEvent
+from ag_ui.core import EventType
+from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import HumanMessage
@@ -30,13 +34,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph.message import MessagesState
 from langgraph.graph.state import Command
 from langgraph.graph.state import StateGraph
-from openai.types import CompletionUsage
-from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
-from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
-from datarobot_genai.core.chat.responses import CustomModelChatResponse
-from datarobot_genai.core.chat.responses import CustomModelStreamingResponse
-from datarobot_genai.core.chat.responses import to_custom_model_chat_response
 from datarobot_genai.langgraph.agent import LangGraphAgent
 
 
@@ -45,57 +43,119 @@ def authorization_context() -> dict[str, Any]:
     return {"user": {"id": "123", "name": "bar"}}
 
 
+@pytest.fixture
+def run_agent_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[UserMessage(content='{"topic": "AI"}', id="message_id")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
 class SimpleLangGraphAgent(LangGraphAgent):
     @cached_property
     def workflow(self) -> StateGraph[MessagesState]:
-        def to_message_chunk(s):
-            return AIMessageChunk(content=s)
-
         async def mock_stream_generator():
             # stream the first agent
+            # tool call and respose
             yield (
                 "first_agent",
                 "messages",
-                (to_message_chunk("Here is the information"), {}),
+                (
+                    AIMessageChunk(
+                        content="",
+                        id="000",
+                        tool_call_chunks=[
+                            {"name": "get_info_about_city", "id": "tool_call_111", "args": None}
+                        ],
+                    ),
+                    {},
+                ),
             )
             yield (
                 "first_agent",
                 "messages",
-                (to_message_chunk(" you requested about Paris....."), {}),
+                (
+                    AIMessageChunk(
+                        content="",
+                        id="000",
+                        tool_call_chunks=[{"name": "", "id": "", "args": "{'name': 'Paris'}"}],
+                    ),
+                    {},
+                ),
             )
+            yield (
+                "first_agent",
+                "messages",
+                (
+                    ToolMessage(
+                        tool_call_id="tool_call_111",
+                        id="000",
+                        content="Paris is the capital city of France.",
+                    ),
+                    {},
+                ),
+            )
+            # tool call end
+            yield (
+                "first_agent",
+                "messages",
+                (AIMessageChunk(content="Here is the information", id="111"), {}),
+            )
+            yield (
+                "first_agent",
+                "messages",
+                (AIMessageChunk(content=" you requested about Paris.....", id="111"), {}),
+            )
+
             yield (
                 "first_agent",
                 "updates",
                 {
                     "first_agent": {
+                        "usage": {
+                            "total_tokens": 100,
+                            "prompt_tokens": 50,
+                            "completion_tokens": 50,
+                        },
                         "messages": [
                             HumanMessage(content="Hi, tell me about Paris."),
                             AIMessage(
-                                content="Here is the information you requested about Paris....."
+                                content="Here is the information you requested about Paris.....",
+                                id="111",
                             ),
-                        ]
+                        ],
                     }
                 },
             )
             yield (
                 "final_agent",
                 "messages",
-                (to_message_chunk("Paris is the capital"), {}),
+                (AIMessageChunk(content="Paris is the capital", id="222"), {}),
             )
             yield (
                 "final_agent",
                 "messages",
-                (to_message_chunk(" city of France."), {}),
+                (AIMessageChunk(content=" city of France.", id="222"), {}),
             )
             yield (
                 "final_agent",
                 "updates",
                 {
                     "final_agent": {
+                        "usage": {
+                            "total_tokens": 100,
+                            "prompt_tokens": 50,
+                            "completion_tokens": 50,
+                        },
                         "messages": [
                             HumanMessage(content="Hi, tell me about Paris."),
-                            AIMessage(content="Paris is the capital city of France."),
-                        ]
+                            AIMessage(content="Paris is the capital city of France.", id="222"),
+                        ],
                     }
                 },
             )
@@ -122,73 +182,188 @@ class SimpleLangGraphAgent(LangGraphAgent):
         return {}
 
 
-async def test_langgraph_non_streaming():
-    # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent()
+class HistoryAwareLangGraphAgent(LangGraphAgent):
+    """LangGraph agent whose prompt template exposes {chat_history}."""
 
-    # WHEN invoking the agent with a completion create params
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": '{"topic": "Artificial Intelligence"}'}],
-        "environment_var": True,
-    }
-    response_text, pipeline_interactions, usage_metrics = await agent.invoke(
-        completion_create_params
-    )
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        # Reuse the same mock workflow behaviour as SimpleLangGraphAgent; tests
+        # that rely on streaming/invoke semantics use the original class.
+        return SimpleLangGraphAgent().workflow
 
-    # THEN agent.workflow is called with expected arguments
-    expected_command = Command(
-        update={
-            "messages": [
-                SystemMessage(
-                    content="You are a helpful assistant. Tell user about Artificial Intelligence."
-                ),
-                HumanMessage(content="Hi, tell me about Artificial Intelligence."),
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {
+                    "role": "system",
+                    "content": "History transcript:\n{chat_history}",
+                },
+                {
+                    "role": "user",
+                    "content": "Latest request: {topic}",
+                },
             ]
-        }
-    )
-    agent.workflow.compile().astream.assert_called_once_with(
-        input=expected_command,
-        config={},
-        debug=True,
-        stream_mode=["updates", "messages"],
-        subgraphs=True,
-    )
+        )
 
-    # THEN the response is a custom model chat response
-    response = to_custom_model_chat_response(
-        response_text, pipeline_interactions, usage_metrics, model="test-model"
-    )
-    assert isinstance(response, CustomModelChatResponse)
-    # THEN the last message is the final message
-    assert response.choices[0].message.content == "Paris is the capital city of France."
-    # THEN the pipeline interactions are not None
-    assert response.pipeline_interactions is not None
-    assert response.usage.completion_tokens == 0
-    assert response.usage.prompt_tokens == 0
-    assert response.usage.total_tokens == 0
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
 
 
-async def test_langgraph_streaming():
+def test_convert_input_message_includes_history() -> None:
+    """convert_input_message should include history when template uses {chat_history}."""
+    agent = HistoryAwareLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # History is embedded as string in the template, so we expect 2 messages:
+    # - System message with history transcript + user message
+    assert len(all_messages) == 2
+    assert isinstance(all_messages[0], SystemMessage)
+    assert isinstance(all_messages[1], HumanMessage)
+
+    # Verify history is embedded in the system message
+    system_content = str(all_messages[0].content)
+    assert "History transcript:" in system_content
+    assert "system: You are a helper." in system_content
+    assert "First question" in system_content
+    assert "First answer" in system_content
+
+
+def test_convert_input_message_truncates_history() -> None:
+    """History is truncated to max_history_messages prior turns."""
+    agent = HistoryAwareLangGraphAgent()
+    max_history = agent.max_history_messages
+
+    # Create more messages than max_history_messages, all user role so that
+    # everything before the final one is treated as history.
+    messages = [
+        UserMessage(id=f"user_{i}", content=f'{{"topic": "Topic {i}"}}')
+        for i in range(max_history + 10)
+    ]
+    run_agent_input = RunAgentInput(
+        messages=messages,
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # We expect 2 templated messages (system + user)
+    assert len(all_messages) == 2
+
+    # Verify history in system message is truncated
+    system_content = str(all_messages[0].content)
+    # The earliest messages should not appear (truncated)
+    # Use exact match with closing brace to avoid substring matches (e.g., "Topic 1" in "Topic 10")
+    assert '"topic": "Topic 0"' not in system_content
+    # The last message (Topic 29) should be excluded from history
+    assert '"topic": "Topic 29"' not in system_content
+    # Messages within the history window should appear
+    assert '"topic": "Topic 9"' in system_content
+
+
+def test_convert_input_message_injects_chat_history_variable() -> None:
+    """convert_input_message should provide {chat_history} to the prompt template."""
+    agent = HistoryAwareLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Find the system message generated from the prompt template and assert that
+    # it contains a rendered history transcript (prior turns only).
+    history_msgs = [
+        m
+        for m in all_messages
+        if isinstance(m, SystemMessage) and "History transcript:" in str(m.content)
+    ]
+    assert len(history_msgs) == 1
+    history_text = str(history_msgs[0].content)
+
+    assert "system: You are a helper." in history_text
+    assert 'user: {"topic": "First question"}' in history_text
+    assert "assistant: First answer" in history_text
+    # The latest user turn should not appear inside the history transcript.
+    assert "Follow-up" not in history_text
+
+
+def test_convert_input_message_zero_history_disables_history() -> None:
+    """When max_history_messages is 0, no prior turns are included."""
+    agent = SimpleLangGraphAgent(max_history_messages=0)
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are a helper."),
+            UserMessage(id="user_1", content='{"topic": "First question"}'),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Only the templated messages for the final user turn should remain.
+    assert len(all_messages) == 2
+    assert isinstance(all_messages[0], SystemMessage)
+    assert isinstance(all_messages[1], HumanMessage)
+
+
+async def test_langgraph_non_streaming(run_agent_input):
     # GIVEN a simple langgraph agent implementation
     agent = SimpleLangGraphAgent()
 
-    # WHEN invoking the agent with a completion create params
-    completion_create_params = {
-        "model": "test-model",
-        "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-        "environment_var": True,
-        "stream": True,
-    }
-    streaming_response_iterator = await agent.invoke(completion_create_params)
+    # WHEN invoking the agent
+    streaming_response_iterator = agent.invoke(run_agent_input)
 
     # THEN the streaming response iterator returns the expected responses
     # Iterate directly over the async generator to avoid event loop conflicts
     # Note: With the new async with implementation, _invoke is called when we start consuming
-    idx = 0
     first_item_consumed = False
+    events = []
     async for (
-        response_text,
+        response_event,
         pipeline_interactions,
         usage_metrics,
     ) in streaming_response_iterator:
@@ -211,70 +386,66 @@ async def test_langgraph_streaming():
             )
             first_item_consumed = True
 
-        # Create the streaming response manually for testing
-        completion_id = str(uuid.uuid4())
-        created = int(time.time())
+        assert not isinstance(response_event, str) or pipeline_interactions is not None
 
-        if response_text:
-            choice = ChunkChoice(
-                index=0,
-                delta=ChoiceDelta(role="assistant", content=response_text),
-                finish_reason=None,
-            )
-            response = CustomModelStreamingResponse(
-                id=completion_id,
-                object="chat.completion.chunk",
-                created=created,
-                model="test-model",
-                choices=[choice],
-                usage=CompletionUsage(**usage_metrics) if usage_metrics else None,
-            )
+        if isinstance(response_event, BaseEvent):
+            events.append(response_event)
 
-            assert isinstance(response, CustomModelStreamingResponse)
-            if idx == 0:
-                assert response.choices[0].delta.content == "Here is the information"
-                assert response.choices[0].finish_reason is None
-                assert response.pipeline_interactions is None
-            elif idx == 1:
-                assert response.choices[0].delta.content == " you requested about Paris....."
-                assert response.choices[0].finish_reason is None
-                assert response.pipeline_interactions is None
-            elif idx == 2:
-                assert response.choices[0].delta.content == "Paris is the capital"
-                assert response.choices[0].finish_reason is None
-                assert response.pipeline_interactions is None
-            elif idx == 3:
-                assert response.choices[0].delta.content == " city of France."
-                assert response.choices[0].finish_reason is None
-                assert response.pipeline_interactions is None
-        else:
-            # Final chunk
-            choice = ChunkChoice(
-                index=0,
-                delta=ChoiceDelta(role="assistant"),
-                finish_reason="stop",
-            )
-            response = CustomModelStreamingResponse(
-                id=completion_id,
-                object="chat.completion.chunk",
-                created=created,
-                model="test-model",
-                choices=[choice],
-                usage=CompletionUsage(**usage_metrics) if usage_metrics else None,
-                pipeline_interactions=pipeline_interactions.model_dump_json()
-                if pipeline_interactions
-                else None,
-            )
-            assert response.choices[0].delta.content is None
-            assert response.choices[0].finish_reason == "stop"
-            assert response.pipeline_interactions is not None
-        idx += 1
+    assert len(events) == 14
+    assert events[0].type == EventType.RUN_STARTED
+    assert events[1].type == EventType.TOOL_CALL_START
+    assert events[1].tool_call_id == "tool_call_111"
+    assert events[1].tool_call_name == "get_info_about_city"
+    assert events[1].parent_message_id == "000"
+    assert events[2].type == EventType.TOOL_CALL_ARGS
+    assert events[2].tool_call_id == "tool_call_111"
+    assert events[2].delta == "{'name': 'Paris'}"
+    assert events[3].type == EventType.TOOL_CALL_END
+    assert events[3].tool_call_id == "tool_call_111"
+    assert events[4].type == EventType.TOOL_CALL_RESULT
+    assert events[4].tool_call_id == "tool_call_111"
+    assert events[4].content == "Paris is the capital city of France."
+    assert events[4].role == "tool"
+    assert events[5].type == EventType.TEXT_MESSAGE_START
+    assert events[5].message_id == "111"
+    assert events[6].type == EventType.TEXT_MESSAGE_CONTENT
+    assert events[6].delta == "Here is the information"
+    assert events[6].message_id == "111"
+    assert events[7].type == EventType.TEXT_MESSAGE_CONTENT
+    assert events[7].delta == " you requested about Paris....."
+    assert events[7].message_id == "111"
+    assert events[8].type == EventType.TEXT_MESSAGE_END
+    assert events[8].message_id == "111"
+    assert events[9].type == EventType.TEXT_MESSAGE_START
+    assert events[9].message_id == "222"
+    assert events[10].type == EventType.TEXT_MESSAGE_CONTENT
+    assert events[10].delta == "Paris is the capital"
+    assert events[10].message_id == "222"
+    assert events[11].type == EventType.TEXT_MESSAGE_CONTENT
+    assert events[11].delta == " city of France."
+    assert events[11].message_id == "222"
+    assert events[12].type == EventType.TEXT_MESSAGE_END
+    assert events[12].message_id == "222"
+    assert events[13].type == EventType.RUN_FINISHED
+
+    assert pipeline_interactions is not None
+    assert usage_metrics is not None
+    assert usage_metrics["total_tokens"] == 200
+    assert usage_metrics["prompt_tokens"] == 100
+    assert usage_metrics["completion_tokens"] == 100
 
 
-async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_context):
+async def test_invoke_calls_mcp_tools_context_and_sets_tools_and_cleans_up(
+    authorization_context, run_agent_input
+):
     """Test that invoke method calls mcp_tools_context and sets tools correctly."""
-    # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent(authorization_context=authorization_context)
+    # GIVEN a simple langgraph agent with forwarded headers
+    forwarded_headers = {
+        "x-datarobot-api-key": "scoped-token-123",
+    }
+    agent = SimpleLangGraphAgent(
+        authorization_context=authorization_context, forwarded_headers=forwarded_headers
+    )
 
     # Mock the mcp_tools_context to return mock tools
     mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
@@ -288,48 +459,7 @@ async def test_invoke_calls_mcp_tools_context_and_sets_tools(authorization_conte
 
         with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
             # WHEN invoking the agent
-            completion_create_params = {
-                "model": "test-model",
-                "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-                "environment_var": True,
-            }
-
-            await agent.invoke(completion_create_params)
-
-            # THEN mcp_tools_context is called with correct parameters
-            mock_mcp_context.assert_called_once_with(
-                authorization_context=authorization_context,
-            )
-
-            # THEN set_mcp_tools is called with the tools from context
-            mock_set_mcp_tools.assert_called_once_with(mock_tools)
-
-
-async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorization_context):
-    """Test that streaming invoke method uses async with correctly and cleans up context."""
-    # GIVEN a simple langgraph agent implementation
-    agent = SimpleLangGraphAgent(authorization_context=authorization_context)
-
-    # Mock the mcp_tools_context to return mock tools
-    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-
-    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
-        # Configure the mock context manager
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_tools
-        mock_context_manager.__aexit__.return_value = None
-        mock_mcp_context.return_value = mock_context_manager
-
-        with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
-            # WHEN invoking the agent with streaming
-            completion_create_params = {
-                "model": "test-model",
-                "messages": [{"role": "user", "content": '{"topic": "AI"}'}],
-                "environment_var": True,
-                "stream": True,
-            }
-
-            streaming_response_iterator = await agent.invoke(completion_create_params)
+            streaming_response_iterator = agent.invoke(run_agent_input)
 
             # THEN context is not entered yet (it's entered inside the generator)
             mock_context_manager.__aenter__.assert_not_called()
@@ -344,6 +474,7 @@ async def test_invoke_streaming_calls_mcp_tools_context_and_cleans_up(authorizat
                     # Verify mcp_tools_context is called with correct parameters
                     mock_mcp_context.assert_called_once_with(
                         authorization_context=authorization_context,
+                        forwarded_headers=forwarded_headers,
                     )
                     # Verify context is entered and tools are set
                     mock_context_manager.__aenter__.assert_called_once()

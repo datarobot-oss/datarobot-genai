@@ -23,6 +23,12 @@ seven days
 - Ensure the bug was not already reported in the projects Issues section
 - Open an issue as described above
 
+## Changelog
+
+All pull requests should include an entry in the [CHANGELOG.md](CHANGELOG.md) file unless the changes are trivial (e.g., fixing typos, minor documentation updates).
+
+If your PR doesn't require a changelog entry (e.g., documentation-only changes, CI configuration), add the `skip-changelog` label to your pull request.
+
 ## Responding to issues and pull requests
 
 This project's maintainers will make every effort to respond to any

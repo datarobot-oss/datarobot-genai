@@ -24,6 +24,12 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
 
+INLINE_CSV_DATASET = (
+    "text_review,product_category\n"
+    '"This product has incredible build quality and exceeded all my expectations",electronics\n'
+    '"The software interface is clean and very easy to navigate",software\n'
+)
+
 
 @pytest.fixture(scope="session")
 def expectations_for_predict_realtime_file_success(
@@ -67,6 +73,27 @@ def expectations_for_predict_by_ai_catalog_rt_success(
     )
 
 
+@pytest.fixture(scope="session")
+def expectations_for_predict_realtime_dataset_string_success(
+    deployment_id: str,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="predict_realtime",
+                parameters={
+                    "deployment_id": deployment_id,
+                    "dataset": INLINE_CSV_DATASET,
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "prediction",
+        ],
+    )
+
+
 @pytest.mark.asyncio
 class TestPredictRealtimeE2E(ToolBaseE2E):
     """End-to-end tests for realtime prediction functionality."""
@@ -82,7 +109,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
     )
     async def test_predict_realtime_file_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_realtime_file_success: ETETestExpectations,
         deployment_id: str,
         classification_predict_file_path: Path,
@@ -99,7 +126,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_realtime_file_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -115,7 +142,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
     )
     async def test_predict_by_ai_catalog_rt_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_predict_by_ai_catalog_rt_success: ETETestExpectations,
         deployment_id: str,
         classification_predict_dataset: Any,
@@ -132,7 +159,42 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_by_ai_catalog_rt_success,
-                openai_llm_client,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        I have a DataRobot deployment with ID '{deployment_id}'.
+        Please run realtime predictions using this inline CSV data:
+        {dataset}
+        """
+        ],
+    )
+    async def test_predict_realtime_dataset_string_success(
+        self,
+        llm_client: Any,
+        expectations_for_predict_realtime_dataset_string_success: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            dataset=INLINE_CSV_DATASET,
+        )
+
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name if frame else "test_predict_realtime_dataset_string_success"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_predict_realtime_dataset_string_success,
+                llm_client,
                 session,
                 test_name,
             )

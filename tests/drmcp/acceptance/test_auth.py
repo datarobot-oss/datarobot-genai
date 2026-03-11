@@ -20,7 +20,7 @@ from typing import Any
 import jwt
 import pytest
 
-# Note: get_auth_context_user_info tool is defined in datarobot_genai.drmcp.tools.test_tools
+# Note: get_auth_context_user_info tool is defined in datarobot_genai.drtools.test_tools
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
@@ -101,7 +101,7 @@ class TestAuthContextE2E(ToolBaseE2E):
     )
     async def test_auth_context_tool_with_valid_token(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_auth_context_tool_success: ETETestExpectations,
         prompt: str,
         auth_token: str,
@@ -115,7 +115,7 @@ class TestAuthContextE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_auth_context_tool_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]

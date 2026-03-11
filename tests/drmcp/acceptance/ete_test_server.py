@@ -15,18 +15,21 @@
 import sys
 from pathlib import Path
 
-from datarobot_genai.drmcp import create_mcp_server
-
 # Add project root to path so imports work when running as a script
+# This must be done before any other imports
 _project_root = Path(__file__).parent.parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+from datarobot_genai.drmcp import create_mcp_server  # noqa: E402
+
 # Import to register test tools with the MCP server
-from tests.drmcp.acceptance.test_tools import (  # noqa: E402
-    get_auth_context_user_info as _,  # noqa: F401
+# Import integration test tools if they exist (for integration tests)
+from datarobot_genai.drmcp.test_utils.elicitation_test_tool import (  # noqa: E402
+    get_user_greeting,  # noqa: F401
 )
+from tests.drmcp.acceptance.test_tools import get_auth_context_user_info  # noqa: E402, F401
 
 if __name__ == "__main__":
-    server = create_mcp_server()
+    server = create_mcp_server(load_native_mcp_tools=True)
     server.run(show_banner=True)

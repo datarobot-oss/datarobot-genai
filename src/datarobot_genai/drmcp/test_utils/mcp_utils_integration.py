@@ -17,6 +17,7 @@ import contextlib
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters
@@ -27,14 +28,19 @@ from .utils import load_env
 load_env()
 
 
-def integration_test_mcp_server_params() -> StdioServerParameters:
+def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerParameters:
     env = {
         "DATAROBOT_API_TOKEN": os.environ.get("DATAROBOT_API_TOKEN") or "test-token",
         "DATAROBOT_ENDPOINT": os.environ.get("DATAROBOT_ENDPOINT")
         or "https://test.datarobot.com/api/v2",
         "MCP_SERVER_LOG_LEVEL": os.environ.get("MCP_SERVER_LOG_LEVEL") or "WARNING",
         "APP_LOG_LEVEL": os.environ.get("APP_LOG_LEVEL") or "WARNING",
-        "OTEL_ENABLED": os.environ.get("OTEL_ENABLED") or "false",
+        # Disable all OTEL telemetry for integration tests
+        "OTEL_ENABLED": "false",
+        "OTEL_SDK_DISABLED": "true",
+        "OTEL_TRACES_EXPORTER": "none",
+        "OTEL_LOGS_EXPORTER": "none",
+        "OTEL_METRICS_EXPORTER": "none",
         "MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP": os.environ.get(
             "MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP"
         )
@@ -49,6 +55,8 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
     server_script = str(script_dir / "integration_mcp_server.py")
     # Add src/ directory to Python path so datarobot_genai can be imported
     src_dir = script_dir.parent.parent.parent
+    stub_flag = str(use_stub).lower()
+    os.environ["MCP_USE_CLIENT_STUBS"] = stub_flag
 
     return StdioServerParameters(
         command="uv",
@@ -57,6 +65,7 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
             "PYTHONPATH": str(src_dir),
             "MCP_SERVER_NAME": "integration",
             "MCP_SERVER_PORT": "8081",
+            "MCP_USE_CLIENT_STUBS": stub_flag,
             **env,
         },
     )
@@ -64,7 +73,10 @@ def integration_test_mcp_server_params() -> StdioServerParameters:
 
 @contextlib.asynccontextmanager
 async def integration_test_mcp_session(
-    server_params: StdioServerParameters | None = None, timeout: int = 30
+    server_params: StdioServerParameters | None = None,
+    timeout: int = 60,
+    elicitation_callback: Any | None = None,
+    use_stub: bool = True,
 ) -> AsyncGenerator[ClientSession, None]:
     """
     Create and connect a client for the MCP server as a context manager.
@@ -72,6 +84,7 @@ async def integration_test_mcp_session(
     Args:
         server_params: Parameters for configuring the server connection
         timeout: Timeout
+        elicitation_callback: Optional callback for handling elicitation requests
 
     Yields
     ------
@@ -82,12 +95,16 @@ async def integration_test_mcp_session(
         ConnectionError: If session initialization fails
         TimeoutError: If session initialization exceeds timeout
     """
-    server_params = server_params or integration_test_mcp_server_params()
+    server_params = server_params or integration_test_mcp_server_params(use_stub=use_stub)
 
     try:
         async with stdio_client(server_params) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await asyncio.wait_for(session.initialize(), timeout=timeout)
+            async with ClientSession(
+                read_stream, write_stream, elicitation_callback=elicitation_callback
+            ) as session:
+                init_result = await asyncio.wait_for(session.initialize(), timeout=timeout)
+                # Store the init result on the session for tests that need to inspect capabilities
+                session._init_result = init_result  # type: ignore[attr-defined]
                 yield session
 
     except asyncio.TimeoutError:

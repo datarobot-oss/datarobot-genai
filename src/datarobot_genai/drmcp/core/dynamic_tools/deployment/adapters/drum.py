@@ -11,17 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import importlib.resources
 import json
 from enum import Enum
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 from typing import Literal
 
 from .base import MetadataBase
 
-# Path to the schemas directory
-SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
+_DEPLOYMENT_PKG = "datarobot_genai.drmcp.core.dynamic_tools.deployment"
 
 
 class DrumTargetType(str, Enum):
@@ -30,6 +30,7 @@ class DrumTargetType(str, Enum):
     ANOMALY = "anomaly"
     UNSTRUCTURED = "unstructured"
     MULTICLASS = "multiclass"
+    MULTILABEL = "multilabel"
     TEXT_GENERATION = "textgeneration"
     GEO_POINT = "geopoint"
     VECTOR_DATABASE = "vectordatabase"
@@ -43,28 +44,29 @@ class DrumTargetType(str, Enum):
             DrumTargetType.REGRESSION,
             DrumTargetType.ANOMALY,
             DrumTargetType.MULTICLASS,
+            DrumTargetType.MULTILABEL,
             DrumTargetType.TEXT_GENERATION,
             DrumTargetType.GEO_POINT,
             DrumTargetType.VECTOR_DATABASE,
         }
 
 
+def _load_schema_json(name: str) -> dict[str, Any]:
+    """Load a JSON schema from the package schemas directory (works from wheel or source)."""
+    ref = importlib.resources.files(_DEPLOYMENT_PKG).joinpath("schemas").joinpath(name)
+    return json.loads(ref.read_text())
+
+
 @lru_cache(maxsize=1)
 def _get_prediction_fallback_schema() -> dict[str, Any]:
     """Get the default prediction input schema for DRUM deployments."""
-    schema_path = SCHEMAS_DIR / "drum_prediction_fallback_schema.json"
-    with open(schema_path) as f:
-        schema: dict[str, Any] = json.load(f)
-        return schema
+    return _load_schema_json("drum_prediction_fallback_schema.json")
 
 
 @lru_cache(maxsize=1)
 def _get_agentic_fallback_schema() -> dict[str, Any]:
     """Get the default agentic workflow input schema for DRUM deployments."""
-    schema_path = SCHEMAS_DIR / "drum_agentic_fallback_schema.json"
-    with open(schema_path) as f:
-        schema: dict[str, Any] = json.load(f)
-        return schema
+    return _load_schema_json("drum_agentic_fallback_schema.json")
 
 
 def get_default_schema(target_type: str) -> dict[str, Any]:
@@ -195,6 +197,7 @@ class DrumMetadataAdapter(MetadataBase):
             DrumTargetType.REGRESSION: predictions_endpoint,
             DrumTargetType.ANOMALY: predictions_endpoint,
             DrumTargetType.MULTICLASS: predictions_endpoint,
+            DrumTargetType.MULTILABEL: predictions_endpoint,
             DrumTargetType.TEXT_GENERATION: predictions_endpoint,
             DrumTargetType.GEO_POINT: predictions_endpoint,
             DrumTargetType.UNSTRUCTURED: "/predictionsUnstructured",

@@ -7,6 +7,10 @@ dotenv: [".env"]
 env:
   PARENT_ENV: true
 
+vars:
+  PROJECT_SRC: "./src"
+  TESTS_SRC: "./tests"
+
 includes:
   lint:
     taskfile: .taskfiles/lint.yml
@@ -36,6 +40,14 @@ tasks:
     cmds:
       - echo "🔧 Installing dependencies (all extras)..."
       - uv sync --all-extras --dev
+    silent: true
+
+  # Use on macOS Intel (x86_64) when install fails due to lancedb (no wheel; pulled in by crewai-tools).
+  install-no-crewai:
+    desc: "🔧 Install dependencies (all extras except crewai, for macOS Intel)"
+    cmds:
+      - echo "🔧 Installing dependencies (all extras except crewai)..."
+      - uv sync --dev --extra core --extra dragent --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra auth --extra drmcp
     silent: true
 
   build:

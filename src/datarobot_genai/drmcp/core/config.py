@@ -28,7 +28,156 @@ from pydantic_settings import SettingsConfigDict
 from .config_utils import extract_datarobot_dict_runtime_param_payload
 from .config_utils import extract_datarobot_runtime_param_payload
 from .constants import DEFAULT_DATAROBOT_ENDPOINT
+from .constants import MCP_CLI_OPTS
 from .constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
+
+
+class MCPToolConfig(BaseSettings):
+    """Tool configuration for MCP server."""
+
+    enable_predictive_tools: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PREDICTIVE_TOOLS",
+            "ENABLE_PREDICTIVE_TOOLS",
+        ),
+        description="Enable/disable predictive tools",
+    )
+
+    enable_jira_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_JIRA_TOOLS",
+            "ENABLE_JIRA_TOOLS",
+        ),
+        description="Enable/disable Jira tools",
+    )
+
+    enable_confluence_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CONFLUENCE_TOOLS",
+            "ENABLE_CONFLUENCE_TOOLS",
+        ),
+        description="Enable/disable Confluence tools",
+    )
+
+    enable_gdrive_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_GDRIVE_TOOLS",
+            "ENABLE_GDRIVE_TOOLS",
+        ),
+        description="Enable/disable GDrive tools",
+    )
+
+    enable_microsoft_graph_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_MICROSOFT_GRAPH_TOOLS",
+            "ENABLE_MICROSOFT_GRAPH_TOOLS",
+        ),
+        description="Enable/disable Microsoft Graph (Sharepoint/OneDrive) tools",
+    )
+
+    enable_perplexity_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PERPLEXITY_TOOLS",
+            "ENABLE_PERPLEXITY_TOOLS",
+        ),
+        description="Enable/disable Perplexity tools",
+    )
+
+    enable_tavily_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_TAVILY_TOOLS",
+            "ENABLE_TAVILY_TOOLS",
+        ),
+        description="Enable/disable Tavily search tools",
+    )
+
+    enable_dr_docs_tools: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_DR_DOCS_TOOLS",
+            "ENABLE_DR_DOCS_TOOLS",
+        ),
+        description="Enable/disable DataRobot documentation search tools",
+    )
+
+    is_atlassian_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED",
+            "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Atlassian OAuth provider is configured for Atlassian integration",
+    )
+
+    @property
+    def is_atlassian_oauth_configured(self) -> bool:
+        """Check if Atlassian OAuth is configured via provider flag or environment variables."""
+        return self.is_atlassian_oauth_provider_configured or bool(
+            os.getenv("ATLASSIAN_CLIENT_ID") and os.getenv("ATLASSIAN_CLIENT_SECRET")
+        )
+
+    is_google_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED",
+            "IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Google OAuth provider is configured for Google integration",
+    )
+
+    @property
+    def is_google_oauth_configured(self) -> bool:
+        return self.is_google_oauth_provider_configured or bool(
+            os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET")
+        )
+
+    is_microsoft_oauth_provider_configured: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED",
+            "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED",
+        ),
+        description="Whether Microsoft OAuth provider is configured for Microsoft integration",
+    )
+
+    @property
+    def is_microsoft_oauth_configured(self) -> bool:
+        return self.is_microsoft_oauth_provider_configured or bool(
+            os.getenv("MICROSOFT_CLIENT_ID") and os.getenv("MICROSOFT_CLIENT_SECRET")
+        )
+
+    @field_validator(
+        "enable_predictive_tools",
+        "enable_jira_tools",
+        "enable_confluence_tools",
+        "enable_gdrive_tools",
+        "enable_microsoft_graph_tools",
+        "enable_perplexity_tools",
+        "enable_tavily_tools",
+        "enable_dr_docs_tools",
+        "is_atlassian_oauth_provider_configured",
+        "is_google_oauth_provider_configured",
+        "is_microsoft_oauth_provider_configured",
+        mode="before",
+    )
+    @classmethod
+    def validate_runtime_params(cls, v: Any) -> Any:
+        """Validate runtime parameters."""
+        return extract_datarobot_runtime_param_payload(v)
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 class MCPServerConfig(BaseSettings):
@@ -188,13 +337,21 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable memory management",
     )
-    enable_predictive_tools: bool = Field(
-        default=True,
+    mcp_cli_configs: str | None = Field(
+        default=None,
         validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PREDICTIVE_TOOLS",
-            "ENABLE_PREDICTIVE_TOOLS",
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_CLI_CONFIGS",
+            "MCP_CLI_CONFIGS",
         ),
-        description="Enable/disable predictive tools",
+        description="Comma-separated list of features to enable: dynamic_tools, dynamic_prompts, "
+        "predictive, gdrive, microsoft_graph, jira, confluence, perplexity, tavily. "
+        "When unset (None), defaults apply. When set to empty string, all listed features are "
+        "disabled. Individual env vars (e.g. ENABLE_PREDICTIVE_TOOLS) take precedence when set.",
+    )
+
+    tool_config: MCPToolConfig = Field(
+        default_factory=MCPToolConfig,
+        description="Tool configuration",
     )
 
     @field_validator(
@@ -215,11 +372,11 @@ class MCPServerConfig(BaseSettings):
         "otel_enabled",
         "otel_enabled_http_instrumentors",
         "enable_memory_management",
+        "mcp_cli_configs",
         "tool_registration_allow_empty_schema",
         "mcp_server_register_dynamic_tools_on_startup",
         "tool_registration_duplicate_behavior",
         "mcp_server_register_dynamic_prompts_on_startup",
-        "enable_predictive_tools",
         mode="before",
     )
     @classmethod
@@ -239,12 +396,77 @@ class MCPServerConfig(BaseSettings):
 _config: MCPServerConfig | None = None
 
 
+def _individual_env_set_for_field(
+    model: type[MCPServerConfig] | type[MCPToolConfig], attr: str
+) -> bool:
+    """Return True if the user set this field via env (any of its validation_alias names)."""
+    info = model.model_fields[attr]
+    alias = getattr(info, "validation_alias", None)
+    if alias is None:
+        return False
+    if isinstance(alias, str):
+        names = [alias]
+    elif hasattr(alias, "choices"):
+        names = list(alias.choices)
+    else:
+        names = []
+    return any(os.environ.get(name, "").strip() for name in names)
+
+
+def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig:
+    """Apply MCP_CLI_CONFIGS from config: listed options enabled; others disabled
+    unless individual env set.
+
+    - If mcp_cli_configs is None (unset), do not apply overrides (defaults apply).
+    - If mcp_cli_configs is set but empty string, treat as disable all (enabled set is empty).
+    - If mcp_cli_configs is set and non-empty, parse comma list and apply as before.
+    """
+    if config.mcp_cli_configs is None:
+        return config
+    raw = (config.mcp_cli_configs or "").strip()
+    enabled = {s.strip().lower() for s in raw.split(",") if s.strip()} if raw else set()
+    root_updates: dict[str, Any] = {}
+    tool_updates: dict[str, Any] = {}
+    for mcp_opt, root_attr, tool_attr in MCP_CLI_OPTS:
+        attr = root_attr if root_attr is not None else tool_attr
+        assert attr is not None  # each MCP_CLI_OPTS row has either root_attr or tool_attr
+        model: type[MCPServerConfig] | type[MCPToolConfig] = (
+            MCPServerConfig if root_attr else MCPToolConfig
+        )
+        if _individual_env_set_for_field(model, attr):
+            continue
+        if mcp_opt in enabled:
+            if root_attr is not None:
+                current = getattr(config, root_attr)
+                default = MCPServerConfig.model_fields[root_attr].default
+                if current == default:
+                    root_updates[root_attr] = True
+            else:
+                assert tool_attr is not None
+                current = getattr(config.tool_config, tool_attr)
+                default = MCPToolConfig.model_fields[tool_attr].default
+                if current == default:
+                    tool_updates[tool_attr] = True
+        elif root_attr is not None:
+            # Option not in MCP_CLI_CONFIGS: disable.
+            root_updates[root_attr] = False
+        else:
+            assert tool_attr is not None
+            tool_updates[tool_attr] = False
+    if tool_updates:
+        root_updates["tool_config"] = config.tool_config.model_copy(update=tool_updates)
+    if not root_updates:
+        return config
+    return config.model_copy(update=root_updates)
+
+
 def get_config() -> MCPServerConfig:
     """Get the global configuration instance."""
     # Use a local variable to avoid global statement warning
     config = _config
     if config is None:
         config = MCPServerConfig()
+        config = _apply_mcp_cli_configs_overrides(config)
         # Update the global variable
         globals()["_config"] = config
     return config

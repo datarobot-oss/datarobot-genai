@@ -1,6 +1,7 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 
+from datarobot_genai.core.utils.token_tracking import estimate_tokens
 from datarobot_genai.core.utils.urls import get_api_base
 
 """
@@ -10,6 +11,7 @@ For the optional extras, these need to be imported from their respective sub pac
 
 __all__ = [
     "get_api_base",
+    "estimate_tokens",
     "__version__",
 ]
 

@@ -17,7 +17,7 @@ This package provides:
 - BaseAgent: common initialization for agent env/config fields
 - Common helpers: make_system_prompt, extract_user_prompt_content
 - Framework utilities (optional extras):
-  - crewai: build_llm, create_pipeline_interactions_from_messages
+  - crewai: create_pipeline_interactions_from_messages
   - langgraph: create_pipeline_interactions_from_events
   - llamaindex: DataRobotLiteLLM, create_pipeline_interactions_from_events
 """
@@ -28,7 +28,6 @@ from .base import InvokeReturn
 from .base import UsageMetrics
 from .base import default_usage_metrics
 from .base import extract_user_prompt_content
-from .base import is_streaming
 from .base import make_system_prompt
 
 __all__ = [
@@ -36,7 +35,6 @@ __all__ = [
     "make_system_prompt",
     "extract_user_prompt_content",
     "default_usage_metrics",
-    "is_streaming",
     "InvokeReturn",
     "UsageMetrics",
     "MCPConfig",

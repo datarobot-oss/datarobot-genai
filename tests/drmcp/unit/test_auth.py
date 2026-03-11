@@ -96,7 +96,7 @@ def middleware_context() -> MiddlewareContext:
 def call_next() -> AsyncMock:
     """Create a mock call_next function that returns a successful tool result."""
     mock_next = AsyncMock()
-    mock_next.return_value = ToolResult(content="Success")
+    mock_next.return_value = ToolResult(structured_content={"result": "Success"})
     return mock_next
 
 

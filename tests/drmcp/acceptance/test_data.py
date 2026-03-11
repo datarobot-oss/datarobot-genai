@@ -33,7 +33,28 @@ def expectations_for_upload_dataset_to_ai_catalog_success(
             ToolCallTestExpectations(
                 name="upload_dataset_to_ai_catalog",
                 parameters={"file_path": str(diabetes_scoring_small_file_path)},
-                result="AI Catalog ID: ",
+                result={"dataset_id": "", "dataset_version_id": "", "dataset_name": ""},
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "dataset has been successfully uploaded",
+            "dataset has been uploaded",
+            "successfully",
+            "uploaded",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_upload_dataset_to_ai_catalog_success_from_url() -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="upload_dataset_to_ai_catalog",
+                parameters={
+                    "file_url": "https://s3.amazonaws.com/datarobot_public_datasets/10k_diabetes.csv"
+                },
+                result={"dataset_id": "", "dataset_version_id": "", "dataset_name": ""},
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -75,7 +96,7 @@ def expectations_for_list_ai_catalog_items_success() -> ETETestExpectations:
             ToolCallTestExpectations(
                 name="list_ai_catalog_items",
                 parameters={},
-                result="10k_diabetes_scoring_small.csv",
+                result={"datasets": {}, "count": 0},
             )
         ],
         llm_response_content_contains_expectations=[
@@ -103,7 +124,7 @@ class TestDataE2E(ToolBaseE2E):
     )
     async def test_upload_dataset_to_ai_catalog_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_upload_dataset_to_ai_catalog_success: ETETestExpectations,
         prompt_template: str,
         diabetes_scoring_small_file_path: str,
@@ -113,12 +134,43 @@ class TestDataE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_upload_dataset_to_ai_catalog_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
                     else "test_upload_dataset_to_ai_catalog_success"
+                ),
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        I'm working on a machine learning project and I need to upload a dataset to the
+        DataRobot AI Catalog. Can you help me upload the dataset from the URL {file_url}?
+        """
+        ],
+    )
+    async def test_upload_dataset_to_ai_catalog_success_from_url(
+        self,
+        llm_client: Any,
+        expectations_for_upload_dataset_to_ai_catalog_success_from_url: ETETestExpectations,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            file_url="https://s3.amazonaws.com/datarobot_public_datasets/10k_diabetes.csv"
+        )
+        async with ete_test_mcp_session() as session:
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_upload_dataset_to_ai_catalog_success_from_url,
+                llm_client,
+                session,
+                (
+                    inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
+                    if inspect.currentframe()
+                    else "test_upload_dataset_to_ai_catalog_success_from_url"
                 ),
             )
 
@@ -133,7 +185,7 @@ class TestDataE2E(ToolBaseE2E):
     )
     async def test_upload_dataset_to_ai_catalog_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_upload_dataset_to_ai_catalog_failure: ETETestExpectations,
         prompt_template: str,
         nonexistent_file_path: str,
@@ -143,7 +195,7 @@ class TestDataE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_upload_dataset_to_ai_catalog_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
@@ -164,7 +216,7 @@ class TestDataE2E(ToolBaseE2E):
     )
     async def test_list_ai_catalog_items_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_list_ai_catalog_items_success: ETETestExpectations,
         prompt: str,
     ) -> None:
@@ -172,7 +224,7 @@ class TestDataE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_list_ai_catalog_items_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]

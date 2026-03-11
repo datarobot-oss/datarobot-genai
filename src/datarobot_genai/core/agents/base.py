@@ -12,21 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import abc
 import json
 import os
 from collections.abc import AsyncGenerator
-from collections.abc import Mapping
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
+from typing import Optional
+from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
-from typing import cast
 
-from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
+from ag_ui.core import Event
+from ag_ui.core import RunAgentInput
 
+from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.config import get_max_history_messages_default
+from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
 
@@ -41,7 +50,22 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - timeout: Request timeout
       - verbose: Verbosity flag
       - authorization_context: Authorization context for downstream agents/tools
+      - max_history_messages: Maximum number of prior messages to include in chat history
     """
+
+    _max_history_messages: int | None = None
+
+    @property
+    def max_history_messages(self) -> int:
+        """Maximum number of prior messages to include in chat history.
+
+        Defaults to ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES`` env var (read at
+        call time). Subclasses can override via the constructor parameter or
+        by overriding this property.
+        """
+        if self._max_history_messages is not None:
+            return self._max_history_messages
+        return get_max_history_messages_default()
 
     def __init__(
         self,
@@ -52,8 +76,11 @@ class BaseAgent(Generic[TTool], abc.ABC):
         verbose: bool | str | None = True,
         timeout: int | None = 90,
         authorization_context: dict[str, Any] | None = None,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
         **_: Any,
     ) -> None:
+        self._max_history_messages = max_history_messages
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
         self.api_base = (
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
@@ -68,6 +95,8 @@ class BaseAgent(Generic[TTool], abc.ABC):
             self.verbose = bool(verbose)
         self._mcp_tools: list[TTool] = []
         self._authorization_context = authorization_context or {}
+        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
+        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
 
     def set_mcp_tools(self, tools: list[TTool]) -> None:
         self._mcp_tools = tools
@@ -77,7 +106,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Return the list of MCP tools available to this agent.
 
         Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``build_crewai_workflow``.
+        workflow construction inside ``crew``.
         """
         return self._mcp_tools
 
@@ -86,12 +115,29 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Return the authorization context for this agent."""
         return self._authorization_context
 
+    @property
+    def forwarded_headers(self) -> dict[str, str]:
+        """Return the forwarded headers for this agent."""
+        return self._forwarded_headers
+
     def litellm_api_base(self, deployment_id: str | None) -> str:
         return get_api_base(self.api_base, deployment_id)
 
     @abc.abstractmethod
-    async def invoke(self, completion_create_params: CompletionCreateParams) -> "InvokeReturn":
+    def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
+
+    def build_history_summary(
+        self,
+        run_agent_input: RunAgentInput,
+    ) -> str:
+        """Instance helper to summarize prior turns as plain-text transcript.
+
+        Subclasses can override ``max_history_messages`` to control how many
+        prior messages are included. This is primarily intended for exposing a
+        ``chat_history`` variable in prompts across different agent types.
+        """
+        return build_history_summary_from_messages(run_agent_input, self.max_history_messages)
 
     @classmethod
     def create_pipeline_interactions_from_events(
@@ -101,18 +147,17 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Create a simple MultiTurnSample from a list of generic events/messages."""
         if not events:
             return None
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+
         return MultiTurnSample(user_input=events)
 
 
-def extract_user_prompt_content(
-    completion_create_params: CompletionCreateParams | Mapping[str, Any],
-) -> Any:
-    """Extract first user message content from OpenAI messages."""
-    params = cast(Mapping[str, Any], completion_create_params)
-    user_messages = [msg for msg in params.get("messages", []) if msg.get("role") == "user"]
+def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
+    """Extract the last user message content from input."""
+    user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]
     # Get the last user message
-    user_prompt = user_messages[-1] if user_messages else {}
-    content = user_prompt.get("content", {})
+    content: str = user_messages[-1].content if user_messages else ""
     # Try converting prompt from json to a dict
     if isinstance(content, str):
         try:
@@ -158,11 +203,10 @@ class UsageMetrics(TypedDict):
     total_tokens: int
 
 
-# Canonical return type for DRUM-compatible invoke implementations
-InvokeReturn = (
-    AsyncGenerator[tuple[str, MultiTurnSample | None, UsageMetrics], None]
-    | tuple[str, MultiTurnSample | None, UsageMetrics]
-)
+# Canonical return type for all agent invoke implementations
+InvokeReturn: TypeAlias = AsyncGenerator[
+    tuple[Event, Optional["MultiTurnSample"], UsageMetrics], None
+]
 
 
 def default_usage_metrics() -> UsageMetrics:
@@ -172,16 +216,3 @@ def default_usage_metrics() -> UsageMetrics:
         "prompt_tokens": 0,
         "total_tokens": 0,
     }
-
-
-def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str, Any]) -> bool:
-    """Return True when the request asks for streaming, False otherwise.
-
-    Accepts both pydantic types and plain dictionaries.
-    """
-    params = cast(Mapping[str, Any], completion_create_params)
-    value = params.get("stream", False)
-    # Handle non-bool truthy values defensively (e.g., "true")
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return bool(value)

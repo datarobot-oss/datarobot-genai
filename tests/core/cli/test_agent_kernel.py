@@ -249,7 +249,7 @@ class TestAgentKernel:
         mock_completions.create.return_value = mock_completion_obj
 
         # Execute
-        result = kernel.local(user_prompt, config=Mock(agent_endpoint="http://localhost:8842"))
+        result = kernel.local(user_prompt, config=Mock(local_dev_port=8842))
 
         # Assert
         # Verify OpenAI client was created with correct parameters
@@ -300,9 +300,7 @@ class TestAgentKernel:
         mock_completions.create.return_value = mock_completion_obj
 
         # Execute
-        result = kernel.local(
-            user_prompt, stream=True, config=Mock(agent_endpoint="http://localhost:8842")
-        )
+        result = kernel.local(user_prompt, stream=True, config=Mock(local_dev_port=8842))
 
         # Assert
         # Verify OpenAI client was created with correct parameters
@@ -351,7 +349,7 @@ class TestAgentKernel:
         mock_completions.create.return_value = Mock(spec=ChatCompletion)
 
         # Execute
-        kernel.local(user_prompt, config=Mock(agent_endpoint="http://localhost:8842"))
+        kernel.local(user_prompt, config=Mock(local_dev_port=8842))
 
         # Assert print statements were called with expected arguments
         expected_api_url = "http://localhost:8842"
@@ -376,7 +374,7 @@ class TestAgentKernel:
 
         # Execute and Assert
         with pytest.raises(ValueError, match="Test error"):
-            kernel.local(user_prompt, config=Mock(agent_endpoint="http://localhost:8842"))
+            kernel.local(user_prompt, config=Mock(local_dev_port=8842))
 
     @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
     @patch("datarobot_genai.core.cli.agent_kernel.requests.get")

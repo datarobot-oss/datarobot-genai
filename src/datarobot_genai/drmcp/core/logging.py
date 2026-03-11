@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import Any
 from typing import TypeVar
 
-from .exceptions import MCPError
+from fastmcp.exceptions import ToolError
 
 # Secret patterns to redact from logs
 SECRET_PATTERNS = [
@@ -93,6 +93,6 @@ def log_execution(func: F) -> F:
             return result
         except Exception as e:
             error_msg = _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
-            raise MCPError(error_msg)
+            raise ToolError(error_msg)
 
     return wrapper  # type: ignore[return-value]

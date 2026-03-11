@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+Use `uv run` for all python commands.

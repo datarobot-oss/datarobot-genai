@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import logging
 from typing import Any
 from typing import cast
@@ -20,19 +21,80 @@ import datarobot as dr
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 from fastmcp.server.dependencies import get_http_headers
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
 
+from .constants import MCP_PATH_ENDPOINT
 from .credentials import get_credentials
+from .routes_utils import prefix_mount_path
 
 logger = logging.getLogger(__name__)
+
+# Context variable for request headers. Set by RequestHeadersMiddleware for every
+# HTTP request so get_sdk_client() can resolve the API token in custom routes and tools.
+_request_headers_ctx: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
+    "request_headers", default=None
+)
+
+
+def set_request_headers_for_context(headers: dict[str, str]) -> None:
+    """Set request headers in context so get_sdk_client() can use them (e.g. in tests)."""
+    _request_headers_ctx.set(headers)
+
+
+def resolve_token_from_headers() -> str | None:
+    """
+    Resolve API token from request headers, trying both sources.
+
+    Order: try framework get_http_headers() first (preferred), then context
+    (set by RequestHeadersMiddleware). If both have headers, tries token extraction
+    from the first; if no token found, tries the second so the token is used
+    whichever source it came from.
+    """
+    framework_headers = None
+    try:
+        framework_headers = get_http_headers()
+    except Exception:
+        pass  # No HTTP context (e.g. stdio transport)
+
+    request_headers_ctx = _request_headers_ctx.get()
+
+    token = (
+        _extract_token_from_headers_with_fallback(framework_headers) if framework_headers else None
+    )
+    if not token and request_headers_ctx:
+        token = _extract_token_from_headers_with_fallback(request_headers_ctx)
+    return token
+
+
+class RequestHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    ASGI middleware that sets request headers in context for custom REST routes only.
+
+    Skips the streamable-http MCP path so only routes in routes.py get headers in
+    context; get_sdk_client() can then resolve the API token for those handlers.
+    """
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        mcp_path = prefix_mount_path(MCP_PATH_ENDPOINT).rstrip("/") or "/"
+        path = request.url.path
+        if path == mcp_path or path.startswith(mcp_path + "/"):
+            return await call_next(request)
+        headers = {k.lower(): v for k, v in request.headers.items()}
+        set_request_headers_for_context(headers)
+        return await call_next(request)
+
 
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "authorization",
     "x-datarobot-api-token",
     "x-datarobot-api-key",
+    "x-datarobot-identity-token",
 ]
 
 
@@ -103,7 +165,7 @@ def _extract_token_from_auth_context(headers: dict[str, str]) -> str | None:
         return None
 
 
-def extract_token_from_headers(headers: dict[str, str]) -> str | None:
+def _extract_token_from_headers_with_fallback(headers: dict[str, str]) -> str | None:
     """
     Extract a token from headers with multiple fallback strategies.
 
@@ -127,54 +189,48 @@ def extract_token_from_headers(headers: dict[str, str]) -> str | None:
     return None
 
 
-def get_sdk_client() -> Any:
+def get_sdk_client(headers_auth_only: bool = False) -> Any:
     """
-    Get a DataRobot SDK client, using the user's Bearer token from the request.
+    Get a DataRobot SDK client using the API token from the current request.
 
-    This function attempts to extract the Bearer token from the HTTP request headers
-    with fallback strategies:
-    1. Standard authorization headers (Bearer token, x-datarobot-api-token, etc.)
-    2. Authorization context metadata (dr_ctx.api_key)
+    Token resolution (prefer framework first, then our context):
+    1. get_http_headers() (framework; e.g. MCP tool request context)
+    2. _request_headers_ctx (set by RequestHeadersMiddleware or tests)
+    Token extraction from each source tries: standard auth headers, then
+    authorization context metadata (dr_ctx.api_key). If both sources have
+    headers, the token is taken from the first source that yields one.
     3. Application credentials as final fallback
-    """
-    token = None
 
-    try:
-        headers = get_http_headers()
-        if headers:
-            token = extract_token_from_headers(headers)
-            if token:
-                logger.debug("Using API token found in HTTP headers")
-    except Exception:
-        # No HTTP context e.g. stdio transport
-        logger.warning(
-            "Could not get HTTP headers, falling back to application credentials", exc_info=True
-        )
+    If headers_auth_only is True, only use the token from the request headers.
+
+    Note
+    ----
+        Use this function to get a DataRobot SDK client for use in core modules and routes only.
+        For use in tools, use DataRobotClient class in tools/clients/datarobot.py.
+    """
+    token = resolve_token_from_headers()
+    if token:
+        logger.debug("Using API token from request headers")
 
     credentials = get_credentials()
 
+    if headers_auth_only and not token:
+        raise ValueError("No API token found in HTTP headers")
+
     # Fallback: Use application token
     if not token:
+        # required for dynamic tool and prompt registration on startup
         token = credentials.datarobot.application_api_token
         logger.debug("Using application API token from credentials")
 
     dr.Client(token=token, endpoint=credentials.datarobot.endpoint)
-    # The trafaret setting up a use case in the context, seem to mess up the tool calls
+    # Avoid use-case context from trafaret affecting tool calls
     DRContext.use_case = None
     return dr
 
 
-def get_api_client() -> RESTClientObject:
+def get_api_client(headers_auth_only: bool = False) -> RESTClientObject:
     """Get a DataRobot SDK api client using application credentials."""
-    dr = get_sdk_client()
+    dr = get_sdk_client(headers_auth_only=headers_auth_only)
 
     return cast(RESTClientObject, dr.client.get_client())
-
-
-def get_s3_bucket_info() -> dict[str, str]:
-    """Get S3 bucket configuration."""
-    credentials = get_credentials()
-    return {
-        "bucket": credentials.aws_predictions_s3_bucket,
-        "prefix": credentials.aws_predictions_s3_prefix,
-    }

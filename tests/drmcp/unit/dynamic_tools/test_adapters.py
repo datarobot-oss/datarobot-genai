@@ -143,6 +143,7 @@ class TestDrumMetadataAdapter:
             pytest.param("binary", "/predictions", id="binary"),
             pytest.param("regression", "/predictions", id="regression"),
             pytest.param("multiclass", "/predictions", id="multiclass"),
+            pytest.param("multilabel", "/predictions", id="multilabel"),
             pytest.param("textgeneration", "/predictions", id="text_generation"),
             pytest.param("unstructured", "/predictionsUnstructured", id="unstructured"),
             pytest.param("vectordatabase", "/predictions", id="vector_database"),
@@ -167,6 +168,18 @@ class TestDrumMetadataAdapter:
         assert drum_adapter.input_schema == expected_schema
         assert "type" in drum_adapter.input_schema
         assert "properties" in drum_adapter.input_schema
+
+    def test_drum_adapter_agentic_workflow_fallback_schema(self, drum_metadata_unstructured):
+        """Test fallback schema for agentic_workflow target type."""
+        drum_metadata_unstructured["target_type"] = "agenticworkflow"
+        del drum_metadata_unstructured["model_metadata"]["input_schema"]
+
+        adapter = DrumMetadataAdapter.from_deployment_metadata(drum_metadata_unstructured)
+        schema = adapter.input_schema
+        assert schema is not None
+        assert "type" in schema
+        assert schema["type"] == "object"
+        assert "properties" in schema
 
     def test_drum_adapter_headers_are_empty(self, drum_adapter):
         """Test that DRUM deployments have Content-Type header."""

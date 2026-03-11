@@ -15,5 +15,5 @@
 from datarobot_genai.drmcp import create_mcp_server
 
 if __name__ == "__main__":
-    server = create_mcp_server()
+    server = create_mcp_server(load_native_mcp_tools=True)
     server.run(show_banner=True)

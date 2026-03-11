@@ -33,7 +33,7 @@ def expectations_for_list_projects_success(
             ToolCallTestExpectations(
                 name="list_projects",
                 parameters={},
-                result=f"{classification_project_id}: ",
+                result=f'"{classification_project_id}": "{classification_project_name}"',
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -60,7 +60,6 @@ def expectations_for_get_project_dataset_by_name_success(
                 result={
                     "dataset_id": classification_dataset_id,
                     "dataset_type": "source",
-                    "ui_panel": ["dataset"],
                 },
             ),
         ],
@@ -83,10 +82,12 @@ def expectations_for_get_project_dataset_by_name_failure(
                     "project_id": classification_project_id,
                     "dataset_name": nonexistent_dataset_name,
                 },
-                result=(
-                    f"Dataset with name containing '{nonexistent_dataset_name}' not found in "
-                    f"project {classification_project_id}."
-                ),
+                result={
+                    "error": (
+                        f"Dataset with name containing '{nonexistent_dataset_name}' not found in "
+                        f"project {classification_project_id}."
+                    )
+                },
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -110,7 +111,7 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
             ToolCallTestExpectations(
                 name="list_projects",
                 parameters={},
-                result=f"{classification_project_id}: ",
+                result=f'"{classification_project_id}": "{classification_project_name}"',
             ),
             ToolCallTestExpectations(
                 name="get_project_dataset_by_name",
@@ -121,7 +122,6 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
                 result={
                     "dataset_id": classification_dataset_id,
                     "dataset_type": "source",
-                    "ui_panel": ["dataset"],
                 },
             ),
         ],
@@ -149,7 +149,7 @@ class TestProjectsE2E(ToolBaseE2E):
     )
     async def test_list_projects_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_list_projects_success: ETETestExpectations,
         prompt: str,
     ) -> None:
@@ -159,7 +159,7 @@ class TestProjectsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_list_projects_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -175,7 +175,7 @@ class TestProjectsE2E(ToolBaseE2E):
     )
     async def test_get_project_dataset_by_name_success(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_project_dataset_by_name_success: ETETestExpectations,
         classification_project_id: str,
         classification_dataset_name: str,
@@ -194,7 +194,7 @@ class TestProjectsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_project_dataset_by_name_success,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -210,7 +210,7 @@ class TestProjectsE2E(ToolBaseE2E):
     )
     async def test_get_project_dataset_by_name_failure(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_project_dataset_by_name_failure: ETETestExpectations,
         classification_project_id: str,
         nonexistent_dataset_name: str,
@@ -228,7 +228,7 @@ class TestProjectsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_project_dataset_by_name_failure,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )
@@ -244,7 +244,7 @@ class TestProjectsE2E(ToolBaseE2E):
     )
     async def test_get_project_dataset_by_name_success_with_multiple_calls(
         self,
-        openai_llm_client: Any,
+        llm_client: Any,
         expectations_for_get_project_dataset_by_name_success_with_multiple_calls: (
             ETETestExpectations
         ),
@@ -267,7 +267,7 @@ class TestProjectsE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_get_project_dataset_by_name_success_with_multiple_calls,
-                openai_llm_client,
+                llm_client,
                 session,
                 test_name,
             )

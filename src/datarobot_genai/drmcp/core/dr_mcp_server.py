@@ -18,28 +18,33 @@ import importlib
 import logging
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.prompts import Prompt
+from fastmcp.resources import Resource
+from fastmcp.tools import Tool
 from starlette.middleware import Middleware
 
 from .auth import initialize_oauth_middleware
+from .clients import RequestHeadersMiddleware
 from .config import get_config
+from .constants import MCP_PATH_ENDPOINT
 from .credentials import get_credentials
 from .dr_mcp_server_logo import log_server_custom_banner
 from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
-from .mcp_server_tools import get_all_available_tags  # noqa # pylint: disable=unused-import
-from .mcp_server_tools import get_tool_info_by_name  # noqa # pylint: disable=unused-import
-from .mcp_server_tools import list_tools_by_tags  # noqa # pylint: disable=unused-import
 from .memory_management.manager import MemoryManager
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
+from .tool_config import TOOL_CONFIGS
+from .tool_config import is_tool_enabled
 
 
 def _import_modules_from_dir(
@@ -80,6 +85,7 @@ class DataRobotMCPServer:
         credentials_factory: Callable[[], Any] | None = None,
         lifecycle: BaseServerLifecycle | None = None,
         additional_module_paths: list[tuple[str, str]] | None = None,
+        load_native_mcp_tools: bool = False,
     ):
         """
         Initialize the server.
@@ -92,6 +98,7 @@ class DataRobotMCPServer:
             lifecycle: Optional lifecycle handler (defaults to BaseServerLifecycle())
             additional_module_paths: Optional list of (directory, package_prefix) tuples for
                 loading additional modules
+            load_native_mcp_tools: If True, load tools from datarobot_genai.drtools (default False)
         """
         # Initialize config and logging
         self._config = get_config()
@@ -115,6 +122,9 @@ class DataRobotMCPServer:
         self._mcp = mcp
         self._mcp_transport = transport
 
+        # Configure MCP server capabilities
+        self._configure_mcp_capabilities()
+
         # Initialize telemetry
         initialize_telemetry(mcp)
 
@@ -137,13 +147,15 @@ class DataRobotMCPServer:
                     "No AWS credentials found, skipping memory manager initialization"
                 )
 
-        # Load static tools modules
-        base_dir = os.path.dirname(os.path.dirname(__file__))
-        if self._config.enable_predictive_tools:
-            _import_modules_from_dir(
-                os.path.join(base_dir, "tools", "predictive"),
-                "datarobot_genai.drmcp.tools.predictive",
-            )
+        # Load native MCP tools modules (only when load_native_mcp_tools is True)
+        base_dir = Path(__file__).parent.parent
+        if load_native_mcp_tools:
+            for tool_type, tool_config in TOOL_CONFIGS.items():
+                if is_tool_enabled(tool_type, self._config):
+                    _import_modules_from_dir(
+                        os.path.join(base_dir.parent, "drtools", tool_config["directory"]),
+                        tool_config["package_prefix"],
+                    )
 
         # Load memory management tools if available
         if self._memory_manager:
@@ -163,6 +175,37 @@ class DataRobotMCPServer:
         if transport == "streamable-http":
             register_routes(self._mcp)
 
+    def _configure_mcp_capabilities(self) -> None:
+        """Configure MCP capabilities that FastMCP doesn't expose directly.
+
+        See: https://github.com/modelcontextprotocol/python-sdk/issues/1126
+        """
+        server = self._mcp._mcp_server
+
+        # Declare prompts_changed capability  (capabilities.prompts.listChanged: true)
+        server.notification_options.prompts_changed = True
+
+        # Declare experimental capabilities ( experimental.dynamic_prompts: true)
+        server.experimental_capabilities = {"dynamic_prompts": {"enabled": True}}
+
+        # Patch to include experimental_capabilities (FastMCP doesn't expose this)
+        original = server.create_initialization_options
+
+        def patched(
+            notification_options: Any = None,
+            experimental_capabilities: dict[str, dict[str, Any]] | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            if experimental_capabilities is None:
+                experimental_capabilities = getattr(server, "experimental_capabilities", None)
+            return original(
+                notification_options=notification_options,
+                experimental_capabilities=experimental_capabilities,
+                **kwargs,
+            )
+
+        server.create_initialization_options = patched
+
     def run(self, show_banner: bool = False) -> None:
         """Run the DataRobot MCP server synchronously."""
         try:
@@ -179,23 +222,27 @@ class DataRobotMCPServer:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
 
+            # Execute pre-server start actions
+            asyncio.run(self._lifecycle.pre_server_start(self._mcp))
+
             # List registered tools, prompts, and resources before starting server
             tools = asyncio.run(self._mcp._list_tools_mcp())
             prompts = asyncio.run(self._mcp._list_prompts_mcp())
             resources = asyncio.run(self._mcp._list_resources_mcp())
 
-            self._logger.info(f"Registered tools: {len(tools)}")
+            tools_count = len(tools)
+            prompts_count = len(prompts)
+            resources_count = len(resources)
+
+            self._logger.info(f"Registered tools: {tools_count}")
             for tool in tools:
                 self._logger.info(f" > {tool.name}")
-            self._logger.info(f"Registered prompts: {len(prompts)}")
+            self._logger.info(f"Registered prompts: {prompts_count}")
             for prompt in prompts:
                 self._logger.info(f" > {prompt.name}")
-            self._logger.info(f"Registered resources: {len(resources)}")
+            self._logger.info(f"Registered resources: {resources_count}")
             for resource in resources:
                 self._logger.info(f" > {resource.name}")
-
-            # Execute pre-server start actions
-            asyncio.run(self._lifecycle.pre_server_start(self._mcp))
 
             # Create event loop for async operations
             loop = asyncio.new_event_loop()
@@ -209,6 +256,9 @@ class DataRobotMCPServer:
                         self._mcp,
                         self._mcp_transport,
                         port=self._config.mcp_server_port,
+                        tools_count=tools_count,
+                        prompts_count=prompts_count,
+                        resources_count=resources_count,
                     )
 
                 if self._mcp_transport == "stdio":
@@ -217,13 +267,17 @@ class DataRobotMCPServer:
                     server_task = asyncio.create_task(
                         self._mcp.run_http_async(
                             transport="http",
-                            middleware=[Middleware(OtelASGIMiddleware)],
+                            middleware=[
+                                # Request headers in context for REST routes only (skips MCP path).
+                                Middleware(RequestHeadersMiddleware),
+                                Middleware(OtelASGIMiddleware),
+                            ],
                             show_banner=False,
                             port=self._config.mcp_server_port,
                             log_level=self._config.mcp_server_log_level,
                             host=self._config.mcp_server_host,
                             stateless_http=True,
-                            path=prefix_mount_path("/mcp"),
+                            path=prefix_mount_path(MCP_PATH_ENDPOINT),
                         )
                     )
                 else:
@@ -254,6 +308,15 @@ class DataRobotMCPServer:
             self._logger.error(f"Server error: {e}")
             raise
 
+    async def get_tools(self) -> dict[str, Tool]:
+        return await self._mcp.get_tools()
+
+    async def get_prompts(self) -> dict[str, Prompt]:
+        return await self._mcp.get_prompts()
+
+    async def get_resources(self) -> dict[str, Resource]:
+        return await self._mcp.get_resources()
+
 
 def create_mcp_server(
     config_factory: Callable[[], Any] | None = None,
@@ -261,6 +324,7 @@ def create_mcp_server(
     lifecycle: BaseServerLifecycle | None = None,
     additional_module_paths: list[tuple[str, str]] | None = None,
     transport: str = "streamable-http",
+    load_native_mcp_tools: bool = False,
 ) -> DataRobotMCPServer:
     """
     Create a DataRobot MCP server.
@@ -271,6 +335,7 @@ def create_mcp_server(
         lifecycle: Optional lifecycle handler
         additional_module_paths: Optional list of (directory, package_prefix) tuples
         transport: Transport type ("streamable-http" or "stdio")
+        load_native_mcp_tools: If True, load tools from datarobot_genai.drtools (default False)
 
     Returns
     -------
@@ -306,4 +371,5 @@ def create_mcp_server(
         credentials_factory=credentials_factory,
         lifecycle=lifecycle,
         additional_module_paths=additional_module_paths,
+        load_native_mcp_tools=load_native_mcp_tools,
     )

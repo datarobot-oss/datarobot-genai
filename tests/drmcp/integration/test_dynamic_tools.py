@@ -17,13 +17,12 @@ from unittest.mock import MagicMock
 import pytest
 import responses
 
-from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
     register_tools_of_datarobot_deployments,
 )
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 
@@ -249,15 +248,9 @@ def mock_api_responses(
 
 
 @pytest.fixture
-def sdk_client():
-    """Get configured DataRobot SDK client."""
-    return get_sdk_client()
-
-
-@pytest.fixture
-def deployment_ok(sdk_client, deployment_id_ok: str):
+def deployment_ok(dr_client, deployment_id_ok: str):
     """Get deployment object."""
-    return sdk_client.Deployment.get(deployment_id_ok)
+    return dr_client.Deployment.get(deployment_id_ok)
 
 
 # todo - change the hardcoded deployment id (deployment_id_ok) to a proper fixture that
@@ -266,7 +259,7 @@ def deployment_ok(sdk_client, deployment_id_ok: str):
 @responses.activate
 async def test_get_mcp_tool_metadata(
     mock_api_responses,
-    sdk_client,
+    dr_client,
     deployment_ok,
     expected_input_schema: dict,
 ) -> None:
@@ -279,10 +272,10 @@ async def test_get_mcp_tool_metadata(
 
 @pytest.mark.asyncio
 @responses.activate
-async def test_dynamic_tool_registration(sdk_client, mock_api_responses) -> None:
+async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
     await register_tools_of_datarobot_deployments()
 
-    tool_names = {tool.name for tool in await mcp.list_tools()}
+    tool_names = {tool.name for tool in await mcp._list_tools_mcp()}
 
     assert "dynamic_tool_ok" in tool_names, "`dynamic_tool_ok` is missing."
     assert "dynamic_tool_error" not in tool_names, "`dynamic_tool_error` should not be registered."
@@ -290,7 +283,7 @@ async def test_dynamic_tool_registration(sdk_client, mock_api_responses) -> None
 
 @pytest.mark.asyncio
 async def test_mcp_mapping_methods():
-    mcp = TaggedFastMCP()
+    mcp = DataRobotMCP()
 
     # Mock the remove_tool method to avoid actual tool removal,
     # as the actual tool was not registered. This is just to test the

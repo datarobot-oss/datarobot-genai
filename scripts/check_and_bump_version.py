@@ -19,7 +19,6 @@ import argparse
 import json
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,7 +67,7 @@ def write_version(new_version: str) -> None:
     text = PYPROJECT.read_text()
     new_text = re.sub(
         r"(?m)^version\s*=\s*\"[^\"]*\"",
-        f"version = \"{new_version}\"",
+        f'version = "{new_version}"',
         text,
         count=1,
     )
@@ -79,7 +78,14 @@ def pypi_has_version(package: str, version: str, repository: str) -> bool:
     index = "https://pypi.org/pypi" if repository == "pypi" else "https://test.pypi.org/pypi"
     url = f"{index}/{package}/json"
     try:
-        out = subprocess.check_output(["python", "-c", f"import json,urllib.request as r;print(json.dumps(r.urlopen('{url}').read().decode()))"], text=True)
+        out = subprocess.check_output(
+            [
+                "python",
+                "-c",
+                f"import json,urllib.request as r;print(json.dumps(r.urlopen('{url}').read().decode()))",
+            ],
+            text=True,
+        )
         data = json.loads(json.loads(out))
         return version in data.get("releases", {})
     except Exception:

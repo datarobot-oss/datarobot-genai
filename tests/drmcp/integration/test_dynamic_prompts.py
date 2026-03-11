@@ -17,7 +17,8 @@ import pytest
 from mcp import McpError
 
 from datarobot_genai.drmcp import integration_test_mcp_session
-from datarobot_genai.drmcp.core.mcp_instance import TaggedFastMCP
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_DUPLICATE_NAME
 
 
 @pytest.mark.asyncio
@@ -132,28 +133,25 @@ class TestMCPDRPromptManagementIntegration:
                     == e.value.error.message
                 )
 
-    async def test_prompt_when_duplicated_names_exists(
-        self, prompt_templates_with_duplicates: tuple[dict, dict]
-    ) -> None:
-        """Integration test for prompt template when duplicated names exist."""
-        first_prompt_template, second_prompt_template = prompt_templates_with_duplicates
-        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
-            prompt_template_name_1 = first_prompt_template["name"]
-            prompt_template_name_2 = second_prompt_template["name"]
+    async def test_prompt_when_duplicated_names_exists(self) -> None:
+        """Integration test for prompt template when duplicated names exist.
 
-            # Its name from API -> it's duplicated
+        Uses stub prompts (use_stub=True) so no real API duplicate resources are needed.
+        """
+        async with integration_test_mcp_session(timeout=self.TIMEOUT) as session:
+            prompt_template_name_1 = STUB_PROMPT_DUPLICATE_NAME
+            prompt_template_name_2 = STUB_PROMPT_DUPLICATE_NAME
+
             assert prompt_template_name_1 == prompt_template_name_2
 
-            # Check if both prompts are in list of all prompts
             prompts_list = await session.list_prompts()
             prompts_names = {p.name for p in prompts_list.prompts}
 
             # One prompt is without any "suffix"
             assert prompt_template_name_1 in prompts_names
 
-            # Second prompt has suffix
-            # We cannot mock uuid here as it's separate process running MCP server
-            pattern = re.compile(rf"{prompt_template_name_1} \([A-Za-z0-9]{{4}}\)")
+            # Second prompt has suffix (e.g. "name (Ab12)")
+            pattern = re.compile(rf"{re.escape(prompt_template_name_1)} \([A-Za-z0-9]{{4}}\)")
             matches = [s for s in prompts_names if pattern.search(s)]
 
             assert len(matches) == 1
@@ -161,7 +159,7 @@ class TestMCPDRPromptManagementIntegration:
 
 @pytest.mark.asyncio
 async def test_mcp_prompts_mapping_methods():
-    mcp = TaggedFastMCP()
+    mcp = DataRobotMCP()
 
     await mcp.set_prompt_mapping("id_1", "v_id_1", "prompt_1")
     await mcp.set_prompt_mapping("id_2", "v_id_2", "prompt_2")

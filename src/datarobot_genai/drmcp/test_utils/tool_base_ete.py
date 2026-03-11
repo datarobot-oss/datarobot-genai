@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .openai_llm_mcp_client import LLMResponse
+from .clients.base import LLMResponse
 
 
 class ToolCallTestExpectations(BaseModel):
@@ -37,6 +37,69 @@ class ETETestExpectations(BaseModel):
 
 
 SHOULD_NOT_BE_EMPTY = "SHOULD_NOT_BE_EMPTY"
+
+
+def _extract_content_when_structured_empty(tool_result: str) -> dict[str, str] | None:
+    r"""When Content is present but Structured content is empty, return {"error": content}."""
+    if "Content: " not in tool_result:
+        return None
+    content_part = tool_result.split("Content: ", 1)[1]
+    if "\nStructured content: " in content_part:
+        content_part = content_part.split("\nStructured content: ", 1)[0]
+    content_part = content_part.strip()
+    return {"error": content_part} if content_part else None
+
+
+def _extract_structured_content(tool_result: str) -> Any:
+    r"""
+    Extract and parse structured content from tool result string.
+
+    Tool results are formatted as:
+    "Content: {content}\nStructured content: {structured_content}"
+
+    Structured content can be:
+    1. A JSON object with a "result" key: {"result": "..."} or {"result": "{...}"}
+    2. A direct JSON object: {"key": "value", ...}
+    3. Empty or missing — when Content is present but Structured content is empty
+       (e.g. tool errors), returns {"error": content} so dict expectations can validate.
+    4. None if neither valid structured content nor Content is available
+
+    Args:
+        tool_result: The tool result string
+
+    Returns
+    -------
+        Parsed structured content, or None if not available
+    """
+    result: Any = None
+    if not tool_result:
+        pass
+    elif "Structured content: " in tool_result:
+        structured_part = tool_result.split("Structured content: ", 1)[1].strip()
+        if not structured_part:
+            result = _extract_content_when_structured_empty(tool_result)
+        else:
+            try:
+                structured_data = json.loads(structured_part)
+            except json.JSONDecodeError:
+                pass
+            else:
+                if isinstance(structured_data, dict) and "result" in structured_data:
+                    result_value = structured_data["result"]
+                    if isinstance(result_value, str) and result_value.strip().startswith(
+                        ("{", "[")
+                    ):
+                        try:
+                            result = json.loads(result_value)
+                        except json.JSONDecodeError:
+                            result = result_value
+                    else:
+                        result = result_value
+                else:
+                    result = structured_data
+    else:
+        result = _extract_content_when_structured_empty(tool_result)
+    return result
 
 
 def _check_dict_has_keys(
@@ -116,28 +179,49 @@ class ToolBaseE2E:
                     f"Should have called {test_expectations.tool_calls_expected[i].name} tool, but "
                     f"got: {tool_call.tool_name}"
                 )
-            assert tool_call.parameters == test_expectations.tool_calls_expected[i].parameters, (
-                f"Should have called {tool_call.tool_name} tool with the correct parameters, but "
-                f"got: {tool_call.parameters}"
-            )
-            if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
-                expected_result = test_expectations.tool_calls_expected[i].result
-                if isinstance(expected_result, str):
-                    assert expected_result in response.tool_results[i], (
-                        f"Should have called {tool_call.tool_name} tool with the correct result, "
-                        f"but got: {response.tool_results[i]}"
-                    )
-                else:
-                    actual_result = json.loads(response.tool_results[i])
-                    assert _check_dict_has_keys(expected_result, actual_result), (
-                        f"Should have called {tool_call.tool_name} tool with the correct result "
-                        f"structure, but got: {response.tool_results[i]}"
-                    )
-            else:
-                assert len(response.tool_results[i]) > 0, (
-                    f"Should have called {tool_call.tool_name} tool with non-empty result, but "
-                    f"got: {response.tool_results[i]}"
+                assert (
+                    tool_call.parameters == test_expectations.tool_calls_expected[i].parameters
+                ), (
+                    f"Should have called {tool_call.tool_name} tool with the correct parameters, "
+                    f"but got: {tool_call.parameters}"
                 )
+                if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
+                    expected_result = test_expectations.tool_calls_expected[i].result
+                    if isinstance(expected_result, str):
+                        assert expected_result in response.tool_results[i], (
+                            f"Should have called {tool_call.tool_name} tool with the correct "
+                            f"result, but got: {response.tool_results[i]}"
+                        )
+                    else:
+                        actual_result = _extract_structured_content(response.tool_results[i])
+                        if actual_result is None:
+                            # Fallback: try to parse the entire tool result as JSON
+                            try:
+                                actual_result = json.loads(response.tool_results[i])
+                            except json.JSONDecodeError:
+                                # If that fails, try to extract content part
+                                if "Content: " in response.tool_results[i]:
+                                    content_part = response.tool_results[i].split("Content: ", 1)[1]
+                                    if "\nStructured content: " in content_part:
+                                        content_part = content_part.split(
+                                            "\nStructured content: ", 1
+                                        )[0]
+                                    try:
+                                        actual_result = json.loads(content_part.strip())
+                                    except json.JSONDecodeError:
+                                        raise AssertionError(
+                                            f"Could not parse tool result for "
+                                            f"{tool_call.tool_name}: {response.tool_results[i]}"
+                                        )
+                        assert _check_dict_has_keys(expected_result, actual_result), (
+                            f"Should have called {tool_call.tool_name} tool with the correct "
+                            f"result structure, but got: {response.tool_results[i]}"
+                        )
+                else:
+                    assert len(response.tool_results[i]) > 0, (
+                        f"Should have called {tool_call.tool_name} tool with non-empty result, but "
+                        f"got: {response.tool_results[i]}"
+                    )
 
         # Verify LLM provided comprehensive response
         assert len(response.content) > 100, "LLM should provide detailed response"

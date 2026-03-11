@@ -14,31 +14,39 @@
 
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any
-from typing import overload
+from typing import ParamSpec
+from typing import TypedDict
+from typing import TypeVar
 
 from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
-from fastmcp.tools import FunctionTool
+from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool
-from fastmcp.utilities.types import NotSet
-from fastmcp.utilities.types import NotSetT
+from mcp.types import Annotations as MCPAnnotationsType
 from mcp.types import AnyFunction
-from mcp.types import Tool as MCPTool
+from mcp.types import Icon as MCPIconType
 from mcp.types import ToolAnnotations
+from typing_extensions import Unpack
 
 from .config import MCPServerConfig
 from .config import get_config
 from .dynamic_prompts.utils import get_prompt_name_no_duplicate
+from .enums import DataRobotMCPPromptCategory
+from .enums import DataRobotMCPResourceCategory
+from .enums import DataRobotMCPToolCategory
 from .logging import log_execution
 from .memory_management.manager import MemoryManager
 from .memory_management.manager import get_memory_manager
 from .telemetry import trace_execution
-from .tool_filter import filter_tools_by_tags
-from .tool_filter import list_all_tags
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -81,134 +89,41 @@ async def get_agent_and_storage_ids(
     return agent_id, storage_id
 
 
-class TaggedFastMCP(FastMCP):
-    """Extended FastMCP that supports tags, deployments and other annotations directly in the
-    tool decorator.
-    """
+class DataRobotMCP(FastMCP):
+    """Extended FastMCP that supports DataRobot specific features like deployments and prompts."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._deployments_map: dict[str, str] = {}
         self._prompts_map: dict[str, tuple[str, str]] = {}
 
-    @overload
-    def tool(
-        self,
-        name_or_fn: AnyFunction,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-    ) -> FunctionTool: ...
-
-    @overload
-    def tool(
-        self,
-        name_or_fn: str | None = None,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-    ) -> Callable[[AnyFunction], FunctionTool]: ...
-
-    def tool(
-        self,
-        name_or_fn: str | Callable[..., Any] | None = None,
-        *,
-        name: str | None = None,
-        title: str | None = None,
-        description: str | None = None,
-        tags: set[str] | None = None,
-        output_schema: dict[str, Any] | None | NotSetT = NotSet,
-        annotations: ToolAnnotations | dict[str, Any] | None = None,
-        exclude_args: list[str] | None = None,
-        meta: dict[str, Any] | None = None,
-        enabled: bool | None = None,
-        **kwargs: Any,
-    ) -> Callable[[AnyFunction], FunctionTool] | FunctionTool:
+    async def notify_prompts_changed(self) -> None:
         """
-        Extend tool decorator that supports tags and other annotations, while remaining
-        signature-compatible with FastMCP.tool to avoid recursion issues with partials.
+        Notify connected clients that the prompt list has changed.
+
+        This method attempts to send a prompts/list_changed notification to inform
+        clients that they should refresh their prompt list.
+
+        Note: In stateless HTTP mode (default for this server), notifications may not
+        reach clients since each request is independent. This method still logs the
+        change for auditing purposes and will work if the server is configured for
+        stateful connections.
+
+        See: https://github.com/modelcontextprotocol/python-sdk/issues/710
         """
-        if isinstance(annotations, dict):
-            annotations = ToolAnnotations(**annotations)
+        logger.info("Prompt list changed - attempting to notify connected clients")
 
-        # Ensure tags are available both via native fastmcp `tags` and inside annotations
-        if tags is not None:
-            tags_ = sorted(tags)
-            if annotations is None:
-                annotations = ToolAnnotations()  # type: ignore[call-arg]
-                annotations.tags = tags_  # type: ignore[attr-defined, union-attr]
-            else:
-                # At this point, annotations is ToolAnnotations (not dict)
-                assert isinstance(annotations, ToolAnnotations)
-                annotations.tags = tags_  # type: ignore[attr-defined]
-
-        return super().tool(
-            name_or_fn,
-            name=name,
-            title=title,
-            description=description,
-            tags=tags,
-            output_schema=output_schema
-            if output_schema is not None
-            else kwargs.get("output_schema"),
-            annotations=annotations,
-            exclude_args=exclude_args,
-            meta=meta,
-            enabled=enabled,
-        )
-
-    async def list_tools(
-        self, tags: list[str] | None = None, match_all: bool = False
-    ) -> list[MCPTool]:
-        """
-        List all available tools, optionally filtered by tags.
-
-        Args:
-            tags: Optional list of tags to filter by. If None, returns all tools.
-            match_all: If True, tool must have all specified tags (AND logic).
-                      If False, tool must have at least one tag (OR logic).
-                      Only used when tags is provided.
-
-        Returns
-        -------
-            List of MCPTool objects that match the tag criteria.
-        """
-        # Get all tools from the parent class
-        all_tools = await super()._list_tools_mcp()
-
-        # If no tags specified, return all tools
-        if not tags:
-            return all_tools
-
-        # Filter tools by tags
-        filtered_tools = filter_tools_by_tags(list(all_tools), tags, match_all)
-
-        return filtered_tools  # type: ignore[return-value]
-
-    async def get_all_tags(self) -> list[str]:
-        """
-        Get all unique tags from all registered tools.
-
-        Returns
-        -------
-            List of all unique tags sorted alphabetically.
-        """
-        all_tools = await self._list_tools_mcp()
-        return list_all_tags(list(all_tools))
+        # Try to use FastMCP's built-in notification mechanism if in an MCP context
+        try:
+            context = get_context()
+            context._queue_prompt_list_changed()
+            logger.debug("Queued prompts_changed notification via MCP context")
+        except RuntimeError:
+            # No active MCP context - this is expected when called from REST API
+            logger.debug(
+                "No active MCP context for notification. "
+                "In stateless mode, clients will see changes on next request."
+            )
 
     async def get_deployment_mapping(self) -> dict[str, str]:
         """
@@ -286,6 +201,9 @@ class TaggedFastMCP(FastMCP):
                 f"already mapped to {existing_prompt_template_version_id}. "
                 f"Updating to version id = {prompt_template_version_id} and name = {prompt_name}"
             )
+            await self.remove_prompt_mapping(
+                prompt_template_id, existing_prompt_template_version_id
+            )
 
         self._prompts_map[prompt_template_id] = (prompt_template_version_id, prompt_name)
 
@@ -308,7 +226,7 @@ class TaggedFastMCP(FastMCP):
                     f"skipping removal."
                 )
             else:
-                prompts_d = await mcp.get_prompts()
+                prompts_d = await self.get_prompts()
                 for prompt in prompts_d.values():
                     if (
                         prompt.meta is not None
@@ -319,6 +237,9 @@ class TaggedFastMCP(FastMCP):
                         prompt.disable()
 
                 self._prompts_map.pop(prompt_template_id, None)
+
+                # Notify clients that the prompt list has changed
+                await self.notify_prompts_changed()
         else:
             logger.debug(
                 f"Do not found prompt template with id = {prompt_template_id} in registry, "
@@ -326,26 +247,106 @@ class TaggedFastMCP(FastMCP):
             )
 
 
-# Create the tagged MCP instance
+# Create the DataRobot MCP instance
 mcp_server_configs: MCPServerConfig = get_config()
 
-mcp = TaggedFastMCP(
+mcp = DataRobotMCP(
     name=mcp_server_configs.mcp_server_name,
     on_duplicate_tools=mcp_server_configs.tool_registration_duplicate_behavior,
     on_duplicate_prompts=mcp_server_configs.prompt_registration_duplicate_behavior,
 )
 
 
+class ToolKwargs(TypedDict, total=False):
+    """Keyword arguments passed through to FastMCP's mcp.tool() decorator.
+
+    All parameters are optional and forwarded directly to FastMCP tool registration.
+    See FastMCP documentation for full details on each parameter.
+    """
+
+    name: str | None
+    title: str | None
+    description: str | None
+    icons: list[Any] | None
+    tags: set[str] | None
+    output_schema: dict[str, Any] | None
+    annotations: Any | None
+    exclude_args: list[str] | None
+    meta: dict[str, Any] | None
+    enabled: bool | None
+
+
+@dataclass
+class PromptInitArguments:
+    name: str | None = None
+    title: str | None = None
+    description: str | None = None
+    icons: list[MCPIconType] | None = None
+    tags: set[str] | None = None
+    enabled: bool | None = None
+    meta: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        meta = self.meta or {}
+        if meta.get("prompt_category"):
+            raise ValueError(
+                "prompt_category is a reserved field under meta. Please don't override it."
+            )
+
+    def to_dict(
+        self,
+    ) -> dict[str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | None]:
+        return asdict(self)
+
+    def set_prompt_category(self, prompt_category: DataRobotMCPPromptCategory) -> None:
+        self.meta = self.meta or {}
+        self.meta["prompt_category"] = prompt_category.name
+
+
+@dataclass
+class ResourceInitArguments:
+    uri: str
+    name: str | None = None
+    title: str | None = None
+    description: str | None = None
+    icons: list[MCPIconType] | None = None
+    mime_type: str | None = None
+    tags: set[str] | None = None
+    enabled: bool | None = None
+    annotations: MCPAnnotationsType | dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        meta = self.meta or {}
+        if meta.get("resource_category"):
+            raise ValueError(
+                "resource_category is a reserved field under meta. Please don't override it."
+            )
+
+    def to_dict(
+        self,
+    ) -> dict[
+        str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | MCPAnnotationsType | None
+    ]:
+        return asdict(self)
+
+    def set_resource_category(self, resource_category: DataRobotMCPResourceCategory) -> None:
+        self.meta = self.meta or {}
+        self.meta["resource_category"] = resource_category.name
+
+
 def dr_core_mcp_tool(
-    name: str | None = None,
-    description: str | None = None,
-    tags: set[str] | None = None,
+    **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Combine decorator that includes mcp.tool() and dr_mcp_extras()."""
+    """Combine decorator that includes mcp.tool() and dr_mcp_extras().
+
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
+    """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         instrumented = dr_mcp_extras()(func)
-        mcp.tool(name=name, description=description, tags=tags)(instrumented)
+        mcp.tool(**kwargs)(instrumented)
         return instrumented
 
     return decorator
@@ -377,29 +378,59 @@ async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: A
     return await func(*args, **kwargs)
 
 
+def update_mcp_tool_init_args_with_tool_category(
+    tool_category: DataRobotMCPToolCategory,
+    **mcp_tool_init_args: Unpack[ToolKwargs],
+) -> ToolKwargs:
+    meta = mcp_tool_init_args.get("meta")
+    if meta and meta.get("tool_category"):
+        raise ValueError("tool_category is a reserved field under meta. Please don't override it.")
+    meta = meta or {}
+    meta["tool_category"] = tool_category.name
+    mcp_tool_init_args.update({"meta": meta})
+
+    return mcp_tool_init_args
+
+
 def dr_mcp_tool(
-    name: str | None = None,
-    description: str | None = None,
-    tags: set[str] | None = None,
+    tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.USER_TOOL,
+    **mcp_tool_init_args: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Combine decorator that includes mcp.tool(), dr_mcp_extras(), and capture memory ids from
     the request headers if they exist.
 
-    Args:
-        name: Tool name
-        description: Tool description
-        tags: Optional set of tags to apply to the tool
+    All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
+    See ToolKwargs for available parameters.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return await memory_aware_wrapper(func, *args, **kwargs)
+        async def wrapper(*args: Any, **inner_kwargs: Any) -> Any:
+            return await memory_aware_wrapper(func, *args, **inner_kwargs)
 
+        updated_kwargs = update_mcp_tool_init_args_with_tool_category(
+            tool_category, **mcp_tool_init_args
+        )
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
-        mcp.tool(name=name, description=description, tags=tags)(instrumented)
+        mcp.tool(**updated_kwargs)(instrumented)
         return instrumented
+
+    return decorator
+
+
+def dr_mcp_integration_tool(
+    **mcp_tool_init_args: Unpack[ToolKwargs],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorate mcp tool created as a wrapper of external service API (e.g., DataRobot Predictive
+    AI, github API).
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        return dr_mcp_tool(
+            tool_category=DataRobotMCPToolCategory.BUILD_IN_TOOL,
+            **mcp_tool_init_args,
+        )(func)
 
     return decorator
 
@@ -419,6 +450,28 @@ def dr_mcp_extras(
     return decorator
 
 
+async def check_tool_registration_status_after_it_finishes(
+    mcp_server: DataRobotMCP,
+    name_of_tool_to_register: str,
+) -> None:
+    # Verify tool is registered
+    tools = await mcp_server._list_tools_mcp()
+    if not any(tool.name == name_of_tool_to_register for tool in tools):
+        raise RuntimeError(f"Tool {name_of_tool_to_register} was not registered successfully")
+    logger.info(f"Registered tools: {len(tools)}")
+
+
+async def check_prompt_registration_status_after_it_finishes(
+    mcp_server: DataRobotMCP,
+    prompt_name_no_duplicate: str,
+) -> None:
+    # Verify prompt is registered
+    prompts = await mcp_server.get_prompts()
+    if not any(prompt.name == prompt_name_no_duplicate for prompt in prompts.values()):
+        raise RuntimeError(f"Prompt {prompt_name_no_duplicate} was not registered successfully")
+    logger.info(f"Registered prompts: {len(prompts)}")
+
+
 async def register_tools(
     fn: AnyFunction,
     name: str | None = None,
@@ -426,6 +479,7 @@ async def register_tools(
     description: str | None = None,
     tags: set[str] | None = None,
     deployment_id: str | None = None,
+    tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT,
 ) -> Tool:
     """
     Register new tools after server has started.
@@ -437,6 +491,7 @@ async def register_tools(
         description: Optional description of what the tool does
         tags: Optional set of tags to apply to the tool
         deployment_id: Optional deployment ID associated with the tool
+        tool_category: Category of the tool. Its value is from DataRobotMCPToolCategory
 
     Returns
     -------
@@ -453,11 +508,10 @@ async def register_tools(
     # Apply dr_mcp_extras to the memory-aware function
     wrapped_fn = dr_mcp_extras()(memory_aware_fn)
 
-    # Create annotations with tags, deployment_id if provided
-    annotations = ToolAnnotations()  # type: ignore[call-arg]
-    if tags is not None:
-        annotations.tags = tags  # type: ignore[attr-defined]
+    # Create annotations only when additional metadata is required
+    annotations: ToolAnnotations | None = None  # type: ignore[assignment]
     if deployment_id is not None:
+        annotations = ToolAnnotations()  # type: ignore[call-arg]
         annotations.deployment_id = deployment_id  # type: ignore[attr-defined]
 
     tool = Tool.from_function(
@@ -467,6 +521,7 @@ async def register_tools(
         description=description,
         annotations=annotations,
         tags=tags,
+        meta={"tool_category": tool_category.name},
     )
 
     # Register the tool
@@ -476,11 +531,7 @@ async def register_tools(
     if deployment_id:
         await mcp.set_deployment_mapping(deployment_id, tool_name)
 
-    # Verify tool is registered
-    tools = await mcp.list_tools()
-    if not any(tool.name == tool_name for tool in tools):
-        raise RuntimeError(f"Tool {tool_name} was not registered successfully")
-    logger.info(f"Registered tools: {len(tools)}")
+    await check_tool_registration_status_after_it_finishes(mcp, tool_name)
 
     return registered_tool
 
@@ -493,6 +544,7 @@ async def register_prompt(
     tags: set[str] | None = None,
     meta: dict[str, Any] | None = None,
     prompt_template: tuple[str, str] | None = None,
+    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION,  # noqa: E501
 ) -> Prompt:
     """
     Register new prompt after server has started.
@@ -505,6 +557,7 @@ async def register_prompt(
         tags: Optional set of tags to apply to the prompt
         meta: Optional dict of metadata to apply to the prompt
         prompt_template: Optional (id, version id) of the prompt template
+        prompt_category: Category of prompt. Its value is from DataRobotMCPPromptCategory
 
     Returns
     -------
@@ -516,6 +569,8 @@ async def register_prompt(
 
     prompt_name_no_duplicate = await get_prompt_name_no_duplicate(mcp, prompt_name)
 
+    meta = meta or {}
+    meta["resource_category"] = prompt_category.name
     prompt = Prompt.from_function(
         fn=wrapped_fn,
         name=prompt_name_no_duplicate,
@@ -526,17 +581,47 @@ async def register_prompt(
     )
 
     # Register the prompt
-    registered_prompt = mcp.add_prompt(prompt)
     if prompt_template:
         prompt_template_id, prompt_template_version_id = prompt_template
         await mcp.set_prompt_mapping(
             prompt_template_id, prompt_template_version_id, prompt_name_no_duplicate
         )
 
-    # Verify prompt is registered
-    prompts = await mcp.get_prompts()
-    if not any(prompt.name == prompt_name_no_duplicate for prompt in prompts.values()):
-        raise RuntimeError(f"Prompt {prompt_name_no_duplicate} was not registered successfully")
-    logger.info(f"Registered prompts: {len(prompts)}")
+    registered_prompt = mcp.add_prompt(prompt)
+
+    await check_prompt_registration_status_after_it_finishes(mcp, prompt_name_no_duplicate)
+
+    # Notify clients that the prompt list has changed
+    await mcp.notify_prompts_changed()
 
     return registered_prompt
+
+
+def dr_mcp_prompt(
+    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT,
+    prompt_init_args: PromptInitArguments = PromptInitArguments(),
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def prompt_decorator(func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def _inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
+            return func(*args, **kwargs)
+
+        prompt_init_args.set_prompt_category(prompt_category)
+        return mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
+
+    return prompt_decorator
+
+
+def dr_mcp_resource(
+    resource_init_args: ResourceInitArguments,
+    resource_category: DataRobotMCPResourceCategory = DataRobotMCPResourceCategory.USER_RESOURCE,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def resource_decorator(func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def _inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
+            return func(*args, **kwargs)
+
+        resource_init_args.set_resource_category(resource_category)
+        return mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+
+    return resource_decorator

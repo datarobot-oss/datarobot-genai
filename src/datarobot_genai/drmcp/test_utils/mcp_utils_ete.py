@@ -15,7 +15,10 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
+import aiohttp
+from aiohttp import ClientSession as HttpClientSession
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
@@ -27,6 +30,11 @@ load_env()
 def get_dr_mcp_server_url() -> str | None:
     """Get DataRobot MCP server URL."""
     return os.environ.get("DR_MCP_SERVER_URL")
+
+
+def get_dr_mcp_server_http_url() -> str | None:
+    """Get DataRobot MCP server http URL."""
+    return os.environ.get("DR_MCP_SERVER_HTTP_URL")
 
 
 def get_openai_llm_client_config() -> dict[str, str]:
@@ -45,10 +53,16 @@ def get_openai_llm_client_config() -> dict[str, str]:
     ):  # For Azure OpenAI, we need additional variables
         raise ValueError("Missing required environment variable: OPENAI_API_DEPLOYMENT_ID")
 
+    openai_model = os.environ.get("OPENAI_MODEL")
+    if not openai_api_deployment_id and not openai_model:
+        raise ValueError("Missing required environment variable: OPENAI_MODEL")
+
     config: dict[str, str] = {
         "openai_api_key": openai_api_key,
     }
 
+    if openai_model:
+        config["model"] = openai_model
     if openai_api_base:
         config["openai_api_base"] = openai_api_base
     if openai_api_deployment_id:
@@ -56,6 +70,31 @@ def get_openai_llm_client_config() -> dict[str, str]:
     if openai_api_version:
         config["openai_api_version"] = openai_api_version
     config["save_llm_responses"] = str(save_llm_responses)
+
+    return config
+
+
+def get_dr_llm_gateway_client_config() -> dict[str, str]:
+    """Get DataRobot LLM Gateway client configuration."""
+    datarobot_api_token = os.environ.get("DATAROBOT_API_TOKEN")
+    datarobot_endpoint = os.environ.get("DATAROBOT_ENDPOINT")
+    save_llm_responses = os.environ.get("SAVE_LLM_RESPONSES", "false").lower() == "true"
+
+    if not datarobot_api_token:
+        raise ValueError("Missing required environment variable: DATAROBOT_API_TOKEN")
+
+    dr_llm_gateway_model = os.environ.get("DR_LLM_GATEWAY_MODEL")
+    if not dr_llm_gateway_model:
+        raise ValueError("Missing required environment variable: DR_LLM_GATEWAY_MODEL")
+
+    config: dict[str, str] = {
+        "datarobot_api_token": datarobot_api_token,
+        "save_llm_responses": str(save_llm_responses),
+    }
+
+    config["model"] = dr_llm_gateway_model
+    if datarobot_endpoint:
+        config["datarobot_endpoint"] = datarobot_endpoint
 
     return config
 
@@ -71,6 +110,7 @@ def get_headers() -> dict[str, str]:
 @asynccontextmanager
 async def ete_test_mcp_session(
     additional_headers: dict[str, str] | None = None,
+    elicitation_callback: Any | None = None,
 ) -> AsyncGenerator[ClientSession, None]:
     """Create an MCP session for each test.
 
@@ -78,6 +118,10 @@ async def ete_test_mcp_session(
     ----------
     additional_headers : dict[str, str], optional
         Additional headers to include in the MCP session (e.g., auth headers for testing).
+    elicitation_callback : callable, optional
+        Callback function to handle elicitation requests from the server.
+        The callback should have signature:
+        async def callback(context, params: ElicitRequestParams) -> ElicitResult
     """
     try:
         headers = get_headers()
@@ -89,8 +133,32 @@ async def ete_test_mcp_session(
             write_stream,
             _,
         ):
-            async with ClientSession(read_stream, write_stream) as session:
+            async with ClientSession(
+                read_stream, write_stream, elicitation_callback=elicitation_callback
+            ) as session:
                 await asyncio.wait_for(session.initialize(), timeout=5)
                 yield session
     except asyncio.TimeoutError:
         raise TimeoutError(f"Check if the MCP server is running at {get_dr_mcp_server_url()}")
+
+
+@asynccontextmanager
+async def ete_test_http_session(
+    additional_headers: dict[str, str] | None = None,
+) -> AsyncGenerator[HttpClientSession, None]:
+    """Create an HTTP session for each test that can connect to MCP custom http routes.
+
+    Parameters
+    ----------
+    additional_headers : dict[str, str], optional
+        Additional headers to include in the HTTP session (e.g., auth headers for testing).
+    """
+    headers = get_headers()
+    if additional_headers:
+        headers.update(additional_headers)
+
+    async with ete_test_mcp_session(additional_headers=additional_headers):
+        async with aiohttp.ClientSession(
+            base_url=get_dr_mcp_server_http_url(), headers=headers
+        ) as client:
+            yield client

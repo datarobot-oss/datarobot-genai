@@ -19,11 +19,12 @@ A reusable library for building Model Context Protocol (MCP) servers with DataRo
 """
 
 # Export main server components
+from datarobot_genai.drmcp.core.utils import filter_tools_by_tags
+from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_mcp_server_url
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_headers
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
-from datarobot_genai.drmcp.test_utils.openai_llm_mcp_client import LLMMCPClient
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
@@ -41,6 +42,8 @@ from .core.dr_mcp_server import BaseServerLifecycle
 from .core.dr_mcp_server import DataRobotMCPServer
 from .core.dr_mcp_server import create_mcp_server
 from .core.logging import MCPLogging
+from .core.mcp_instance import ToolKwargs
+from .core.mcp_instance import dr_mcp_integration_tool
 from .core.mcp_instance import dr_mcp_tool
 from .core.mcp_instance import register_tools
 
@@ -61,18 +64,21 @@ __all__ = [
     "get_sdk_client",
     "dr_mcp_tool",
     "register_tools",
+    "ToolKwargs",
     # Utilities
     "MCPLogging",
     "extract_datarobot_runtime_param_payload",
     "extract_datarobot_dict_runtime_param_payload",
     "extract_datarobot_credential_runtime_param_payload",
+    "filter_tools_by_tags",
     # Test utilities
     "get_dr_mcp_server_url",
     "get_headers",
     "ete_test_mcp_session",
-    "LLMMCPClient",
+    "DRLLMGatewayMCPClient",
     "ETETestExpectations",
     "ToolBaseE2E",
     "ToolCallTestExpectations",
     "integration_test_mcp_session",
+    "dr_mcp_integration_tool",
 ]

@@ -11,17 +11,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
 
+import abc
+import inspect
+import uuid
+from typing import TYPE_CHECKING
+from typing import Any
 from typing import cast
 
+from ag_ui.core import EventType
+from ag_ui.core import RunAgentInput
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from llama_index.core.base.llms.types import LLMMetadata
+from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
 from llama_index.llms.litellm import LiteLLM
-from ragas import MultiTurnSample
-from ragas.integrations.llama_index import convert_to_ragas_messages
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
-from ragas.messages import ToolMessage
+
+from datarobot_genai.core.agents.base import BaseAgent
+from datarobot_genai.core.agents.base import InvokeReturn
+from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.base import default_usage_metrics
+from datarobot_genai.core.agents.base import extract_user_prompt_content
+
+from .mcp import load_mcp_tools
+
+if TYPE_CHECKING:
+    from ragas import MultiTurnSample
 
 
 class DataRobotLiteLLM(LiteLLM):
@@ -39,12 +59,219 @@ class DataRobotLiteLLM(LiteLLM):
         )
 
 
-def create_pipeline_interactions_from_events(
-    events: list[Event] | None,
-) -> MultiTurnSample | None:
-    if not events:
-        return None
-    # convert_to_ragas_messages expects a list[Event]
-    ragas_trace = convert_to_ragas_messages(list(events))
-    ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
-    return MultiTurnSample(user_input=ragas_messages)
+class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
+    """Abstract base agent for LlamaIndex workflows."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._mcp_tools: list[Any] = []
+
+    def set_mcp_tools(self, tools: list[Any]) -> None:
+        """Set MCP tools for this agent."""
+        self._mcp_tools = tools
+
+    @property
+    def mcp_tools(self) -> list[Any]:
+        """Return the list of MCP tools available to this agent.
+
+        Subclasses can use this to wire tools into LlamaIndex agents during
+        workflow construction inside ``build_workflow``.
+        """
+        return self._mcp_tools
+
+    @abc.abstractmethod
+    def build_workflow(self) -> Any:
+        """Return an AgentWorkflow instance ready to run."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+        """Extract final response text from workflow state and/or events."""
+        raise NotImplementedError
+
+    def make_input_message(self, run_agent_input: RunAgentInput) -> str:
+        """Create an input string for the workflow from the user prompt."""
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
+        return str(user_prompt_content)
+
+    async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
+        """Run the LlamaIndex workflow with the provided completion parameters."""
+        input_message = self.make_input_message(run_agent_input)
+
+        # Handle {chat_history} placeholder replacement for subclass templates
+        if "{chat_history}" in input_message:
+            history_summary = self.build_history_summary(run_agent_input)
+            formatted_history = (
+                f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
+            )
+            input_message = input_message.replace("{chat_history}", formatted_history)
+
+        # Load MCP tools (if configured) asynchronously before building workflow
+        mcp_tools = await load_mcp_tools(
+            authorization_context=self.authorization_context,
+            forwarded_headers=self.forwarded_headers,
+        )
+        self.set_mcp_tools(mcp_tools)
+
+        # Preserve prior template startup print for CLI parity
+        try:
+            print("Running agent with user prompt:", input_message, flush=True)
+        except Exception:
+            # Printing is best-effort; proceed regardless
+            pass
+
+        thread_id = run_agent_input.thread_id
+        run_id = run_agent_input.run_id
+
+        # Partial AG-UI: workflow lifecycle + text message events
+        yield (
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
+            None,
+            default_usage_metrics(),
+        )
+
+        workflow = self.build_workflow()
+        handler = workflow.run(user_msg=input_message)
+
+        usage_metrics: UsageMetrics = default_usage_metrics()
+
+        events: list[Any] = []
+        current_agent_name: str | None = None
+        message_id = str(uuid.uuid4())
+        text_started = False
+
+        async for event in handler.stream_events():
+            events.append(event)
+            # Best-effort extraction of incremental text from LlamaIndex events
+            delta: str | None = None
+
+            try:
+                if hasattr(event, "delta") and isinstance(getattr(event, "delta"), str):
+                    delta = getattr(event, "delta")
+                # Some event types may carry incremental text under "text" or similar
+                elif hasattr(event, "text") and isinstance(getattr(event, "text"), str):
+                    delta = getattr(event, "text")
+            except Exception:
+                # Ignore malformed events and continue
+                delta = None
+
+            if delta:
+                if not text_started:
+                    yield (
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    text_started = True
+                yield (
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=delta
+                    ),
+                    None,
+                    usage_metrics,
+                )
+
+            # Best-effort debug/event messages printed to CLI (do not stream as content)
+            try:
+                # Agent switch banner if available on event
+                if hasattr(event, "current_agent_name"):
+                    new_agent = getattr(event, "current_agent_name")
+                    if isinstance(new_agent, str) and new_agent and new_agent != current_agent_name:
+                        current_agent_name = new_agent
+                        # Print banner for agent switch (do not emit as streamed content)
+                        print("\n" + "=" * 50, flush=True)
+                        print(f"🤖 Agent: {current_agent_name}", flush=True)
+                        print("=" * 50 + "\n", flush=True)
+
+                event_type = type(event).__name__
+                if event_type == "AgentInput" and hasattr(event, "input"):
+                    print("📥 Input:", getattr(event, "input"), flush=True)
+                elif event_type == "AgentOutput":
+                    # Output content
+                    resp = getattr(event, "response", None)
+                    if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
+                        print("📤 Output:", getattr(resp, "content"), flush=True)
+                    # Planned tool calls
+                    tcalls = getattr(event, "tool_calls", None)
+                    if isinstance(tcalls, list) and tcalls:
+                        names = []
+                        for c in tcalls:
+                            try:
+                                nm = getattr(c, "tool_name", None) or (
+                                    c.get("tool_name") if isinstance(c, dict) else None
+                                )
+                                if nm:
+                                    names.append(str(nm))
+                            except Exception:
+                                pass
+                        if names:
+                            print("🛠️  Planning to use tools:", names, flush=True)
+                elif event_type == "ToolCallResult":
+                    tname = getattr(event, "tool_name", None)
+                    tkwargs = getattr(event, "tool_kwargs", None)
+                    tout = getattr(event, "tool_output", None)
+                    print(f"🔧 Tool Result ({tname}):", flush=True)
+                    print(f"  Arguments: {tkwargs}", flush=True)
+                    print(f"  Output: {tout}", flush=True)
+                elif event_type == "ToolCall":
+                    tname = getattr(event, "tool_name", None)
+                    tkwargs = getattr(event, "tool_kwargs", None)
+                    print(f"🔨 Calling Tool: {tname}", flush=True)
+                    print(f"  With arguments: {tkwargs}", flush=True)
+            except Exception:
+                # Ignore best-effort debug rendering errors
+                pass
+
+        if text_started:
+            yield (
+                TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                None,
+                usage_metrics,
+            )
+
+        # After streaming completes, build final interactions and finish chunk
+        # Extract state from workflow context (supports sync/async get or attribute)
+        state = None
+        ctx = getattr(handler, "ctx", None)
+        try:
+            if ctx is not None:
+                get = getattr(ctx, "get", None)
+                if callable(get):
+                    result = get("state")
+                    state = await result if inspect.isawaitable(result) else result
+                elif hasattr(ctx, "state"):
+                    state = getattr(ctx, "state")
+        except (AttributeError, TypeError):
+            state = None
+
+        # Run subclass-defined response extraction (not streamed) for completeness
+        _ = self.extract_response_text(state, events)
+
+        pipeline_interactions = self.create_pipeline_interactions_from_events(events)
+        # TODO: find a way to count usage (LlamaIndex does not report it)
+        yield (
+            RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
+            pipeline_interactions,
+            usage_metrics,
+        )
+
+    @classmethod
+    def create_pipeline_interactions_from_events(
+        cls,
+        events: list[Event] | None,
+    ) -> MultiTurnSample | None:
+        if not events:
+            return None
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+        from ragas.integrations.llama_index import convert_to_ragas_messages
+        from ragas.messages import AIMessage
+        from ragas.messages import HumanMessage
+        from ragas.messages import ToolMessage
+
+        # convert_to_ragas_messages expects a list[Event]
+        ragas_trace = convert_to_ragas_messages(list(events))
+        ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
+        return MultiTurnSample(user_input=ragas_messages)
