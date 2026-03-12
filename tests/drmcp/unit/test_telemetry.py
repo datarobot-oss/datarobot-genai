@@ -88,12 +88,15 @@ async def test_trace_execution_async() -> None:
         result = await test_async_function("test", 123)
 
         assert result == "test-123"
-        mock_span.set_attribute.assert_any_call("mcp.type", "tool")
-        mock_span.set_attribute.assert_any_call("tool.name", "test_tool")
+        mock_span.set_attribute.assert_any_call("gen_ai.tool.name", "test_tool")
+        mock_span.set_attribute.assert_any_call("gen_ai.operation.name", "execute_tool")
         mock_span.set_attribute.assert_any_call("tool.param.param1", "test")
         mock_span.set_attributes.assert_any_call({"custom.attr": "test-value"})
         mock_span.set_attribute.assert_any_call("tool.param.param2", 123)
-        mock_span.set_attribute.assert_any_call("tool.success", True)
+        mock_span.set_attribute.assert_any_call(
+            "gen_ai.tool.call.arguments", '{"param1": "test", "param2": 123}'
+        )
+        mock_span.set_status.assert_called()
 
 
 def test_trace_execution_sync() -> None:
@@ -116,11 +119,12 @@ def test_trace_execution_sync() -> None:
         result = test_sync_function("test")
 
         assert result == "result-test"
-        mock_span.set_attribute.assert_any_call("mcp.type", "tool")
-        mock_span.set_attribute.assert_any_call("tool.name", "test_sync_function")
+        mock_span.set_attribute.assert_any_call("gen_ai.tool.name", "test_sync_function")
+        mock_span.set_attribute.assert_any_call("gen_ai.operation.name", "execute_tool")
         mock_span.set_attribute.assert_any_call("tool.param.param1", "test")
         mock_span.set_attributes.assert_any_call({"custom.attr": "test-value"})
-        mock_span.set_attribute.assert_any_call("tool.success", True)
+        mock_span.set_attribute.assert_any_call("gen_ai.tool.call.arguments", '{"param1": "test"}')
+        mock_span.set_status.assert_called()
 
 
 def test_get_trace_id() -> None:
@@ -253,7 +257,7 @@ class TestOpenTelemetryMiddleware:
             await middleware.on_request(mock_context, mock_call_next)
 
         mock_tracer.start_as_current_span.assert_called_once()
-        mock_span.set_attribute.assert_called()
+        mock_span.set_attribute.assert_any_call("error.type", "Exception")
         mock_span.record_exception.assert_called_once()
         mock_span.set_status.assert_called_once()
 
@@ -285,7 +289,6 @@ class TestOpenTelemetryMiddleware:
         assert result == mock_response
         middleware.tracer.start_as_current_span.assert_called_once()
         mock_span.set_attributes.assert_called_once()
-        mock_span.set_attribute.assert_called()
         mock_span.set_status.assert_called_once()
 
     @pytest.mark.asyncio
@@ -344,6 +347,6 @@ class TestOpenTelemetryMiddleware:
 
         middleware.tracer.start_as_current_span.assert_called_once()
         mock_span.set_attributes.assert_called_once()
-        mock_span.set_attribute.assert_called()
+        mock_span.set_attribute.assert_any_call("error.type", "Exception")
         mock_span.record_exception.assert_called_once()
         mock_span.set_status.assert_called_once()
