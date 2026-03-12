@@ -22,6 +22,9 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugi
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+from a2a.server.agent_execution import RequestContext
+from a2a.server.events import EventQueue
+from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
@@ -33,6 +36,39 @@ from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdapt
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
 logger = logging.getLogger(__name__)
+
+
+class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
+    """Subclass of NATWorkflowAgentExecutor that supports per-user workflows.
+
+    Two problems with the parent class for per-user workflows:
+
+    1. ``__init__`` accesses ``session_manager.workflow`` which raises ``ValueError``
+       for per-user workflows.  We bypass it and log via ``config.workflow.type`` instead.
+
+    2. ``execute`` calls ``self.session_manager.session()`` with no ``user_id``, which
+       raises ``ValueError`` for per-user workflows.  We override it to pass the A2A
+       ``context_id`` as the ``user_id``, giving each conversation its own isolated
+       per-user workflow instance.
+    """
+
+    def __init__(self, session_manager: SessionManager) -> None:
+        # Bypass parent __init__ to avoid session_manager.workflow access,
+        # which raises ValueError for per-user workflows. Log via config instead.
+        self.session_manager = session_manager
+        logger.info(
+            "Initialized NATWorkflowAgentExecutor (message-only) for workflow: %s",
+            session_manager.config.workflow.type,
+        )
+
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
+        # Inject the A2A context_id as user_id before delegating to the parent execute.
+        # The parent calls self.session_manager.session() with no user_id, which raises
+        # ValueError for per-user workflows.  Setting the context var here means the
+        # SessionManager's _get_user_id_from_context() will find it automatically.
+        if context.context_id:
+            self.session_manager._context_state.user_id.set(context.context_id)
+        await super().execute(context, event_queue)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
@@ -76,13 +112,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             logger.info("A2A server endpoints are disabled")
             return
 
-        workflow = await builder.build()
-
         # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config.
         # We must pass it a full Config with the A2AFrontEndConfig substituted in.
         # We also inherit host/port from the FastAPI config so the agent card URL is gets mounted
         # under the correct endpoint.
-        a2a_config = self.front_end_config.a2a.model_copy(
+        a2a_config = self.front_end_config.a2a.server.model_copy(
             update={"host": self.front_end_config.host, "port": self.front_end_config.port}
         )
         nat_config = self._config.model_copy(
@@ -90,12 +124,61 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
-        agent_card = await self._a2a_worker.create_agent_card(workflow)
+        from a2a.types import AgentCapabilities
+        from a2a.types import AgentCard
+        from a2a.types import AgentSkill
+
+        cfg = self._a2a_worker.front_end_config
+        security_schemes = None
+        security = None
+        if cfg.server_auth:
+            security_schemes, security = await self._a2a_worker._generate_security_schemes(
+                cfg.server_auth
+            )
+        agent_card = AgentCard(
+            name=cfg.name,
+            description=cfg.description,
+            url=f"http://{cfg.host}:{cfg.port}/",
+            version=cfg.version,
+            default_input_modes=cfg.default_input_modes,
+            default_output_modes=cfg.default_output_modes,
+            capabilities=AgentCapabilities(
+                streaming=cfg.capabilities.streaming,
+                push_notifications=cfg.capabilities.push_notifications,
+            ),
+            skills=[
+                AgentSkill(
+                    id=s.id,
+                    name=s.name,
+                    description=s.description,
+                    tags=s.tags,
+                    examples=s.examples,
+                )
+                for s in self.front_end_config.a2a.skills
+            ]
+            or [
+                AgentSkill(
+                    id="call",
+                    name=cfg.name,
+                    description=cfg.description,
+                    tags=[],
+                    examples=[],
+                )
+            ],
+            security_schemes=security_schemes,
+            security=security,
+        )
+        session_manager = await SessionManager.create(
+            config=self._config,
+            shared_builder=builder,
+            max_concurrency=self._a2a_worker.max_concurrency,
+        )
+        agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
+
         # TODO: A newer NAT version adds `public_base_url` to `A2AFrontEndConfig`, which would
         # let us set the public URL directly in the config instead of replacing it here.
         # Once we upgrade NAT, replace _get_a2a_endpoint_url with public_base_url.
         agent_card.url = self._get_a2a_endpoint_url(agent_card.url)
-        agent_executor = self._a2a_worker.create_agent_executor(workflow, builder)
         a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
 
         a2a_app = a2a_server.build()

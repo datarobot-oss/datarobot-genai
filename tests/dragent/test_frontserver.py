@@ -29,6 +29,7 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.register import DRAgentA2AConfig
 from datarobot_genai.dragent.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -45,9 +46,11 @@ def dragent_worker():
     config = Config(
         general=GeneralConfig(
             front_end=DRAgentFastApiFrontEndConfig(
-                a2a=A2AFrontEndConfig(
-                    name="Test Agent",
-                    description="A test agent",
+                a2a=DRAgentA2AConfig(
+                    server=A2AFrontEndConfig(
+                        name="Test Agent",
+                        description="A test agent",
+                    )
                 ),
             )
         )
@@ -85,8 +88,10 @@ def mock_builder():
 @pytest.fixture
 def mock_a2a_worker():
     worker = MagicMock()
-    worker.create_agent_card = AsyncMock(return_value=MagicMock(url="http://localhost:8000/"))
-    worker.create_agent_executor = MagicMock(return_value=MagicMock())
+    worker.front_end_config = A2AFrontEndConfig(
+        name="Test Agent", description="A test agent", host="localhost", port=8000
+    )
+    worker._generate_security_schemes = AsyncMock(return_value=(None, None))
     worker.create_a2a_server = MagicMock(
         return_value=MagicMock(build=MagicMock(return_value=FastAPI()))
     )
@@ -152,10 +157,17 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
         app = FastAPI()
-        with patch(
-            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
-            return_value=mock_a2a_worker,
-        ) as mock_a2a_worker_cls:
+        with (
+            patch(
+                "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ) as mock_a2a_worker_cls,
+            patch(
+                "datarobot_genai.dragent.frontserver.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
             await dragent_worker.add_routes(app, mock_builder)
 
         a2a_config_used = mock_a2a_worker_cls.call_args[0][0].general.front_end
@@ -167,27 +179,39 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
         app = FastAPI()
-        mock_a2a_worker.create_agent_card.return_value = MagicMock(url="http://localhost:8000/")
-        with patch(
-            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
-            return_value=mock_a2a_worker,
+        with (
+            patch(
+                "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontserver.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
         ):
             await dragent_worker.add_routes(app, mock_builder)
-        assert mock_a2a_worker.create_agent_card.return_value.url == "http://localhost:8000/a2a/"
+        agent_card = mock_a2a_worker.create_a2a_server.call_args[0][0]
+        assert agent_card.url == "http://localhost:8000/a2a/"
 
     @pytest.mark.asyncio
     async def test_add_routes_mounts_a2a(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
     ):
         app = FastAPI()
-        with patch(
-            "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
-            return_value=mock_a2a_worker,
+        with (
+            patch(
+                "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontserver.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
         ):
             await dragent_worker.add_routes(app, mock_builder)
 
-        mock_a2a_worker.create_agent_card.assert_awaited_once()
-        mock_a2a_worker.create_agent_executor.assert_called_once()
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
     async def test_add_routes_disabled(self, mock_builder, patch_super_add_routes):
@@ -213,22 +237,24 @@ class TestDRAgentFastApiFrontEndConfig:
 
     def test_custom_a2a_fields(self):
         config = DRAgentFastApiFrontEndConfig(
-            a2a=A2AFrontEndConfig(
-                name="My Agent",
-                description="Does things",
-                version="2.0.0",
+            a2a=DRAgentA2AConfig(
+                server=A2AFrontEndConfig(
+                    name="My Agent",
+                    description="Does things",
+                    version="2.0.0",
+                )
             )
         )
-        assert config.a2a.name == "My Agent"
-        assert config.a2a.description == "Does things"
-        assert config.a2a.version == "2.0.0"
+        assert config.a2a.server.name == "My Agent"
+        assert config.a2a.server.description == "Does things"
+        assert config.a2a.server.version == "2.0.0"
 
     def test_is_not_a2a_front_end_config(self):
         config = DRAgentFastApiFrontEndConfig()
         assert not isinstance(config, A2AFrontEndConfig)
 
     def test_a2a_enables_endpoints(self):
-        config = DRAgentFastApiFrontEndConfig(a2a=A2AFrontEndConfig())
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
         assert config.a2a is not None
 
 
