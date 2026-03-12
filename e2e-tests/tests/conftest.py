@@ -65,41 +65,43 @@ def _start_server(
         prefix=f"dragent-{label}-", suffix=".log", delete=True, mode="w"
     )
 
-    proc = subprocess.Popen(  # noqa: S603
-        [
-            "uv", "run", "nat", "start", "dragent_fastapi",
-            "--config_file", workflow_file,
-            "--port", str(port),
-        ],
-        cwd=cwd,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-    )
-
-    deadline = time.monotonic() + 90
-    while time.monotonic() < deadline:
-        try:
-            r = httpx.get(f"{url}/health", timeout=2)
-            if r.status_code == 200:
-                break
-        except (httpx.ConnectError, httpx.TimeoutException):
-            pass
-        time.sleep(2)
-    else:
-        proc.kill()
-        proc.wait()
-        log_file.flush()
-        log_tail = Path(log_file.name).read_text()[-2000:]
-        pytest.fail(f"{label} server did not start within 90s.\nLog tail:\n{log_tail}")
-
-    yield proc
-
-    proc.terminate()
     try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-    log_file.close()
+        proc = subprocess.Popen(  # noqa: S603
+            [
+                "uv", "run", "nat", "start", "dragent_fastapi",
+                "--config_file", workflow_file,
+                "--port", str(port),
+            ],
+            cwd=cwd,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
+            try:
+                r = httpx.get(f"{url}/health", timeout=2)
+                if r.status_code == 200:
+                    break
+            except (httpx.ConnectError, httpx.TimeoutException):
+                pass
+            time.sleep(2)
+        else:
+            proc.kill()
+            proc.wait()
+            log_file.flush()
+            log_tail = Path(log_file.name).read_text()[-2000:]
+            pytest.fail(f"{label} server did not start within 90s.\nLog tail:\n{log_tail}")
+
+        yield proc
+
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    finally:
+        log_file.close()
 
 
 @pytest.fixture(scope="session")

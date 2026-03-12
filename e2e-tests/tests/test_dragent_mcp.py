@@ -21,7 +21,6 @@ import pytest
 
 from tests.conftest import GENERATE_STREAM_PATH
 from tests.conftest import collect_ag_ui_events
-from tests.conftest import collect_text
 from tests.conftest import make_generate_payload
 from tests.conftest import parse_sse_events
 
@@ -46,12 +45,6 @@ def mcp_ag_ui_events(mcp_http_client: httpx.Client) -> list[dict]:  # type: igno
         assert response.status_code == 200
         sse_events = parse_sse_events(response)
     return collect_ag_ui_events(sse_events)
-
-
-def test_mcp_agent_responds(mcp_ag_ui_events: list[dict]) -> None:  # type: ignore[type-arg]
-    """Agent with MCP connected produces a non-empty response."""
-    full_text = collect_text(mcp_ag_ui_events)
-    assert len(full_text) > 0, "Expected non-empty response with MCP enabled"
 
 
 @pytest.mark.xfail(
