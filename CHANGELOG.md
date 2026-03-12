@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.6.15
-- Add new data tools from wren migration: get_dataset_details, list_datastores, browse_datastore, query_datastore
-- Add "daria" tag to existing overlapping tools for wren compatibility
+- Add new data tools: get_dataset_details, list_datastores, browse_datastore, query_datastore
+- Add "daria" tag to existing overlapping tools
 
 ## 0.6.14
 - Fix loading JSON schemas from the package directory in DRUM adapter to work from wheel or source
