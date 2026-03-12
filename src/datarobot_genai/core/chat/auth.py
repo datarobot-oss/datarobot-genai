@@ -23,7 +23,7 @@ from openai.types.chat.completion_create_params import CompletionCreateParamsStr
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
-def _get_authorization_context_from_headers(
+def get_authorization_context_from_headers(
     headers: dict[str, str],
     secret_key: str | None = None,
 ) -> dict[str, Any] | None:
@@ -47,7 +47,7 @@ def _get_authorization_context_from_headers(
     return None
 
 
-def _get_authorization_context_from_params(
+def get_authorization_context_from_params(
     completion_create_params: CompletionCreateParams
     | CompletionCreateParamsNonStreaming
     | CompletionCreateParamsStreaming,
@@ -102,8 +102,8 @@ def resolve_authorization_context(
     # is used as a fallback for backward compatibility only and may be removed in
     # the future.
     authorization_context: dict[str, Any] = (
-        _get_authorization_context_from_headers(incoming_headers)
-        or _get_authorization_context_from_params(completion_create_params)
+        get_authorization_context_from_headers(incoming_headers)
+        or get_authorization_context_from_params(completion_create_params)
         or {}
     )
 

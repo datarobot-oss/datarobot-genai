@@ -14,6 +14,7 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from nat.builder.workflow import Workflow
 from nat.builder.workflow_builder import WorkflowBuilder
@@ -26,6 +27,7 @@ from nat.utils.data_models.schema_validator import validate_schema
 from nat.utils.io.yaml_tools import yaml_load
 from nat.utils.type_utils import StrPath
 
+from datarobot_genai.core.chat.auth import get_authorization_context_from_headers
 from datarobot_genai.core.utils.auth import prepare_identity_header
 
 
@@ -134,3 +136,27 @@ def extract_headers_from_context(headers_to_forward: list[str]) -> dict[str, str
             extracted_headers[header] = headers[header]
 
     return extracted_headers
+
+
+def extract_datarobot_headers_from_context() -> dict[str, str]:
+    context = Context.get()
+    headers = context.metadata.headers
+    extracted_headers: dict[str, str] = {}
+    if not headers:
+        return extracted_headers
+
+    for header in headers:
+        # Already lowercase from NAT
+        if header.startswith("x-datarobot-"):
+            extracted_headers[header] = headers[header]
+
+    return extracted_headers
+
+
+def extract_authorization_from_context(secret_key: str | None = None) -> dict[str, Any] | None:
+    context = Context.get()
+    headers = context.metadata.headers
+    if not headers:
+        return None
+
+    return get_authorization_context_from_headers(headers, secret_key=secret_key)
