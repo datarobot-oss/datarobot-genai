@@ -142,6 +142,8 @@ class StubDRClient:
         self.Dataset = MagicMock()
         self.DataStore = MagicMock()
         self.client = MagicMock()
+        self.get: Any = None
+        self.post: Any = None
 
 
 def test_create_dr_client() -> StubDRClient:
