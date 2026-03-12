@@ -31,7 +31,7 @@ def calculator(expression: str) -> str:
 
 
 class MyAgent(CrewAIAgent):
-    """Single CrewAI agent with calculator tool for e2e testing."""
+    """Planner -> Writer CrewAI agent with calculator tool for e2e testing."""
 
     def __init__(
         self,
@@ -43,18 +43,29 @@ class MyAgent(CrewAIAgent):
 
     @property
     def agents(self) -> list[Any]:
-        assistant = Agent(
-            role="Assistant",
-            goal="Answer questions concisely. Use the calculator tool for math: {topic}.",
+        planner = Agent(
+            role="Content Planner",
+            goal="Create a short bullet-point outline with 3-5 key points about: {topic}.",
             backstory=make_system_prompt(
-                "You are a helpful assistant. Answer questions concisely. "
-                "Use the calculator tool when asked to compute math expressions."
+                "You are a content planner. Given a topic, produce a short bullet-point "
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list."
+            ),
+            llm=self._llm,
+            tools=self.mcp_tools,
+            verbose=self.verbose,
+        )
+        writer = Agent(
+            role="Content Writer",
+            goal="Write a 2-3 sentence response based on the planner's outline about: {topic}.",
+            backstory=make_system_prompt(
+                "You are a concise writer. Using the planner's outline, write a short response "
+                "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
             llm=self._llm,
             tools=[calculator] + self.mcp_tools,
             verbose=self.verbose,
         )
-        return [assistant]
+        return [planner, writer]
 
     @property
     def tasks(self) -> list[Any]:
@@ -65,15 +76,23 @@ class MyAgent(CrewAIAgent):
         return Crew(agents=agents, tasks=self._tasks_for(agents), verbose=self.verbose)
 
     def _tasks_for(self, agents: list[Any]) -> list[Any]:
-        (assistant,) = agents
+        planner, writer = agents
         return [
             Task(
                 description=(
-                    "Answer the following: {topic}. "
+                    "Create a short outline about: {topic}. "
                     "Prior conversation context (may be empty): {chat_history}"
                 ),
-                expected_output="A concise answer to the question.",
-                agent=assistant,
+                expected_output="A bullet-point outline with 3-5 key points.",
+                agent=planner,
+            ),
+            Task(
+                description=(
+                    "Using the planner's outline, write a short response about: {topic}. "
+                    "Prior conversation context (may be empty): {chat_history}"
+                ),
+                expected_output="A concise 2-3 sentence response.",
+                agent=writer,
             ),
         ]
 

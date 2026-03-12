@@ -26,7 +26,7 @@ calculator = FunctionTool.from_defaults(fn=_calculator_fn, name="calculator")
 
 
 class MyAgent(LlamaIndexAgent):
-    """Single LlamaIndex agent with calculator tool for e2e testing."""
+    """Planner -> Writer LlamaIndex agent with calculator tool for e2e testing."""
 
     def __init__(
         self,
@@ -37,17 +37,29 @@ class MyAgent(LlamaIndexAgent):
         self._llm = llm
 
     def build_workflow(self) -> AgentWorkflow:
-        assistant = FunctionAgent(
-            name="assistant",
-            description="Answers questions and computes math expressions",
+        planner = FunctionAgent(
+            name="planner",
+            description="Creates short bullet-point outlines",
             system_prompt=make_system_prompt(
-                "You are a helpful assistant. Answer questions concisely. "
-                "Use the calculator tool when asked to compute math expressions."
+                "You are a content planner. Given a topic, produce a short bullet-point "
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
+                "When done, hand off to the writer agent."
+            ),
+            llm=self._llm,
+            tools=self.mcp_tools,
+            can_handoff_to=["writer"],
+        )
+        writer = FunctionAgent(
+            name="writer",
+            description="Writes concise responses based on outlines",
+            system_prompt=make_system_prompt(
+                "You are a concise writer. Using the planner's outline, write a short response "
+                "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
             llm=self._llm,
             tools=[calculator] + self.mcp_tools,
         )
-        return AgentWorkflow(agents=[assistant], root_agent="assistant")
+        return AgentWorkflow(agents=[planner, writer], root_agent="planner")
 
     def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
         for event in reversed(events):

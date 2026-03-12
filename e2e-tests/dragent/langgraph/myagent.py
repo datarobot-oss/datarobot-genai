@@ -35,7 +35,7 @@ def calculator(expression: str) -> str:
 
 
 class MyAgent(LangGraphAgent):
-    """Single-node LangGraph agent with calculator tool for e2e testing."""
+    """Planner -> Writer LangGraph agent with calculator tool for e2e testing."""
 
     def __init__(
         self,
@@ -57,19 +57,33 @@ class MyAgent(LangGraphAgent):
     @property
     def workflow(self) -> StateGraph[MessagesState]:
         graph = StateGraph(MessagesState)
-        graph.add_node("agent_node", self.agent)
-        graph.add_edge(START, "agent_node")
-        graph.add_edge("agent_node", END)
+        graph.add_node("planner_node", self.agent_planner)
+        graph.add_node("writer_node", self.agent_writer)
+        graph.add_edge(START, "planner_node")
+        graph.add_edge("planner_node", "writer_node")
+        graph.add_edge("writer_node", END)
         return graph
 
     @property
-    def agent(self) -> Any:
+    def agent_planner(self) -> Any:
+        return create_agent(
+            self._llm,
+            tools=self.mcp_tools,
+            system_prompt=make_system_prompt(
+                "You are a content planner. Given a topic, produce a short bullet-point "
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list."
+            ),
+            name="planner",
+        )
+
+    @property
+    def agent_writer(self) -> Any:
         return create_agent(
             self._llm,
             tools=[calculator] + self.mcp_tools,
             system_prompt=make_system_prompt(
-                "You are a helpful assistant. Answer questions concisely. "
-                "Use the calculator tool when asked to compute math expressions."
+                "You are a concise writer. Using the planner's outline, write a short response "
+                "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
-            name="assistant",
+            name="writer",
         )
