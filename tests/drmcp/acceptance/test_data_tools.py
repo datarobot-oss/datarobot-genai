@@ -75,7 +75,7 @@ class TestDataToolsE2E(ToolBaseE2E):
         """Test LLM can use get_dataset_details to retrieve dataset metadata."""
         prompt = (
             f"I have a dataset with ID '{classification_dataset_id}' in the DataRobot AI Catalog. "
-            "Can you get me the details about this dataset including its columns and some sample rows?"
+            "Can you get the details about this dataset including columns and sample rows?"
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
