@@ -62,7 +62,7 @@ def _start_server(
     url = f"http://localhost:{port}"
 
     log_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
-        prefix=f"dragent-{label}-", suffix=".log", delete=True, mode="w"
+        prefix=f"dragent-{label}-", suffix=".log", delete=False, mode="w"
     )
 
     try:
@@ -102,6 +102,7 @@ def _start_server(
             proc.kill()
     finally:
         log_file.close()
+        os.unlink(log_file.name)  # delete=False so we can read logs on failure
 
 
 @pytest.fixture(scope="session")

@@ -41,7 +41,7 @@ def test_ping_endpoint(http_client: httpx.Client) -> None:
 # --- Streaming (single LLM call shared across assertions) ---
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def streaming_ag_ui_events(http_client: httpx.Client) -> list[dict]:  # type: ignore[type-arg]
     """Single streaming call shared by all streaming tests."""
     payload = make_generate_payload("Say 'hello world' and nothing else.")
