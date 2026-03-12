@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/datarobot_genai/dragent/**'
       - 'src/datarobot_genai/core/**'
+      - 'src/datarobot_genai/nat/**'
       - 'src/datarobot_genai/langgraph/**'
       - 'src/datarobot_genai/crewai/**'
       - 'src/datarobot_genai/llama_index/**'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'src/datarobot_genai/dragent/**'
       - 'src/datarobot_genai/core/**'
+      - 'src/datarobot_genai/nat/**'
       - 'src/datarobot_genai/langgraph/**'
       - 'src/datarobot_genai/crewai/**'
       - 'src/datarobot_genai/llama_index/**'
