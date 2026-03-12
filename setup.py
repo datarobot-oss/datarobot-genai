@@ -43,6 +43,7 @@ memory = [
 
 dragent = core + [
     "nvidia-nat==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-a2a==1.4.1; python_version >= '3.11'",
     "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
 ]
 
