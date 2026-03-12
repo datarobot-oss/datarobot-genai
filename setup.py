@@ -89,10 +89,6 @@ nat = core + [
     "anyio==4.11.0",
 ]
 
-pydanticai = core + [
-    "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
-]
-
 # drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
 drtools = [
@@ -145,7 +141,6 @@ extras_require = {
     "langgraph": langgraph,
     "llamaindex": llamaindex,
     "nat": nat,
-    "pydanticai": pydanticai,
     "auth": auth,
     "drmcp": drmcp,
     "drtools": drtools,
