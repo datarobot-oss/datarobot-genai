@@ -372,9 +372,7 @@ async def test_query_datastore_success() -> None:
         mock_client.post.return_value = mock_response
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        result = await data.query_datastore(
-            datastore_id="store1", sql="SELECT * FROM t"
-        )
+        result = await data.query_datastore(datastore_id="store1", sql="SELECT * FROM t")
         assert isinstance(result, ToolResult)
         assert result.structured_content["row_count"] == 1
         assert result.structured_content["columns"] == ["id", "val"]

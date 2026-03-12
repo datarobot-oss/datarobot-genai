@@ -226,9 +226,7 @@ def test_create_dr_client() -> StubDRClient:
     def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for client.get() REST calls."""
         if "externalDataDrivers" in url and "tables" in url:
-            return StubRestResponse(
-                {"data": [{"name": "public.users"}, {"name": "public.orders"}]}
-            )
+            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         return StubRestResponse({"data": [], "next": None})
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
