@@ -14,6 +14,8 @@
 
 from collections.abc import AsyncGenerator
 
+from datarobot_genai.nat.helpers import extract_authorization_from_context
+from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_function
@@ -39,13 +41,20 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
 
     from dragent.langgraph.myagent import MyAgent  # noqa: PLC0415
 
-    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-
-    agent = MyAgent(llm=llm)
-
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> AsyncGenerator[DRAgentEventResponse, None]:
+
+        # LLM might contain user-specific headers
+        llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+
+        # Agent contains user-specific headers and authorization context
+        forward_headers = extract_datarobot_headers_from_context()
+        authorization_context = extract_authorization_from_context()
+        agent = MyAgent(
+            llm=llm, forward_headers=forward_headers, authorization_context=authorization_context
+        )
+
         async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
             yield DRAgentEventResponse(
                 events=[event],
