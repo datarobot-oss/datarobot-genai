@@ -89,7 +89,7 @@ def _start_server(
         else:
             proc.kill()
             proc.wait()
-            log_file.flush()
+            os.fsync(log_file.fileno())  # subprocess writes to fd directly; flush won't help
             log_tail = Path(log_file.name).read_text()[-2000:]
             pytest.fail(f"{label} server did not start within 90s.\nLog tail:\n{log_tail}")
 
