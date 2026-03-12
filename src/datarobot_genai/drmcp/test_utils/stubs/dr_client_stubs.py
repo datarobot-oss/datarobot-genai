@@ -142,8 +142,8 @@ class StubDRClient:
         self.Dataset = MagicMock()
         self.DataStore = MagicMock()
         self.client = MagicMock()
-        self.get: Any = None
-        self.post: Any = None
+        self.stub_rest_get: Any = None
+        self.stub_rest_post: Any = None
 
 
 def test_create_dr_client() -> StubDRClient:
@@ -249,8 +249,10 @@ def test_create_dr_client() -> StubDRClient:
     client.Dataset.get = get_dataset
     client.Dataset.list = list_datasets
     client.DataStore.list = list_datastores
-    client.get = stub_get
-    client.post = stub_post
+    # Store REST stubs on the client so integration_mcp_server can wire them
+    # onto mock_rest after replacing client.client.
+    client.stub_rest_get = stub_get
+    client.stub_rest_post = stub_post
     return client
 
 
