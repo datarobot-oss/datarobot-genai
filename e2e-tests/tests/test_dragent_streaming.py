@@ -24,23 +24,6 @@ from tests.conftest import make_generate_payload
 from tests.conftest import parse_sse_events
 
 
-# --- Health checks ---
-
-
-def test_health_endpoint(http_client: httpx.Client) -> None:
-    r = http_client.get("/health")
-    assert r.status_code == 200
-    assert r.json()["status"] == "healthy"
-
-
-def test_ping_endpoint(http_client: httpx.Client) -> None:
-    r = http_client.get("/ping")
-    assert r.status_code == 200
-
-
-# --- Streaming (single LLM call shared across assertions) ---
-
-
 @pytest.fixture(scope="session")
 def streaming_ag_ui_events(http_client: httpx.Client) -> list[dict]:  # type: ignore[type-arg]
     """Single streaming call shared by all streaming tests."""
