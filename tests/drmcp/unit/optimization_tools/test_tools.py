@@ -46,9 +46,11 @@ async def test_cuopt_solve_success() -> None:
         ),
         patch("datarobot_genai.drtools.optimization.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_rest_client = MagicMock()
+        mock_rest_client.post.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.cuopt_solve(
             problem_definition={"objective": "minimize", "constraints": []}
@@ -72,13 +74,13 @@ async def test_cuopt_solve_preview() -> None:
         ),
         patch("datarobot_genai.drtools.optimization.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_rest_client = MagicMock()
+        mock_rest_client.post.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
-        result = await tools.cuopt_solve(
-            problem_definition={"objective": "minimize"}, preview=True
-        )
+        result = await tools.cuopt_solve(problem_definition={"objective": "minimize"}, preview=True)
         assert isinstance(result, ToolResult)
         assert result.structured_content["preview"] is True
 
@@ -89,9 +91,7 @@ async def test_cuopt_solve_missing_deployment_id() -> None:
         # Ensure CUOPT_DEPLOYMENT_ID is not set
         os.environ.pop("CUOPT_DEPLOYMENT_ID", None)
         with pytest.raises(ToolError, match="CUOPT_DEPLOYMENT_ID not configured"):
-            await tools.cuopt_solve(
-                problem_definition={"objective": "minimize"}
-            )
+            await tools.cuopt_solve(problem_definition={"objective": "minimize"})
 
 
 @pytest.mark.asyncio
@@ -113,11 +113,11 @@ async def test_cuopt_solve_no_solution() -> None:
         ),
         patch("datarobot_genai.drtools.optimization.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_rest_client = MagicMock()
+        mock_rest_client.post.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         with pytest.raises(ToolError, match="No solution returned"):
-            await tools.cuopt_solve(
-                problem_definition={"objective": "minimize"}
-            )
+            await tools.cuopt_solve(problem_definition={"objective": "minimize"})

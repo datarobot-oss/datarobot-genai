@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.5
+- Added code execution tool: execute_code with pluggable sandbox backend (MODEL-22812)
+- Added optimization tool: cuopt_solve for NVIDIA cuOpt solver integration (MODEL-22812)
+
 ## 0.8.4
 - Added use case tools: list_use_cases and list_use_case_assets (MODEL-22810)
 - Added ToolType registrations for use_case, vdb, code_execution, and optimization
