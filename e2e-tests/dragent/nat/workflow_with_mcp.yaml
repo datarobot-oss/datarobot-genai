@@ -34,6 +34,15 @@ functions:
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+
+function_groups:
+  mcp_tools:
+    _type: datarobot_mcp_client
+
+authentication:
+  datarobot_mcp_auth:
+    _type: datarobot_mcp_auth
+
 workflow:
   _type: tool_calling_agent
   llm_name: datarobot_llm

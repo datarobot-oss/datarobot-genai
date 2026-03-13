@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.6.17
 - Fixed CVE-2026-25580: removed unused `pydantic-ai-slim` dependency and `pydanticai` install extra
+- Added e2e tests for dragent server covering streaming, tool use, and MCP integration
+- Added CI workflow for e2e tests with path-based triggers across langgraph, crewai, llamaindex, and nat
 
 ## 0.6.16
 - Align MCP OpenTelemetry spans with OTel semantic conventions.

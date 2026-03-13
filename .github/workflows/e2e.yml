@@ -1,0 +1,107 @@
+name: E2E Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      frameworks: ${{ steps.matrix.outputs.frameworks }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            langgraph:
+              - 'src/datarobot_genai/langgraph/**'
+            crewai:
+              - 'src/datarobot_genai/crewai/**'
+            llamaindex:
+              - 'src/datarobot_genai/llama_index/**'
+            nat:
+              - 'src/datarobot_genai/nat/**'
+            core:
+              - 'src/datarobot_genai/dragent/**'
+              - 'src/datarobot_genai/core/**'
+              - 'e2e-tests/**'
+              - '.github/workflows/e2e.yml'
+
+      - id: matrix
+        run: |
+          frameworks='[]'
+          core="${{ steps.filter.outputs.core }}"
+          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [crewai]="${{ steps.filter.outputs.crewai }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" )
+          for fw in langgraph crewai llamaindex nat; do
+            if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
+              frameworks=$(echo "$frameworks" | jq -c ". + [\"$fw\"]")
+            fi
+          done
+          echo "frameworks=$frameworks" >> "$GITHUB_OUTPUT"
+
+  e2e-dragent:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frameworks != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJson(needs.detect-changes.outputs.frameworks) }}
+        python-version: ['3.12']
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            e2e-tests/.venv
+            ~/.cache/uv
+          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.framework }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          restore-keys: |
+            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.framework }}-
+
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: |
+          uv sync --group dragent-${{ matrix.framework }}
+
+      - name: Run e2e tests
+        working-directory: e2e-tests
+        env:
+          DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+          DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+          # MCP_DEPLOYMENT_ID is intentionally omitted — MCP tests are skipped in CI for now.
+          # To enable, uncomment: MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+          LLM_DEFAULT_MODEL: azure/gpt-4o-mini
+          DRAGENT_FRAMEWORK: ${{ matrix.framework }}
+        run: |
+          uv run pytest tests/ -v --timeout=300 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.framework }}-py${{ matrix.python-version }}
+          path: e2e-tests/test_results/
+          if-no-files-found: ignore
