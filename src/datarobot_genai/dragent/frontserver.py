@@ -103,6 +103,18 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             security_schemes, security = await self._a2a_worker._generate_security_schemes(
                 frontend_config.server_auth
             )
+        if self.front_end_config.a2a.skills:
+            skills = self.front_end_config.a2a.skills
+        else:
+            skills = [
+                AgentSkill(
+                    id="call",
+                    name=frontend_config.name,
+                    description=frontend_config.description,
+                    tags=[],
+                    examples=[],
+                )
+            ]
         agent_card = AgentCard(
             name=frontend_config.name,
             description=frontend_config.description,
@@ -114,16 +126,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 streaming=frontend_config.capabilities.streaming,
                 push_notifications=frontend_config.capabilities.push_notifications,
             ),
-            skills=list(self.front_end_config.a2a.skills)
-            or [
-                AgentSkill(
-                    id="call",
-                    name=frontend_config.name,
-                    description=frontend_config.description,
-                    tags=[],
-                    examples=[],
-                )
-            ],
+            skills=skills,
             security_schemes=security_schemes,
             security=security,
         )
