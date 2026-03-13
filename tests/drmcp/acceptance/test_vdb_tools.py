@@ -32,48 +32,6 @@ def vdb_deployment_id() -> str:
     return "vdb_deployment_id_ete"
 
 
-@pytest.fixture(scope="session")
-def expectations_for_list_vector_databases(
-) -> ETETestExpectations:
-    return ETETestExpectations(
-        tool_calls_expected=[
-            ToolCallTestExpectations(
-                name="list_vector_databases",
-                parameters={},
-                result={"vector_databases": [], "count": 0},
-            ),
-        ],
-        llm_response_content_contains_expectations=[
-            "vector database",
-            "VDB",
-            "deployment",
-        ],
-    )
-
-
-@pytest.fixture(scope="session")
-def expectations_for_query_vector_database(
-    vdb_deployment_id: str,
-) -> ETETestExpectations:
-    return ETETestExpectations(
-        tool_calls_expected=[
-            ToolCallTestExpectations(
-                name="query_vector_database",
-                parameters={
-                    "deployment_id": vdb_deployment_id,
-                    "query": "What is DataRobot?",
-                },
-                result=SHOULD_NOT_BE_EMPTY,
-            ),
-        ],
-        llm_response_content_contains_expectations=[
-            "document",
-            "result",
-            "search",
-        ],
-    )
-
-
 @pytest.mark.asyncio
 class TestVDBToolsE2E(ToolBaseE2E):
     """End-to-end acceptance tests for VDB MCP tools."""

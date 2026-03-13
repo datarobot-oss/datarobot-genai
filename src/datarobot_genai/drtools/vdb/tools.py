@@ -32,9 +32,10 @@ logger = logging.getLogger(__name__)
 async def list_vector_databases() -> ToolResult:
     """List all deployed Vector Databases (VDBs) in DataRobot."""
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
-    response = client.get("deployments/", params={"limit": 100})
+    response = rest_client.get("deployments/", params={"limit": 100})
     all_deployments = response.json().get("data", [])
 
     vdbs = [
@@ -76,16 +77,17 @@ async def query_vector_database(
         raise ToolError("Query must be provided")
 
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
-    deployment = client.Deployment.get(deployment_id)
+    deployment = dr_module.Deployment.get(deployment_id)
 
     payload: dict[str, Any] = {
         "query": query,
         "num_results": num_results,
         "retrieval_mode": retrieval_mode,
     }
-    response = client.post(
+    response = rest_client.post(
         f"deployments/{deployment.id}/predictions/",
         json=payload,
     )
