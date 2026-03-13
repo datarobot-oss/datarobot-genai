@@ -2,26 +2,8 @@ name: E2E Tests
 
 on:
   pull_request:
-    paths:
-      - 'src/datarobot_genai/dragent/**'
-      - 'src/datarobot_genai/core/**'
-      - 'src/datarobot_genai/nat/**'
-      - 'src/datarobot_genai/langgraph/**'
-      - 'src/datarobot_genai/crewai/**'
-      - 'src/datarobot_genai/llama_index/**'
-      - 'e2e-tests/**'
-      - '.github/workflows/e2e.yml'
   push:
     branches: [main]
-    paths:
-      - 'src/datarobot_genai/dragent/**'
-      - 'src/datarobot_genai/core/**'
-      - 'src/datarobot_genai/nat/**'
-      - 'src/datarobot_genai/langgraph/**'
-      - 'src/datarobot_genai/crewai/**'
-      - 'src/datarobot_genai/llama_index/**'
-      - 'e2e-tests/**'
-      - '.github/workflows/e2e.yml'
   workflow_dispatch:
 
 jobs:
