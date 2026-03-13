@@ -203,8 +203,10 @@ async def test_get_prediction_history_success() -> None:
             {"prediction": 0.6, "timestamp": "2025-01-02T00:00:00Z"},
         ]
     }
-    mock_client = MagicMock()
-    mock_client.get.return_value = mock_response
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
@@ -213,7 +215,7 @@ async def test_get_prediction_history_success() -> None:
         ),
         patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
         result = await deployment.get_prediction_history(deployment_id="dep1")
         assert result.structured_content["deployment_id"] == "dep1"
         assert result.structured_content["row_count"] == 2
@@ -229,8 +231,10 @@ async def test_get_prediction_history_missing_id() -> None:
 async def test_get_prediction_history_with_time_range() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
-    mock_client = MagicMock()
-    mock_client.get.return_value = mock_response
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
@@ -239,7 +243,7 @@ async def test_get_prediction_history_with_time_range() -> None:
         ),
         patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
         result = await deployment.get_prediction_history(
             deployment_id="dep1",
             start_time="2025-01-01T00:00:00Z",
@@ -247,7 +251,7 @@ async def test_get_prediction_history_with_time_range() -> None:
         )
         assert result.structured_content["row_count"] == 0
         # Verify params were passed correctly
-        call_args = mock_client.get.call_args
+        call_args = mock_rest_client.get.call_args
         assert call_args[1]["params"]["startTime"] == "2025-01-01T00:00:00Z"
         assert call_args[1]["params"]["endTime"] == "2025-01-31T00:00:00Z"
 

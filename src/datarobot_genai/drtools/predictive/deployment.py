@@ -187,7 +187,8 @@ async def get_prediction_history(
         raise ToolError("Deployment ID must be provided")
 
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
     params: dict = {"limit": limit}
     if start_time:
@@ -195,7 +196,7 @@ async def get_prediction_history(
     if end_time:
         params["endTime"] = end_time
 
-    response = client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
+    response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
     data = response.json()
     rows = data.get("data", [])
 

@@ -144,6 +144,20 @@ class StubDataset:
             }
         )
 
+    def get_raw_sample_data(self) -> Any:
+        """Return a small stub sample DataFrame (subset, avoids full download)."""
+        return self.get_as_dataframe()
+
+
+class StubDataStore:
+    """Stub DataRobot datastore object."""
+
+    def __init__(self, datastore_id: str, canonical_name: str = "stub_datastore"):
+        self.id = datastore_id
+        self.canonical_name = canonical_name
+        self.creator_id = "stub_creator"
+        self.params = {"type": "jdbc", "driver": "postgresql"}
+
 
 class StubRestResponse:
     """Stub HTTP response for client.get()/client.post() REST calls."""
@@ -163,7 +177,10 @@ class StubDRClient:
         self.Model = MagicMock()
         self.Deployment = MagicMock()
         self.Dataset = MagicMock()
+        self.DataStore = MagicMock()
         self.client = MagicMock()
+        self.stub_rest_get: Any = None
+        self.stub_rest_post: Any = None
 
 
 def test_create_dr_client() -> StubDRClient:
@@ -238,11 +255,16 @@ def test_create_dr_client() -> StubDRClient:
     def list_datasets() -> list[StubDataset]:
         return [stub_dataset]
 
-    # --- REST method stubs for client.get() / client.post() ---
+    # --- DataStore stubs ---
+    stub_datastore = StubDataStore("stub_datastore_id", canonical_name="Test PostgreSQL")
+
+    def list_datastores() -> list[StubDataStore]:
+        return [stub_datastore]
+
+    # --- REST method stubs for dr_module.client.get_client() ---
     def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
-        """Stub for client.get() REST calls."""
+        """Stub for rest_client.get() REST calls."""
         if "predictionResults" in url:
-            # Stub for get_prediction_history; return canned prediction rows.
             limit = (params or {}).get("limit", 100)
             rows = [
                 {
@@ -253,10 +275,19 @@ def test_create_dr_client() -> StubDRClient:
                 for i in range(min(limit, 5))
             ]
             return StubRestResponse({"data": rows, "next": None})
+        if "externalDataDrivers" in url and "tables" in url:
+            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         return StubRestResponse({"data": [], "next": None})
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
-        """Stub for client.post() REST calls."""
+        """Stub for rest_client.post() REST calls."""
+        if "externalDataDrivers" in url and "execute" in url:
+            return StubRestResponse(
+                {
+                    "data": [{"id": 1, "name": "test"}],
+                    "columns": ["id", "name"],
+                }
+            )
         return StubRestResponse({"data": []})
 
     # Configure the stub methods
@@ -265,8 +296,9 @@ def test_create_dr_client() -> StubDRClient:
     client.Deployment.get = get_deployment
     client.Dataset.get = get_dataset
     client.Dataset.list = list_datasets
-    client.get = stub_get
-    client.post = stub_post
+    client.DataStore.list = list_datastores
+    client.stub_rest_get = stub_get
+    client.stub_rest_post = stub_post
     return client
 
 

@@ -115,7 +115,7 @@ async def get_dataset_details(
     }
     if include_sample:
         try:
-            df = dataset.get_as_dataframe()
+            df = dataset.get_raw_sample_data()
             result["columns"] = list(df.columns)
             result["sample"] = df.head(sample_rows).to_dict(orient="records")
         except Exception as exc:
@@ -161,14 +161,15 @@ async def browse_datastore(
         raise ToolError("Datastore ID must be provided")
 
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
     params: dict = {"offset": offset, "limit": limit}
     if path:
         params["path"] = path
     if search:
         params["search"] = search
-    response = client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+    response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
     data = response.json()
     items = data.get("data", data) if isinstance(data, dict) else data
 
@@ -196,10 +197,11 @@ async def query_datastore(
         raise ToolError("SQL query must be provided")
 
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
     payload = {"query": sql, "limit": limit}
-    response = client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
+    response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
     data = response.json()
 
     return ToolResult(

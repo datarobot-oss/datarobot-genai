@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.19
+- Added model detail tools: get_model_details with optional feature impact and ROC curve
+- Added is_eligible_for_timeseries_training for dataset validation
+- Added get_prediction_history for deployment prediction retrieval
+
 ## 0.6.17
 - Fixed CVE-2026-25580: removed unused `pydantic-ai-slim` dependency and `pydanticai` install extra
 - Added e2e tests for dragent server covering streaming, tool use, and MCP integration

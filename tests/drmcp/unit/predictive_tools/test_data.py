@@ -259,7 +259,7 @@ async def test_get_dataset_details_success() -> None:
         import pandas as pd
 
         mock_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-        mock_dataset.get_as_dataframe.return_value = mock_df
+        mock_dataset.get_raw_sample_data.return_value = mock_df
         mock_client.Dataset.get.return_value = mock_dataset
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
@@ -337,9 +337,11 @@ async def test_browse_datastore_success() -> None:
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
+        mock_rest_client = MagicMock()
+        mock_rest_client.get.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr_module
 
         result = await data.browse_datastore(datastore_id="store1", path="/schema1")
         assert isinstance(result, ToolResult)
@@ -368,13 +370,13 @@ async def test_query_datastore_success() -> None:
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
+        mock_rest_client = MagicMock()
+        mock_rest_client.post.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr_module
 
-        result = await data.query_datastore(
-            datastore_id="store1", sql="SELECT * FROM t"
-        )
+        result = await data.query_datastore(datastore_id="store1", sql="SELECT * FROM t")
         assert isinstance(result, ToolResult)
         assert result.structured_content["row_count"] == 1
         assert result.structured_content["columns"] == ["id", "val"]
