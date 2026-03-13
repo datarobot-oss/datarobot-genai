@@ -53,8 +53,10 @@ jobs:
       - id: matrix
         run: |
           frameworks='[]'
+          core="${{ steps.filter.outputs.core }}"
+          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [crewai]="${{ steps.filter.outputs.crewai }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" )
           for fw in langgraph crewai llamaindex; do
-            if [[ "${{ steps.filter.outputs[fw] }}" == "true" || "${{ steps.filter.outputs.core }}" == "true" ]]; then
+            if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
               frameworks=$(echo "$frameworks" | jq -c ". + [\"$fw\"]")
             fi
           done
