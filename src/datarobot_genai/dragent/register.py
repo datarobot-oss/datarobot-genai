@@ -15,6 +15,7 @@
 import typing
 from collections.abc import AsyncGenerator
 
+from a2a.types import AgentSkill
 from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
@@ -33,21 +34,11 @@ from datarobot_genai.dragent.converters import convert_str_to_dragent_event_resp
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
 
 
-class DRAgentSkillConfig(BaseModel):
-    """DR-owned skill definition, isolated from NAT's A2AFrontEndConfig."""
-
-    id: str = Field(description="Unique identifier for the skill.")
-    name: str = Field(description="Human-readable name for the skill.")
-    description: str = Field(description="Description of what the skill does.")
-    tags: list[str] = Field(default=[], description="Keywords describing the skill.")
-    examples: list[str] = Field(default=[], description="Example prompts for the skill.")
-
-
 class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
     server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
-    skills: list[DRAgentSkillConfig] = Field(
+    skills: list[AgentSkill] = Field(
         default=[],
         description="Skills to advertise in the A2A agent card. "
         "If empty, a single default skill is generated from the agent name and description.",

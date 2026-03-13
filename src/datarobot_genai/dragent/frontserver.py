@@ -17,14 +17,18 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from a2a.server.agent_execution import RequestContext
+from a2a.server.events import EventQueue
+from a2a.types import AgentCapabilities
+from a2a.types import AgentCard
+from a2a.types import AgentSkill
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
-from a2a.server.agent_execution import RequestContext
-from a2a.server.events import EventQueue
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
+from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
@@ -34,6 +38,7 @@ from datarobot_genai.dragent.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
+A2A_MOUNT_PATH = "a2a"
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +95,41 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
-    def _get_a2a_endpoint_url(self, default_url: str) -> str:
+    async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
+        assert self._a2a_worker is not None
+        security_schemes = None
+        security = None
+        if frontend_config.server_auth:
+            security_schemes, security = await self._a2a_worker._generate_security_schemes(
+                frontend_config.server_auth
+            )
+        agent_card = AgentCard(
+            name=frontend_config.name,
+            description=frontend_config.description,
+            url=self._get_a2a_endpoint_url(frontend_config),
+            version=frontend_config.version,
+            default_input_modes=frontend_config.default_input_modes,
+            default_output_modes=frontend_config.default_output_modes,
+            capabilities=AgentCapabilities(
+                streaming=frontend_config.capabilities.streaming,
+                push_notifications=frontend_config.capabilities.push_notifications,
+            ),
+            skills=list(self.front_end_config.a2a.skills)
+            or [
+                AgentSkill(
+                    id="call",
+                    name=frontend_config.name,
+                    description=frontend_config.description,
+                    tags=[],
+                    examples=[],
+                )
+            ],
+            security_schemes=security_schemes,
+            security=security,
+        )
+        return agent_card
+
+    def _get_a2a_endpoint_url(self, frontend_config: A2AFrontEndConfig) -> str:
         """Construct the A2A endpoint URL.
 
         In a DataRobot deployment, uses the deployment's direct access URL.
@@ -102,8 +141,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             if not datarobot_endpoint:
                 raise ValueError("DATAROBOT_ENDPOINT must be set when MLOPS_DEPLOYMENT_ID is set")
             base = datarobot_endpoint.rstrip("/")
-            return f"{base}/deployments/{mlops_deployment_id}/directAccess/a2a/"
-        return default_url.rstrip("/") + "/a2a/"
+            return f"{base}/deployments/{mlops_deployment_id}/directAccess/{A2A_MOUNT_PATH}/"
+        return f"http://{frontend_config.host}:{frontend_config.port}/{A2A_MOUNT_PATH}/"
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
@@ -124,50 +163,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
-        from a2a.types import AgentCapabilities
-        from a2a.types import AgentCard
-        from a2a.types import AgentSkill
-
-        cfg = self._a2a_worker.front_end_config
-        security_schemes = None
-        security = None
-        if cfg.server_auth:
-            security_schemes, security = await self._a2a_worker._generate_security_schemes(
-                cfg.server_auth
-            )
-        agent_card = AgentCard(
-            name=cfg.name,
-            description=cfg.description,
-            url=f"http://{cfg.host}:{cfg.port}/",
-            version=cfg.version,
-            default_input_modes=cfg.default_input_modes,
-            default_output_modes=cfg.default_output_modes,
-            capabilities=AgentCapabilities(
-                streaming=cfg.capabilities.streaming,
-                push_notifications=cfg.capabilities.push_notifications,
-            ),
-            skills=[
-                AgentSkill(
-                    id=s.id,
-                    name=s.name,
-                    description=s.description,
-                    tags=s.tags,
-                    examples=s.examples,
-                )
-                for s in self.front_end_config.a2a.skills
-            ]
-            or [
-                AgentSkill(
-                    id="call",
-                    name=cfg.name,
-                    description=cfg.description,
-                    tags=[],
-                    examples=[],
-                )
-            ],
-            security_schemes=security_schemes,
-            security=security,
-        )
+        agent_card = await self._create_agent_card(self._a2a_worker.front_end_config)
         session_manager = await SessionManager.create(
             config=self._config,
             shared_builder=builder,
@@ -175,14 +171,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
 
-        # TODO: A newer NAT version adds `public_base_url` to `A2AFrontEndConfig`, which would
-        # let us set the public URL directly in the config instead of replacing it here.
-        # Once we upgrade NAT, replace _get_a2a_endpoint_url with public_base_url.
-        agent_card.url = self._get_a2a_endpoint_url(agent_card.url)
         a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
-
         a2a_app = a2a_server.build()
-        app.mount("/a2a", a2a_app)
+
+        app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")

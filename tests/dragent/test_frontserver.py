@@ -122,36 +122,35 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
 
     def test_get_a2a_endpoint_url_default(self, worker):
-        url = worker._get_a2a_endpoint_url("http://localhost:8000/")
-        assert url == "http://localhost:8000/a2a/"
-
-    def test_get_a2a_endpoint_url_strips_trailing_slash(self, worker):
-        url = worker._get_a2a_endpoint_url("http://localhost:8000")
-        assert url == "http://localhost:8000/a2a/"
+        cfg = A2AFrontEndConfig(host="localhost", port=8000)
+        assert worker._get_a2a_endpoint_url(cfg) == "http://localhost:8000/a2a/"
 
     def test_get_a2a_endpoint_url_deployment(self, worker):
+        cfg = A2AFrontEndConfig(host="localhost", port=8000)
         env = {
             "MLOPS_DEPLOYMENT_ID": "abc123",
             "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
         }
         with patch.dict(os.environ, env):
-            url = worker._get_a2a_endpoint_url("http://localhost:8000/")
+            url = worker._get_a2a_endpoint_url(cfg)
         assert url == "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/"
 
     def test_get_a2a_endpoint_url_deployment_strips_trailing_slash(self, worker):
+        cfg = A2AFrontEndConfig(host="localhost", port=8000)
         env = {
             "MLOPS_DEPLOYMENT_ID": "abc123",
             "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2/",
         }
         with patch.dict(os.environ, env):
-            url = worker._get_a2a_endpoint_url("http://localhost:8000/")
+            url = worker._get_a2a_endpoint_url(cfg)
         assert url == "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/"
 
     def test_get_a2a_endpoint_url_deployment_missing_endpoint_raises(self, worker):
+        cfg = A2AFrontEndConfig(host="localhost", port=8000)
         with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "abc123"}, clear=False):
             os.environ.pop("DATAROBOT_ENDPOINT", None)
             with pytest.raises(ValueError, match="DATAROBOT_ENDPOINT must be set"):
-                worker._get_a2a_endpoint_url("http://localhost:8000/")
+                worker._get_a2a_endpoint_url(cfg)
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
