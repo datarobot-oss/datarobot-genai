@@ -43,6 +43,7 @@ memory = [
 
 dragent = core + [
     "nvidia-nat==1.4.1; python_version >= '3.11'",
+    "nvidia-nat-a2a==1.4.1; python_version >= '3.11'",
     "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
 ]
 
@@ -86,10 +87,6 @@ nat = core + [
     "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
     "anyio==4.11.0",
-]
-
-pydanticai = core + [
-    "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
 ]
 
 # drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
@@ -144,7 +141,6 @@ extras_require = {
     "langgraph": langgraph,
     "llamaindex": llamaindex,
     "nat": nat,
-    "pydanticai": pydanticai,
     "auth": auth,
     "drmcp": drmcp,
     "drtools": drtools,
