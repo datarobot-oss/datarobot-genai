@@ -44,6 +44,10 @@ async def test_list_vector_databases_success() -> None:
             },
         ]
     }
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
@@ -52,9 +56,7 @@ async def test_list_vector_databases_success() -> None:
         ),
         patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_vector_databases()
         assert isinstance(result, ToolResult)
@@ -66,6 +68,10 @@ async def test_list_vector_databases_success() -> None:
 async def test_list_vector_databases_empty() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
@@ -74,9 +80,7 @@ async def test_list_vector_databases_empty() -> None:
         ),
         patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_vector_databases()
         assert result.structured_content["count"] == 0
@@ -86,9 +90,13 @@ async def test_list_vector_databases_empty() -> None:
 @pytest.mark.asyncio
 async def test_query_vector_database_success() -> None:
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "data": [{"content": "doc1", "metadata": {}}]
-    }
+    mock_response.json.return_value = {"data": [{"content": "doc1", "metadata": {}}]}
+    mock_rest_client = MagicMock()
+    mock_rest_client.post.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    mock_deployment = MagicMock(id="dep1")
+    mock_dr_module.Deployment.get.return_value = mock_deployment
     with (
         patch(
             "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
@@ -97,15 +105,9 @@ async def test_query_vector_database_success() -> None:
         ),
         patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_deployment = MagicMock(id="dep1")
-        mock_client.Deployment.get.return_value = mock_deployment
-        mock_client.post.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
-        result = await tools.query_vector_database(
-            deployment_id="dep1", query="test query"
-        )
+        result = await tools.query_vector_database(deployment_id="dep1", query="test query")
         assert isinstance(result, ToolResult)
         assert result.structured_content["count"] == 1
         assert result.structured_content["deployment_id"] == "dep1"
