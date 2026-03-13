@@ -26,6 +26,7 @@ from pydantic import Field
 
 import datarobot_genai.dragent.per_user_tool_calling_agent  # noqa: F401 — registers per_user_tool_calling_agent
 from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
 from datarobot_genai.dragent.converters import (
     convert_dragent_run_agent_input_to_chat_request_or_message,
@@ -69,3 +70,4 @@ GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
 GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request_or_message)
 GlobalTypeConverter.register_converter(convert_tool_message_to_str)
 GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
+GlobalTypeConverter.register_converter(convert_dragent_event_response_to_str)
