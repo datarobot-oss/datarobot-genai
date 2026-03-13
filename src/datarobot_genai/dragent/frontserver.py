@@ -71,9 +71,14 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         # The parent calls self.session_manager.session() with no user_id, which raises
         # ValueError for per-user workflows.  Setting the context var here means the
         # SessionManager's _get_user_id_from_context() will find it automatically.
+        token = None
         if context.context_id:
-            self.session_manager._context_state.user_id.set(context.context_id)
-        await super().execute(context, event_queue)
+            token = self.session_manager._context_state.user_id.set(context.context_id)
+        try:
+            await super().execute(context, event_queue)
+        finally:
+            if token is not None:
+                self.session_manager._context_state.user_id.reset(token)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
@@ -167,7 +172,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
         agent_card = await self._create_agent_card(self._a2a_worker.front_end_config)
-        session_manager = await SessionManager.create(
+        session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
             shared_builder=builder,
             max_concurrency=self._a2a_worker.max_concurrency,
