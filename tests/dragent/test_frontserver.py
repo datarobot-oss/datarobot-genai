@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from a2a.types import AgentSkill
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
@@ -29,6 +30,7 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.frontserver import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.register import DRAgentA2AConfig
 from datarobot_genai.dragent.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
@@ -57,6 +59,17 @@ def dragent_worker():
     )
     with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
         return DRAgentFastApiFrontEndPluginWorker(config)
+
+
+@pytest.fixture
+def dragent_worker_with_a2a(dragent_worker, mock_a2a_worker):
+    dragent_worker._a2a_worker = mock_a2a_worker
+    return dragent_worker
+
+
+@pytest.fixture
+def a2a_frontend_config():
+    return A2AFrontEndConfig(name="My Agent", description="Does things", host="localhost", port=8000)
 
 
 @pytest.fixture
@@ -224,6 +237,112 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         ) as mock_a2a_worker_cls:
             await disabled_worker.add_routes(app, mock_builder)
             mock_a2a_worker_cls.assert_not_called()
+
+
+class TestPerUserCompatibleAgentExecutor:
+    @pytest.fixture
+    def session_manager(self):
+        sm = MagicMock()
+        sm.config.workflow.type = "test_workflow"
+        return sm
+
+    @pytest.fixture
+    def executor(self, session_manager):
+        return _PerUserCompatibleAgentExecutor(session_manager)
+
+    @pytest.fixture
+    def patch_super_execute(self):
+        with patch.object(
+            _PerUserCompatibleAgentExecutor.__bases__[0],
+            "execute",
+            new_callable=AsyncMock,
+        ) as mock:
+            yield mock
+
+    def test_init_sets_session_manager(self, executor, session_manager):
+        assert executor.session_manager is session_manager
+
+    async def test_execute_injects_context_id_as_user_id(
+        self, executor, session_manager, patch_super_execute
+    ):
+        context = MagicMock()
+        context.context_id = "user-123"
+        event_queue = MagicMock()
+
+        await executor.execute(context, event_queue)
+
+        session_manager._context_state.user_id.set.assert_called_once_with("user-123")
+        patch_super_execute.assert_awaited_once_with(context, event_queue)
+
+    async def test_execute_skips_user_id_injection_when_no_context_id(
+        self, executor, session_manager, patch_super_execute
+    ):
+        context = MagicMock()
+        context.context_id = None
+        event_queue = MagicMock()
+
+        await executor.execute(context, event_queue)
+
+        session_manager._context_state.user_id.set.assert_not_called()
+
+
+class TestCreateAgentCard:
+    async def test_default_skill_when_skills_empty(
+        self, dragent_worker_with_a2a, a2a_frontend_config
+    ):
+        card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+        assert len(card.skills) == 1
+        assert card.skills[0].id == "call"
+        assert card.skills[0].name == "My Agent"
+        assert card.skills[0].description == "Does things"
+
+    async def test_configured_skills_used_when_present(
+        self, dragent_worker_with_a2a, a2a_frontend_config
+    ):
+        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
+        dragent_worker_with_a2a.front_end_config.a2a.skills = [skill]
+        card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+        assert len(card.skills) == 1
+        assert card.skills[0].id == "summarize"
+
+    async def test_agent_card_fields_from_frontend_config(self, dragent_worker_with_a2a):
+        cfg = A2AFrontEndConfig(
+            name="My Agent",
+            description="Does things",
+            version="2.0.0",
+            host="localhost",
+            port=9000,
+        )
+        card = await dragent_worker_with_a2a._create_agent_card(cfg)
+        assert card.name == "My Agent"
+        assert card.description == "Does things"
+        assert card.version == "2.0.0"
+        assert card.url == "http://localhost:9000/a2a/"
+
+    async def test_security_schemes_set_when_server_auth_present(
+        self, dragent_worker_with_a2a, mock_a2a_worker, a2a_frontend_config
+    ):
+        mock_schemes = MagicMock()
+        mock_security = MagicMock()
+        mock_a2a_worker._generate_security_schemes = AsyncMock(
+            return_value=(mock_schemes, mock_security)
+        )
+        a2a_frontend_config.server_auth = MagicMock()
+        with patch("datarobot_genai.dragent.frontserver.AgentCard") as mock_agent_card_cls:
+            await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+        mock_a2a_worker._generate_security_schemes.assert_awaited_once_with(
+            a2a_frontend_config.server_auth
+        )
+        _, kwargs = mock_agent_card_cls.call_args
+        assert kwargs["security_schemes"] is mock_schemes
+        assert kwargs["security"] is mock_security
+
+    async def test_no_security_when_server_auth_absent(
+        self, dragent_worker_with_a2a, a2a_frontend_config
+    ):
+        card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+        assert card.security_schemes is None
+        assert card.security is None
 
 
 class TestDRAgentFastApiFrontEndConfig:
