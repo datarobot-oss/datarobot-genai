@@ -69,7 +69,9 @@ def dragent_worker_with_a2a(dragent_worker, mock_a2a_worker):
 
 @pytest.fixture
 def a2a_frontend_config():
-    return A2AFrontEndConfig(name="My Agent", description="Does things", host="localhost", port=8000)
+    return A2AFrontEndConfig(
+        name="My Agent", description="Does things", host="localhost", port=8000
+    )
 
 
 @pytest.fixture
