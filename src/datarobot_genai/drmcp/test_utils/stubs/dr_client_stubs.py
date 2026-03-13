@@ -111,6 +111,10 @@ class StubDataset:
             }
         )
 
+    def get_raw_sample_data(self) -> Any:
+        """Return a small stub sample DataFrame (subset, avoids full download)."""
+        return self.get_as_dataframe()
+
 
 class StubDataStore:
     """Stub DataRobot datastore object."""

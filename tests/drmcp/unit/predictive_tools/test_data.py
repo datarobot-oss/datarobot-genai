@@ -259,7 +259,7 @@ async def test_get_dataset_details_success() -> None:
         import pandas as pd
 
         mock_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-        mock_dataset.get_as_dataframe.return_value = mock_df
+        mock_dataset.get_raw_sample_data.return_value = mock_df
         mock_client.Dataset.get.return_value = mock_dataset
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 

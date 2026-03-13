@@ -115,7 +115,7 @@ async def get_dataset_details(
     }
     if include_sample:
         try:
-            df = dataset.get_as_dataframe()
+            df = dataset.get_raw_sample_data()
             result["columns"] = list(df.columns)
             result["sample"] = df.head(sample_rows).to_dict(orient="records")
         except Exception as exc:
