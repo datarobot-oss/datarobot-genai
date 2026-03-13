@@ -32,9 +32,7 @@ logger = logging.getLogger(__name__)
 @dr_mcp_integration_tool(tags={"optimization", "cuopt", "solver", "daria"})
 async def cuopt_solve(
     *,
-    problem_definition: Annotated[
-        dict[str, Any], "The optimization problem definition"
-    ]
+    problem_definition: Annotated[dict[str, Any], "The optimization problem definition"]
     | None = None,
     preview: Annotated[bool, "Validate without solving when True"] = False,
 ) -> ToolError | ToolResult:
@@ -56,10 +54,11 @@ async def cuopt_solve(
         )
 
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
     if preview:
-        response = client.post(
+        response = rest_client.post(
             f"deployments/{deployment_id}/predictions/",
             json={"data": [{"problem": problem_definition, "mode": "validate"}]},
         )
@@ -68,7 +67,7 @@ async def cuopt_solve(
             structured_content={"preview": True, "validation": data},
         )
 
-    response = client.post(
+    response = rest_client.post(
         f"deployments/{deployment_id}/predictions/",
         json={"data": [{"problem": problem_definition, "mode": "solve"}]},
     )

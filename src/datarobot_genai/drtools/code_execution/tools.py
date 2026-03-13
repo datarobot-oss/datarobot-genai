@@ -16,7 +16,6 @@
 
 import asyncio
 import logging
-import sys
 import traceback
 from io import StringIO
 from typing import Annotated
@@ -48,28 +47,23 @@ class InProcessSandbox:
     async def execute(
         self, code: str, session_id: str, timeout_seconds: int = 30
     ) -> dict[str, Any]:
+        import contextlib
+
         stdout_buf = StringIO()
         stderr_buf = StringIO()
         result: Any = None
         error: str | None = None
 
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-
         namespace: dict[str, Any] = {}
 
         def _run_sync() -> None:
             nonlocal result, error
-            sys.stdout = stdout_buf
-            sys.stderr = stderr_buf
-            try:
-                exec(compile(code, "<mcp_tool>", "exec"), namespace)  # noqa: S102
-                result = namespace.get("result")
-            except Exception:
-                error = traceback.format_exc()
-            finally:
-                sys.stdout = original_stdout
-                sys.stderr = original_stderr
+            with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+                try:
+                    exec(compile(code, "<mcp_tool>", "exec"), namespace)  # noqa: S102
+                    result = namespace.get("result")
+                except Exception:
+                    error = traceback.format_exc()
 
         loop = asyncio.get_event_loop()
         try:
@@ -78,8 +72,6 @@ class InProcessSandbox:
                 timeout=timeout_seconds,
             )
         except asyncio.TimeoutError:
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
             error = f"Execution timed out after {timeout_seconds} seconds"
 
         return {
