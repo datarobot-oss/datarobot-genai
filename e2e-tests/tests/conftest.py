@@ -43,12 +43,20 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--framework", default=None, help="Agent framework to test")
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Sync --framework CLI option to DRAGENT_FRAMEWORK env var early.
+
+    This lets module-level code (e.g. xfail conditions) read the env var
+    before fixtures are available.
+    """
+    fw = config.getoption("--framework", default=None)
+    if fw:
+        os.environ["DRAGENT_FRAMEWORK"] = fw
+
+
 @pytest.fixture(scope="session")
-def framework(request: pytest.FixtureRequest) -> str:
-    return (
-        request.config.getoption("--framework")
-        or os.environ.get("DRAGENT_FRAMEWORK", "langgraph")
-    )
+def framework() -> str:
+    return os.environ.get("DRAGENT_FRAMEWORK", "langgraph")
 
 
 def _start_server(

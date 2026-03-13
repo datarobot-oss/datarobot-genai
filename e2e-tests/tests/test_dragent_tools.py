@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import os
+
 import httpx
 import pytest
 
@@ -22,6 +24,8 @@ from tests.conftest import collect_ag_ui_events
 from tests.conftest import collect_text
 from tests.conftest import make_generate_payload
 from tests.conftest import parse_sse_events
+
+_is_nat = os.environ.get("DRAGENT_FRAMEWORK", "langgraph") == "nat"
 
 CALCULATOR_PROMPT = (
     "You MUST use the calculator tool to compute the following expression. "
@@ -43,9 +47,9 @@ def calculator_ag_ui_events(http_client: httpx.Client) -> list[dict]:  # type: i
     return collect_ag_ui_events(sse_events)
 
 
-# Only our LangGraph agent emits TOOL_CALL AG-UI events for now.
-# CrewAI and LlamaIndex do not surface them yet.
-# Keep as xfail(strict=False) until we emit TOOL_CALL AG-UI events for all frameworks.
+# Not all frameworks emit TOOL_CALL AG-UI events yet (CrewAI, LlamaIndex).
+# NAT has no Python calculator tool - tool invocation is tested implicitly
+# via the tool_calling_agent - chat_completion pipeline in test_dragent_streaming.py.
 @pytest.mark.xfail(reason="Not all frameworks emit TOOL_CALL AG-UI events yet", strict=False)
 def test_calculator_tool_is_called(calculator_ag_ui_events: list[dict]) -> None:  # type: ignore[type-arg]
     """Agent uses calculator tool when asked to compute."""
@@ -55,6 +59,14 @@ def test_calculator_tool_is_called(calculator_ag_ui_events: list[dict]) -> None:
     assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
 
 
+# NAT agents don't have a Python calculator tool - their tool invocation is
+# tested implicitly via the tool_calling_agent - chat_completion pipeline
+# in the streaming test (test_dragent_streaming.py).
+@pytest.mark.xfail(
+    condition=_is_nat,
+    reason="NAT has no Python calculator tool; tool invocation tested via streaming pipeline",
+    strict=False,
+)
 def test_calculator_result_correct(calculator_ag_ui_events: list[dict]) -> None:  # type: ignore[type-arg]
     """Calculator tool returns the correct result."""
     full_text = collect_text(calculator_ag_ui_events)

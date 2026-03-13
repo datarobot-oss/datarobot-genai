@@ -842,7 +842,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.6.17"
+version = "0.6.18"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -963,7 +963,6 @@ requires-dist = [
     { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.9,<0.2.0" },
     { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.9,<0.2.0" },
     { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.9,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'pydanticai'", specifier = ">=0.1.9,<0.2.0" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.9.0,<4.0.0" },
@@ -985,7 +984,6 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'pydanticai'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
@@ -996,7 +994,6 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'langgraph'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'llamaindex'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
-    { name = "datarobot-predict", marker = "extra == 'pydanticai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=2.13.0.2,<3.0.0" },
     { name = "fastmcp", marker = "extra == 'drtools'", specifier = ">=2.13.0.2,<3.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
@@ -1028,7 +1025,6 @@ requires-dist = [
     { name = "openai", marker = "extra == 'langgraph'", specifier = ">=1.76.2,<2.0.0" },
     { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=1.76.2,<2.0.0" },
     { name = "openai", marker = "extra == 'nat'", specifier = ">=1.76.2,<2.0.0" },
-    { name = "openai", marker = "extra == 'pydanticai'", specifier = ">=1.76.2,<2.0.0" },
     { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
@@ -1039,7 +1035,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
-    { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'pydanticai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-crewai", marker = "extra == 'crewai'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-crewai", marker = "extra == 'nat'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'core'", specifier = ">=0.43b0,<1.0.0" },
@@ -1049,7 +1044,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
-    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'pydanticai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-langchain", marker = "extra == 'langgraph'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-langchain", marker = "extra == 'nat'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-llamaindex", marker = "extra == 'llamaindex'", specifier = ">=0.40.5,<1.0.0" },
@@ -1060,7 +1054,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'langgraph'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'llamaindex'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'nat'", specifier = ">=0.40.5,<1.0.0" },
-    { name = "opentelemetry-instrumentation-openai", marker = "extra == 'pydanticai'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'core'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'crewai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'dragent'", specifier = ">=0.43b0,<1.0.0" },
@@ -1068,14 +1061,12 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
-    { name = "opentelemetry-instrumentation-requests", marker = "extra == 'pydanticai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'core'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'crewai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'dragent'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
-    { name = "opentelemetry-instrumentation-threading", marker = "extra == 'pydanticai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "perplexityai", marker = "extra == 'drmcp'", specifier = ">=0.27,<1.0" },
     { name = "perplexityai", marker = "extra == 'drtools'", specifier = ">=0.27,<1.0" },
@@ -1089,12 +1080,10 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'langgraph'", specifier = "==21.0.0" },
     { name = "pyarrow", marker = "extra == 'llamaindex'", specifier = "==21.0.0" },
     { name = "pyarrow", marker = "extra == 'nat'", specifier = "==21.0.0" },
-    { name = "pyarrow", marker = "extra == 'pydanticai'", specifier = "==21.0.0" },
     { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2,<2.0.0" },
     { name = "pydantic", marker = "extra == 'auth'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drtools'", specifier = ">=2.6.1,<3.0.0" },
-    { name = "pydantic-ai-slim", extras = ["ag-ui", "anthropic", "bedrock", "cli", "cohere", "evals", "fastmcp", "google", "groq", "huggingface", "logfire", "mcp", "mistral", "openai", "retries", "vertexai"], marker = "extra == 'pydanticai'", specifier = ">=1.0.5,<1.9.0" },
     { name = "pydantic-settings", marker = "extra == 'drmcp'", specifier = ">=2.1.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'core'", specifier = ">=2.10.1,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'crewai'", specifier = ">=2.10.1,<3.0.0" },
@@ -1103,7 +1092,6 @@ requires-dist = [
     { name = "pyjwt", marker = "extra == 'langgraph'", specifier = ">=2.10.1,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'llamaindex'", specifier = ">=2.10.1,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'nat'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'pydanticai'", specifier = ">=2.10.1,<3.0.0" },
     { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.1.3,<7.0.0" },
     { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.1.3,<7.0.0" },
     { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.0.0,<7.0.0" },
@@ -1116,7 +1104,6 @@ requires-dist = [
     { name = "ragas", marker = "extra == 'langgraph'", specifier = ">=0.3.8,<0.4.0" },
     { name = "ragas", marker = "extra == 'llamaindex'", specifier = ">=0.3.8,<0.4.0" },
     { name = "ragas", marker = "extra == 'nat'", specifier = ">=0.3.8,<0.4.0" },
-    { name = "ragas", marker = "extra == 'pydanticai'", specifier = ">=0.3.8,<0.4.0" },
     { name = "requests", marker = "extra == 'core'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'crewai'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'dragent'", specifier = ">=2.32.4,<3.0.0" },
@@ -1124,12 +1111,11 @@ requires-dist = [
     { name = "requests", marker = "extra == 'langgraph'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'llamaindex'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'nat'", specifier = ">=2.32.4,<3.0.0" },
-    { name = "requests", marker = "extra == 'pydanticai'", specifier = ">=2.32.4,<3.0.0" },
     { name = "rich", marker = "extra == 'drmcp'", specifier = ">=13.0.0,<16.0.0" },
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "pydanticai", "auth", "drmcp", "drtools", "dragent", "memory"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "drmcp", "drtools", "dragent", "memory"]
 
 [package.metadata.requires-dev]
 dev = [

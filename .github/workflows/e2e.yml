@@ -25,10 +25,11 @@ jobs:
               - 'src/datarobot_genai/crewai/**'
             llamaindex:
               - 'src/datarobot_genai/llama_index/**'
+            nat:
+              - 'src/datarobot_genai/nat/**'
             core:
               - 'src/datarobot_genai/dragent/**'
               - 'src/datarobot_genai/core/**'
-              - 'src/datarobot_genai/nat/**'
               - 'e2e-tests/**'
               - '.github/workflows/e2e.yml'
 
@@ -36,8 +37,8 @@ jobs:
         run: |
           frameworks='[]'
           core="${{ steps.filter.outputs.core }}"
-          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [crewai]="${{ steps.filter.outputs.crewai }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" )
-          for fw in langgraph crewai llamaindex; do
+          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [crewai]="${{ steps.filter.outputs.crewai }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" )
+          for fw in langgraph crewai llamaindex nat; do
             if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
               frameworks=$(echo "$frameworks" | jq -c ". + [\"$fw\"]")
             fi
