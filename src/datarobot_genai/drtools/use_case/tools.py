@@ -35,19 +35,19 @@ async def list_use_cases(
 ) -> ToolResult:
     """List DataRobot use cases with optional search filter."""
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
 
     params: dict = {"limit": limit}
     if search:
         params["search"] = search
-    response = client.get("useCases/", params=params)
+    response = rest_client.get("useCases/", params=params)
     items = response.json().get("data", [])
 
     return ToolResult(
         structured_content={
             "use_cases": [
-                {"id": item["id"], "name": item.get("name", "Untitled")}
-                for item in items
+                {"id": item["id"], "name": item.get("name", "Untitled")} for item in items
             ],
             "count": len(items),
         },
@@ -64,8 +64,8 @@ async def list_use_case_assets(
         raise ToolError("Use case ID must be provided")
 
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    use_case = client.UseCase.get(use_case_id)
+    dr_module = DataRobotClient(token).get_client()
+    use_case = dr_module.UseCase.get(use_case_id)
 
     result: dict = {
         "use_case_id": use_case_id,
@@ -86,9 +86,7 @@ async def list_use_case_assets(
 
     try:
         projects = list(use_case.list_projects())
-        result["experiments"] = [
-            {"id": p.id, "name": p.project_name} for p in projects
-        ]
+        result["experiments"] = [{"id": p.id, "name": p.project_name} for p in projects]
     except Exception as exc:
         result["experiments_error"] = str(exc)
 

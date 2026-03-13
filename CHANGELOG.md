@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.4
+- Added use case tools: list_use_cases and list_use_case_assets (MODEL-22810)
+- Added ToolType registrations for use_case, vdb, code_execution, and optimization
+- Added corresponding config fields and CLI options for new tool types
+
 ## 0.8.3
 - Added AG-UI Events for Llamaindex
 

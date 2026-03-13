@@ -32,6 +32,10 @@ async def test_list_use_cases_success() -> None:
             {"id": "uc2", "name": "Use Case 2"},
         ]
     }
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
@@ -40,9 +44,7 @@ async def test_list_use_cases_success() -> None:
         ),
         patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_use_cases()
         assert isinstance(result, ToolResult)
@@ -53,9 +55,11 @@ async def test_list_use_cases_success() -> None:
 @pytest.mark.asyncio
 async def test_list_use_cases_with_search() -> None:
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "data": [{"id": "uc1", "name": "Matching Case"}]
-    }
+    mock_response.json.return_value = {"data": [{"id": "uc1", "name": "Matching Case"}]}
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
@@ -64,12 +68,10 @@ async def test_list_use_cases_with_search() -> None:
         ),
         patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_use_cases(search="Matching")
-        mock_client.get.assert_called_once_with(
+        mock_rest_client.get.assert_called_once_with(
             "useCases/", params={"limit": 100, "search": "Matching"}
         )
         assert result.structured_content["count"] == 1
@@ -79,6 +81,10 @@ async def test_list_use_cases_with_search() -> None:
 async def test_list_use_cases_empty() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
     with (
         patch(
             "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
@@ -87,9 +93,7 @@ async def test_list_use_cases_empty() -> None:
         ),
         patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
     ):
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
-        mock_drc.return_value.get_client.return_value = mock_client
+        mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_use_cases()
         assert result.structured_content["count"] == 0
