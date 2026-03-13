@@ -14,6 +14,7 @@
 
 import functools
 import inspect
+import json
 import logging
 import os
 from collections.abc import Callable
@@ -46,6 +47,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
+from opentelemetry.trace import SpanKind
 from opentelemetry.trace import Status
 from opentelemetry.trace import StatusCode
 from opentelemetry.trace import format_trace_id
@@ -56,6 +58,16 @@ from starlette.responses import Response
 
 from .config import get_config
 from .credentials import get_credentials
+
+
+def _serialize_tool_arguments(value: Any) -> str:
+    """Serialize tool call arguments as JSON per OTel convention."""
+    if isinstance(value, Mapping) and not isinstance(value, str):
+        return json.dumps(dict(value))
+    if isinstance(value, list):
+        return json.dumps(value)
+    return str(value)
+
 
 root_logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -79,14 +91,16 @@ class OpenTelemetryMiddleware(Middleware):
         self.tracer = trace.get_tracer(tracer_name)
 
     async def on_request(self, context: MiddlewareContext, call_next: CallNext[Any, Any]) -> Any:
-        with tracer.start_as_current_span(f"mcp.request.{context.method}") as span:
-            span.set_attribute("mcp.source", context.source)
-            span.set_attribute("mcp.type", context.type)
-            span.set_attribute("mcp.method", context.method or "")
+        with tracer.start_as_current_span(
+            f"mcp.request.{context.method}",
+            kind=SpanKind.SERVER,
+        ) as span:
+            span.set_attribute("mcp.method.name", context.method or "")
             try:
                 result = await call_next(context)
                 span.set_status(Status(StatusCode.OK))
             except Exception as e:
+                span.set_attribute("error.type", type(e).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
@@ -97,25 +111,27 @@ class OpenTelemetryMiddleware(Middleware):
     ) -> ToolResult:
         tool_name = context.message.name
 
-        with self.tracer.start_as_current_span(f"tool.{tool_name}") as span:
+        with self.tracer.start_as_current_span(
+            f"tool.{tool_name}",
+            kind=SpanKind.SERVER,
+        ) as span:
             span.set_attributes(
                 {
-                    "mcp.tool.name": tool_name,
-                    "mcp.tool.arguments": str(context.message.arguments),
+                    "gen_ai.tool.name": tool_name,
+                    "gen_ai.tool.call.arguments": _serialize_tool_arguments(
+                        context.message.arguments
+                    ),
+                    "gen_ai.operation.name": "execute_tool",
+                    "mcp.method.name": "tools/call",
                 }
             )
             try:
                 result = await call_next(context)
-                span.set_attribute("mcp.tool.success", True)
-                if hasattr(result, "content"):
-                    span.set_attribute("mcp.tool.content_length", len(str(result.content)))
-
                 span.set_status(Status(StatusCode.OK))
                 return result
 
             except Exception as e:
-                span.set_attribute("mcp.tool.success", False)
-                span.set_attribute("mcp.tool.error", str(e))
+                span.set_attribute("error.type", type(e).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
@@ -291,7 +307,11 @@ def initialize_telemetry(mcp: FastMCP) -> None:
 
 
 def _add_parameters_to_span(
-    span: Span, func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+    span: Span,
+    func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    trace_type: str = "tool",
 ) -> None:
     """Add function parameters as span attributes.
 
@@ -307,15 +327,22 @@ def _add_parameters_to_span(
     param_names = param_names[start_idx:]
     args = args[start_idx:]
 
+    arguments: dict[str, Any] = {}
+
     # Add positional arguments
     for name, value in zip(param_names, args):
         if isinstance(value, (str, int, float, bool)):
             span.set_attribute(f"tool.param.{name}", value)
+            arguments[name] = value
 
     # Add keyword arguments
     for name, value in kwargs.items():
         if isinstance(value, (str, int, float, bool)):
             span.set_attribute(f"tool.param.{name}", value)
+            arguments[name] = value
+
+    if arguments and trace_type == "tool":
+        span.set_attribute("gen_ai.tool.call.arguments", json.dumps(arguments))
 
 
 def get_trace_id() -> str | None:
@@ -376,12 +403,16 @@ def trace_execution(trace_name: str | None = None, trace_type: str = "tool") -> 
             tracer = trace.get_tracer(__name__)
             span = tracer.start_span(f"{trace_type}.{span_name}")
 
-            # Add standard attributes
-            span.set_attribute("mcp.type", trace_type)
-            span.set_attribute(f"{trace_type}.name", span_name)
+            # Add standard attributes: tool-specific only when trace_type is "tool"
+            if trace_type == "tool":
+                span.set_attribute("gen_ai.tool.name", span_name)
+                span.set_attribute("gen_ai.operation.name", "execute_tool")
+            else:
+                span.set_attribute("gen_ai.operation.name", trace_type)
+                span.set_attribute(f"{trace_type}.name", span_name)
 
             # Add tool parameters as span attributes
-            _add_parameters_to_span(span, func, args, kwargs)
+            _add_parameters_to_span(span, func, args, kwargs, trace_type)
 
             # Add configured attributes from config
             config = get_config()
@@ -395,10 +426,11 @@ def trace_execution(trace_name: str | None = None, trace_type: str = "tool") -> 
             span = _create_span_for_tool(trace_name, trace_type, args, kwargs)
             try:
                 result = await func(*args, **kwargs)
-                span.set_attribute(f"{trace_type}.success", True)
+                span.set_status(Status(StatusCode.OK))
                 return result
             except Exception as e:
-                span.set_attribute(f"{trace_type}.success", False)
+                span.set_attribute("error.type", type(e).__name__)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise e
             finally:
@@ -409,10 +441,11 @@ def trace_execution(trace_name: str | None = None, trace_type: str = "tool") -> 
             span = _create_span_for_tool(trace_name, trace_type, args, kwargs)
             try:
                 result = func(*args, **kwargs)
-                span.set_attribute(f"{trace_type}.success", True)
+                span.set_status(Status(StatusCode.OK))
                 return result
             except Exception as e:
-                span.set_attribute(f"{trace_type}.success", False)
+                span.set_attribute("error.type", type(e).__name__)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise e
             finally:
