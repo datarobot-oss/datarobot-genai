@@ -228,6 +228,26 @@ class TestDRAgentFastApiFrontEndPluginWorker:
 
         mock_a2a_worker.create_a2a_server.assert_called_once()
 
+    async def test_add_routes_appends_session_manager(
+        self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
+    ):
+        app = FastAPI()
+        mock_session_manager = MagicMock()
+        with (
+            patch(
+                "datarobot_genai.dragent.frontserver.A2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontserver.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=mock_session_manager,
+            ),
+        ):
+            await dragent_worker.add_routes(app, mock_builder)
+
+        assert mock_session_manager in dragent_worker._session_managers
+
     async def test_add_routes_disabled(self, mock_builder, patch_super_add_routes):
         """When a2a is None (default), A2A routes are not mounted."""
         config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))

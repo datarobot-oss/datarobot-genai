@@ -172,6 +172,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             shared_builder=builder,
             max_concurrency=self._a2a_worker.max_concurrency,
         )
+        self._session_managers.append(session_manager)
         agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
 
         a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
