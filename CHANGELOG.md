@@ -20,7 +20,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.8.5
 - Added logic to sync MCP server deployment associated metadata with items in MCP server.
-
 ## 0.8.4
 - Added use case tools: list_use_cases and list_use_case_assets (MODEL-22810)
 - Added ToolType registrations for use_case, vdb, code_execution, and optimization
