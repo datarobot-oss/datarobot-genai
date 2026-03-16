@@ -113,7 +113,8 @@ class TestGetPredictionHistoryIntegration:
             )
 
             assert result.isError
-            assert "deployment_id" in result.content[0].text.lower() or "Error" in result.content[0].text
+            text = result.content[0].text.lower()
+            assert "deployment_id" in text or "error" in text
 
     async def test_get_prediction_history_tool_registered(self) -> None:
         """Verify get_prediction_history is registered in the MCP session."""

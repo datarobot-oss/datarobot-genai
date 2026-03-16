@@ -88,8 +88,9 @@ class TestGetModelDetailsE2E(ToolBaseE2E):
             llm_response_content_contains_expectations=["model", "roc", "curve", "validation"],
         )
         prompt = (
-            f"For the DataRobot model with ID '{model_id}' in project '{classification_project_id}', "
-            "get its details including the ROC curve data. Describe the model's performance."
+            f"For the DataRobot model with ID '{model_id}' in project "
+            f"'{classification_project_id}', get its details including the ROC curve data. "
+            "Describe the model's performance."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()

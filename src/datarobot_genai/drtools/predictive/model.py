@@ -27,6 +27,9 @@ from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 
 logger = logging.getLogger(__name__)
 
+# Max target null rate (30%) for time-series eligibility check
+_MAX_NULL_RATE_FOR_ELIGIBILITY = 0.3
+
 
 def model_to_dict(model: Any) -> dict[str, Any]:
     """Convert a DataRobot Model object to a dictionary."""
@@ -276,7 +279,7 @@ async def is_eligible_for_timeseries_training(
     null_pct = df[target_column].isnull().mean() if target_column in df.columns else None
     if null_pct is not None:
         infos.append(f"Target null rate: {null_pct:.1%}")
-        if null_pct > 0.3:
+        if null_pct > _MAX_NULL_RATE_FOR_ELIGIBILITY:
             errors.append(f"Target column has {null_pct:.1%} null values (>30%).")
 
     status = "ELIGIBLE" if not errors else "NOT_ELIGIBLE"

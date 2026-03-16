@@ -129,7 +129,8 @@ class TestGetModelDetailsIntegration:
             )
 
             assert result.isError
-            assert "project_id" in result.content[0].text.lower() or "Error" in result.content[0].text
+            text = result.content[0].text.lower()
+            assert "project_id" in text or "error" in text
 
     async def test_get_model_details_missing_model_id(self) -> None:
         """get_model_details returns an error when model_id is not provided."""
