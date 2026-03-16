@@ -20,12 +20,11 @@ jobs:
 
       - uses: dorny/paths-filter@v3
         id: filter
+        # TODO: Add crewai to the filters
         with:
           filters: |
             langgraph:
               - 'src/datarobot_genai/langgraph/**'
-            crewai:
-              - 'src/datarobot_genai/crewai/**'
             llamaindex:
               - 'src/datarobot_genai/llama_index/**'
             nat:
@@ -99,7 +98,7 @@ jobs:
         with:
           working-directory: e2e-tests
           run: task dragent:run-${{ matrix.framework }} &
-          wait-on: http://localhost:8080/health
+          wait-on: http-get://localhost:8080/health
           wait-for: 30s
 
       - name: Run e2e tests
