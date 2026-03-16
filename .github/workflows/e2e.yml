@@ -86,17 +86,35 @@ jobs:
         run: |
           uv sync --group dragent-${{ matrix.framework }}
 
+      - name: Run dragent server
+        working-directory: e2e-tests
+        run: |
+          task dragent:run-${{ matrix.framework }} &
+          echo $! > dragent.pid
+
+      - name: Wait for dragent server
+        working-directory: e2e-tests
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null; then
+              echo "Server is up"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server failed to start"
+          exit 1
+
       - name: Run e2e tests
         working-directory: e2e-tests
         env:
           DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
           DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-          # MCP_DEPLOYMENT_ID is intentionally omitted — MCP tests are skipped in CI for now.
-          # To enable, uncomment: MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+          MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
           LLM_DEFAULT_MODEL: azure/gpt-4o-mini
-          DRAGENT_FRAMEWORK: ${{ matrix.framework }}
         run: |
-          uv run pytest tests/ -v --timeout=300 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+          uv run pytest dragent_tests -vv -s --timeout=300 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
       - name: Upload test results
         if: always()

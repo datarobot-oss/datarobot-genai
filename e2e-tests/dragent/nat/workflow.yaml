@@ -27,18 +27,31 @@ functions:
       You are a concise writer. Using the planner's outline, write a short
       response in 2-3 sentences.
     description: A tool that writes the content for the requested topic.
-  content_writer_pipeline:
-    _type: sequential_executor
-    tool_list: [planner, writer]
-    description: A tool that plans and writes content on the requested topic.
+
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+
+function_groups:
+  mcp_tools:
+    _type: datarobot_mcp_client
+
+authentication:
+  datarobot_mcp_auth:
+    _type: datarobot_mcp_auth
+
 workflow:
-  _type: tool_calling_agent
+  _type: per_user_tool_calling_agent
   llm_name: datarobot_llm
   tool_names:
-    - content_writer_pipeline
+    - planner
+    - writer
+    - mcp_tools
   return_direct:
-    - content_writer_pipeline
-  system_prompt: Choose and call a tool to answer the query.
+    - writer
+  system_prompt: |
+    You are a blog content orchestrator. For every user request, you should follow these steps in order:
+    1. Call planner to get a content plan.
+    2. Call writer with the content plan as input to produce the final blog post.
+    Feel free to call the MCP tools as needed to help you produce the final blog post.
+    Return only the final blog post output from the writer.

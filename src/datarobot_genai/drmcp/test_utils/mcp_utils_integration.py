@@ -107,5 +107,5 @@ async def integration_test_mcp_session(
                 session._init_result = init_result  # type: ignore[attr-defined]
                 yield session
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise TimeoutError(f"Session initialization timed out after {timeout} seconds")
