@@ -94,25 +94,14 @@ jobs:
         run: |
           uv sync --group dragent-${{ matrix.framework }}
 
-      - name: Run dragent server
+      - uses: JarvusInnovations/background-action@v1
+        name: Run dragent server
         working-directory: e2e-tests
         run: |
           task dragent:run-${{ matrix.framework }} &
-          echo $! > dragent.pid
-
-      - name: Wait for dragent server
-        working-directory: e2e-tests
-        run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/health > /dev/null; then
-              echo "Server is up"
-              exit 0
-            fi
-            echo "Waiting for server... ($i/30)"
-            sleep 2
-          done
-          echo "Server failed to start"
-          exit 1
+        wait-on:
+          - http://localhost:8080/health
+        wait-for: 30s
 
       - name: Run e2e tests
         working-directory: e2e-tests
