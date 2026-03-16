@@ -31,12 +31,12 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 @pytest.fixture(scope="session")
 def session_secret_key() -> str:
-    return os.environ.get("SESSION_SECRET_KEY")
+    return os.environ["SESSION_SECRET_KEY"]
 
 
 @pytest.fixture(scope="session")
 def datarobot_user_id() -> str:
-    return os.environ.get("DATAROBOT_USER_ID")
+    return os.environ["DATAROBOT_USER_ID"]
 
 
 @pytest.fixture(scope="session")
