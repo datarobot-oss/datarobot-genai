@@ -106,9 +106,9 @@ jobs:
         env:
           DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
           DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-          # DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-          # MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
-          # SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+          DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
+          MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+          SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
           LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-mini
         run: |
