@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.2
+- Add `authenticated_a2a_client` function group to NAT, to authenticate all api calls.
+
 ## 0.7.1
 - Migrate Data MCP tools from wren mcp (MODEL-22804)
 
