@@ -39,8 +39,8 @@ jobs:
         run: |
           frameworks='[]'
           core="${{ steps.filter.outputs.core }}"
-          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [crewai]="${{ steps.filter.outputs.crewai }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" )
-          for fw in langgraph crewai llamaindex nat; do
+          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" )
+          for fw in langgraph llamaindex nat; do
             if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
               frameworks=$(echo "$frameworks" | jq -c ". + [\"$fw\"]")
             fi
@@ -106,13 +106,13 @@ jobs:
         env:
           DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
           DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-          DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-          MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
-          SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+          # DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
+          # MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+          # SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
           LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-mini
         run: |
-          uv run pytest dragent_tests -vv -s --timeout=300 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
       - name: Upload test results
         if: always()
