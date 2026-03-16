@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -28,6 +29,22 @@ from datarobot_genai.nat.datarobot_a2a_client import _AuthCardA2ABaseClient
 from datarobot_genai.nat.datarobot_a2a_client import _extract_auth_headers
 
 _AGENT_URL = "http://agent.example.com"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _skip_agent_card_resolution(client):
+    """Patch _resolve_agent_card to set a mock agent card without network access."""
+
+    async def _set_mock_card():
+        client._agent_card = MagicMock()
+
+    with patch.object(client, "_resolve_agent_card", side_effect=_set_mock_card):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -56,33 +73,27 @@ def bearer_auth_provider():
 
 @pytest.fixture
 def patched_base_client_env():
-    """Patch httpx and ClientFactory for _AuthCardA2ABaseClient tests."""
-    mock_httpx_inst = MagicMock(aclose=AsyncMock())
-    mock_a2a_inst = MagicMock(aclose=AsyncMock())
+    """Patch httpx, ClientFactory, and Context for _AuthCardA2ABaseClient tests."""
     with (
         patch("datarobot_genai.nat.datarobot_a2a_client.httpx") as mock_httpx,
         patch("datarobot_genai.nat.datarobot_a2a_client.ClientFactory") as mock_factory,
+        patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx,
     ):
-        mock_httpx.AsyncClient.return_value = mock_httpx_inst
-        mock_factory.return_value.create.return_value = mock_a2a_inst
+        mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
+        mock_factory.return_value.create.return_value = MagicMock(aclose=AsyncMock())
+        mock_ctx.get.return_value.user_id = "test-user"
         yield mock_httpx
 
 
 @pytest.fixture
 def patched_fg_env():
     """Patch Context, _AuthCardA2ABaseClient, and _register_functions for function group tests."""
-    mock_client_inst = MagicMock(
-        __aenter__=AsyncMock(return_value=MagicMock()),
-        __aexit__=AsyncMock(return_value=None),
-    )
-    mock_client_inst.__aenter__.return_value = mock_client_inst
     with (
         patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx,
         patch("datarobot_genai.nat.datarobot_a2a_client._AuthCardA2ABaseClient") as mock_cls,
         patch.object(AuthCardA2AClientFunctionGroup, "_register_functions"),
     ):
         mock_ctx.get.return_value.user_id = "test-user"
-        mock_cls.return_value = mock_client_inst
         yield mock_cls
 
 
@@ -121,25 +132,15 @@ class TestAuthenticatedA2AClientConfig:
 
 class TestAuthCardA2ABaseClient:
     async def test_injects_bearer_headers(self, bearer_auth_provider, patched_base_client_env):
-        with patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx:
-            mock_ctx.get.return_value.user_id = "test-user"
-            client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=bearer_auth_provider)
-
-            async def set_agent_card():
-                client._agent_card = MagicMock()
-
-            with patch.object(client, "_resolve_agent_card", side_effect=set_agent_card):
-                async with client:
-                    _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
-                    assert httpx_kwargs["headers"]["Authorization"] == "Bearer test_token"
+        client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=bearer_auth_provider)
+        with _skip_agent_card_resolution(client):
+            async with client:
+                _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
+                assert httpx_kwargs["headers"]["Authorization"] == "Bearer test_token"
 
     async def test_no_auth_uses_empty_headers(self, patched_base_client_env):
         client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
-
-        async def set_agent_card():
-            client._agent_card = MagicMock()
-
-        with patch.object(client, "_resolve_agent_card", side_effect=set_agent_card):
+        with _skip_agent_card_resolution(client):
             async with client:
                 _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
                 assert httpx_kwargs.get("headers", {}) == {}
