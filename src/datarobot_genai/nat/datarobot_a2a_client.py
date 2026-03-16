@@ -106,7 +106,7 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
     """
 
 
-class _AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
+class AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
     """A2AClientFunctionGroup that uses ``_AuthCardA2ABaseClient`` so the
     agent-card fetch is authenticated.
 
@@ -115,7 +115,7 @@ class _AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
     client class on the construction line.
     """
 
-    async def __aenter__(self) -> "_AuthCardA2AClientFunctionGroup":
+    async def __aenter__(self) -> "AuthCardA2AClientFunctionGroup":
         config: A2AClientConfig = self._config  # type: ignore[assignment]
         base_url = str(config.url)
 
