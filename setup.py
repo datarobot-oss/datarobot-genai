@@ -65,7 +65,6 @@ llamaindex = core + [
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
     "llama-index-llms-openai>=0.6.0,<0.7.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
-    "llama-index-llms-litellm>=0.4.1,<0.7.0",
     "nvidia-nat-llama-index==1.4.1",
     "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
     "pypdf>=6.0.0,<7.0.0",
