@@ -21,7 +21,6 @@ import pytest
 import respx
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
-from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.context import ContextState
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
@@ -76,21 +75,9 @@ _SEND_MESSAGE_RESPONSE = {
 }
 
 
-class _Config(DataRobotAppFrameworkBaseSettings):
-    """Reads test-relevant settings from the environment / .env file."""
-
-    datarobot_api_token: str | None = None
-    a2a_agent_url: str | None = None
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="module")
-def app_config() -> _Config:
-    return _Config()
 
 
 @pytest.fixture(scope="module")
@@ -133,6 +120,19 @@ def mock_a2a_endpoints():
         yield router
 
 
+@pytest.fixture
+async def function_group(nat_config, mock_a2a_endpoints):
+    """Build an AuthCardA2AClientFunctionGroup via WorkflowBuilder against mocked endpoints."""
+    fg_config = nat_config.function_groups["a2a_agent"]
+    auth_config = nat_config.authentication["datarobot_auth"]
+
+    async with WorkflowBuilder() as builder:
+        await builder.add_auth_provider("datarobot_auth", auth_config)
+        await builder.add_function_group("a2a_agent", fg_config)
+        fg = await builder.get_function_group("a2a_agent")
+        yield fg
+
+
 # ---------------------------------------------------------------------------
 # Tests: YAML config parsing (no network required)
 # ---------------------------------------------------------------------------
@@ -161,29 +161,14 @@ class TestAuthenticatedA2AClientGroup:
     a respx-mocked A2A agent — no real network connection required.
     """
 
-    async def test_function_group_type(self, nat_config, mock_a2a_endpoints):
+    async def test_function_group_type(self, function_group):
         """WorkflowBuilder produces an AuthCardA2AClientFunctionGroup."""
-        fg_config = nat_config.function_groups["a2a_agent"]
-        auth_config = nat_config.authentication["datarobot_auth"]
+        assert isinstance(function_group, AuthCardA2AClientFunctionGroup)
+        assert isinstance(function_group, A2AClientFunctionGroup)
 
-        async with WorkflowBuilder() as builder:
-            await builder.add_auth_provider("datarobot_auth", auth_config)
-            await builder.add_function_group("a2a_agent", fg_config)
-            fg = await builder.get_function_group("a2a_agent")
-
-        assert isinstance(fg, AuthCardA2AClientFunctionGroup)
-        assert isinstance(fg, A2AClientFunctionGroup)
-
-    async def test_all_standard_functions_registered(self, nat_config, mock_a2a_endpoints):
+    async def test_all_standard_functions_registered(self, function_group):
         """All seven standard A2A functions are exposed under the group name prefix."""
-        fg_config = nat_config.function_groups["a2a_agent"]
-        auth_config = nat_config.authentication["datarobot_auth"]
-
-        async with WorkflowBuilder() as builder:
-            await builder.add_auth_provider("datarobot_auth", auth_config)
-            await builder.add_function_group("a2a_agent", fg_config)
-            fg = await builder.get_function_group("a2a_agent")
-            all_fns = await fg.get_all_functions()
+        all_fns = await function_group.get_all_functions()
 
         # Function names are prefixed with the group name (e.g. a2a_agent__call)
         assert "a2a_agent__call" in all_fns
@@ -194,34 +179,20 @@ class TestAuthenticatedA2AClientGroup:
         assert "a2a_agent__send_message" in all_fns
         assert "a2a_agent__send_message_streaming" in all_fns
 
-    async def test_call_agent(self, nat_config, mock_a2a_endpoints):
+    async def test_call_agent(self, function_group):
         """The high-level ``call`` function returns a non-empty text response."""
-        fg_config = nat_config.function_groups["a2a_agent"]
-        auth_config = nat_config.authentication["datarobot_auth"]
-
-        async with WorkflowBuilder() as builder:
-            await builder.add_auth_provider("datarobot_auth", auth_config)
-            await builder.add_function_group("a2a_agent", fg_config)
-            fg = await builder.get_function_group("a2a_agent")
-            all_fns = await fg.get_all_functions()
-            call_fn = all_fns["a2a_agent__call"]
-            response = await call_fn.ainvoke({"query": "What can you help me with?"})
+        all_fns = await function_group.get_all_functions()
+        call_fn = all_fns["a2a_agent__call"]
+        response = await call_fn.ainvoke({"query": "What can you help me with?"})
 
         assert isinstance(response, str)
         assert len(response) > 0
 
-    async def test_get_agent_info(self, nat_config, mock_a2a_endpoints):
+    async def test_get_agent_info(self, function_group):
         """The ``get_info`` helper returns the agent name and version."""
-        fg_config = nat_config.function_groups["a2a_agent"]
-        auth_config = nat_config.authentication["datarobot_auth"]
-
-        async with WorkflowBuilder() as builder:
-            await builder.add_auth_provider("datarobot_auth", auth_config)
-            await builder.add_function_group("a2a_agent", fg_config)
-            fg = await builder.get_function_group("a2a_agent")
-            all_fns = await fg.get_all_functions()
-            get_info_fn = all_fns["a2a_agent__get_info"]
-            info = await get_info_fn.ainvoke(None)
+        all_fns = await function_group.get_all_functions()
+        get_info_fn = all_fns["a2a_agent__get_info"]
+        info = await get_info_fn.ainvoke(None)
 
         assert "name" in info
         assert "version" in info
