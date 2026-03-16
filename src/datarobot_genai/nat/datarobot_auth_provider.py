@@ -25,6 +25,7 @@ from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import HeaderCred
 from nat.data_models.common import SerializableSecretStr
 from pydantic import Field
+from pydantic import SecretStr
 
 from datarobot_genai.core.mcp.common import MCPConfig
 from datarobot_genai.nat.helpers import extract_authorization_from_context
@@ -41,7 +42,11 @@ class Config(DataRobotAppFrameworkBaseSettings):
     datarobot_api_token: str | None = None
 
 
-config = Config()
+def _get_default_api_token() -> SecretStr | None:
+    """Get the default API token from environment, wrapped in SecretStr for proper serialization."""
+    if datarobot_api_token := Config().datarobot_api_token:
+        return SecretStr(datarobot_api_token)
+    return None
 
 
 class DataRobotAPIKeyAuthProviderConfig(APIKeyAuthProviderConfig, name="datarobot_api_key"):  # type: ignore[call-arg]
@@ -50,7 +55,7 @@ class DataRobotAPIKeyAuthProviderConfig(APIKeyAuthProviderConfig, name="datarobo
             "Raw API token or credential to be injected into the request parameter. "
             "Used for 'bearer','x-api-key','custom', and other schemes. "
         ),
-        default=config.datarobot_api_token,
+        default_factory=_get_default_api_token,
     )
     default_user_id: str | None = Field(default="default-user", description="Default user ID")
     allow_default_user_id_for_tool_calls: bool = Field(
@@ -65,13 +70,17 @@ async def datarobot_api_key_client(
     yield APIKeyAuthProvider(config=config)
 
 
-mcp_config = MCPConfig().server_config
+def _get_default_headers() -> None | dict[str, str]:
+    """Get the default headers dict from environment."""
+    if mcp_config := MCPConfig().server_config:
+        return mcp_config["headers"]
+    return None
 
 
 class DataRobotMCPAuthProviderConfig(AuthProviderBaseConfig, name="datarobot_mcp_auth"):  # type: ignore[call-arg]
     headers: dict[str, str] | None = Field(
         description=("Headers to be used for authentication. "),
-        default=mcp_config["headers"] if mcp_config else None,
+        default_factory=_get_default_headers,
     )
     default_user_id: str | None = Field(default="default-user", description="Default user ID")
     allow_default_user_id_for_tool_calls: bool = Field(
