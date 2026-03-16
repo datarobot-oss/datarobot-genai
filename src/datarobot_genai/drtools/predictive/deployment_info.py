@@ -34,7 +34,7 @@ from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata", "daria"})
 async def get_deployment_info(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,

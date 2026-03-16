@@ -165,6 +165,11 @@ def _apply_dr_client_stubs() -> None:
     # Return empty page so registration finishes immediately instead of hanging.
     mock_rest = MagicMock()
     mock_rest.get.return_value.json.return_value = {"data": [], "next": None}
+    # Wire REST stubs from test_create_dr_client onto mock_rest
+    if stub_dr.stub_rest_get:
+        mock_rest.get = stub_dr.stub_rest_get
+    if stub_dr.stub_rest_post:
+        mock_rest.post = stub_dr.stub_rest_post
     stub_dr.client = MagicMock()
     stub_dr.client.get_client = lambda: mock_rest
 
