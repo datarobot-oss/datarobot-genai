@@ -96,13 +96,11 @@ jobs:
 
       - name: Run dragent server in background
         uses: JarvusInnovations/background-action@v1
-
-        working-directory: e2e-tests
-        run: |
-          task dragent:run-${{ matrix.framework }} &
-        wait-on:
-          - http://localhost:8080/health
-        wait-for: 30s
+        with:
+          working-directory: e2e-tests
+          run: task dragent:run-${{ matrix.framework }} &
+          wait-on: http://localhost:8080/health
+          wait-for: 30s
 
       - name: Run e2e tests
         working-directory: e2e-tests
