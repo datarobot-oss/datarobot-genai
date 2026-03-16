@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.7.0
-- **Breaking**: drop Python 3.11 support
+- **Breaking**: drop Python 3.10 support
 - Pass forwarded DataRobot headers to agents, MCP clients, and LLMs
 - Pass authorization context to agents and MCP clients
 - Register MCP function group per user as it depends on the current user authorization context
