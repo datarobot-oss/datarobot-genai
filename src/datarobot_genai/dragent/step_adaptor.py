@@ -216,8 +216,10 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         (e.g. CrewStructuredTool leaked via nvidia-nat-crewai) are logged
         and skipped.
         """
-        raw = getattr(payload.metadata, "tool_inputs", None)
-        if raw is None:
+        tool_inputs = getattr(payload.metadata, "tool_inputs", None)
+        if isinstance(tool_inputs, dict):
+            raw = tool_inputs
+        else:
             raw = payload.data.input
         if raw is None:
             return "{}"
