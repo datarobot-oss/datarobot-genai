@@ -15,7 +15,7 @@
 """Tool configuration and enablement logic."""
 
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 from typing import TypedDict
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .config import MCPServerConfig
 
 
-class ToolType(str, Enum):
+class ToolType(StrEnum):
     """Enumeration of available tool types."""
 
     PREDICTIVE = "predictive"

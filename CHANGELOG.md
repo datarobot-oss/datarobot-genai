@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.0
+- **Breaking**: drop Python 3.10 support because of using NAT in all agents
+- Pass forwarded DataRobot headers to agents, MCP clients, and LLMs
+- Pass authorization context to agents and MCP clients
+- Register MCP function group per user as it depends on the current user authorization context
+- Rework dependencies in order to install only necessary libraries
+
 ## 0.6.21
 - Added `x-datarobot-authorization` to `HEADER_TOKEN_CANDIDATE_NAMES` to fix auth when connecting through the API gateway
 
@@ -25,7 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.6.15
 - Added Agent2Agent (A2A) server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`.
 - Extended DRAgentFastApiFrontEndConfig with configuration options for the A2A server.
-- Added per_user_tool_calling_agent workflow type
+- A2A endpoints can be enabled by the `expose_a2a_server_endpoints` setting in the workflow.yaml file.
+- Added `per_user_tool_calling_agent` workflow type
 - Fixed `ToolCallArgsEvent.delta` encoding
 
 ## 0.6.14

@@ -28,6 +28,8 @@ from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.nat.helpers import extract_authorization_from_context
+from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 
 
 class Config(DataRobotAppFrameworkBaseSettings):
@@ -106,10 +108,22 @@ class DataRobotMCPAuthProvider(AuthProviderBase[DataRobotMCPAuthProviderConfig])
         -------
             AuthenticatedContext: The authenticated context containing headers
         """
+        forwarded_headers = extract_datarobot_headers_from_context()
+        authentication_context = extract_authorization_from_context()
+        mcp_config = MCPConfig(
+            forwarded_headers=forwarded_headers, authorization_context=authentication_context
+        ).server_config
+
+        # in dragent we get forwarded_headers and authentication_context from Context
+        # in drum we write self.config.headers with a custom loader
+        auth_headers = {}
+        if mcp_config:
+            auth_headers.update(mcp_config["headers"])
+        if self.config.headers:
+            auth_headers.update(self.config.headers)
+
         return AuthResult(
-            credentials=[
-                HeaderCred(name=name, value=value) for name, value in self.config.headers.items()
-            ]
+            credentials=[HeaderCred(name=name, value=value) for name, value in auth_headers.items()]
         )
 
 

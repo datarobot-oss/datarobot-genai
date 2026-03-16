@@ -1,30 +1,24 @@
----
-# Copyright 2026 DataRobot, Inc.
+# Copyright 2026 DataRobot, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-llms:
-  datarobot_llm:
-    _type: datarobot-llm-component
 
-function_groups:
-  mcp_tools:
-    _type: datarobot_mcp_client
 
-authentication:
-  datarobot_mcp_auth:
-    _type: datarobot_mcp_auth
+from typing import Annotated
 
-workflow:
-  _type: llamaindex_agent
-  llm_name: datarobot_llm
-  description: LlamaIndex assistant agent with MCP
+
+def calculator(expression: Annotated[str, "A math expression to calculate, e.g. '15 * 7'."]) -> str:
+    """Calculate a math expression, e.g. '15 * 7'."""
+    allowed = set("0123456789+-*/().% ")
+    if not all(c in allowed for c in expression):
+        return "Error: invalid characters in expression"
+    return str(eval(expression))  # noqa: S307
