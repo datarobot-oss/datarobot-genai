@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.6.20
-- Fixed an issue where the API token loaded via an environment variable was not properly serialized in NAT.
+- Fixed an issue where the API token loaded via an environment variable was not properly serialized in NAT
 
 ## 0.6.19
 - Enable A2A endpoints for per-user workflows with configurable skills via `DRAgentA2AConfig`
