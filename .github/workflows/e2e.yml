@@ -111,8 +111,11 @@ jobs:
         env:
           DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
           DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+          DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
           MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
-          LLM_DEFAULT_MODEL: azure/gpt-4o-mini
+          SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+
+          LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-mini
         run: |
           uv run pytest dragent_tests -vv -s --timeout=300 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
