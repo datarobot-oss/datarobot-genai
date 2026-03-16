@@ -53,10 +53,12 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
         llm = await builder.get_llm(config.llm_name, wrapper_type=_CREWAI_WRAPPER)
 
         # Agent contains user-specific headers and authorization context
-        forward_headers = extract_datarobot_headers_from_context()
+        forwarded_headers = extract_datarobot_headers_from_context()
         authorization_context = extract_authorization_from_context()
         agent = MyAgent(
-            llm=llm, forward_headers=forward_headers, authorization_context=authorization_context
+            llm=llm,
+            forwarded_headers=forwarded_headers,
+            authorization_context=authorization_context,
         )
 
         async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
