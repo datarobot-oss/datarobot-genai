@@ -936,27 +936,6 @@ llamaindex = [
     { name = "ragas" },
     { name = "requests" },
 ]
-nat = [
-    { name = "ag-ui-protocol" },
-    { name = "anyio" },
-    { name = "datarobot" },
-    { name = "datarobot-predict" },
-    { name = "nvidia-nat" },
-    { name = "nvidia-nat-a2a" },
-    { name = "nvidia-nat-langchain" },
-    { name = "nvidia-nat-mcp" },
-    { name = "nvidia-nat-opentelemetry" },
-    { name = "openai" },
-    { name = "opentelemetry-instrumentation-aiohttp-client" },
-    { name = "opentelemetry-instrumentation-httpx" },
-    { name = "opentelemetry-instrumentation-openai" },
-    { name = "opentelemetry-instrumentation-requests" },
-    { name = "opentelemetry-instrumentation-threading" },
-    { name = "pyarrow" },
-    { name = "pyjwt" },
-    { name = "ragas" },
-    { name = "requests" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -1148,16 +1127,16 @@ dependencies = [
 
 [package.dev-dependencies]
 dragent-crewai = [
-    { name = "datarobot-genai", extra = ["crewai", "dragent", "nat"] },
+    { name = "datarobot-genai", extra = ["crewai", "dragent"] },
 ]
 dragent-langgraph = [
-    { name = "datarobot-genai", extra = ["dragent", "langgraph", "nat"] },
+    { name = "datarobot-genai", extra = ["dragent", "langgraph"] },
 ]
 dragent-llamaindex = [
-    { name = "datarobot-genai", extra = ["dragent", "llamaindex", "nat"] },
+    { name = "datarobot-genai", extra = ["dragent", "llamaindex"] },
 ]
 dragent-nat = [
-    { name = "datarobot-genai", extra = ["dragent", "nat"] },
+    { name = "datarobot-genai", extra = ["dragent"] },
 ]
 lint = [
     { name = "mypy" },
@@ -1174,10 +1153,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "nat", "crewai"], editable = "../" }]
-dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "nat", "langgraph"], editable = "../" }]
-dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "nat", "llamaindex"], editable = "../" }]
-dragent-nat = [{ name = "datarobot-genai", extras = ["dragent", "nat"], editable = "../" }]
+dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" }]
+dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
+dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]
+dragent-nat = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
 lint = [
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "ruff", specifier = ">=0.15.2" },
