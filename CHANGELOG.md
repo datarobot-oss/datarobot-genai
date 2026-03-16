@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Register MCP function group per user as it depends on the current user authorization context
 - Rework dependencies in order to install only necessary libraries
 
+## 0.6.21
+- Added `x-datarobot-authorization` to `HEADER_TOKEN_CANDIDATE_NAMES` to fix auth when connecting through the API gateway
+
 ## 0.6.20
 - Fixed an issue where the API token loaded via an environment variable was not properly serialized in NAT
 
