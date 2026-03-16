@@ -20,6 +20,7 @@ nvidia-nat-crewai 1.4.1 expects crewai < 1.0.0 response format where
 the callback handler to support both formats.
 
 TODO(BUZZOK-29844): Remove once nvidia-nat-crewai ships a fix upstream.
+Upstream issue: https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1802
 """
 
 import logging
