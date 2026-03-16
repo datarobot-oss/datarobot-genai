@@ -4,16 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.21
+- Added `x-datarobot-authorization` to `HEADER_TOKEN_CANDIDATE_NAMES` to fix auth when connecting through the API gateway
+
+## 0.6.20
+- Fixed an issue where the API token loaded via an environment variable was not properly serialized in NAT
+
 ## 0.6.19
+- Enable A2A endpoints for per-user workflows with configurable skills via `DRAgentA2AConfig`
+- **Breaking**: `DRAgentFastApiFrontEndConfig.a2a` type changed from `A2AFrontEndConfig` to `DRAgentA2AConfig`; update `workflow.yaml` by nesting the existing A2A fields under `server:`
 - Added new data tools: get_dataset_details, list_datastores, browse_datastore, query_datastore
 - Added "daria" tag to existing overlapping tools
 
-## 0.6.18
+## 0.6.17
 - Fixed CVE-2026-25580: removed unused `pydantic-ai-slim` dependency and `pydanticai` install extra
 - Added e2e tests for dragent server covering streaming, tool use, and MCP integration
 - Added CI workflow for e2e tests with path-based triggers across langgraph, crewai, llamaindex, and nat
-
-## 0.6.17
 
 ## 0.6.16
 - Align MCP OpenTelemetry spans with OTel semantic conventions.
@@ -21,7 +27,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.6.15
 - Added Agent2Agent (A2A) server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`.
 - Extended DRAgentFastApiFrontEndConfig with configuration options for the A2A server.
-- A2A endpoints can be enabled by the `expose_a2a_server_endpoints` setting in the workflow.yaml file.
 - Added per_user_tool_calling_agent workflow type
 - Fixed `ToolCallArgsEvent.delta` encoding
 

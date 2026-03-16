@@ -231,6 +231,21 @@ class TestExtractTokenFromHeaders:
         result = _extract_token_from_headers(headers)
         assert result == "token-123"
 
+    def test_extract_token_from_x_datarobot_authorization_header(self):
+        """Test extracting token from x-datarobot-authorization header."""
+        headers = {"x-datarobot-authorization": "Bearer user-api-key"}
+        result = _extract_token_from_headers(headers)
+        assert result == "user-api-key"
+
+    def test_prefers_x_datarobot_authorization_over_authorization(self):
+        """Test gateway scenario: x-datarobot-authorization is preferred."""
+        headers = {
+            "x-datarobot-authorization": "Bearer user-api-key",
+            "authorization": "Bearer s2s-jwt-token",
+        }
+        result = _extract_token_from_headers(headers)
+        assert result == "user-api-key"
+
 
 class TestExtractTokenFromAuthContext:
     """Test cases for _extract_token_from_auth_context function - critical path only."""
