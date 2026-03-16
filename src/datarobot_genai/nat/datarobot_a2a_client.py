@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
 from a2a.client import ClientConfig
 from a2a.client import ClientFactory
 from nat.authentication.interfaces import AuthProviderBase
+from nat.builder.builder import Builder
 from nat.builder.context import Context
+from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_base import A2ABaseClient
@@ -50,7 +53,7 @@ class _AuthCardA2ABaseClient(A2ABaseClient):
     """
 
     async def __aenter__(self) -> "_AuthCardA2ABaseClient":
-        if self._httpx_client is not None or self._client is not None:
+        if self._httpx_client is not None or self._client is not None:  # type: ignore[has-type]
             raise RuntimeError("A2ABaseClient already initialized")
 
         # Pre-authenticate to embed Bearer token in every httpx request.
@@ -157,3 +160,14 @@ class AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
 
         self._register_functions()
         return self
+
+
+@register_per_user_function_group(config_type=AuthenticatedA2AClientConfig)  # type: ignore[untyped-decorator]
+async def authenticated_a2a_client(
+    config: AuthenticatedA2AClientConfig, _builder: Builder
+) -> AsyncGenerator[Any, None]:
+    """Drop-in replacement for the upstream ``a2a_client`` function group that
+    authenticates all api calls, including the agent-card fetch request.
+    """
+    async with AuthCardA2AClientFunctionGroup(config, _builder) as group:
+        yield group
