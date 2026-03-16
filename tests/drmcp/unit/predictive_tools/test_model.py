@@ -192,9 +192,7 @@ async def test_get_model_details_success() -> None:
         metrics={"AUC": {"validation": 0.9}},
         sample_pct=64,
     )
-    mock_model.get_or_request_feature_impact.return_value = [
-        {"feature": "f1", "impact": 0.8}
-    ]
+    mock_model.get_or_request_feature_impact.return_value = [{"feature": "f1", "impact": 0.8}]
     mock_client.Project.get.return_value = mock_project
     mock_client.Model.get.return_value = mock_model
     p1, p2 = _patch_model_client(mock_client)
@@ -225,9 +223,7 @@ async def test_get_model_details_feature_impact_error() -> None:
     mock_project = MagicMock()
     mock_project.target = "target_col"
     mock_project.metric = "AUC"
-    mock_model = MagicMock(
-        id="mid", model_type="XGBoost", metrics={}, sample_pct=64
-    )
+    mock_model = MagicMock(id="mid", model_type="XGBoost", metrics={}, sample_pct=64)
     mock_model.request_feature_impact.side_effect = Exception("not available")
     mock_client.Project.get.return_value = mock_project
     mock_client.Model.get.return_value = mock_model

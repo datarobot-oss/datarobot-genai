@@ -135,9 +135,7 @@ class TestIsEligibleForTimeseriesTrainingE2E(ToolBaseE2E):
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = (
-                frame.f_code.co_name if frame else "test_timeseries_eligibility_check"
-            )
+            test_name = frame.f_code.co_name if frame else "test_timeseries_eligibility_check"
             await self._run_test_with_expectations(
                 prompt,
                 expectations,

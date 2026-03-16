@@ -220,9 +220,7 @@ async def get_model_details(
     return ToolResult(structured_content=info)
 
 
-@dr_mcp_integration_tool(
-    tags={"predictive", "model", "read", "timeseries", "validation", "daria"}
-)
+@dr_mcp_integration_tool(tags={"predictive", "model", "read", "timeseries", "validation", "daria"})
 async def is_eligible_for_timeseries_training(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to validate"] | None = None,
@@ -253,9 +251,7 @@ async def is_eligible_for_timeseries_training(
     row_count = len(df)
     infos.append(f"Row count: {row_count}")
     if row_count < 100:
-        errors.append(
-            f"Too few rows ({row_count}): time series training requires at least 100."
-        )
+        errors.append(f"Too few rows ({row_count}): time series training requires at least 100.")
 
     if datetime_column not in df.columns:
         errors.append(f"Datetime column '{datetime_column}' not found in dataset.")
@@ -266,9 +262,7 @@ async def is_eligible_for_timeseries_training(
             df[datetime_column] = pd.to_datetime(df[datetime_column])
             infos.append(f"Datetime column '{datetime_column}' parsed successfully.")
         except Exception as exc:
-            errors.append(
-                f"Datetime column '{datetime_column}' could not be parsed: {exc}"
-            )
+            errors.append(f"Datetime column '{datetime_column}' could not be parsed: {exc}")
 
     if series_id_column and series_id_column not in df.columns:
         errors.append(f"Series ID column '{series_id_column}' not found in dataset.")
