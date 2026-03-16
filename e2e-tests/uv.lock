@@ -1125,6 +1125,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-cov" },
     { name = "responses", specifier = ">=0.25.8" },
+    { name = "respx", specifier = ">=0.22.0" },
     { name = "ruff", specifier = ">=0.6.0" },
     { name = "twine", specifier = ">=5.0.0" },
 ]

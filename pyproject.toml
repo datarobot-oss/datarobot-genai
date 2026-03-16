@@ -58,6 +58,7 @@ dev = [
   "responses>=0.25.8",
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
+  "respx>=0.22.0",
 ]
 
 [tool.mypy]
