@@ -15,27 +15,29 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
-from tests.conftest import GENERATE_STREAM_PATH
-from tests.conftest import collect_ag_ui_events
-from tests.conftest import collect_text
-from tests.conftest import make_generate_payload
-from tests.conftest import parse_sse_events
+from dragent_tests.helpers import GENERATE_STREAM_PATH
+from dragent_tests.helpers import collect_ag_ui_events
+from dragent_tests.helpers import collect_text
+from dragent_tests.helpers import make_generate_payload
+from dragent_tests.helpers import parse_sse_responses
 
 
-@pytest.fixture(scope="session")
-def streaming_ag_ui_events(http_client: httpx.Client) -> list[dict]:  # type: ignore[type-arg]
-    """Single streaming call shared by all streaming tests."""
+def test_generate_streaming_produces_text(http_client: httpx.Client) -> None:
+    """Concatenated text deltas produce a non-empty response."""
+    # GIVEN: a payload that requests "Say 'hello world' and nothing else."
     payload = make_generate_payload("Say 'hello world' and nothing else.")
+
+    # WHEN: the payload is streamed to the generate endpoint
     with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
-        sse_events = parse_sse_events(response)
-    return collect_ag_ui_events(sse_events)
+        # THEN: the response is a valid AG-UI response
+        sse_responses = parse_sse_responses(response)
 
+    # THEN: the response contains AG-UI events
+    ag_ui_events = collect_ag_ui_events(sse_responses)
 
-def test_generate_streaming_produces_text(streaming_ag_ui_events: list[dict]) -> None:  # type: ignore[type-arg]
-    """Concatenated text deltas produce a non-empty response."""
-    full_text = collect_text(streaming_ag_ui_events)
+    # THEN: there are events with text
+    full_text = collect_text(ag_ui_events)
     assert len(full_text) > 0, "Expected non-empty text response"

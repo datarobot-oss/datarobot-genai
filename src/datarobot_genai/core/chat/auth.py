@@ -16,7 +16,6 @@
 
 from typing import Any
 
-from datarobot.models.genai.agent.auth import set_authorization_context
 from openai.types import CompletionCreateParams
 from openai.types.chat.completion_create_params import CompletionCreateParamsNonStreaming
 from openai.types.chat.completion_create_params import CompletionCreateParamsStreaming
@@ -24,7 +23,7 @@ from openai.types.chat.completion_create_params import CompletionCreateParamsStr
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 
-def _get_authorization_context_from_headers(
+def get_authorization_context_from_headers(
     headers: dict[str, str],
     secret_key: str | None = None,
 ) -> dict[str, Any] | None:
@@ -48,7 +47,7 @@ def _get_authorization_context_from_headers(
     return None
 
 
-def _get_authorization_context_from_params(
+def get_authorization_context_from_params(
     completion_create_params: CompletionCreateParams
     | CompletionCreateParamsNonStreaming
     | CompletionCreateParamsStreaming,
@@ -103,44 +102,9 @@ def resolve_authorization_context(
     # is used as a fallback for backward compatibility only and may be removed in
     # the future.
     authorization_context: dict[str, Any] = (
-        _get_authorization_context_from_headers(incoming_headers)
-        or _get_authorization_context_from_params(completion_create_params)
+        get_authorization_context_from_headers(incoming_headers)
+        or get_authorization_context_from_params(completion_create_params)
         or {}
     )
 
     return authorization_context
-
-
-def initialize_authorization_context(
-    completion_create_params: CompletionCreateParams
-    | CompletionCreateParamsNonStreaming
-    | CompletionCreateParamsStreaming,
-    **kwargs: Any,
-) -> None:
-    """Set the authorization context for the agent.
-
-    Authorization context is required for propagating information needed by downstream
-    agents and tools to retrieve access tokens to connect to external services. When set,
-    authorization context will be automatically propagated when using ToolClient class.
-    authorization context will be propagated when using MCP Server component or when
-    using ToolClient class.
-
-    Parameters
-    ----------
-    completion_create_params : CompletionCreateParams | CompletionCreateParamsNonStreaming |
-        CompletionCreateParamsStreaming
-        Parameters supplied to the completion API. May include a fallback
-        ``authorization_context`` mapping under the same key.
-    **kwargs : Any
-        Additional keyword arguments. Expected to include a ``headers`` key
-        containing incoming HTTP headers as ``dict[str, str]``.
-
-    """
-    authorization_context = resolve_authorization_context(
-        completion_create_params,
-        **kwargs,
-    )
-
-    # Note: authorization context internally uses contextvars, which are
-    # thread-safe and async-safe.
-    set_authorization_context(authorization_context)
