@@ -73,9 +73,12 @@ llamaindex = core + [
 nat = core + [
     "nvidia-nat==1.4.1",
     "nvidia-nat-a2a==1.4.1",
+    "nvidia-nat-crewai==1.4.1",
     "nvidia-nat-opentelemetry==1.4.1",
     "nvidia-nat-langchain==1.4.1",  # NAT built-in agents require this
     "nvidia-nat-mcp==1.4.1",
+    "crewai>=1.1.0,<2.0.0",
+    "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "anyio==4.11.0",
 ]
 

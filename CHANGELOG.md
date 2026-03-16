@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Pass authorization context to agents and MCP clients
 - Register MCP function group per user as it depends on the current user authorization context
 - Rework dependencies in order to install only necessary libraries
+- Added `nvidia-nat-crewai` support with crewai >= 1.1.0 compatibility patches
 
 ## 0.6.21
 - Added `x-datarobot-authorization` to `HEADER_TOKEN_CANDIDATE_NAMES` to fix auth when connecting through the API gateway
