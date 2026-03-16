@@ -45,6 +45,7 @@ from openai.types.chat import ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
+from pydantic import field_serializer
 
 from datarobot_genai.core.agents import default_usage_metrics
 
@@ -59,6 +60,18 @@ class CustomModelChatResponse(ChatCompletion):
 class CustomModelStreamingResponse(ChatCompletionChunk):
     pipeline_interactions: str | None = None
     event: Event | None = None
+
+    @field_serializer("event")
+    def _serialize_event(self, value: Event | None) -> dict[str, Any] | None:
+        """Serialize event with discriminator always included.
+
+        When the parent is dumped with exclude_unset=True, nested Event models
+        lose their default 'type' field, breaking tagged-union validation on
+        round-trip. We always dump the full event (including type) here.
+        """
+        if value is None:
+            return None
+        return value.model_dump(mode="json")
 
 
 def to_custom_model_chat_response(
@@ -133,11 +146,8 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip lifecycle events - they don't carry content for streaming
-                # Their metadata is still tracked above for the final stop chunk
-                if isinstance(
-                    event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
-                ):
+                # Skip run lifecycle events only - step events are emitted so the client can show step boundaries
+                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
                     continue
 
                 if isinstance(event, BaseEvent):
@@ -230,11 +240,8 @@ def streaming_iterator_to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip lifecycle events - they don't carry content for streaming
-                # Their metadata is still tracked above for the final stop chunk
-                if isinstance(
-                    event, (RunStartedEvent, RunFinishedEvent, StepStartedEvent, StepFinishedEvent)
-                ):
+                # Skip run lifecycle events only - step events are emitted so the client can show step boundaries
+                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
                     continue
 
                 if isinstance(event, BaseEvent):

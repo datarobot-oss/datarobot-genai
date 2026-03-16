@@ -15,17 +15,26 @@ from __future__ import annotations
 
 import abc
 import inspect
+import logging
 import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
+import json
 
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -38,6 +47,8 @@ from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 
 from .mcp import load_mcp_tools
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -79,7 +90,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         return self._mcp_tools
 
     @abc.abstractmethod
-    def build_workflow(self) -> Any:
+    async def build_workflow(self) -> Any:
         """Return an AgentWorkflow instance ready to run."""
         raise NotImplementedError
 
@@ -99,6 +110,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Handle {chat_history} placeholder replacement for subclass templates
         if "{chat_history}" in input_message:
+            logger.info("Building history summary", input_message )
             history_summary = self.build_history_summary(run_agent_input)
             formatted_history = (
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
@@ -121,14 +133,13 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
+        usage_metrics: UsageMetrics = default_usage_metrics()
 
-        # Partial AG-UI: workflow lifecycle + text message events
-        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, default_usage_metrics()
+        # Partial AG-UI: workflow lifecycle + text message events + tool calls + steps for agent
+        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, usage_metrics
 
         workflow = self.build_workflow()
         handler = workflow.run(user_msg=input_message)
-
-        usage_metrics: UsageMetrics = default_usage_metrics()
 
         events: list[Any] = []
         current_agent_name: str | None = None
@@ -136,7 +147,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         text_started = False
 
         async for event in handler.stream_events():
-            events.append(event)
+            events.append(event) # every agent is single step
             # Best-effort extraction of incremental text from LlamaIndex events
             delta: str | None = None
 
@@ -152,10 +163,22 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
             if delta:
                 if not text_started:
-                    yield TextMessageStartEvent(message_id=message_id), None, usage_metrics
+                    yield (
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START,
+                            message_id=message_id,
+                            role="assistant",
+                        ),
+                        None,
+                        usage_metrics,
+                    )
                     text_started = True
                 yield (
-                    TextMessageContentEvent(message_id=message_id, delta=delta),
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=message_id,
+                        delta=delta,
+                    ),
                     None,
                     usage_metrics,
                 )
@@ -164,11 +187,25 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             try:
                 # Agent switch banner if available on event
                 if hasattr(event, "current_agent_name"):
-                    new_agent = getattr(event, "current_agent_name")
-                    if isinstance(new_agent, str) and new_agent and new_agent != current_agent_name:
-                        current_agent_name = new_agent
+                    agent = getattr(event, "current_agent_name", None)
+                    if agent is not None and agent != current_agent_name:
+                        if current_agent_name is not None:
+                            
+                            yield (
+                                StepFinishedEvent(step_name=current_agent_name),
+                                None,
+                                usage_metrics,
+                            )
+
+                       
+                        yield (
+                            StepStartedEvent(step_name=agent),
+                            None,
+                            usage_metrics,
+                        )
+                        current_agent_name = agent
+                        agent = None
                         # Print banner for agent switch (do not emit as streamed content)
-                        print("\n" + "=" * 50, flush=True)
                         print(f"🤖 Agent: {current_agent_name}", flush=True)
                         print("=" * 50 + "\n", flush=True)
 
@@ -179,7 +216,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     # Output content
                     resp = getattr(event, "response", None)
                     if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                        print("📤 Output:", getattr(resp, "content"), flush=True)
+                        #print("📤 Output:", getattr(resp, "content"), flush=True)
+                        pass
+                        
                     # Planned tool calls
                     tcalls = getattr(event, "tool_calls", None)
                     if isinstance(tcalls, list) and tcalls:
@@ -194,25 +233,79 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                             except Exception:
                                 pass
                         if names:
-                            print("🛠️  Planning to use tools:", names, flush=True)
+                           # print("🛠️  Planning to use tools:", names, flush=True)
+                           pass
                 elif event_type == "ToolCallResult":
                     tname = getattr(event, "tool_name", None)
+                    tid = getattr(event, "tool_id", None)
                     tkwargs = getattr(event, "tool_kwargs", None)
                     tout = getattr(event, "tool_output", None)
                     print(f"🔧 Tool Result ({tname}):", flush=True)
                     print(f"  Arguments: {tkwargs}", flush=True)
                     print(f"  Output: {tout}", flush=True)
+                    yield (
+                        ToolCallEndEvent(
+                            type=EventType.TOOL_CALL_END,
+                            tool_call_id=tid, 
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    yield (
+                        ToolCallResultEvent(
+                            type=EventType.TOOL_CALL_RESULT,
+                            message_id=message_id,
+                            tool_call_id=tid,
+                            content=json.dumps(tout, default=str),
+                            role="tool",
+                        ),
+                        None,
+                        usage_metrics,
+                    )
                 elif event_type == "ToolCall":
                     tname = getattr(event, "tool_name", None)
                     tkwargs = getattr(event, "tool_kwargs", None)
+                    tid = getattr(event, "tool_id", None)
                     print(f"🔨 Calling Tool: {tname}", flush=True)
                     print(f"  With arguments: {tkwargs}", flush=True)
+                    yield (
+                                    ToolCallStartEvent(
+                                        type=EventType.TOOL_CALL_START,
+                                        tool_call_id=tid,
+                                        tool_call_name=tname,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                    yield (
+                                    ToolCallArgsEvent(
+                                        type=EventType.TOOL_CALL_ARGS,
+                                        tool_call_id=tid,
+                                        delta=json.dumps(tkwargs, default=str),
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )            
             except Exception:
                 # Ignore best-effort debug rendering errors
                 pass
+        if agent is not None:
+            yield (
+                StepFinishedEvent(step_name=agent),
+                None,
+                usage_metrics,
+            )
+            agent = None    
 
         if text_started:
-            yield TextMessageEndEvent(message_id=message_id), None, usage_metrics
+            yield (
+                TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=message_id,
+                ),
+                None,
+                usage_metrics,
+            )
 
         # After streaming completes, build final interactions and finish chunk
         # Extract state from workflow context (supports sync/async get or attribute)
