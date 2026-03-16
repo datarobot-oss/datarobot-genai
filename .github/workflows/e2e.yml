@@ -94,8 +94,9 @@ jobs:
         run: |
           uv sync --group dragent-${{ matrix.framework }}
 
-      - uses: JarvusInnovations/background-action@v1
-        name: Run dragent server
+      - name: Run dragent server in background
+        uses: JarvusInnovations/background-action@v1
+
         working-directory: e2e-tests
         run: |
           task dragent:run-${{ matrix.framework }} &
