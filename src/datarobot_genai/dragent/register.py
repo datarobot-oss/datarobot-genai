@@ -16,10 +16,13 @@ import typing
 from collections.abc import AsyncGenerator
 
 from a2a.types import AgentSkill
+from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_front_end
+from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
+from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
@@ -33,6 +36,19 @@ from datarobot_genai.dragent.converters import (
 )
 from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
+from datarobot_genai.dragent.datarobot_auth_provider import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.datarobot_auth_provider import _AuthCardA2AClientFunctionGroup
+
+
+@register_per_user_function_group(config_type=AuthenticatedA2AClientConfig)  # type: ignore[untyped-decorator]
+async def authenticated_a2a_client(
+    config: AuthenticatedA2AClientConfig, _builder: Builder
+) -> AsyncGenerator[A2AClientFunctionGroup, None]:
+    """Drop-in replacement for the upstream ``a2a_client_function_group`` that
+    authenticates the agent-card fetch request.
+    """
+    async with _AuthCardA2AClientFunctionGroup(config, _builder) as group:
+        yield group
 
 
 class DRAgentA2AConfig(BaseModel):
