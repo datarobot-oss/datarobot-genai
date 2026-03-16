@@ -1,0 +1,178 @@
+# Copyright 2026 DataRobot, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
+
+import pytest
+from nat.data_models.authentication import AuthResult
+from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.authentication import HeaderCred
+from nat.plugins.a2a.client.client_config import A2AClientConfig
+
+from datarobot_genai.nat.datarobot_a2a_client import AuthCardA2AClientFunctionGroup
+from datarobot_genai.nat.datarobot_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.nat.datarobot_a2a_client import _AuthCardA2ABaseClient
+from datarobot_genai.nat.datarobot_a2a_client import _extract_auth_headers
+
+_AGENT_URL = "http://agent.example.com"
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def a2a_config():
+    return AuthenticatedA2AClientConfig(url=_AGENT_URL)
+
+
+@pytest.fixture
+def mock_builder():
+    return AsyncMock()
+
+
+@pytest.fixture
+def bearer_auth_provider():
+    provider = AsyncMock()
+    provider.authenticate.return_value = AuthResult(
+        credentials=[BearerTokenCred(token="test_token")]
+    )
+    return provider
+
+
+@pytest.fixture
+def patched_base_client_env():
+    """Patch httpx and ClientFactory for _AuthCardA2ABaseClient tests."""
+    mock_httpx_inst = MagicMock(aclose=AsyncMock())
+    mock_a2a_inst = MagicMock(aclose=AsyncMock())
+    with (
+        patch("datarobot_genai.nat.datarobot_a2a_client.httpx") as mock_httpx,
+        patch("datarobot_genai.nat.datarobot_a2a_client.ClientFactory") as mock_factory,
+    ):
+        mock_httpx.AsyncClient.return_value = mock_httpx_inst
+        mock_factory.return_value.create.return_value = mock_a2a_inst
+        yield mock_httpx
+
+
+@pytest.fixture
+def patched_fg_env():
+    """Patch Context, _AuthCardA2ABaseClient, and _register_functions for function group tests."""
+    mock_client_inst = MagicMock(
+        __aenter__=AsyncMock(return_value=MagicMock()),
+        __aexit__=AsyncMock(return_value=None),
+    )
+    mock_client_inst.__aenter__.return_value = mock_client_inst
+    with (
+        patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx,
+        patch("datarobot_genai.nat.datarobot_a2a_client._AuthCardA2ABaseClient") as mock_cls,
+        patch.object(AuthCardA2AClientFunctionGroup, "_register_functions"),
+    ):
+        mock_ctx.get.return_value.user_id = "test-user"
+        mock_cls.return_value = mock_client_inst
+        yield mock_cls
+
+
+# ---------------------------------------------------------------------------
+# Tests: _extract_auth_headers
+# ---------------------------------------------------------------------------
+
+
+class TestExtractAuthHeaders:
+    def test_bearer_token(self):
+        auth_result = AuthResult(credentials=[BearerTokenCred(token="test_token")])
+        assert _extract_auth_headers(auth_result) == {"Authorization": "Bearer test_token"}
+
+    def test_header_cred(self):
+        auth_result = AuthResult(credentials=[HeaderCred(name="X-Api-Key", value="my_api_key")])
+        assert _extract_auth_headers(auth_result) == {"X-Api-Key": "my_api_key"}
+
+    def test_empty(self):
+        assert _extract_auth_headers(AuthResult(credentials=[])) == {}
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthenticatedA2AClientConfig
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2AClientConfig:
+    def test_is_a2a_client_config(self, a2a_config):
+        assert isinstance(a2a_config, A2AClientConfig)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _AuthCardA2ABaseClient
+# ---------------------------------------------------------------------------
+
+
+class TestAuthCardA2ABaseClient:
+    async def test_injects_bearer_headers(self, bearer_auth_provider, patched_base_client_env):
+        with patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx:
+            mock_ctx.get.return_value.user_id = "test-user"
+            client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=bearer_auth_provider)
+
+            async def set_agent_card():
+                client._agent_card = MagicMock()
+
+            with patch.object(client, "_resolve_agent_card", side_effect=set_agent_card):
+                async with client:
+                    _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
+                    assert httpx_kwargs["headers"]["Authorization"] == "Bearer test_token"
+
+    async def test_no_auth_uses_empty_headers(self, patched_base_client_env):
+        client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
+
+        async def set_agent_card():
+            client._agent_card = MagicMock()
+
+        with patch.object(client, "_resolve_agent_card", side_effect=set_agent_card):
+            async with client:
+                _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
+                assert httpx_kwargs.get("headers", {}) == {}
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthCardA2AClientFunctionGroup
+# ---------------------------------------------------------------------------
+
+
+class TestAuthCardA2AClientFunctionGroup:
+    async def test_uses_auth_card_base_client(self, a2a_config, mock_builder, patched_fg_env):
+        fg = AuthCardA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
+        result = await fg.__aenter__()
+
+        assert result is fg
+        patched_fg_env.assert_called_once()
+        assert patched_fg_env.call_args.kwargs["auth_provider"] is None
+
+    async def test_resolves_and_passes_auth_provider(self, mock_builder, patched_fg_env):
+        mock_auth_provider = MagicMock()
+        mock_builder.get_auth_provider.return_value = mock_auth_provider
+        config = AuthenticatedA2AClientConfig(url=_AGENT_URL, auth_provider="my_auth")
+
+        fg = AuthCardA2AClientFunctionGroup(config=config, builder=mock_builder)
+        await fg.__aenter__()
+
+        mock_builder.get_auth_provider.assert_awaited_once_with("my_auth")
+        assert patched_fg_env.call_args.kwargs["auth_provider"] is mock_auth_provider
+
+    async def test_raises_when_no_user_id(self, a2a_config, mock_builder):
+        with patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx:
+            mock_ctx.get.return_value.user_id = None
+            fg = AuthCardA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
+            with pytest.raises(RuntimeError, match="User ID not found in context"):
+                await fg.__aenter__()
