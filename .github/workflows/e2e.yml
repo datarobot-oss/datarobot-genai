@@ -110,7 +110,7 @@ jobs:
           MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
           SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
-          LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-mini
+          LLM_DEFAULT_MODEL: datarobot/vertex_ai/claude-3-5-haiku@20241022
         run: |
           uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
