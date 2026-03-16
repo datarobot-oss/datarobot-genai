@@ -183,14 +183,20 @@ async def browse_datastore(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "query", "sql", "daria"})
+@dr_mcp_integration_tool(
+    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"}
+)
 async def query_datastore(
     *,
     datastore_id: Annotated[str, "The ID of the datastore to query"] | None = None,
     sql: Annotated[str, "The SQL query to execute"] | None = None,
     limit: Annotated[int, "Maximum number of rows to return"] = 1000,
 ) -> ToolError | ToolResult:
-    """Execute a SQL query against a DataRobot datastore connection."""
+    """Execute a SQL query against a DataRobot datastore connection.
+
+    Only data manipulation language queries (insert, update, and delete data)
+    are supported — no commits or rollbacks.
+    """
     if not datastore_id:
         raise ToolError("Datastore ID must be provided")
     if not sql:

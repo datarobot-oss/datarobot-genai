@@ -15,12 +15,11 @@
 from typing import Any
 
 from datarobot_genai.core.agents import make_system_prompt
+from datarobot_genai.drtools.calculator import calculator as _calculator_fn
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.tools import FunctionTool
-
-from dragent.common import calculator as _calculator_fn
 
 calculator = FunctionTool.from_defaults(fn=_calculator_fn, name="calculator")
 

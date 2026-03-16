@@ -4,10 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.2
+- Added model and deployment tools: get_model_details (with optional feature impact and ROC curve), is_eligible_for_timeseries_training, get_prediction_history (MODEL-22809)
+
+## 0.7.1
+- Migrate Data MCP tools from wren mcp (MODEL-22804)
+
+## 0.7.0
+- **Breaking**: drop Python 3.10 support because of using NAT in all agents
+- Pass forwarded DataRobot headers to agents, MCP clients, and LLMs
+- Pass authorization context to agents and MCP clients
+- Register MCP function group per user as it depends on the current user authorization context
+- Rework dependencies in order to install only necessary libraries
+
+## 0.6.21
+- Added `x-datarobot-authorization` to `HEADER_TOKEN_CANDIDATE_NAMES` to fix auth when connecting through the API gateway
+
+## 0.6.20
+- Fixed an issue where the API token loaded via an environment variable was not properly serialized in NAT
+
 ## 0.6.19
-- Added model detail tools: get_model_details with optional feature impact and ROC curve
-- Added is_eligible_for_timeseries_training for dataset validation
-- Added get_prediction_history for deployment prediction retrieval
+- Enable A2A endpoints for per-user workflows with configurable skills via `DRAgentA2AConfig`
+- **Breaking**: `DRAgentFastApiFrontEndConfig.a2a` type changed from `A2AFrontEndConfig` to `DRAgentA2AConfig`; update `workflow.yaml` by nesting the existing A2A fields under `server:`
+- Added new data tools: get_dataset_details, list_datastores, browse_datastore, query_datastore
+- Added "daria" tag to existing overlapping tools
 
 ## 0.6.17
 - Fixed CVE-2026-25580: removed unused `pydantic-ai-slim` dependency and `pydanticai` install extra
@@ -21,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added Agent2Agent (A2A) server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`.
 - Extended DRAgentFastApiFrontEndConfig with configuration options for the A2A server.
 - A2A endpoints can be enabled by the `expose_a2a_server_endpoints` setting in the workflow.yaml file.
-- Added per_user_tool_calling_agent workflow type
+- Added `per_user_tool_calling_agent` workflow type
 - Fixed `ToolCallArgsEvent.delta` encoding
 
 ## 0.6.14

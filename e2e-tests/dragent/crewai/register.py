@@ -14,6 +14,8 @@
 
 from collections.abc import AsyncGenerator
 
+from datarobot_genai.nat.helpers import extract_authorization_from_context
+from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_function
@@ -34,6 +36,7 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
 
 @register_function(
     config_type=CrewaiAgentConfig,
+    framework_wrappers=[_CREWAI_WRAPPER],
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput  # noqa: PLC0415
@@ -42,13 +45,22 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
     from dragent.crewai.myagent import MyAgent  # noqa: PLC0415
 
-    llm = await builder.get_llm(config.llm_name, wrapper_type=_CREWAI_WRAPPER)
-
-    agent = MyAgent(llm=llm)
-
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> AsyncGenerator[DRAgentEventResponse, None]:
+
+        # LLM might contain user-specific headers
+        llm = await builder.get_llm(config.llm_name, wrapper_type=_CREWAI_WRAPPER)
+
+        # Agent contains user-specific headers and authorization context
+        forwarded_headers = extract_datarobot_headers_from_context()
+        authorization_context = extract_authorization_from_context()
+        agent = MyAgent(
+            llm=llm,
+            forwarded_headers=forwarded_headers,
+            authorization_context=authorization_context,
+        )
+
         async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
             yield DRAgentEventResponse(
                 events=[event],

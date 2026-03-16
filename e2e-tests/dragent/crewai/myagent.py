@@ -20,14 +20,9 @@ from crewai import Task
 from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import CrewAIAgent
+from datarobot_genai.drtools.calculator import calculator
 
-from dragent.common import calculator as _calculator_fn
-
-
-@tool
-def calculator(expression: str) -> str:
-    """Calculate a math expression, e.g. '15 * 7'."""
-    return _calculator_fn(expression)
+calculator_tool = tool(calculator)
 
 
 class MyAgent(CrewAIAgent):
@@ -62,7 +57,7 @@ class MyAgent(CrewAIAgent):
                 "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
             llm=self._llm,
-            tools=[calculator] + self.mcp_tools,
+            tools=[calculator_tool] + self.mcp_tools,
             verbose=self.verbose,
         )
         return [planner, writer]

@@ -15,15 +15,18 @@
 import typing
 from collections.abc import AsyncGenerator
 
+from a2a.types import AgentSkill
 from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
+from pydantic import BaseModel
 from pydantic import Field
 
 import datarobot_genai.dragent.per_user_tool_calling_agent  # noqa: F401 — registers per_user_tool_calling_agent
 from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
 from datarobot_genai.dragent.converters import (
     convert_dragent_run_agent_input_to_chat_request_or_message,
@@ -32,9 +35,20 @@ from datarobot_genai.dragent.converters import convert_str_to_dragent_event_resp
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
 
 
+class DRAgentA2AConfig(BaseModel):
+    """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
+
+    server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
+    skills: list[AgentSkill] = Field(
+        default=[],
+        description="Skills to advertise in the A2A agent card. "
+        "If empty, a single default skill is generated from the agent name and description.",
+    )
+
+
 # Register frontend
 class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"):  # type: ignore
-    a2a: A2AFrontEndConfig | None = Field(
+    a2a: DRAgentA2AConfig | None = Field(
         default=None,
         description="Expose this agent via the Agent2Agent protocol. "
         "A2A server endpoints are mounted under /a2a/.",
@@ -56,3 +70,4 @@ GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
 GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request_or_message)
 GlobalTypeConverter.register_converter(convert_tool_message_to_str)
 GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
+GlobalTypeConverter.register_converter(convert_dragent_event_response_to_str)

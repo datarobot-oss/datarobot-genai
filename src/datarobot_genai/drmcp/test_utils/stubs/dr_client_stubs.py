@@ -123,7 +123,12 @@ class StubDeployment:
 class StubDataset:
     """Stub DataRobot dataset object."""
 
-    def __init__(self, dataset_id: str, name: str = "stub_dataset", row_count: int = 200):
+    def __init__(
+        self,
+        dataset_id: str,
+        name: str = "stub_dataset",
+        row_count: int = 200,
+    ):
         self.id = dataset_id
         self.name = name
         self.created_at = "2025-01-01T00:00:00Z"
@@ -297,6 +302,8 @@ def test_create_dr_client() -> StubDRClient:
     client.Dataset.get = get_dataset
     client.Dataset.list = list_datasets
     client.DataStore.list = list_datastores
+    # Store REST stubs on the client so integration_mcp_server can wire them
+    # onto mock_rest after replacing client.client.
     client.stub_rest_get = stub_get
     client.stub_rest_post = stub_post
     return client

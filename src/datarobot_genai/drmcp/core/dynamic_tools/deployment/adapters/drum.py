@@ -14,7 +14,7 @@
 
 import importlib.resources
 import json
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from typing import Any
 from typing import Literal
@@ -24,7 +24,7 @@ from .base import MetadataBase
 _DEPLOYMENT_PKG = "datarobot_genai.drmcp.core.dynamic_tools.deployment"
 
 
-class DrumTargetType(str, Enum):
+class DrumTargetType(StrEnum):
     BINARY = "binary"
     REGRESSION = "regression"
     ANOMALY = "anomaly"
