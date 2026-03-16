@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.2
+- Added `nvidia-nat-crewai` support with crewai >= 1.1.0 compatibility patches
+
 ## 0.7.1
 - Migrate Data MCP tools from wren mcp (MODEL-22804)
-- Added `nvidia-nat-crewai` support with crewai >= 1.1.0 compatibility patches
 
 ## 0.7.0
 - **Breaking**: drop Python 3.10 support because of using NAT in all agents
