@@ -46,6 +46,7 @@ crewai = core + [
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.1.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
+    "nvidia-nat-crewai==1.4.1",
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "pybase64>=1.4.2,<2.0.0",
 ]
@@ -73,12 +74,9 @@ llamaindex = core + [
 nat = core + [
     "nvidia-nat==1.4.1",
     "nvidia-nat-a2a==1.4.1",
-    "nvidia-nat-crewai==1.4.1",
     "nvidia-nat-opentelemetry==1.4.1",
     "nvidia-nat-langchain==1.4.1",  # NAT built-in agents require this
     "nvidia-nat-mcp==1.4.1",
-    "crewai>=1.1.0,<2.0.0",
-    "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "anyio==4.11.0",
 ]
 
