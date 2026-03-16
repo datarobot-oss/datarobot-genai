@@ -59,6 +59,13 @@ jobs:
         python-version: ['3.12']
     permissions:
       contents: read
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
+      MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+      LLM_DEFAULT_MODEL: datarobot/vertex_ai/claude-3-5-haiku@20241022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,14 +110,6 @@ jobs:
 
       - name: Run e2e tests
         working-directory: e2e-tests
-        env:
-          DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
-          DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-          DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-          MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
-          SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
-
-          LLM_DEFAULT_MODEL: datarobot/vertex_ai/claude-3-5-haiku@20241022
         run: |
           uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
