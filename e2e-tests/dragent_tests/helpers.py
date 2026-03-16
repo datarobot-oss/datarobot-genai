@@ -45,10 +45,7 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
             data = line[len("data: "):]
             if data == "[DONE]":
                 break
-            try:
-                responses.append(DRAgentEventResponse.model_validate_json(data))
-            except json.JSONDecodeError:
-                continue
+            responses.append(DRAgentEventResponse.model_validate_json(data))
     return responses
 
 
