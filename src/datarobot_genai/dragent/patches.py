@@ -19,7 +19,7 @@ nvidia-nat-crewai 1.4.1 expects crewai < 1.0.0 response format where
 ``message`` is a proper attribute on the choice object. This module patches
 the callback handler to support both formats.
 
-TODO: Remove once nvidia-nat-crewai ships a fix upstream.
+TODO(BUZZOK-29844): Remove once nvidia-nat-crewai ships a fix upstream.
 """
 
 import logging
