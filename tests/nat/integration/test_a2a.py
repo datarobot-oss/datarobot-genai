@@ -26,10 +26,10 @@ from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.runtime.loader import load_config
 
-import datarobot_genai.dragent.datarobot_a2a_client  # noqa: F401 — registers authenticated_a2a_client
+import datarobot_genai.dragent.auth_a2a_client  # noqa: F401 — registers authenticated_a2a_client
 import datarobot_genai.nat.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
-from datarobot_genai.dragent.datarobot_a2a_client import AuthenticatedA2AClientConfig
-from datarobot_genai.dragent.datarobot_a2a_client import AuthenticatedA2AClientFunctionGroup
+from datarobot_genai.dragent.auth_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
 
 # ---------------------------------------------------------------------------
