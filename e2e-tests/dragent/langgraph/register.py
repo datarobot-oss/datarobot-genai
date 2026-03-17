@@ -44,7 +44,6 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> AsyncGenerator[DRAgentEventResponse, None]:
-
         # LLM might contain user-specific headers
         llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 

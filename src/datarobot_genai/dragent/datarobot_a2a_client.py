@@ -44,7 +44,7 @@ def _extract_auth_headers(auth_result: Any) -> dict[str, str]:
     return headers
 
 
-class _AuthCardA2ABaseClient(A2ABaseClient):
+class _AuthenticatedA2ABaseClient(A2ABaseClient):
     """A2ABaseClient that authenticates all requests to the remote agent.
 
     Overrides ``__aenter__`` to pre-authenticate via the auth provider and embed
@@ -52,7 +52,7 @@ class _AuthCardA2ABaseClient(A2ABaseClient):
     every request — agent-card fetch *and* every ``send_message`` — carries auth.
     """
 
-    async def __aenter__(self) -> "_AuthCardA2ABaseClient":
+    async def __aenter__(self) -> "_AuthenticatedA2ABaseClient":
         if self._httpx_client is not None or self._client is not None:  # type: ignore[has-type]
             raise RuntimeError("A2ABaseClient already initialized")
 
@@ -109,8 +109,8 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
     """
 
 
-class AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
-    """A2AClientFunctionGroup that uses ``_AuthCardA2ABaseClient`` so the
+class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
+    """A2AClientFunctionGroup that uses ``_AuthenticatedA2ABaseClient`` so the
     agent-card fetch is authenticated.
 
     Upstream ``__aenter__`` hardcodes ``A2ABaseClient(...)`` so we must
@@ -118,7 +118,7 @@ class AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
     client class on the construction line.
     """
 
-    async def __aenter__(self) -> "AuthCardA2AClientFunctionGroup":
+    async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
         config: A2AClientConfig = self._config  # type: ignore[assignment]
         base_url = str(config.url)
 
@@ -139,8 +139,8 @@ class AuthCardA2AClientFunctionGroup(A2AClientFunctionGroup):
                 )
                 raise RuntimeError(f"Failed to resolve auth provider: {e}") from e
 
-        # Only difference from upstream: _AuthCardA2ABaseClient instead of A2ABaseClient
-        self._client = _AuthCardA2ABaseClient(
+        # Only difference from upstream: _AuthenticatedA2ABaseClient instead of A2ABaseClient
+        self._client = _AuthenticatedA2ABaseClient(
             base_url=base_url,
             agent_card_path=config.agent_card_path,
             task_timeout=config.task_timeout,
@@ -169,5 +169,5 @@ async def authenticated_a2a_client(
     """Drop-in replacement for the upstream ``a2a_client`` function group that
     authenticates all api calls, including the agent-card fetch request.
     """
-    async with AuthCardA2AClientFunctionGroup(config, _builder) as group:
+    async with AuthenticatedA2AClientFunctionGroup(config, _builder) as group:
         yield group

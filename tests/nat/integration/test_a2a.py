@@ -26,10 +26,10 @@ from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.runtime.loader import load_config
 
-import datarobot_genai.nat.datarobot_a2a_client  # noqa: F401 — registers authenticated_a2a_client
+import datarobot_genai.dragent.datarobot_a2a_client  # noqa: F401 — registers authenticated_a2a_client
 import datarobot_genai.nat.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
-from datarobot_genai.nat.datarobot_a2a_client import AuthCardA2AClientFunctionGroup
-from datarobot_genai.nat.datarobot_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.datarobot_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.datarobot_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def mock_a2a_endpoints():
 
 @pytest.fixture
 async def function_group(nat_config, mock_a2a_endpoints):
-    """Build an AuthCardA2AClientFunctionGroup via WorkflowBuilder against mocked endpoints."""
+    """Build an AuthenticatedA2AClientFunctionGroup via WorkflowBuilder against mocked endpoints."""
     fg_config = nat_config.function_groups["a2a_agent"]
     auth_config = nat_config.authentication["datarobot_auth"]
 
@@ -162,8 +162,8 @@ class TestAuthenticatedA2AClientGroup:
     """
 
     async def test_function_group_type(self, function_group):
-        """WorkflowBuilder produces an AuthCardA2AClientFunctionGroup."""
-        assert isinstance(function_group, AuthCardA2AClientFunctionGroup)
+        """WorkflowBuilder produces an AuthenticatedA2AClientFunctionGroup."""
+        assert isinstance(function_group, AuthenticatedA2AClientFunctionGroup)
         assert isinstance(function_group, A2AClientFunctionGroup)
 
     async def test_all_standard_functions_registered(self, function_group):

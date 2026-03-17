@@ -23,12 +23,14 @@ from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
-from datarobot_genai.nat.datarobot_a2a_client import AuthCardA2AClientFunctionGroup
-from datarobot_genai.nat.datarobot_a2a_client import AuthenticatedA2AClientConfig
-from datarobot_genai.nat.datarobot_a2a_client import _AuthCardA2ABaseClient
-from datarobot_genai.nat.datarobot_a2a_client import _extract_auth_headers
+from datarobot_genai.dragent.datarobot_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.datarobot_a2a_client import AuthenticatedA2AClientFunctionGroup
+from datarobot_genai.dragent.datarobot_a2a_client import _AuthenticatedA2ABaseClient
+from datarobot_genai.dragent.datarobot_a2a_client import _extract_auth_headers
 
 _AGENT_URL = "http://agent.example.com"
+
+_MODULE = "datarobot_genai.dragent.datarobot_a2a_client"
 
 
 # ---------------------------------------------------------------------------
@@ -73,11 +75,11 @@ def bearer_auth_provider():
 
 @pytest.fixture
 def patched_base_client_env():
-    """Patch httpx, ClientFactory, and Context for _AuthCardA2ABaseClient tests."""
+    """Patch httpx, ClientFactory, and Context for _AuthenticatedA2ABaseClient tests."""
     with (
-        patch("datarobot_genai.nat.datarobot_a2a_client.httpx") as mock_httpx,
-        patch("datarobot_genai.nat.datarobot_a2a_client.ClientFactory") as mock_factory,
-        patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx,
+        patch(f"{_MODULE}.httpx") as mock_httpx,
+        patch(f"{_MODULE}.ClientFactory") as mock_factory,
+        patch(f"{_MODULE}.Context") as mock_ctx,
     ):
         mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
         mock_factory.return_value.create.return_value = MagicMock(aclose=AsyncMock())
@@ -87,11 +89,13 @@ def patched_base_client_env():
 
 @pytest.fixture
 def patched_fg_env():
-    """Patch Context, _AuthCardA2ABaseClient, and _register_functions for function group tests."""
+    """Patch Context, _AuthenticatedA2ABaseClient,
+    and _register_functions for function group tests.
+    """
     with (
-        patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx,
-        patch("datarobot_genai.nat.datarobot_a2a_client._AuthCardA2ABaseClient") as mock_cls,
-        patch.object(AuthCardA2AClientFunctionGroup, "_register_functions"),
+        patch(f"{_MODULE}.Context") as mock_ctx,
+        patch(f"{_MODULE}._AuthenticatedA2ABaseClient") as mock_cls,
+        patch.object(AuthenticatedA2AClientFunctionGroup, "_register_functions"),
     ):
         mock_ctx.get.return_value.user_id = "test-user"
         yield mock_cls
@@ -126,20 +130,22 @@ class TestAuthenticatedA2AClientConfig:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _AuthCardA2ABaseClient
+# Tests: _AuthenticatedA2ABaseClient
 # ---------------------------------------------------------------------------
 
 
-class TestAuthCardA2ABaseClient:
+class TestAuthenticatedA2ABaseClient:
     async def test_injects_bearer_headers(self, bearer_auth_provider, patched_base_client_env):
-        client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=bearer_auth_provider)
+        client = _AuthenticatedA2ABaseClient(
+            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+        )
         with _skip_agent_card_resolution(client):
             async with client:
                 _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
                 assert httpx_kwargs["headers"]["Authorization"] == "Bearer test_token"
 
     async def test_no_auth_uses_empty_headers(self, patched_base_client_env):
-        client = _AuthCardA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
+        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
         with _skip_agent_card_resolution(client):
             async with client:
                 _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
@@ -147,13 +153,13 @@ class TestAuthCardA2ABaseClient:
 
 
 # ---------------------------------------------------------------------------
-# Tests: AuthCardA2AClientFunctionGroup
+# Tests: AuthenticatedA2AClientFunctionGroup
 # ---------------------------------------------------------------------------
 
 
-class TestAuthCardA2AClientFunctionGroup:
-    async def test_uses_auth_card_base_client(self, a2a_config, mock_builder, patched_fg_env):
-        fg = AuthCardA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
+class TestAuthenticatedA2AClientFunctionGroup:
+    async def test_uses_authenticated_base_client(self, a2a_config, mock_builder, patched_fg_env):
+        fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
         result = await fg.__aenter__()
 
         assert result is fg
@@ -165,15 +171,15 @@ class TestAuthCardA2AClientFunctionGroup:
         mock_builder.get_auth_provider.return_value = mock_auth_provider
         config = AuthenticatedA2AClientConfig(url=_AGENT_URL, auth_provider="my_auth")
 
-        fg = AuthCardA2AClientFunctionGroup(config=config, builder=mock_builder)
+        fg = AuthenticatedA2AClientFunctionGroup(config=config, builder=mock_builder)
         await fg.__aenter__()
 
         mock_builder.get_auth_provider.assert_awaited_once_with("my_auth")
         assert patched_fg_env.call_args.kwargs["auth_provider"] is mock_auth_provider
 
     async def test_raises_when_no_user_id(self, a2a_config, mock_builder):
-        with patch("datarobot_genai.nat.datarobot_a2a_client.Context") as mock_ctx:
+        with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.user_id = None
-            fg = AuthCardA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
+            fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
             with pytest.raises(RuntimeError, match="User ID not found in context"):
                 await fg.__aenter__()

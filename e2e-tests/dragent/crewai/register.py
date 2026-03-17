@@ -48,7 +48,6 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> AsyncGenerator[DRAgentEventResponse, None]:
-
         # LLM might contain user-specific headers
         llm = await builder.get_llm(config.llm_name, wrapper_type=_CREWAI_WRAPPER)
 
