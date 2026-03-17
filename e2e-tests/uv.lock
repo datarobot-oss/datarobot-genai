@@ -845,7 +845,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.7.4"
+version = "0.7.6"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1127,6 +1127,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+dragent-base = [
+    { name = "datarobot-genai", extra = ["dragent"] },
+]
 dragent-crewai = [
     { name = "datarobot-genai", extra = ["crewai", "dragent"] },
 ]
@@ -1154,6 +1157,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+dragent-base = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
 dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" }]
 dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
 dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]

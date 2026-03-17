@@ -29,6 +29,8 @@ jobs:
               - 'src/datarobot_genai/llama_index/**'
             nat:
               - 'src/datarobot_genai/nat/**'
+            base:
+              - 'e2e-tests/dragent/base/**'
             core:
               - 'src/datarobot_genai/dragent/**'
               - 'src/datarobot_genai/core/**'
@@ -39,8 +41,8 @@ jobs:
         run: |
           frameworks='[]'
           core="${{ steps.filter.outputs.core }}"
-          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" )
-          for fw in langgraph llamaindex nat; do
+          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" [base]="${{ steps.filter.outputs.base }}" )
+          for fw in langgraph llamaindex nat base; do
             if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
               frameworks=$(echo "$frameworks" | jq -c ". + [\"$fw\"]")
             fi
