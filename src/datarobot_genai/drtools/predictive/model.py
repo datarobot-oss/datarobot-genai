@@ -201,7 +201,6 @@ async def get_model_details(
 
     if include_feature_impact:
         try:
-            model.request_feature_impact()
             fi = model.get_or_request_feature_impact()
             info["feature_impact"] = fi
         except Exception as exc:
