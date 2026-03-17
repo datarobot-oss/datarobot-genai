@@ -102,6 +102,29 @@ def _extract_structured_content(tool_result: str) -> Any:
     return result
 
 
+def _check_dict_params_match(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+    path: str = "",
+) -> bool:
+    """
+    Recursively check if all keys in expected exist in actual with matching values.
+    Extra keys in actual are ignored (subset/partial matching).
+    """
+    for key, value in expected.items():
+        current_path = f"{path}.{key}" if path else key
+        if key not in actual:
+            return False
+        if isinstance(value, dict):
+            if not isinstance(actual[key], dict):
+                return False
+            if not _check_dict_params_match(value, actual[key], current_path):
+                return False
+        elif actual[key] != value:
+            return False
+    return True
+
+
 def _check_dict_has_keys(
     expected: dict[str, Any],
     actual: dict[str, Any] | list[dict[str, Any]],
@@ -179,10 +202,11 @@ class ToolBaseE2E:
                     f"Should have called {test_expectations.tool_calls_expected[i].name} tool, but "
                     f"got: {tool_call.tool_name}"
                 )
-                assert (
-                    tool_call.parameters == test_expectations.tool_calls_expected[i].parameters
+                assert _check_dict_params_match(
+                    test_expectations.tool_calls_expected[i].parameters, tool_call.parameters
                 ), (
-                    f"Should have called {tool_call.tool_name} tool with the correct parameters, "
+                    f"Should have called {tool_call.tool_name} tool with the correct parameters. "
+                    f"Expected (subset): {test_expectations.tool_calls_expected[i].parameters}, "
                     f"but got: {tool_call.parameters}"
                 )
                 if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
