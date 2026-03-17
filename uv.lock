@@ -1038,7 +1038,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-early-access"
-version = "3.14.0.2026.3.16.173740"
+version = "3.14.0.2026.3.17.211021"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1054,18 +1054,15 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/07/c12631f44b4dc4e1f19d74098f9799211f532d0ed461252ce79466ebe590/datarobot_early_access-3.14.0.2026.3.16.173740.tar.gz", hash = "sha256:3d9421d0a16e41df9be59d8e47f57e2fec95ee990e9e575189a86f19704c2aa6", size = 838699, upload-time = "2026-03-16T17:37:44.348Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/51/3cb6003708637a6526172bf1e6de246e23e4cf1fc054dd72c4c6dd86b081/datarobot_early_access-3.14.0.2026.3.17.211021.tar.gz", hash = "sha256:c16303f6a5689c6e5c92acc5211b6423223d4867f2d586cc5ebd4143f30dea3f", size = 836956, upload-time = "2026-03-17T21:10:25.84Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/ae/332037c1652934ab92665987c144a20bd2be55c2942f63c6403574d41516/datarobot_early_access-3.14.0.2026.3.16.173740-py3-none-any.whl", hash = "sha256:2787f2afa1babefa51373d2a0612ea162b80da4dd549f5828d5c7f8b51bc4ef5", size = 912134, upload-time = "2026-03-16T17:37:42.532Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/d9/d25ee6dafba1d9e7695fafd204973160b6815b8ce4f33d6d424d77e267ec/datarobot_early_access-3.14.0.2026.3.17.211021-py3-none-any.whl", hash = "sha256:6490cd51ca1d50e79148ef1eef5c53164949a1eccef3cf239279a4a3a3f39491", size = 909463, upload-time = "2026-03-17T21:10:23.365Z" },
 ]
 
 [[package]]
 name = "datarobot-genai"
 version = "0.8.4"
 source = { editable = "." }
-dependencies = [
-    { name = "datarobot-early-access" },
-]
 
 [package.optional-dependencies]
 auth = [
@@ -1138,6 +1135,7 @@ drmcp = [
     { name = "boto3" },
     { name = "datarobot" },
     { name = "datarobot-asgi-middleware" },
+    { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
     { name = "fastmcp" },
     { name = "httpx" },
@@ -1292,7 +1290,7 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
-    { name = "datarobot-early-access", specifier = ">=3.14.0.2026.3.16.173740" },
+    { name = "datarobot-early-access", marker = "extra == 'drmcp'", specifier = ">=3.14.0.2026.3.17.211021" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
