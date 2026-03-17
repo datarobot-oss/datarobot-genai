@@ -5,9 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
-
 ## 0.7.4
-- Allow running nat agents with per-user workflows with drum
+- Allowed running nat agents with per-user workflows with drum
 
 ## 0.7.3
 - Added `temperature` parameter support to LLM MCP clients (`BaseLLMMCPClient`, `DRLLMGatewayMCPClient`): read from config dict and forwarded to `chat.completions.create`
