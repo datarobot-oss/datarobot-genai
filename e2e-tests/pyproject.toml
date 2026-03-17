@@ -28,7 +28,6 @@ dragent-llamaindex = [
 ]
 dragent-base = [
     "datarobot-genai[dragent]",
-    "litellm>=1.74.9,<2.0.0",
 ]
 lint = [
     "mypy>=1.19.1",

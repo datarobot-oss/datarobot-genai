@@ -31,7 +31,7 @@ class MyAgent(BaseAgent[None]):
     """Base agent that returns a static success response for e2e testing."""
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        usage_metrics: UsageMetrics = default_usage_metrics()
+        empty_metrics: UsageMetrics = default_usage_metrics()
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
         message_id = str(uuid.uuid4())
@@ -39,7 +39,7 @@ class MyAgent(BaseAgent[None]):
         yield (
             RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
             None,
-            usage_metrics,
+            empty_metrics,
         )
         yield (
             TextMessageStartEvent(
@@ -48,7 +48,7 @@ class MyAgent(BaseAgent[None]):
                 role="assistant",
             ),
             None,
-            usage_metrics,
+            empty_metrics,
         )
         yield (
             TextMessageContentEvent(
@@ -57,7 +57,7 @@ class MyAgent(BaseAgent[None]):
                 delta="Success",
             ),
             None,
-            usage_metrics,
+            empty_metrics,
         )
         yield (
             TextMessageEndEvent(
@@ -65,10 +65,10 @@ class MyAgent(BaseAgent[None]):
                 message_id=message_id,
             ),
             None,
-            usage_metrics,
+            empty_metrics,
         )
         yield (
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
             None,
-            usage_metrics,
+            empty_metrics,
         )

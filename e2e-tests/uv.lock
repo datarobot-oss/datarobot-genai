@@ -1129,7 +1129,6 @@ dependencies = [
 [package.dev-dependencies]
 dragent-base = [
     { name = "datarobot-genai", extra = ["dragent"] },
-    { name = "litellm" },
 ]
 dragent-crewai = [
     { name = "datarobot-genai", extra = ["crewai", "dragent"] },
@@ -1158,10 +1157,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dragent-base = [
-    { name = "datarobot-genai", extras = ["dragent"], editable = "../" },
-    { name = "litellm", specifier = ">=1.74.9,<2.0.0" },
-]
+dragent-base = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
 dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" }]
 dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
 dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]
