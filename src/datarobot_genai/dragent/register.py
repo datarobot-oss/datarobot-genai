@@ -33,6 +33,11 @@ from datarobot_genai.dragent.converters import (
 )
 from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.converters import convert_tool_message_to_str
+from datarobot_genai.dragent.patches import patch_crewai_callback_handler
+
+# Patch nvidia-nat-crewai callback handler for crewai >= 1.1.0 compatibility.
+# Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
+patch_crewai_callback_handler()
 
 
 class DRAgentA2AConfig(BaseModel):

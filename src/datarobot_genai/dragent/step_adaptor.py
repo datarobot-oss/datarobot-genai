@@ -207,6 +207,43 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         response = DRAgentEventResponse(events=[event])
         return response
 
+    @staticmethod
+    def _serialize_tool_args(payload: IntermediateStepPayload) -> str:
+        """Extract tool call arguments as a JSON string.
+
+        Tries metadata.tool_inputs first, then data.input. Returns "{}"
+        when no usable arguments are found. Non-serializable values
+        (e.g. CrewStructuredTool leaked via nvidia-nat-crewai) are logged
+        and skipped.
+        """
+        tool_inputs = getattr(payload.metadata, "tool_inputs", None)
+        if isinstance(tool_inputs, dict):
+            raw = tool_inputs
+        else:
+            raw = payload.data.input
+        if raw is None:
+            return "{}"
+
+        if isinstance(raw, str):
+            try:
+                json.loads(raw)
+                return raw
+            except (json.JSONDecodeError, ValueError):
+                logger.warning(
+                    "Tool args not valid JSON for %s, skipping",
+                    payload.name,
+                )
+                return "{}"
+
+        try:
+            return json.dumps(raw)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Tool args not serializable for %s, skipping",
+                payload.name,
+            )
+            return "{}"
+
     def _handle_tool(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
@@ -217,28 +254,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(
                 ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID)
             )
-            # Prefer metadata.tool_inputs (a proper dict, set by all framework callback
-            # handlers) over data.input, which varies by framework: LangChain sets it to
-            # a Python repr string (single-quoted, not valid JSON), LlamaIndex sets it to
-            # a dict, and Agno leaves it unset. ToolCallArgsEvent.delta must be valid JSON.
-            tool_inputs = getattr(payload.metadata, "tool_inputs", None)
-            if isinstance(tool_inputs, dict):
-                args_delta = json.dumps(tool_inputs)
-            elif payload.data.input is not None:
-                if isinstance(payload.data.input, str):
-                    try:
-                        json.loads(payload.data.input)
-                        args_delta = payload.data.input
-                    except (json.JSONDecodeError, ValueError):
-                        logger.warning(
-                            "Tool call input is not valid JSON, falling back to empty args: %r",
-                            payload.data.input,
-                        )
-                        args_delta = "{}"
-                else:
-                    args_delta = json.dumps(payload.data.input)
-            else:
-                args_delta = "{}"
+            args_delta = self._serialize_tool_args(payload)
             events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=args_delta))
         elif payload.event_type == IntermediateStepType.TOOL_END:
             events.append(ToolCallEndEvent(tool_call_id=payload.UUID))
