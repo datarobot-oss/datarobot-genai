@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.6
+- Forward `x-untrusted-*` headers alongside `x-datarobot-*` headers in NAT `extract_datarobot_headers_from_context()`
+
 ## 0.7.5
 - Added `authenticated_a2a_client` function group to dragent, to authenticate all api calls including calls to `/.well-known/agent-card.json`.
 
