@@ -101,7 +101,7 @@ class TestLineageManager:
         "mock_get_datarobot_client",
         "mock_lrs_env_var",
     )
-    async def test_get_recorded_mcp_tools_associated_with_mcp_server_deployment(
+    async def test_get_mcp_tools_associated_with_mcp_server_deployment(
         self,
         mock_from_datarobot_tool_in_mcp_server_deployment: Mock,
         mock_list_tools_in_user_mcp_server_deployment: Mock,
@@ -112,7 +112,7 @@ class TestLineageManager:
         ]
 
         manager = LineageManager(Mock())
-        mcp_tools = await manager.get_recorded_mcp_tools_associated_with_mcp_server_deployment()
+        mcp_tools = await manager.get_mcp_tools_associated_with_mcp_server_deployment()
 
         mock_list_tools_in_user_mcp_server_deployment.assert_called_once_with(
             mcp_server_deployment_id=manager.mcp_server_deployment_id,

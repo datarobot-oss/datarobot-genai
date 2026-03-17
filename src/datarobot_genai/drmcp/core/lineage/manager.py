@@ -33,7 +33,7 @@ class LineageManager:
         self.mcp_server_version_id = LRSEnvVars.MLOPS_MODEL_ID.get_os_env_value()
         self.mcp_server_instance = mcp_server_instance
 
-    async def get_recorded_mcp_tools_associated_with_mcp_server_deployment(
+    async def get_mcp_tools_associated_with_mcp_server_deployment(
         self,
     ) -> list[MCPToolMetadata]:
         datarobot_public_api_tool_dtos = ToolInUserMCPServerDeployment.list(
