@@ -4,8 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.7.2
+## 0.7.8
 - Added model and deployment tools: get_model_details (with optional feature impact and ROC curve), is_eligible_for_timeseries_training, get_prediction_history (MODEL-22809)
+- CODEOWNERS: MCP team owns drtools; default Buzok with MCP overrides (last match wins)
+
+## 0.7.7
+- Forwarded `x-untrusted-*` headers alongside `x-datarobot-*` headers in NAT `extract_datarobot_headers_from_context()`
+
+## 0.7.6
+- Added base agent e2e example under `e2e-tests/dragent/base/` demonstrating how to extend `BaseAgent` directly with litellm
+
+## 0.7.5
+- Added `authenticated_a2a_client` function group to dragent, to authenticate all api calls including calls to `/.well-known/agent-card.json`.
+
+## 0.7.4
+- Allowed running nat agents with per-user workflows with drum
+
+## 0.7.3
+- Added `temperature` parameter support to LLM MCP clients (`BaseLLMMCPClient`, `DRLLMGatewayMCPClient`): read from config dict and forwarded to `chat.completions.create`
+- Added `LLM_TEMPERATURE` env var support in `get_openai_llm_client_config()` and `get_dr_llm_gateway_client_config()` to control LLM temperature in acceptance tests
+- Switched tool parameter matching in `ToolBaseE2E` from exact equality to subset matching (`_check_dict_params_match`) to reduce test flakiness
+
+## 0.7.2
+- Added `nvidia-nat-crewai` support with crewai >= 1.1.0 compatibility patches
 
 ## 0.7.1
 - Migrate Data MCP tools from wren mcp (MODEL-22804)

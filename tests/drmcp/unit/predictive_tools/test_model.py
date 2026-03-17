@@ -207,13 +207,15 @@ async def test_get_model_details_success() -> None:
 
 @pytest.mark.asyncio
 async def test_get_model_details_missing_project_id() -> None:
-    with pytest.raises(ToolError, match="Project ID must be provided"):
+    """Required param project_id is enforced by signature (wrapped as ToolError)."""
+    with pytest.raises(ToolError, match="project_id"):
         await model.get_model_details(model_id="mid")
 
 
 @pytest.mark.asyncio
 async def test_get_model_details_missing_model_id() -> None:
-    with pytest.raises(ToolError, match="Model ID must be provided"):
+    """Required param model_id is enforced by signature (wrapped as ToolError)."""
+    with pytest.raises(ToolError, match="model_id"):
         await model.get_model_details(project_id="pid")
 
 
@@ -224,7 +226,7 @@ async def test_get_model_details_feature_impact_error() -> None:
     mock_project.target = "target_col"
     mock_project.metric = "AUC"
     mock_model = MagicMock(id="mid", model_type="XGBoost", metrics={}, sample_pct=64)
-    mock_model.request_feature_impact.side_effect = Exception("not available")
+    mock_model.get_or_request_feature_impact.side_effect = Exception("not available")
     mock_client.Project.get.return_value = mock_project
     mock_client.Model.get.return_value = mock_model
     p1, p2 = _patch_model_client(mock_client)

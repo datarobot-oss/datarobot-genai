@@ -1,7 +1,8 @@
-# drmcp - MCP server and tools
+# Default: Buzok owns everything
+* @datarobot-oss/buzok
+
+# MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
 /src/datarobot_genai/drtools/ @datarobot-oss/mcp
 /tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
-
-* @datarobot-oss/buzok

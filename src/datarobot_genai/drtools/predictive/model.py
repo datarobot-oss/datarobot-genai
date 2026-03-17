@@ -172,17 +172,12 @@ async def list_models(
 @dr_mcp_integration_tool(tags={"predictive", "model", "read", "details", "info", "daria"})
 async def get_model_details(
     *,
-    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
-    model_id: Annotated[str, "The DataRobot model ID"] | None = None,
+    project_id: Annotated[str, "The DataRobot project ID"],
+    model_id: Annotated[str, "The DataRobot model ID"],
     include_feature_impact: Annotated[bool, "Whether to include feature impact data"] = True,
     include_roc_curve: Annotated[bool, "Whether to include ROC curve data"] = False,
 ) -> ToolError | ToolResult:
     """Get detailed information about a DataRobot model, optionally with feature impact and ROC."""
-    if not project_id:
-        raise ToolError("Project ID must be provided")
-    if not model_id:
-        raise ToolError("Model ID must be provided")
-
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)

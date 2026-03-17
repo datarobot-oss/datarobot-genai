@@ -147,7 +147,7 @@ def extract_datarobot_headers_from_context() -> dict[str, str]:
 
     for header in headers:
         # Already lowercase from NAT
-        if header.startswith("x-datarobot-"):
+        if header.startswith("x-datarobot-") or header.startswith("x-untrusted-"):
             extracted_headers[header] = headers[header]
 
     return extracted_headers
