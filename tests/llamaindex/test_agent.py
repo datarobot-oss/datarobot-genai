@@ -21,16 +21,13 @@ from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
-from ag_ui.core import StepStartedEvent
-from ag_ui.core import StepFinishedEvent
-from ag_ui.core import ToolCallArgsEvent
-from ag_ui.core import ToolCallEndEvent
-from ag_ui.core import ToolCallResultEvent
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
 from llama_index.core.agent.workflow import AgentStream
@@ -42,6 +39,7 @@ from llama_index.core.llms import MessageRole
 from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
+
 from datarobot_genai.llama_index import agent as agent_mod
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
@@ -215,8 +213,9 @@ async def test_llama_index_agent_invoke(
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: text message events contain the expected deltas
-    assert isinstance(ag_events[1], TextMessageStartEvent)
+    # THEN: text message events contain the expected deltas (after step / lifecycle events)
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    assert len(text_starts) == 1
     content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
 
@@ -288,6 +287,7 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     run_agent_input: RunAgentInput,
 ) -> None:
     """AgentOutput with tool_calls as list of dicts (tool_name from .get()) is handled."""
+
     class AgentOutputLike:
         response = None
         current_agent_name = "A"
@@ -313,11 +313,12 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     assert [e.delta for e in content] == ["hey"]
     assert pipeline[-1] is not None
 
+
 @pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_agent_stream_multiple_agents(
     run_agent_input: RunAgentInput,
 ) -> None:
-    """Stream with multiple agents yields text from both and step events and completes successfully."""
+    """Multi-agent stream yields text, step events, and completes."""
     workflow = Workflow(
         events=[
             AgentWorkflowStartEvent(),

@@ -15,16 +15,18 @@ from __future__ import annotations
 
 import abc
 import inspect
+import json
 import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
-import json
 
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -32,8 +34,6 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
-from ag_ui.core import StepFinishedEvent
-from ag_ui.core import StepStartedEvent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -131,16 +131,23 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         run_id = run_agent_input.run_id
         usage_metrics: UsageMetrics = default_usage_metrics()
 
-        # Partial AG-UI: workflow lifecycle + text message events + tool calls + steps for agent
-        yield RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id), None, usage_metrics
+        # Partial AG-UI: lifecycle + text + tool calls + steps
+        yield (
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
+            None,
+            usage_metrics,
+        )
 
-        workflow = self.build_workflow()
+        # Subclasses may implement build_workflow as async or sync; support both.
+        built: Any = self.build_workflow()
+        workflow = await built if inspect.isawaitable(built) else built
         handler = workflow.run(user_msg=input_message)
 
         events: list[Any] = []
         current_agent_name: str | None = None
         message_id = str(uuid.uuid4())
         text_started = False
+        agent: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
@@ -182,13 +189,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     agent = getattr(event, "current_agent_name", None)
                     if agent is not None and agent != current_agent_name:
                         if current_agent_name is not None:
-
                             yield (
                                 StepFinishedEvent(step_name=current_agent_name),
                                 None,
                                 usage_metrics,
                             )
-
 
                         yield (
                             StepStartedEvent(step_name=agent),
@@ -259,23 +264,23 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     print(f"🔨 Calling Tool: {tname}", flush=True)
                     print(f"  With arguments: {tkwargs}", flush=True)
                     yield (
-                                    ToolCallStartEvent(
-                                        type=EventType.TOOL_CALL_START,
-                                        tool_call_id=tid,
-                                        tool_call_name=tname,
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
+                        ToolCallStartEvent(
+                            type=EventType.TOOL_CALL_START,
+                            tool_call_id=tid,
+                            tool_call_name=tname,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
                     yield (
-                                    ToolCallArgsEvent(
-                                        type=EventType.TOOL_CALL_ARGS,
-                                        tool_call_id=tid,
-                                        delta=json.dumps(tkwargs, default=str),
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
+                        ToolCallArgsEvent(
+                            type=EventType.TOOL_CALL_ARGS,
+                            tool_call_id=tid,
+                            delta=json.dumps(tkwargs, default=str),
+                        ),
+                        None,
+                        usage_metrics,
+                    )
             except Exception:
                 # Ignore best-effort debug rendering errors
                 pass
