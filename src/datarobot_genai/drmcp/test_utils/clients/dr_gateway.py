@@ -40,6 +40,7 @@ class DRLLMGatewayMCPClient(BaseLLMMCPClient):
                 - datarobot_endpoint: DataRobot endpoint URL (default: "https://app.datarobot.com/api/v2")
                 - model: Model name (**required**)
                 - save_llm_responses: Whether to save responses (default: True)
+                - temperature: (optional float, default: None)
         """
         super().__init__(config)
 

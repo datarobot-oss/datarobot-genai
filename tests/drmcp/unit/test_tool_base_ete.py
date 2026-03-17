@@ -18,6 +18,7 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import _check_dict_has_keys
+from datarobot_genai.drmcp.test_utils.tool_base_ete import _check_dict_params_match
 
 
 class TestToolCallTestExpectations:
@@ -141,6 +142,66 @@ class TestCheckDictHasKeys:
         actual = {"outer": "not a dict"}
 
         assert _check_dict_has_keys(expected, actual) is False
+
+
+class TestCheckDictParamsMatch:
+    """Test cases for _check_dict_params_match function."""
+
+    def test_exact_match_passes(self) -> None:
+        """Test that exact match passes."""
+        expected = {"key1": "value1", "key2": "value2"}
+        actual = {"key1": "value1", "key2": "value2"}
+
+        assert _check_dict_params_match(expected, actual) is True
+
+    def test_subset_match_extra_actual_keys_passes(self) -> None:
+        """Test that extra keys in actual are ignored."""
+        expected = {"key1": "value1"}
+        actual = {"key1": "value1", "key2": "extra", "key3": "also_extra"}
+
+        assert _check_dict_params_match(expected, actual) is True
+
+    def test_missing_expected_key_fails(self) -> None:
+        """Test that missing expected key fails."""
+        expected = {"key1": "value1", "key2": "value2"}
+        actual = {"key1": "value1"}
+
+        assert _check_dict_params_match(expected, actual) is False
+
+    def test_wrong_value_fails(self) -> None:
+        """Test that wrong value for expected key fails."""
+        expected = {"key1": "value1"}
+        actual = {"key1": "wrong_value"}
+
+        assert _check_dict_params_match(expected, actual) is False
+
+    def test_nested_dict_subset_match_passes(self) -> None:
+        """Test nested dict with extra keys in actual passes."""
+        expected = {"outer": {"inner": "value"}}
+        actual = {"outer": {"inner": "value", "extra": "data"}, "other": "stuff"}
+
+        assert _check_dict_params_match(expected, actual) is True
+
+    def test_nested_dict_wrong_value_fails(self) -> None:
+        """Test nested dict with wrong value fails."""
+        expected = {"outer": {"inner": "value"}}
+        actual = {"outer": {"inner": "wrong_value"}}
+
+        assert _check_dict_params_match(expected, actual) is False
+
+    def test_empty_expected_passes(self) -> None:
+        """Test that empty expected dict passes regardless of actual."""
+        expected: dict = {}
+        actual = {"key1": "value1", "key2": "value2"}
+
+        assert _check_dict_params_match(expected, actual) is True
+
+    def test_nested_wrong_type_fails(self) -> None:
+        """Test that wrong type for nested dict fails."""
+        expected = {"outer": {"inner": "value"}}
+        actual = {"outer": "not_a_dict"}
+
+        assert _check_dict_params_match(expected, actual) is False
 
 
 class TestToolBaseE2E:
