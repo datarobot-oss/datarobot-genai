@@ -26,6 +26,10 @@ dragent-crewai = [
 dragent-llamaindex = [
     "datarobot-genai[dragent,llamaindex]"
 ]
+dragent-base = [
+    "datarobot-genai[dragent]",
+    "litellm>=1.74.9,<2.0.0",
+]
 lint = [
     "mypy>=1.19.1",
     "ruff>=0.15.2",
@@ -35,6 +39,7 @@ lint = [
 langgraph_agent = "dragent.langgraph.register"
 crewai_agent = "dragent.crewai.register"
 llamaindex_agent = "dragent.llamaindex.register"
+base_agent = "dragent.base.register"
 
 [tool.uv]
 package = true
