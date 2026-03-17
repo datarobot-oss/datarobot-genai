@@ -199,10 +199,8 @@ class TestLineageManager:
     async def test_dissociate_mcp_tools_from_mcp_server_deployment(
         self,
     ) -> None:
-        manager = LineageManager(Mock())
-
         mcp_tool = Mock()
-        await manager.dissociate_mcp_tools_from_mcp_server_deployment([mcp_tool])
+        await LineageManager.dissociate_mcp_tools_from_mcp_server_deployment([mcp_tool])
 
         mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment.assert_called_once_with()
         datarobot_mcp_tool_object = (

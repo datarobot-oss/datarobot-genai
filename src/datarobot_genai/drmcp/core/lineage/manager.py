@@ -85,8 +85,9 @@ class LineageManager:
                 type=TypeOfToolInUserMCPServerDeployment.from_api_representation(mcp_tool.type),
             )
 
+    @staticmethod
     async def dissociate_mcp_tools_from_mcp_server_deployment(
-        self, mcp_tools: list[MCPToolMetadata]
+        mcp_tools: list[MCPToolMetadata],
     ) -> None:
         for mcp_tool in mcp_tools:
             datarobot_mcp_tool = mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment()
