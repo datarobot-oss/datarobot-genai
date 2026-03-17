@@ -263,7 +263,7 @@ class TestMCPCLIConfigs:
         with patch.dict(os.environ, {}, clear=True):
             self._reset_config()
             config = get_config()
-            assert config.mcp_cli_configs == ""
+            assert config.mcp_cli_configs is None
             assert config.mcp_server_register_dynamic_tools_on_startup is False
             assert config.mcp_server_register_dynamic_prompts_on_startup is False
             assert config.tool_config.enable_predictive_tools is True
@@ -276,12 +276,12 @@ class TestMCPCLIConfigs:
             self._reset_config()
 
     def test_no_mcp_cli_configs_empty(self) -> None:
-        """When MCP_CLI_CONFIGS is empty string, no overrides."""
+        """When MCP_CLI_CONFIGS is empty string, all listed features are disabled."""
         with patch.dict(os.environ, {"MCP_CLI_CONFIGS": ""}, clear=True):
             self._reset_config()
             config = get_config()
             assert config.mcp_server_register_dynamic_tools_on_startup is False
-            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_predictive_tools is False
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False

@@ -29,6 +29,7 @@ import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -162,7 +163,11 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         run_id = run_agent_input.run_id
 
         # Partial AG-UI: workflow lifecycle + text message events
-        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, default_usage_metrics()
+        yield (
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
+            None,
+            default_usage_metrics(),
+        )
 
         pipeline_interactions: MultiTurnSample | None = None
         usage_metrics = default_usage_metrics()
@@ -204,13 +209,19 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 if response_text:
                     yield (
-                        TextMessageChunkEvent(message_id=str(uuid.uuid4()), delta=response_text),
+                        TextMessageChunkEvent(
+                            type=EventType.TEXT_MESSAGE_CHUNK,
+                            message_id=str(uuid.uuid4()),
+                            delta=response_text,
+                        ),
                         None,
                         usage_metrics,
                     )
 
                 yield (
-                    RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+                    RunFinishedEvent(
+                        type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
+                    ),
                     pipeline_interactions,
                     usage_metrics,
                 )

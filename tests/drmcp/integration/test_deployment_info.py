@@ -64,3 +64,42 @@ class TestMCPDeploymentInfoIntegration:
             assert len(data["template_data"]) == 3
             assert "text_review" in data["template_data"][0]
             assert "product_category" in data["template_data"][0]
+
+    async def test_validate_prediction_data_valid(
+        self, classification_project: dict[str, Any], test_data_dir: Any
+    ) -> None:
+        """Integration test for validate_prediction_data with valid scoring file."""
+        async with integration_test_mcp_session() as session:
+            deployment_id = classification_project["deployment_id"]
+            predict_file = test_data_dir / "text_classification_predict.csv"
+            result = await session.call_tool(
+                "validate_prediction_data",
+                {"deployment_id": deployment_id, "file_path": str(predict_file)},
+            )
+            assert not result.isError, (
+                f"validate_prediction_data failed: {result.content[0].text}"  # type: ignore[union-attr]
+            )
+            result_content = result.content[0]
+            assert isinstance(result_content, TextContent)
+            data = json.loads(result_content.text)
+            assert data["status"] == "valid"
+            assert "summary" in data
+            assert data["summary"]["deployment_id"] == deployment_id
+            assert data["summary"]["rows"] > 0
+            assert data["summary"]["columns"] > 0
+
+    async def test_validate_prediction_data_invalid_file(
+        self, classification_project: dict[str, Any], test_data_dir: Any
+    ) -> None:
+        """Integration test for validate_prediction_data with non-existent file."""
+        async with integration_test_mcp_session() as session:
+            deployment_id = classification_project["deployment_id"]
+            result = await session.call_tool(
+                "validate_prediction_data",
+                {
+                    "deployment_id": deployment_id,
+                    "file_path": str(test_data_dir / "nonexistent_file_12345.csv"),
+                },
+            )
+            assert result.isError
+            assert "FileNotFoundError" in result.content[0].text  # type: ignore[union-attr]

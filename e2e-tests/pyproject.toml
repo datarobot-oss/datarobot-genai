@@ -2,30 +2,33 @@
 name = "datarobot-genai-e2e-tests"
 version = "0.1.0"
 description = "E2E tests for datarobot-genai"
-requires-python = ">=3.12, <3.14"  # https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1554
+requires-python = ">=3.11, <3.14"
 authors = [{ name = "DataRobot, Inc." }]
 
 dependencies = [
-    "mypy>=1.19.1",
+    "httpx>=0.28.1,<1.0.0",
     "pytest",
-    "ruff>=0.15.2",
+    "pytest-rerunfailures",
+    "pytest-timeout",
+    "python-dotenv",
 ]
 
 [dependency-groups]
 dragent-nat = [
-    "datarobot-genai[dragent,nat]"
+    "datarobot-genai[dragent]"
 ]
-# TODO: Should be `dragent` and `langgraph` when NAT LLM adaptors move to `core`.
 dragent-langgraph = [
-    "datarobot-genai[dragent,nat,langgraph]"
+    "datarobot-genai[dragent,langgraph]"
 ]
-# TODO: Should be `dragent` and `crewai` when NAT LLM adaptors move to `core`.
 dragent-crewai = [
-    "datarobot-genai[dragent,nat,crewai]",
+    "datarobot-genai[dragent,crewai]",
 ]
-# TODO: Should be `dragent` and `llamaindex` when NAT LLM adaptors move to `core`.
 dragent-llamaindex = [
-    "datarobot-genai[dragent,nat,llamaindex]"
+    "datarobot-genai[dragent,llamaindex]"
+]
+lint = [
+    "mypy>=1.19.1",
+    "ruff>=0.15.2",
 ]
 
 [project.entry-points.'nat.plugins']
@@ -35,6 +38,9 @@ llamaindex_agent = "dragent.llamaindex.register"
 
 [tool.uv]
 package = true
+override-dependencies = [
+    "crewai[litellm]>=1.1.0,<2.0.0",
+]
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
@@ -45,6 +51,9 @@ disable_error_code = ["import-untyped"]
 ignore_missing_imports = true
 pretty = true
 show_absolute_path = true
+
+[tool.pytest.ini_options]
+timeout = 300
 
 [tool.ruff]
 line-length = 100

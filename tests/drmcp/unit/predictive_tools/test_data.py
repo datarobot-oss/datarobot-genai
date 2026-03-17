@@ -240,6 +240,161 @@ async def test_list_ai_catalog_items_empty() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_dataset_details_success() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_dataset = MagicMock()
+        mock_dataset.id = "ds1"
+        mock_dataset.name = "Test Dataset"
+        mock_dataset.created_at = "2025-01-01"
+        mock_dataset.row_count = 100
+
+        import pandas as pd
+
+        mock_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        mock_dataset.get_raw_sample_data.return_value = mock_df
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.get_dataset_details(dataset_id="ds1")
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["id"] == "ds1"
+        assert result.structured_content["name"] == "Test Dataset"
+        assert "columns" in result.structured_content
+        assert "sample" in result.structured_content
+
+
+@pytest.mark.asyncio
+async def test_get_dataset_details_missing_id() -> None:
+    with pytest.raises(ToolError, match="Dataset ID must be provided"):
+        await data.get_dataset_details()
+
+
+@pytest.mark.asyncio
+async def test_get_dataset_details_no_sample() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_dataset = MagicMock()
+        mock_dataset.id = "ds1"
+        mock_dataset.name = "Test"
+        mock_dataset.created_at = "2025-01-01"
+        mock_dataset.row_count = 50
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.get_dataset_details(dataset_id="ds1", include_sample=False)
+        assert "sample" not in result.structured_content
+
+
+@pytest.mark.asyncio
+async def test_list_datastores_success() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_ds = MagicMock()
+        mock_ds.id = "store1"
+        mock_ds.canonical_name = "My Store"
+        mock_ds.creator_id = "user1"
+        mock_ds.params = {"type": "jdbc"}
+        mock_client.DataStore.list.return_value = [mock_ds]
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.list_datastores()
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["count"] == 1
+        assert result.structured_content["datastores"][0]["id"] == "store1"
+
+
+@pytest.mark.asyncio
+async def test_browse_datastore_success() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": ["table1", "table2"]}
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_rest_client = MagicMock()
+        mock_rest_client.get.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr_module
+
+        result = await data.browse_datastore(datastore_id="store1", path="/schema1")
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["count"] == 2
+        assert result.structured_content["datastore_id"] == "store1"
+
+
+@pytest.mark.asyncio
+async def test_browse_datastore_missing_id() -> None:
+    with pytest.raises(ToolError, match="Datastore ID must be provided"):
+        await data.browse_datastore()
+
+
+@pytest.mark.asyncio
+async def test_query_datastore_success() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [{"id": 1, "val": "a"}],
+        "columns": ["id", "val"],
+    }
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_rest_client = MagicMock()
+        mock_rest_client.post.return_value = mock_response
+        mock_dr_module = MagicMock()
+        mock_dr_module.client.get_client.return_value = mock_rest_client
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr_module
+
+        result = await data.query_datastore(datastore_id="store1", sql="SELECT * FROM t")
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["row_count"] == 1
+        assert result.structured_content["columns"] == ["id", "val"]
+
+
+@pytest.mark.asyncio
+async def test_query_datastore_missing_id() -> None:
+    with pytest.raises(ToolError, match="Datastore ID must be provided"):
+        await data.query_datastore(sql="SELECT 1")
+
+
+@pytest.mark.asyncio
+async def test_query_datastore_missing_sql() -> None:
+    with pytest.raises(ToolError, match="SQL query must be provided"):
+        await data.query_datastore(datastore_id="store1")
+
+
+@pytest.mark.asyncio
 async def test_list_ai_catalog_items_error() -> None:
     with (
         patch(

@@ -91,9 +91,11 @@ class RequestHeadersMiddleware(BaseHTTPMiddleware):
 
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
+    "x-datarobot-authorization",
     "authorization",
     "x-datarobot-api-token",
     "x-datarobot-api-key",
+    "x-datarobot-identity-token",
 ]
 
 

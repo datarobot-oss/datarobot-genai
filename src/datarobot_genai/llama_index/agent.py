@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import abc
 import inspect
-import logging
 import uuid
 from typing import TYPE_CHECKING
 from typing import Any
@@ -47,8 +46,6 @@ from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 
 from .mcp import load_mcp_tools
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -110,7 +107,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Handle {chat_history} placeholder replacement for subclass templates
         if "{chat_history}" in input_message:
-            logger.info("Building history summary", input_message )
             history_summary = self.build_history_summary(run_agent_input)
             formatted_history = (
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
@@ -136,7 +132,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         usage_metrics: UsageMetrics = default_usage_metrics()
 
         # Partial AG-UI: workflow lifecycle + text message events + tool calls + steps for agent
-        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, usage_metrics
+        yield RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id), None, usage_metrics
 
         workflow = self.build_workflow()
         handler = workflow.run(user_msg=input_message)
@@ -147,7 +143,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         text_started = False
 
         async for event in handler.stream_events():
-            events.append(event) # every agent is single step
+            events.append(event)
             # Best-effort extraction of incremental text from LlamaIndex events
             delta: str | None = None
 
@@ -165,9 +161,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 if not text_started:
                     yield (
                         TextMessageStartEvent(
-                            type=EventType.TEXT_MESSAGE_START,
-                            message_id=message_id,
-                            role="assistant",
+                            type=EventType.TEXT_MESSAGE_START, message_id=message_id
                         ),
                         None,
                         usage_metrics,
@@ -175,9 +169,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     text_started = True
                 yield (
                     TextMessageContentEvent(
-                        type=EventType.TEXT_MESSAGE_CONTENT,
-                        message_id=message_id,
-                        delta=delta,
+                        type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=delta
                     ),
                     None,
                     usage_metrics,
@@ -190,14 +182,14 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     agent = getattr(event, "current_agent_name", None)
                     if agent is not None and agent != current_agent_name:
                         if current_agent_name is not None:
-                            
+
                             yield (
                                 StepFinishedEvent(step_name=current_agent_name),
                                 None,
                                 usage_metrics,
                             )
 
-                       
+
                         yield (
                             StepStartedEvent(step_name=agent),
                             None,
@@ -206,6 +198,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         current_agent_name = agent
                         agent = None
                         # Print banner for agent switch (do not emit as streamed content)
+                        print("\n" + "=" * 50, flush=True)
                         print(f"🤖 Agent: {current_agent_name}", flush=True)
                         print("=" * 50 + "\n", flush=True)
 
@@ -216,9 +209,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     # Output content
                     resp = getattr(event, "response", None)
                     if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                        #print("📤 Output:", getattr(resp, "content"), flush=True)
-                        pass
-                        
+                        print("📤 Output:", getattr(resp, "content"), flush=True)
                     # Planned tool calls
                     tcalls = getattr(event, "tool_calls", None)
                     if isinstance(tcalls, list) and tcalls:
@@ -233,8 +224,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                             except Exception:
                                 pass
                         if names:
-                           # print("🛠️  Planning to use tools:", names, flush=True)
-                           pass
+                            print("🛠️  Planning to use tools:", names, flush=True)
                 elif event_type == "ToolCallResult":
                     tname = getattr(event, "tool_name", None)
                     tid = getattr(event, "tool_id", None)
@@ -246,7 +236,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     yield (
                         ToolCallEndEvent(
                             type=EventType.TOOL_CALL_END,
-                            tool_call_id=tid, 
+                            tool_call_id=tid,
                         ),
                         None,
                         usage_metrics,
@@ -285,7 +275,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                                     ),
                                     None,
                                     usage_metrics,
-                                )            
+                                )
             except Exception:
                 # Ignore best-effort debug rendering errors
                 pass
@@ -295,7 +285,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 None,
                 usage_metrics,
             )
-            agent = None    
+            agent = None
 
         if text_started:
             yield (
@@ -328,7 +318,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
-            RunFinishedEvent(thread_id=thread_id, run_id=run_id),
+            RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
             pipeline_interactions,
             usage_metrics,
         )

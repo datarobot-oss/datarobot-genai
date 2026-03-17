@@ -130,10 +130,12 @@ def mock_load_workflow():
 
     mock_run = MagicMock()
     mock_run.return_value.__aenter__.return_value = AsyncMock(result_stream=mock_result_stream)
+    mock_session = MagicMock()
+    mock_session.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
     with patch(
         "datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock
     ) as mock_load_workflow:
-        mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
+        mock_load_workflow.return_value.__aenter__.return_value = AsyncMock(session=mock_session)
         yield mock_load_workflow
 
 
@@ -265,6 +267,16 @@ async def test_invoke_mcp_headers(agent, run_agent_input):
         "prompt_tokens": 2,
         "total_tokens": 4,
     }
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured")
+async def test_invoke_uses_thread_id_as_session_user_id(agent, run_agent_input, mock_load_workflow):
+    # GIVEN: an agent and run agent input with a known thread_id
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN: workflow.session() is called with user_id equal to the thread_id
+    mock_workflow = mock_load_workflow.return_value.__aenter__.return_value
+    mock_workflow.session.assert_called_once_with(user_id=run_agent_input.thread_id)
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "patch_environment_variables")

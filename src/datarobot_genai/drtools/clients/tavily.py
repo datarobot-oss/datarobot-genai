@@ -19,11 +19,12 @@ from typing import Any
 from typing import Literal
 
 from fastmcp.exceptions import ToolError
-from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from tavily import AsyncTavilyClient
+
+from datarobot_genai.drtools.clients.helpers import get_api_key_from_headers
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,7 @@ async def get_tavily_access_token() -> str:
     ------
         ToolError: If API key is not found in headers
     """
-    headers = get_http_headers()
-
-    api_key = headers.get("x-tavily-api-key")
-    if api_key:
+    if api_key := get_api_key_from_headers("x-tavily-api-key"):
         return api_key
 
     logger.warning("Tavily API key not found in headers")

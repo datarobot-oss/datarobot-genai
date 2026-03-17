@@ -11,9 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 from collections.abc import Generator
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -21,16 +23,60 @@ import datarobot as dr
 import pytest
 from datarobot.context import Context as DRContext
 
+from datarobot_genai.drmcp.core.constants import DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.drmcp.core.credentials import get_credentials
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubDeployment
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubModel
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubProject
+
+_STUB_DATAROBOT_API_TOKEN = "test-token"
+
+
+def _is_stub_token() -> bool:
+    """Return True when DATAROBOT_API_TOKEN is the stub (no real API calls)."""
+    return os.environ.get("DATAROBOT_API_TOKEN") == _STUB_DATAROBOT_API_TOKEN
+
+
+def _stub_project_fixture_dict(
+    project_id: str,
+    deployment_id: str,
+    source_dataset_id: str = "stub_dataset_id",
+    *,
+    target: str = "sentiment",
+) -> dict[str, Any]:
+    """Minimal stub dict for project fixtures when using stub token."""
+    project = StubProject(project_id)
+    project.catalog_id = source_dataset_id  # type: ignore[attr-defined]
+    project.target = target  # type: ignore[attr-defined]
+    return {
+        "project": project,
+        "model": StubModel("stub_model_1", "StubModel", {}),
+        "deployment": StubDeployment(deployment_id, project_id=project_id),
+        "deployment_id": deployment_id,
+        "source_dataset_id": source_dataset_id,
+    }
 
 
 def _make_dr_client() -> Any:
     """Build DataRobot client from credentials (env). No HTTP context in pytest."""
+    # Only set stub credentials when token is missing and stub mode is enabled (e.g. CI).
+    # Otherwise the ValueError below is reachable and gives a clear message.
+    if not os.environ.get("DATAROBOT_API_TOKEN"):
+        if os.environ.get("MCP_USE_CLIENT_STUBS", "true").lower() == "true":
+            os.environ["DATAROBOT_API_TOKEN"] = _STUB_DATAROBOT_API_TOKEN
+            if not os.environ.get("DATAROBOT_ENDPOINT"):
+                os.environ["DATAROBOT_ENDPOINT"] = DEFAULT_DATAROBOT_ENDPOINT
+            # Stub env persists for the session so all code paths see the same credentials.
     creds = get_credentials()
     token = creds.datarobot.application_api_token
     if not token:
         raise ValueError("Integration tests need DATAROBOT_API_TOKEN environment variable set.")
-    dr.Client(token=token, endpoint=creds.datarobot.endpoint)
+    # Skip real API init when using stub token (CI/stub mode); dr.Client() would 401.
+    # Session fixtures in this file (timeseries_regression_project, classification_project,
+    # etc.) check _is_stub_token() first and yield stub data without calling dr.*, so they
+    # never hit the API when no client is configured.
+    if token != _STUB_DATAROBOT_API_TOKEN:
+        dr.Client(token=token, endpoint=creds.datarobot.endpoint)
     DRContext.use_case = None
     return dr
 
@@ -69,6 +115,14 @@ def timeseries_regression_project(
     timeseries_regression_project_name: str,
 ) -> Generator[dict[str, Any], None, None]:
     """Create a time series regression project and return the best model deployment."""
+    if _is_stub_token():
+        yield _stub_project_fixture_dict(
+            "stub_ts_project",
+            "stub_ts_deployment",
+            target="sales",
+        )
+        return
+
     deployment_label = "MCP Test TS Regression Deployment"
 
     # First, check if deployment already exists
@@ -185,6 +239,14 @@ def multiseries_regression_project(
     multiseries_regression_project_name: str,
 ) -> Generator[dict[str, Any], None, None]:
     """Create a multiseries time series regression project and return the best model deployment."""
+    if _is_stub_token():
+        yield _stub_project_fixture_dict(
+            "stub_multiseries_project",
+            "stub_multiseries_deployment",
+            target="sales",
+        )
+        return
+
     deployment_label = "MCP Test Multiseries TS Regression Deployment"
 
     # First, check if deployment already exists
@@ -302,6 +364,13 @@ def classification_project(
     classification_project_name: str,
 ) -> Generator[dict[str, Any], None, None]:
     """Create a text classification project and return the best model deployment."""
+    if _is_stub_token():
+        yield _stub_project_fixture_dict(
+            "stub_classification_project",
+            "stub_classification_deployment",
+        )
+        return
+
     deployment_label = "MCP Test Text Classification Deployment"
 
     # First, check if deployment already exists
@@ -420,6 +489,14 @@ def classification_predict_dataset(
     classification_predict_file_path: Path,
 ) -> Generator[dict[str, Any], None, None]:
     """Upload text classification prediction dataset to AI Catalog."""
+    if _is_stub_token():
+        yield {
+            "dataset": SimpleNamespace(id="stub_predict_dataset_id"),
+            "dataset_id": "stub_predict_dataset_id",
+            "file_path": str(classification_predict_file_path),
+        }
+        return
+
     # Check if dataset already exists in AI Catalog
     try:
         datasets = dr.Dataset.list()

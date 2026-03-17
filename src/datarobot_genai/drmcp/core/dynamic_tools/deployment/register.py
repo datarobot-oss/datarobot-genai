@@ -84,4 +84,12 @@ def get_datarobot_tool_deployments() -> list[str]:
         client=get_api_client(),
     )
 
-    return [deployment["id"] for deployment in deployments_data]
+    # The API filters with OR logic for tags, so we need to filter for AND logic
+    valid_deployment_ids = []
+    for deployment in deployments_data:
+        for tag in deployment.get("tags", []):
+            if tag.get("name") == "tool" and tag.get("value") == "tool":
+                valid_deployment_ids.append(deployment["id"])
+                break
+
+    return valid_deployment_ids

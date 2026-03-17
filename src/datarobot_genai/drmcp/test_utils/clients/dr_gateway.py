@@ -38,18 +38,19 @@ class DRLLMGatewayMCPClient(BaseLLMMCPClient):
             config: Configuration string or dict with:
                 - datarobot_api_token: DataRobot API token
                 - datarobot_endpoint: DataRobot endpoint URL (default: "https://app.datarobot.com/api/v2")
-                - model: Model name (default: "gpt-4o-mini")
+                - model: Model name (**required**)
                 - save_llm_responses: Whether to save responses (default: True)
+                - temperature: (optional float, default: None)
         """
         super().__init__(config)
 
-    def _create_llm_client(self, config_dict: dict) -> tuple[openai.OpenAI, str]:
+    def _create_llm_client(self, config_dict: dict) -> tuple[openai.OpenAI, str | None]:
         """Create the LLM client for DataRobot LLM Gateway."""
         datarobot_api_token = config_dict.get("datarobot_api_token")
         datarobot_endpoint = config_dict.get(
             "datarobot_endpoint", "https://app.datarobot.com/api/v2"
         )
-        model = config_dict.get("model", "gpt-4o-mini")
+        model = config_dict.get("model")
 
         # Build gateway URL: {endpoint}/genai/llmgw
         gateway_url = datarobot_endpoint.rstrip("/") + "/genai/llmgw"

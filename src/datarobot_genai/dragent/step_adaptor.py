@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 
 from ag_ui.core import CustomEvent
@@ -206,6 +207,43 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         response = DRAgentEventResponse(events=[event])
         return response
 
+    @staticmethod
+    def _serialize_tool_args(payload: IntermediateStepPayload) -> str:
+        """Extract tool call arguments as a JSON string.
+
+        Tries metadata.tool_inputs first, then data.input. Returns "{}"
+        when no usable arguments are found. Non-serializable values
+        (e.g. CrewStructuredTool leaked via nvidia-nat-crewai) are logged
+        and skipped.
+        """
+        tool_inputs = getattr(payload.metadata, "tool_inputs", None)
+        if isinstance(tool_inputs, dict):
+            raw = tool_inputs
+        else:
+            raw = payload.data.input
+        if raw is None:
+            return "{}"
+
+        if isinstance(raw, str):
+            try:
+                json.loads(raw)
+                return raw
+            except (json.JSONDecodeError, ValueError):
+                logger.warning(
+                    "Tool args not valid JSON for %s, skipping",
+                    payload.name,
+                )
+                return "{}"
+
+        try:
+            return json.dumps(raw)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Tool args not serializable for %s, skipping",
+                payload.name,
+            )
+            return "{}"
+
     def _handle_tool(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
@@ -216,7 +254,8 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(
                 ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID)
             )
-            events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=payload.data.input))
+            args_delta = self._serialize_tool_args(payload)
+            events.append(ToolCallArgsEvent(tool_call_id=payload.UUID, delta=args_delta))
         elif payload.event_type == IntermediateStepType.TOOL_END:
             events.append(ToolCallEndEvent(tool_call_id=payload.UUID))
             tool_outputs = GlobalTypeConverter.get().convert(payload.metadata.tool_outputs, str)

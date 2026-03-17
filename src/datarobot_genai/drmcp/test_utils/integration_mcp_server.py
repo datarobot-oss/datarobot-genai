@@ -32,13 +32,20 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import datarobot as dr
+import datarobot_predict.deployment as _dr_predict_deployment
 from datarobot.context import Context as DRContext
 
 from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core import clients
 from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
+from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
+from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
+    test_create_prediction_result,
+)
+from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_template_versions
+from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_templates
 from datarobot_genai.drtools.clients import datarobot as tools_datarobot_client
 
 # Import elicitation test tool to register it with the MCP server
@@ -57,6 +64,14 @@ try:
 except ImportError:
     # These imports will fail when running from library without user modules
     pass
+
+
+def _stub_prompt_template_versions(
+    prompt_template_ids: list[str],
+    headers_auth_only: bool = False,
+) -> dict[str, list[Any]]:
+    """Stub that matches dr_lib.get_datarobot_prompt_template_versions signature."""
+    return get_stub_prompt_template_versions(prompt_template_ids)
 
 
 def detect_user_modules() -> Any:
@@ -130,11 +145,19 @@ def _patch_get_sdk_client_for_stdio() -> None:
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
 
 
+def _apply_predict_stubs() -> None:
+    """Patch datarobot_predict.deployment.predict so predict_realtime works with StubDeployment."""
+    _dr_predict_deployment.predict = test_create_prediction_result
+
+
+def _apply_prompt_stubs() -> None:
+    """Patch register module so prompt registration uses stub templates/versions in this process."""
+    prompt_register.get_datarobot_prompt_templates = get_stub_prompt_templates  # type: ignore[assignment]
+    prompt_register.get_datarobot_prompt_template_versions = _stub_prompt_template_versions
+
+
 def _apply_dr_client_stubs() -> None:
-    """
-    Replace the real DataRobot client with stubs
-    that areself-contained (patches token + client for stdio).
-    """
+    """Replace the real DataRobot client with stubs (patches token + client for stdio)."""
     stub_dr = test_create_dr_client()
     # get_api_client() does dr.client.get_client(); stub must have that for prompt registration.
     # dr.utils.pagination.unpaginate expects client.get(...).json()
@@ -142,6 +165,11 @@ def _apply_dr_client_stubs() -> None:
     # Return empty page so registration finishes immediately instead of hanging.
     mock_rest = MagicMock()
     mock_rest.get.return_value.json.return_value = {"data": [], "next": None}
+    # Wire REST stubs from test_create_dr_client onto mock_rest
+    if stub_dr.stub_rest_get:
+        mock_rest.get = stub_dr.stub_rest_get
+    if stub_dr.stub_rest_post:
+        mock_rest.post = stub_dr.stub_rest_post
     stub_dr.client = MagicMock()
     stub_dr.client.get_client = lambda: mock_rest
 
@@ -149,6 +177,8 @@ def _apply_dr_client_stubs() -> None:
     tools_datarobot_client.DataRobotClient.get_client = lambda self: stub_dr  # type: ignore[method-assign]
     # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
+    _apply_predict_stubs()
+    _apply_prompt_stubs()
 
 
 def main() -> None:

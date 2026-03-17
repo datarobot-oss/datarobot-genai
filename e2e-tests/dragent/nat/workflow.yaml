@@ -17,45 +17,41 @@ functions:
     _type: chat_completion
     llm_name: datarobot_llm
     system_prompt: |
-      You are a content planner. You create brief, structured outlines for blog articles.
-      You identify the most important points and cite relevant sources. Keep it simple and to the point -
-      this is just an outline for the writer.
-
-      Create a simple outline with:
-      1. 10-15 key points or facts (bullet points only, no paragraphs)
-      2. 2-3 relevant sources or references
-      3. A brief suggested structure (intro, 2-3 sections, conclusion)
-
-      Do NOT write paragraphs or detailed explanations. Just provide a focused list.
+      You are a content planner. Given a topic, produce a short bullet-point
+      outline with 3-5 key points. No paragraphs, no explanations — just the list.
     description: A tool that plans the content for the requested topic.
   writer:
     _type: chat_completion
     llm_name: datarobot_llm
     system_prompt: |
-      You are a content writer working with a planner colleague.
-      You write opinion pieces based on the planner's outline and context. You provide objective and
-      impartial insights backed by the planner's information. You acknowledge when your statements are
-      opinions versus objective facts.
-
-      1. Use the content plan to craft a compelling blog post.
-      2. Structure with an engaging introduction, insightful body, and summarizing conclusion.
-      3. Sections/Subtitles are properly named in an engaging manner.
-      4. CRITICAL: Keep the total output under 500 words. Each section should have 1-2 brief paragraphs.
-
-      Write in markdown format, ready for publication.
+      You are a concise writer. Using the planner's outline, write a short
+      response in 2-3 sentences.
     description: A tool that writes the content for the requested topic.
-  content_writer_pipeline:
-    _type: sequential_executor
-    tool_list: [planner, writer]
-    description: A tool that plans and writes content on the requested topic.
+
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+
+function_groups:
+  mcp_tools:
+    _type: datarobot_mcp_client
+
+authentication:
+  datarobot_mcp_auth:
+    _type: datarobot_mcp_auth
+
 workflow:
-  _type: tool_calling_agent
+  _type: per_user_tool_calling_agent
   llm_name: datarobot_llm
   tool_names:
-    - content_writer_pipeline
+    - planner
+    - writer
+    - mcp_tools
   return_direct:
-    - content_writer_pipeline
-  system_prompt: Choose and call a tool to answer the query.
+    - writer
+  system_prompt: |
+    You are a blog content orchestrator. For every user request, you should follow these steps in order:
+    1. Call planner to get a content plan.
+    2. Call writer with the content plan as input to produce the final blog post.
+    Feel free to call the MCP tools as needed to help you produce the final blog post.
+    Return only the final blog post output from the writer.

@@ -67,8 +67,15 @@ class BaseLLMMCPClient(ABC):
             config: Configuration string or dict with provider-specific keys.
         """
         config_dict = self._parse_config(config)
-        self.openai_client, self.model = self._create_llm_client(config_dict)
+        self.openai_client, model = self._create_llm_client(config_dict)
+        if not model:
+            raise ValueError(
+                "'model' is required in the client configuration. Please specify a model name."
+            )
+        self.model: str = model
         self.save_llm_responses = config_dict.get("save_llm_responses", True)
+        temperature = config_dict.get("temperature")
+        self.temperature: float | None = float(temperature) if temperature is not None else None
         self.available_tools: list[dict[str, Any]] = []
         self.available_prompts: list[dict[str, Any]] = []
         self.available_resources: list[dict[str, Any]] = []
@@ -88,7 +95,7 @@ class BaseLLMMCPClient(ABC):
     @abstractmethod
     def _create_llm_client(
         self, config_dict: dict
-    ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str]:
+    ) -> tuple[openai.OpenAI | openai.AzureOpenAI, str | None]:
         """
         Create the LLM client.
 
@@ -203,10 +210,13 @@ class BaseLLMMCPClient(ABC):
         self, messages: list[dict[str, Any]], allow_tool_calls: bool = True
     ) -> Any:
         """Get a response from the LLM with optional tool calling capability."""
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
         }
+
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
 
         if allow_tool_calls and self.available_tools:
             kwargs["tools"] = self.available_tools

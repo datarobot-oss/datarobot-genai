@@ -22,7 +22,7 @@ from datetime import timedelta
 from typing import Annotated
 from typing import Any
 
-import pandas as pd
+import polars as pl
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
@@ -34,7 +34,7 @@ from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata"})
+@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata", "daria"})
 async def get_deployment_info(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
@@ -87,7 +87,7 @@ async def get_deployment_info(
     }
 
     # Add time series specific information if applicable
-    if project and hasattr(project, "datetime_partitioning"):
+    if project and getattr(project, "datetime_partitioning", None) is not None:
         partition = project.datetime_partitioning
         result["time_series_config"] = {
             "datetime_column": partition.datetime_partition_column,
@@ -126,11 +126,11 @@ async def generate_prediction_data_template(
     features_info = json.loads(features_json)
 
     # Create template data
-    template_data = {}
+    template_data: dict[str, list[Any]] = {}
 
     for feature in features_info["features"]:
         feature_name = feature["name"]
-        feature_type = feature["feature_type"].lower()  # Normalize to lowercase
+        feature_type = feature["feature_type"].lower()
 
         # Use frequent values if available
         frequent_values = feature.get("frequent_values")
@@ -169,16 +169,17 @@ async def generate_prediction_data_template(
         # Ensure datetime column exists
         if ts_config["datetime_column"] not in template_data:
             base_date = datetime.now()
-            dates = [base_date + timedelta(days=i) for i in range(n_rows)]
-            template_data[ts_config["datetime_column"]] = dates
+            template_data[ts_config["datetime_column"]] = [
+                (base_date + timedelta(days=i)).isoformat() for i in range(n_rows)
+            ]
 
         # Add series ID columns if multiseries
         for series_col in ts_config["series_id_columns"]:
             if series_col not in template_data:
                 template_data[series_col] = ["series_A"] * n_rows
 
-    # Create DataFrame
-    df = pd.DataFrame(template_data)
+    # Build list of dicts
+    df = pl.DataFrame(template_data)
 
     # Build structured content with template data and metadata
     structured_content = {
@@ -187,7 +188,7 @@ async def generate_prediction_data_template(
         "target": features_info["target"],
         "target_type": features_info["target_type"],
         "total_features": features_info["total_features"],
-        "template_data": df.to_dict("records"),  # Convert DataFrame to list of dicts
+        "template_data": df.to_dicts(),
     }
 
     if "time_series_config" in features_info:
@@ -212,9 +213,9 @@ async def validate_prediction_data(
     """Validate if a CSV file is suitable for making predictions with a deployment."""
     # Load the data
     if csv_string is not None:
-        df = pd.read_csv(io.StringIO(csv_string))
+        df = pl.read_csv(io.StringIO(csv_string))
     elif file_path is not None:
-        df = pd.read_csv(file_path)
+        df = pl.read_csv(file_path)
     else:
         raise ToolError("Must provide either file_path or csv_string.")
 
@@ -241,7 +242,6 @@ async def validate_prediction_data(
     required_features = [f for f in features_info["features"]]
     data_columns = set(df.columns)
 
-    # Threshold for considering a feature as important
     importance_threshold = 0.1
 
     for feature in required_features:
@@ -261,21 +261,24 @@ async def validate_prediction_data(
                 )
             continue
 
+        col = df[feature_name]
+
         # Check for missing values (allowed)
-        if df[feature_name].isnull().all() or (df[feature_name] == "").all():
+        str_col = col.cast(pl.Utf8).fill_null("")
+        if (str_col.str.strip_chars() == "").all():
             validation_report["info"].append(
                 f"Feature {feature_name} is entirely missing or empty (this is allowed)"
             )
             continue
 
         # Check data type compatibility (only if not all missing)
-        col_dtype = str(df[feature_name].dtype)
-        if feature["feature_type"] == "numeric" and not pd.api.types.is_numeric_dtype(
-            df[feature_name].dropna()
-        ):
-            validation_report["warnings"].append(
-                f"Feature {feature_name} should be numeric but is {col_dtype}"
-            )
+        if feature["feature_type"] == "numeric":
+            non_empty = col.filter(str_col.str.strip_chars() != "")
+            casted = non_empty.cast(pl.Float64, strict=False)
+            if casted.null_count() > 0:
+                validation_report["warnings"].append(
+                    f"Feature {feature_name} should be numeric but is string"
+                )
 
     # Check for extra columns
     expected_features = {
@@ -297,17 +300,24 @@ async def validate_prediction_data(
                 f"Missing required datetime column: {ts_config['datetime_column']}"
             )
             validation_report["status"] = "invalid"
-        elif (
-            not df[ts_config["datetime_column"]].isnull().all()
-            and not (df[ts_config["datetime_column"]] == "").all()
-        ):
-            try:
-                pd.to_datetime(df[ts_config["datetime_column"]])
-            except ValueError:
-                validation_report["errors"].append(
-                    f"Datetime column {ts_config['datetime_column']} cannot be parsed as dates"
-                )
-                validation_report["status"] = "invalid"
+        else:
+            dt_col = df[ts_config["datetime_column"]].cast(pl.Utf8).fill_null("")
+            has_values = (dt_col.str.strip_chars() != "").any()
+            if has_values:
+                try:
+                    parsed = dt_col.str.replace("Z", "+00:00").str.to_datetime(strict=False)
+                    non_empty_mask = dt_col.str.strip_chars() != ""
+                    if parsed.filter(non_empty_mask).null_count() > 0:
+                        validation_report["errors"].append(
+                            f"Datetime column {ts_config['datetime_column']} "
+                            f"cannot be parsed as dates"
+                        )
+                        validation_report["status"] = "invalid"
+                except Exception:
+                    validation_report["errors"].append(
+                        f"Datetime column {ts_config['datetime_column']} cannot be parsed as dates"
+                    )
+                    validation_report["status"] = "invalid"
 
         # Check series ID columns for multiseries
         for series_col in ts_config["series_id_columns"]:

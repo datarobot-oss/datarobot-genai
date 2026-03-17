@@ -47,7 +47,7 @@ tasks:
     desc: "🔧 Install dependencies (all extras except crewai, for macOS Intel)"
     cmds:
       - echo "🔧 Installing dependencies (all extras except crewai)..."
-      - uv sync --dev --extra core --extra dragent --extra langgraph --extra llamaindex --extra nat --extra pydanticai --extra auth --extra drmcp
+      - uv sync --dev --extra core --extra dragent --extra langgraph --extra llamaindex --extra nat --extra auth --extra drmcp
     silent: true
 
   build:

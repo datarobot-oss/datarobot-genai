@@ -19,6 +19,7 @@ import uuid
 from typing import TYPE_CHECKING
 from typing import Any
 
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -200,59 +201,78 @@ class NatAgent(BaseAgent[None]):
         }
 
         # Partial AG-UI: workflow lifecycle + text message events
-        yield RunStartedEvent(thread_id=thread_id, run_id=run_id), None, zero_metrics
+        yield (
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
+            None,
+            zero_metrics,
+        )
 
         message_id = str(uuid.uuid4())
         text_started = False
 
         async with load_workflow(self.workflow_path, headers=headers) as workflow:
-            async with workflow.run(chat_request) as runner:
-                intermediate_future = pull_intermediate_structured()
-                async for result in runner.result_stream():
-                    if isinstance(result, ChatResponse):
-                        result_text = result.choices[0].message.content
-                    else:
-                        result_text = str(result)
+            async with workflow.session(user_id=thread_id) as session:
+                async with session.run(chat_request) as runner:
+                    intermediate_future = pull_intermediate_structured()
+                    async for result in runner.result_stream():
+                        if isinstance(result, ChatResponse):
+                            result_text = result.choices[0].message.content
+                        else:
+                            result_text = str(result)
 
-                    if result_text:
-                        if not text_started:
+                        if result_text:
+                            if not text_started:
+                                yield (
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                text_started = True
                             yield (
-                                TextMessageStartEvent(message_id=message_id),
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
+                                    message_id=message_id,
+                                    delta=result_text,
+                                ),
                                 None,
                                 zero_metrics,
                             )
-                            text_started = True
+
+                    if text_started:
                         yield (
-                            TextMessageContentEvent(message_id=message_id, delta=result_text),
+                            TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END, message_id=message_id
+                            ),
                             None,
                             zero_metrics,
                         )
 
-                if text_started:
-                    yield TextMessageEndEvent(message_id=message_id), None, zero_metrics
+                    steps = await intermediate_future
+                    llm_end_steps = [
+                        step for step in steps if step.event_type == IntermediateStepType.LLM_END
+                    ]
+                    usage_metrics: UsageMetrics = {
+                        "completion_tokens": 0,
+                        "prompt_tokens": 0,
+                        "total_tokens": 0,
+                    }
+                    for step in llm_end_steps:
+                        if step.usage_info:
+                            token_usage = step.usage_info.token_usage
+                            usage_metrics["total_tokens"] += token_usage.total_tokens
+                            usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
+                            usage_metrics["completion_tokens"] += token_usage.completion_tokens
 
-                steps = await intermediate_future
-                llm_end_steps = [
-                    step for step in steps if step.event_type == IntermediateStepType.LLM_END
-                ]
-                usage_metrics: UsageMetrics = {
-                    "completion_tokens": 0,
-                    "prompt_tokens": 0,
-                    "total_tokens": 0,
-                }
-                for step in llm_end_steps:
-                    if step.usage_info:
-                        token_usage = step.usage_info.token_usage
-                        usage_metrics["total_tokens"] += token_usage.total_tokens
-                        usage_metrics["prompt_tokens"] += token_usage.prompt_tokens
-                        usage_metrics["completion_tokens"] += token_usage.completion_tokens
-
-                pipeline_interactions = self.create_pipeline_interactions_from_steps(steps)
-                yield (
-                    RunFinishedEvent(thread_id=thread_id, run_id=run_id),
-                    pipeline_interactions,
-                    usage_metrics,
-                )
+                    pipeline_interactions = self.create_pipeline_interactions_from_steps(steps)
+                    yield (
+                        RunFinishedEvent(
+                            type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
+                        ),
+                        pipeline_interactions,
+                        usage_metrics,
+                    )
 
     async def run_nat_workflow(
         self, workflow_path: StrPath, chat_request: ChatRequest, headers: dict[str, str] | None
@@ -269,10 +289,11 @@ class NatAgent(BaseAgent[None]):
             list[IntermediateStep]: The list of intermediate steps
         """
         async with load_workflow(workflow_path, headers=headers) as workflow:
-            async with workflow.run(chat_request) as runner:
-                intermediate_future = pull_intermediate_structured()
-                runner_outputs = await runner.result()
-                steps = await intermediate_future
+            async with workflow.session(user_id=str(uuid.uuid4())) as session:
+                async with session.run(chat_request) as runner:
+                    intermediate_future = pull_intermediate_structured()
+                    runner_outputs = await runner.result()
+                    steps = await intermediate_future
 
         line = f"{'-' * 50}"
         prefix = f"{line}\nWorkflow Result:\n"

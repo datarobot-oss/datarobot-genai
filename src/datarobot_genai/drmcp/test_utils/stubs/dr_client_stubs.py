@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
+
+# Project id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_PROJECT_ID = "test_project_123"
 
 
 class StubModel:
@@ -25,7 +29,9 @@ class StubModel:
         self.metrics = metrics
 
     def score(self, dataset_url: str) -> MagicMock:
-        """Stub scoring method."""
+        """Stub scoring method. Raises for fake URLs so integration tests can assert errors."""
+        if "example.com" in (dataset_url or ""):
+            raise Exception("404 client error: {'message': 'Not Found'}")
         return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
 
 
@@ -46,7 +52,7 @@ class StubProject:
         self._models = models or []
         self.target = "sentiment"
         self.target_type = "Binary"
-        self.datetime_partitioning = StubDatetimePartitioning()
+        self.datetime_partitioning = None
 
     def get_models(self) -> list:
         """Stub get_models (matches real API: no arguments)."""
@@ -61,6 +67,7 @@ class StubDeployment:
     ):
         self.id = deployment_id
         self.model = {"project_id": project_id, "id": model_id}
+        self.status = "active"
 
     def get_features(self) -> list:
         """
@@ -78,6 +85,57 @@ class StubDeployment:
         return MagicMock()
 
 
+class StubDataset:
+    """Stub DataRobot dataset object."""
+
+    def __init__(
+        self,
+        dataset_id: str,
+        name: str = "stub_dataset",
+        row_count: int = 100,
+    ):
+        self.id = dataset_id
+        self.name = name
+        self.created_at = "2025-01-01T00:00:00Z"
+        self.row_count = row_count
+
+    def get_as_dataframe(self) -> Any:
+        """Return a small stub DataFrame."""
+        import pandas as pd
+
+        return pd.DataFrame(
+            {
+                "feature_1": [1.0, 2.0, 3.0, 4.0, 5.0],
+                "feature_2": ["a", "b", "c", "d", "e"],
+                "target": [0, 1, 0, 1, 0],
+            }
+        )
+
+    def get_raw_sample_data(self) -> Any:
+        """Return a small stub sample DataFrame (subset, avoids full download)."""
+        return self.get_as_dataframe()
+
+
+class StubDataStore:
+    """Stub DataRobot datastore object."""
+
+    def __init__(self, datastore_id: str, canonical_name: str = "stub_datastore"):
+        self.id = datastore_id
+        self.canonical_name = canonical_name
+        self.creator_id = "stub_creator"
+        self.params = {"type": "jdbc", "driver": "postgresql"}
+
+
+class StubRestResponse:
+    """Stub HTTP response for client.get()/client.post() REST calls."""
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = data
+
+    def json(self) -> dict[str, Any]:
+        return self._data
+
+
 class StubDRClient:
     """Stub DataRobot client for tests (canned responses; use with dr_client_stubs)."""
 
@@ -85,27 +143,39 @@ class StubDRClient:
         self.Project = MagicMock()
         self.Model = MagicMock()
         self.Deployment = MagicMock()
+        self.Dataset = MagicMock()
+        self.DataStore = MagicMock()
         self.client = MagicMock()
+        self.stub_rest_get: Any = None
+        self.stub_rest_post: Any = None
 
 
 def test_create_dr_client() -> StubDRClient:
     """Create a stub DataRobot client with test project and models."""
     client = StubDRClient()
-    # Create test project with stub models
+
+    # Metrics shape: get_best_model expects metrics[metric].get("validation")
+    def _metrics(auc: float, logloss: float) -> dict:
+        return {
+            "AUC": {"validation": auc},
+            "LogLoss": {"validation": logloss},
+        }
+
+    # Create test project with stub models (model_1 best by AUC for integration test_model)
     project = StubProject(
         "test_project_123",
         models=[
             StubModel(
                 "model_1",
                 "Keras Text Convolutional Neural Network Classifier",
-                {"AUC": 0.95, "LogLoss": 0.12},
+                _metrics(0.95, 0.12),
             ),
-            StubModel("model_2", "Random Forest", {"AUC": 0.92, "LogLoss": 0.15}),
-            StubModel("model_3", "LightGBM", {"AUC": 0.94, "LogLoss": 0.13}),
+            StubModel("model_2", "Random Forest", _metrics(0.92, 0.15)),
+            StubModel("model_3", "LightGBM", _metrics(0.94, 0.13)),
         ],
     )
     # Create standalone model
-    standalone_model = StubModel("standalone_model", "Neural Network", {"AUC": 0.88})
+    standalone_model = StubModel("standalone_model", "Neural Network", _metrics(0.88, 0.2))
 
     def get_project(project_id: str) -> StubProject | None:
         """Stub Project.get that returns appropriate project or raises exception."""
@@ -141,8 +211,55 @@ def test_create_dr_client() -> StubDRClient:
             did or "stub_deployment_id", project_id="test_project_123", model_id="model_1"
         )
 
+    # --- Dataset stubs ---
+    stub_dataset = StubDataset("stub_dataset_id", name="stub_dataset.csv", row_count=100)
+
+    def get_dataset(dataset_id: str) -> StubDataset:
+        if dataset_id == "stub_dataset_id":
+            return stub_dataset
+        raise Exception(f"404 client error: {{'message': 'Dataset {dataset_id} not found'}}")
+
+    def list_datasets() -> list[StubDataset]:
+        return [stub_dataset]
+
+    # --- DataStore stubs ---
+    stub_datastore = StubDataStore("stub_datastore_id", canonical_name="Test PostgreSQL")
+
+    def list_datastores() -> list[StubDataStore]:
+        return [stub_datastore]
+
+    # --- REST method stubs for client.get() / client.post() ---
+    def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.get() REST calls."""
+        if "externalDataDrivers" in url and "tables" in url:
+            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
+        return StubRestResponse({"data": [], "next": None})
+
+    def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.post() REST calls."""
+        if "externalDataDrivers" in url and "execute" in url:
+            return StubRestResponse(
+                {
+                    "data": [{"id": 1, "name": "test"}],
+                    "columns": ["id", "name"],
+                }
+            )
+        return StubRestResponse({"data": []})
+
     # Configure the stub methods
     client.Project.get = get_project
     client.Model.get = get_model
     client.Deployment.get = get_deployment
+    client.Dataset.get = get_dataset
+    client.Dataset.list = list_datasets
+    client.DataStore.list = list_datastores
+    # Store REST stubs on the client so integration_mcp_server can wire them
+    # onto mock_rest after replacing client.client.
+    client.stub_rest_get = stub_get
+    client.stub_rest_post = stub_post
     return client
+
+
+def get_stub_classification_project() -> dict[str, Any]:
+    """Return a stub project dict for integration tests (id matches test_create_dr_client)."""
+    return {"project": SimpleNamespace(id=STUB_PROJECT_ID)}
