@@ -428,7 +428,7 @@ def dr_mcp_integration_tool(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         return dr_mcp_tool(
-            tool_category=DataRobotMCPToolCategory.BUILD_IN_TOOL,
+            tool_category=DataRobotMCPToolCategory.BUILT_IN_TOOL,
             **mcp_tool_init_args,
         )(func)
 
@@ -598,7 +598,7 @@ async def register_prompt(
 
 
 def dr_mcp_prompt(
-    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT,
+    prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE,
     prompt_init_args: PromptInitArguments = PromptInitArguments(),
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     def prompt_decorator(func: Callable[P, T]) -> Callable[P, T]:
