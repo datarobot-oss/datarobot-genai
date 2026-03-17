@@ -59,17 +59,17 @@ class CustomModelStreamingResponse(ChatCompletionChunk):
     pipeline_interactions: str | None = None
     event: Event | None = None
 
-    # @field_serializer("event")
-    # def _serialize_event(self, value: Event | None) -> dict[str, Any] | None:
-    #     """Serialize event with discriminator always included.
+    @field_serializer("event")
+    def _serialize_event(self, value: Event | None) -> dict[str, Any] | None:
+        """Serialize event with discriminator always included.
 
-    #     When the parent is dumped with exclude_unset=True, nested Event models
-    #     lose their default 'type' field, breaking tagged-union validation on
-    #     round-trip. We always dump the full event (including type) here.
-    #     """
-    #     if value is None:
-    #         return None
-    #     return value.model_dump(mode="json")
+        When the parent is dumped with exclude_unset=True, nested Event models
+        lose their default 'type' field, breaking tagged-union validation on
+        round-trip. We always dump the full event (including type) here.
+        """
+        if value is None:
+            return None
+        return value.model_dump(mode="json")
 
 
 def to_custom_model_chat_response(
