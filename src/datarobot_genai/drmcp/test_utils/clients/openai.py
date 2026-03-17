@@ -43,6 +43,7 @@ class OpenAILLMMCPClient(BaseLLMMCPClient):
                 - model: Model name (**required** for non-Azure; not needed for Azure
                     when deployment ID is set)
                 - save_llm_responses: Whether to save responses (default: True)
+                - temperature: (optional float, default: None)
         """
         super().__init__(config)
 
