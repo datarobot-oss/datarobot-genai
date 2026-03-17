@@ -44,7 +44,6 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> AsyncGenerator[DRAgentEventResponse, None]:
-
         # LLM may contain user-specific headers
         llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
 

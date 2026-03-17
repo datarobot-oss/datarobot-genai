@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.7.4"
+version = "0.7.5"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -18,6 +18,7 @@ dynamic = ["optional-dependencies"]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
 [project.entry-points.'nat.plugins']
+authenticated_a2a_client = "datarobot_genai.dragent.auth_a2a_client"
 datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
 datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
@@ -58,6 +59,7 @@ dev = [
   "responses>=0.25.8",
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
+  "respx>=0.22.0",
 ]
 
 [tool.mypy]
