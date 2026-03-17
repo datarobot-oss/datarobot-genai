@@ -79,3 +79,6 @@ dist/
 
 # Test environment
 .venv-ci-test
+
+# Profile results
+prof/

@@ -34,7 +34,7 @@ from datarobot_genai.drtools.clients.perplexity import get_perplexity_access_tok
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"perplexity", "web", "search", "websearch"})
+@dr_mcp_integration_tool(tags={"perplexity", "web", "search", "websearch", "daria"})
 async def perplexity_search(
     *,
     query: Annotated[
@@ -117,7 +117,7 @@ async def perplexity_search(
     )
 
 
-@dr_mcp_integration_tool(tags={"perplexity", "think", "research", "answer"})
+@dr_mcp_integration_tool(tags={"perplexity", "think", "research", "answer", "daria"})
 async def perplexity_think(
     *,
     prompt: Annotated[str, "The research prompt or instruction."],

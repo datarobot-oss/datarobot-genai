@@ -85,6 +85,57 @@ class StubDeployment:
         return MagicMock()
 
 
+class StubDataset:
+    """Stub DataRobot dataset object."""
+
+    def __init__(
+        self,
+        dataset_id: str,
+        name: str = "stub_dataset",
+        row_count: int = 100,
+    ):
+        self.id = dataset_id
+        self.name = name
+        self.created_at = "2025-01-01T00:00:00Z"
+        self.row_count = row_count
+
+    def get_as_dataframe(self) -> Any:
+        """Return a small stub DataFrame."""
+        import pandas as pd
+
+        return pd.DataFrame(
+            {
+                "feature_1": [1.0, 2.0, 3.0, 4.0, 5.0],
+                "feature_2": ["a", "b", "c", "d", "e"],
+                "target": [0, 1, 0, 1, 0],
+            }
+        )
+
+    def get_raw_sample_data(self) -> Any:
+        """Return a small stub sample DataFrame (subset, avoids full download)."""
+        return self.get_as_dataframe()
+
+
+class StubDataStore:
+    """Stub DataRobot datastore object."""
+
+    def __init__(self, datastore_id: str, canonical_name: str = "stub_datastore"):
+        self.id = datastore_id
+        self.canonical_name = canonical_name
+        self.creator_id = "stub_creator"
+        self.params = {"type": "jdbc", "driver": "postgresql"}
+
+
+class StubRestResponse:
+    """Stub HTTP response for client.get()/client.post() REST calls."""
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = data
+
+    def json(self) -> dict[str, Any]:
+        return self._data
+
+
 class StubDRClient:
     """Stub DataRobot client for tests (canned responses; use with dr_client_stubs)."""
 
@@ -92,7 +143,11 @@ class StubDRClient:
         self.Project = MagicMock()
         self.Model = MagicMock()
         self.Deployment = MagicMock()
+        self.Dataset = MagicMock()
+        self.DataStore = MagicMock()
         self.client = MagicMock()
+        self.stub_rest_get: Any = None
+        self.stub_rest_post: Any = None
 
 
 def test_create_dr_client() -> StubDRClient:
@@ -156,10 +211,52 @@ def test_create_dr_client() -> StubDRClient:
             did or "stub_deployment_id", project_id="test_project_123", model_id="model_1"
         )
 
+    # --- Dataset stubs ---
+    stub_dataset = StubDataset("stub_dataset_id", name="stub_dataset.csv", row_count=100)
+
+    def get_dataset(dataset_id: str) -> StubDataset:
+        if dataset_id == "stub_dataset_id":
+            return stub_dataset
+        raise Exception(f"404 client error: {{'message': 'Dataset {dataset_id} not found'}}")
+
+    def list_datasets() -> list[StubDataset]:
+        return [stub_dataset]
+
+    # --- DataStore stubs ---
+    stub_datastore = StubDataStore("stub_datastore_id", canonical_name="Test PostgreSQL")
+
+    def list_datastores() -> list[StubDataStore]:
+        return [stub_datastore]
+
+    # --- REST method stubs for client.get() / client.post() ---
+    def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.get() REST calls."""
+        if "externalDataDrivers" in url and "tables" in url:
+            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
+        return StubRestResponse({"data": [], "next": None})
+
+    def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for client.post() REST calls."""
+        if "externalDataDrivers" in url and "execute" in url:
+            return StubRestResponse(
+                {
+                    "data": [{"id": 1, "name": "test"}],
+                    "columns": ["id", "name"],
+                }
+            )
+        return StubRestResponse({"data": []})
+
     # Configure the stub methods
     client.Project.get = get_project
     client.Model.get = get_model
     client.Deployment.get = get_deployment
+    client.Dataset.get = get_dataset
+    client.Dataset.list = list_datasets
+    client.DataStore.list = list_datastores
+    # Store REST stubs on the client so integration_mcp_server can wire them
+    # onto mock_rest after replacing client.client.
+    client.stub_rest_get = stub_get
+    client.stub_rest_post = stub_post
     return client
 
 

@@ -468,7 +468,7 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
     return suggestions
 
 
-@dr_mcp_integration_tool(tags={"predictive", "training", "write", "autopilot", "model"})
+@dr_mcp_integration_tool(tags={"predictive", "training", "write", "autopilot", "model", "daria"})
 async def start_autopilot(
     *,
     target: Annotated[str, "Name of the target column for modeling"] | None = None,

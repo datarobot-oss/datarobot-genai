@@ -146,7 +146,7 @@ async def ete_test_mcp_session(
             ) as session:
                 await asyncio.wait_for(session.initialize(), timeout=5)
                 yield session
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise TimeoutError(f"Check if the MCP server is running at {get_dr_mcp_server_url()}")
 
 

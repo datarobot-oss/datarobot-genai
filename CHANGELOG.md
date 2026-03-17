@@ -4,10 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.6.22
+## 0.7.3
 - Add `temperature` parameter support to LLM MCP clients (`BaseLLMMCPClient`, `DRLLMGatewayMCPClient`): read from config dict and forwarded to `chat.completions.create`
 - Add `LLM_TEMPERATURE` env var support in `get_openai_llm_client_config()` and `get_dr_llm_gateway_client_config()` to control LLM temperature in acceptance tests
 - Switch tool parameter matching in `ToolBaseE2E` from exact equality to subset matching (`_check_dict_params_match`) to reduce test flakiness
+
+## 0.7.1
+- Migrate Data MCP tools from wren mcp (MODEL-22804)
+
+## 0.7.0
+- **Breaking**: drop Python 3.10 support because of using NAT in all agents
+- Pass forwarded DataRobot headers to agents, MCP clients, and LLMs
+- Pass authorization context to agents and MCP clients
+- Register MCP function group per user as it depends on the current user authorization context
+- Rework dependencies in order to install only necessary libraries
 
 ## 0.6.21
 - Added `x-datarobot-authorization` to `HEADER_TOKEN_CANDIDATE_NAMES` to fix auth when connecting through the API gateway
@@ -18,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.6.19
 - Enable A2A endpoints for per-user workflows with configurable skills via `DRAgentA2AConfig`
 - **Breaking**: `DRAgentFastApiFrontEndConfig.a2a` type changed from `A2AFrontEndConfig` to `DRAgentA2AConfig`; update `workflow.yaml` by nesting the existing A2A fields under `server:`
+- Added new data tools: get_dataset_details, list_datastores, browse_datastore, query_datastore
+- Added "daria" tag to existing overlapping tools
 
 ## 0.6.17
 - Fixed CVE-2026-25580: removed unused `pydantic-ai-slim` dependency and `pydanticai` install extra
@@ -30,7 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.6.15
 - Added Agent2Agent (A2A) server endpoints to `DRAgentFastApiFrontEndPluginWorker`, mounted at `/a2a`.
 - Extended DRAgentFastApiFrontEndConfig with configuration options for the A2A server.
-- Added per_user_tool_calling_agent workflow type
+- A2A endpoints can be enabled by the `expose_a2a_server_endpoints` setting in the workflow.yaml file.
+- Added `per_user_tool_calling_agent` workflow type
 - Fixed `ToolCallArgsEvent.delta` encoding
 
 ## 0.6.14
