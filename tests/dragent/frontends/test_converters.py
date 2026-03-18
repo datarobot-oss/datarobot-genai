@@ -15,21 +15,24 @@
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import Tool
 from ag_ui.core import UserMessage
-from datarobot_genai.dragent.converters import aggregate_dragent_event_responses
-from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
-from datarobot_genai.dragent.converters import convert_dragent_event_response_to_str
-from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
-from datarobot_genai.dragent.converters import (
-    convert_dragent_run_agent_input_to_chat_request_or_message,
-)
-from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
-from datarobot_genai.dragent.converters import convert_tool_message_to_str
-from datarobot_genai.dragent.request import DRAgentRunAgentInput
-from datarobot_genai.dragent.response import DRAgentEventResponse
 from langchain_core.messages import ToolMessage as LangchainToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import Message
+
+from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
+from datarobot_genai.dragent.frontends.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_run_agent_input_to_chat_request,
+)
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_run_agent_input_to_chat_request_or_message,
+)
+from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_event_response
+from datarobot_genai.dragent.frontends.converters import convert_tool_message_to_str
+from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 # --- Input converters: AG-UI -> NAT ---
 

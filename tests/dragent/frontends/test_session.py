@@ -20,9 +20,9 @@ from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 from nat.runtime.session import SessionManager
 
-from datarobot_genai.dragent.request import DRAgentRunAgentInput
-from datarobot_genai.dragent.response import DRAgentEventResponse
-from datarobot_genai.dragent.session import DRAgentAGUISessionManager
+from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 
 
 @pytest.fixture

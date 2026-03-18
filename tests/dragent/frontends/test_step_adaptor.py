@@ -34,9 +34,6 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core.events import ToolCallResultEvent
-from datarobot_genai.dragent.response import DRAgentEventResponse
-from datarobot_genai.dragent.step_adaptor import DRAgentEmptyStepAdaptor
-from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 from nat.builder.context import IntermediateStep
 from nat.builder.context import IntermediateStepPayload
 from nat.builder.context import IntermediateStepType
@@ -48,31 +45,8 @@ from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.data_models.step_adaptor import StepAdaptorMode
 
-
-@pytest.mark.parametrize(
-    "config",
-    [
-        StepAdaptorConfig(
-            mode=StepAdaptorMode.CUSTOM, custom_event_types=[IntermediateStepType.CUSTOM_START]
-        ),
-        StepAdaptorConfig(mode=StepAdaptorMode.OFF),
-    ],
-)
-def test_step_adaptor_init_fails_with_non_default_config(config):
-    with pytest.raises(ValueError):
-        DRAgentNestedReasoningStepAdaptor(config)
-
-
-@pytest.mark.parametrize(
-    "config",
-    [
-        StepAdaptorConfig(mode=StepAdaptorMode.DEFAULT),
-        StepAdaptorConfig(),
-    ],
-)
-def test_step_adaptor_init_succeeds_with_default_config(config):
-    adaptor = DRAgentNestedReasoningStepAdaptor(config)
-    assert adaptor.config == StepAdaptorConfig()
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
 @pytest.fixture
@@ -674,7 +648,7 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
     ]
 
 
-def test_adaptor_processes_nested_reasoning_steps(
+def test_step_adaptor_processes_nested_reasoning_steps(
     step_adaptor, intermediate_steps_for_nested_reasoning, expected_responses
 ):
     actual_responses = []
@@ -694,6 +668,13 @@ def test_adaptor_processes_nested_reasoning_steps(
         )
         for j, (actual_ev, expected_ev) in enumerate(zip(actual_resp.events, expected_resp.events)):
             assert actual_ev == expected_ev, f"Response {i} event {j}: {actual_ev} != {expected_ev}"
+
+
+def test_step_adaptor_sends_nothing_in_mode_off(intermediate_steps_for_nested_reasoning):
+    step_adaptor = DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig(mode=StepAdaptorMode.OFF))
+    for step in intermediate_steps_for_nested_reasoning:
+        result = step_adaptor.process(step)
+        assert result is None
 
 
 def _make_tool_start_step(
@@ -782,21 +763,3 @@ class TestHandleToolArgsEncoding:
         response = step_adaptor.process(step)
         args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
         assert args_event.delta == "{}"
-
-
-class TestDRAgentEmptyStepAdaptor:
-    def test_process_always_returns_none(self):
-        adaptor = DRAgentEmptyStepAdaptor(StepAdaptorConfig())
-        step = IntermediateStep(
-            parent_id="root",
-            function_ancestry=InvocationNode(
-                function_id="root", function_name="root", parent_id=None, parent_name=None
-            ),
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.CUSTOM_START,
-                name="anything",
-                UUID=str(uuid.uuid4()),
-                data=StreamEventData(input=None, output=None),
-            ),
-        )
-        assert adaptor.process(step) is None
