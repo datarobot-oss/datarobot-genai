@@ -34,6 +34,9 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core.events import ToolCallResultEvent
+from datarobot_genai.dragent.response import DRAgentEventResponse
+from datarobot_genai.dragent.step_adaptor import DRAgentEmptyStepAdaptor
+from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 from nat.builder.context import IntermediateStep
 from nat.builder.context import IntermediateStepPayload
 from nat.builder.context import IntermediateStepType
@@ -44,10 +47,6 @@ from nat.data_models.intermediate_step import TraceMetadata
 from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.data_models.step_adaptor import StepAdaptorMode
-
-from datarobot_genai.dragent.response import DRAgentEventResponse
-from datarobot_genai.dragent.step_adaptor import DRAgentEmptyStepAdaptor
-from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
 @pytest.mark.parametrize(

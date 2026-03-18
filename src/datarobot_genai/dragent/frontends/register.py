@@ -24,16 +24,13 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
 
-import datarobot_genai.dragent.per_user_tool_calling_agent  # noqa: F401 — registers per_user_tool_calling_agent
-from datarobot_genai.dragent.converters import convert_chat_request_to_run_agent_input
-from datarobot_genai.dragent.converters import convert_dragent_event_response_to_str
-from datarobot_genai.dragent.converters import convert_dragent_run_agent_input_to_chat_request
-from datarobot_genai.dragent.converters import (
-    convert_dragent_run_agent_input_to_chat_request_or_message,
-)
-from datarobot_genai.dragent.converters import convert_str_to_dragent_event_response
-from datarobot_genai.dragent.converters import convert_tool_message_to_str
-from datarobot_genai.dragent.patches import patch_crewai_callback_handler
+from .converters import convert_chat_request_to_run_agent_input
+from .converters import convert_dragent_event_response_to_str
+from .converters import convert_dragent_run_agent_input_to_chat_request
+from .converters import convert_dragent_run_agent_input_to_chat_request_or_message
+from .converters import convert_str_to_dragent_event_response
+from .converters import convert_tool_message_to_str
+from .patches import patch_crewai_callback_handler
 
 # Patch nvidia-nat-crewai callback handler for crewai >= 1.1.0 compatibility.
 # Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
@@ -64,7 +61,7 @@ class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"
 async def dragent_fastapi_front_end(
     config: DRAgentFastApiFrontEndConfig, full_config: Config
 ) -> AsyncGenerator[typing.Any, None]:
-    from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPlugin
+    from .fastapi import DRAgentFastApiFrontEndPlugin
 
     yield DRAgentFastApiFrontEndPlugin(full_config=full_config)
 

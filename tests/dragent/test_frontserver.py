@@ -20,6 +20,12 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import AgentSkill
+from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPlugin
+from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.frontserver import _PerUserCompatibleAgentExecutor
+from datarobot_genai.dragent.register import DRAgentA2AConfig
+from datarobot_genai.dragent.register import DRAgentFastApiFrontEndConfig
+from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
@@ -27,13 +33,6 @@ from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
-
-from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPlugin
-from datarobot_genai.dragent.frontserver import DRAgentFastApiFrontEndPluginWorker
-from datarobot_genai.dragent.frontserver import _PerUserCompatibleAgentExecutor
-from datarobot_genai.dragent.register import DRAgentA2AConfig
-from datarobot_genai.dragent.register import DRAgentFastApiFrontEndConfig
-from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
 @pytest.fixture

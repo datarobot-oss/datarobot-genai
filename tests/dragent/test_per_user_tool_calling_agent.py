@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nat.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
-
 from datarobot_genai.dragent.per_user_tool_calling_agent import PerUserToolCallAgentWorkflowConfig
+from nat.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 
 
 class TestPerUserToolCallAgentWorkflowConfig:

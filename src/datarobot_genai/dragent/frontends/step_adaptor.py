@@ -44,7 +44,7 @@ from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
 
-from datarobot_genai.dragent.response import DRAgentEventResponse
+from .response import DRAgentEventResponse
 
 logger = logging.getLogger(__name__)
 

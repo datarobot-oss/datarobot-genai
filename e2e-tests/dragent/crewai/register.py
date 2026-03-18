@@ -14,11 +14,13 @@
 
 from collections.abc import AsyncGenerator
 
+from ag_ui.core.types import RunAgentInput
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.helpers import extract_authorization_from_context
 from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
-from nat.cli.register_workflow import register_function
+from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.agent import AgentBaseConfig
 
 
@@ -30,13 +32,13 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
     """
 
 
-@register_function(
+@register_per_user_function(
     config_type=CrewaiAgentConfig,
+    input_type=RunAgentInput,  # noqa: F821
+    single_output_type=DRAgentEventResponse,  # noqa: F821
     framework_wrappers=[LLMFrameworkEnum.CREWAI],
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
-    from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     from dragent.crewai.myagent import MyAgent  # noqa: PLC0415

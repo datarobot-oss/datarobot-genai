@@ -14,6 +14,8 @@
 
 from collections.abc import AsyncGenerator
 
+from ag_ui.core import RunAgentInput
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.helpers import extract_authorization_from_context
 from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from nat.builder.builder import Builder
@@ -32,11 +34,11 @@ class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
 
 @register_function(
     config_type=LlamaindexAgentConfig,
+    input_type=RunAgentInput,
+    single_output_type=DRAgentEventResponse,
     framework_wrappers=[LLMFrameworkEnum.LLAMA_INDEX],
 )
 async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> AsyncGenerator:
-    from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     from dragent.llamaindex.myagent import MyAgent  # noqa: PLC0415

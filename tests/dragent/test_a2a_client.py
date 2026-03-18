@@ -18,15 +18,14 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from nat.data_models.authentication import AuthResult
-from nat.data_models.authentication import BearerTokenCred
-from nat.data_models.authentication import HeaderCred
-from nat.plugins.a2a.client.client_config import A2AClientConfig
-
 from datarobot_genai.dragent.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.auth_a2a_client import _AuthenticatedA2ABaseClient
 from datarobot_genai.dragent.auth_a2a_client import _extract_auth_headers
+from nat.data_models.authentication import AuthResult
+from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.authentication import HeaderCred
+from nat.plugins.a2a.client.client_config import A2AClientConfig
 
 _AGENT_URL = "http://agent.example.com"
 

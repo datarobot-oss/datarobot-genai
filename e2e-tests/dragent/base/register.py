@@ -28,7 +28,7 @@ class BaseAgentConfig(AgentBaseConfig, name="base_agent"):
 )
 async def base_agent(config: BaseAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
+    from datarobot_genai.dragent.frontends.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     from dragent.base.myagent import MyAgent  # noqa: PLC0415
