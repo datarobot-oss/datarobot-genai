@@ -17,6 +17,9 @@ includes:
     flatten: true
 
 tasks:
+  default:
+    cmds:
+      - task --list
   install:
     desc: "🔧 Install dependencies for a specific group of functionality"
     requires:

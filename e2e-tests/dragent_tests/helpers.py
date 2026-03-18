@@ -11,16 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import json
 import uuid
 
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType
-from datarobot_genai.dragent.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 GENERATE_STREAM_PATH = "/generate/stream"
+GENERATE_PATH = "/generate"
 
 
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
@@ -40,7 +39,7 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
     """Parse SSE text/event-stream into list of DRAgentEventResponse dicts."""
     responses = []
     for line in response.iter_lines():
-        line = line.strip()
+        line = line.strip()  # noqa: PLW2901
         if line.startswith("data: "):
             data = line[len("data: "):]
             if data == "[DONE]":
