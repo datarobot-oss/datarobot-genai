@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.2
+- Added model and deployment tools: get_model_details (with optional feature impact and ROC curve), is_eligible_for_timeseries_training, get_prediction_history (MODEL-22809)
+- CODEOWNERS: MCP team owns drtools; default Buzok with MCP overrides (last match wins)
+
 ## 0.8.1
 - Fixed issue with NAT profiler interacting with MCP tools for langgraph
 - Enabled MCP and tool tests for all agents

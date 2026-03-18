@@ -170,3 +170,43 @@ async def deploy_custom_model(
         description=description,
     )
     return ToolResult(structured_content=out)
+
+
+@dr_mcp_integration_tool(
+    tags={"predictive", "deployment", "read", "predictions", "history", "daria"}
+)
+async def get_prediction_history(
+    *,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+    limit: Annotated[int, "Maximum number of prediction rows to return"] = 100,
+    offset: Annotated[int, "Number of rows to skip for pagination"] = 0,
+    start_time: Annotated[str, "ISO 8601 start time filter"] | None = None,
+    end_time: Annotated[str, "ISO 8601 end time filter"] | None = None,
+) -> ToolError | ToolResult:
+    """Retrieve recent prediction results from a DataRobot deployment."""
+    if not deployment_id:
+        raise ToolError("Deployment ID must be provided")
+
+    token = await get_datarobot_access_token()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
+
+    params: dict = {"limit": limit, "offset": offset}
+    if start_time:
+        params["startTime"] = start_time
+    if end_time:
+        params["endTime"] = end_time
+
+    response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
+    data = response.json()
+    rows = data.get("data", [])
+    next_page = data.get("next")
+
+    return ToolResult(
+        structured_content={
+            "deployment_id": deployment_id,
+            "row_count": len(rows),
+            "rows": rows,
+            "has_more": next_page is not None,
+        },
+    )
