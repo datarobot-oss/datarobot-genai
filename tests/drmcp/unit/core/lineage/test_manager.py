@@ -48,6 +48,58 @@ class TestLineageManager:
             yield mock_enum
 
     @pytest.fixture
+    def mock_get_mcp_tools_associated_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_tools_associated_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_tools_in_mcp_server(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_tools_in_mcp_server",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_items_to_associate_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_items_to_associate_with_mcp_server_deployment",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_items_to_dissociate_from_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_items_to_dissociate_from_mcp_server_deployment",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_associate_mcp_tools_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "associate_mcp_tools_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_dissociate_mcp_tools_from_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "dissociate_mcp_tools_from_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
     def mock_list_tools_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
         with patch.object(ToolInUserMCPServerDeployment, "list") as mock_func:
             yield mock_func
@@ -191,11 +243,6 @@ class TestLineageManager:
         )
 
     @pytest.mark.asyncio
-    @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
-        "mock_get_datarobot_client",
-        "mock_lrs_env_var",
-    )
     async def test_dissociate_mcp_tools_from_mcp_server_deployment(
         self,
     ) -> None:
@@ -207,3 +254,41 @@ class TestLineageManager:
             mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment.return_value
         )
         datarobot_mcp_tool_object.delete.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_feature_flag_create",
+        "mock_get_datarobot_client",
+        "mock_lrs_env_var",
+    )
+    async def test_sync_metadata_of_mcp_tools_in_server(
+        self,
+        mock_get_mcp_tools_associated_with_mcp_server_deployment: AsyncMock,
+        mock_get_mcp_tools_in_mcp_server: AsyncMock,
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment: Mock,
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment: Mock,
+        mock_associate_mcp_tools_with_mcp_server_deployment: AsyncMock,
+        mock_dissociate_mcp_tools_from_mcp_server_deployment: AsyncMock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        await manager.sync_metadata_of_mcp_tools_in_server()
+
+        mock_get_mcp_tools_associated_with_mcp_server_deployment.assert_called_once_with()
+        mock_get_mcp_tools_in_mcp_server.assert_called_once_with()
+        mcp_tools_associated_with_deployment = (
+            mock_get_mcp_tools_associated_with_mcp_server_deployment.return_value
+        )
+        mcp_tools_in_server = mock_get_mcp_tools_in_mcp_server.return_value
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment.assert_called_once_with(
+            mcp_tools_associated_with_deployment, mcp_tools_in_server
+        )
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.assert_called_once_with(
+            mcp_tools_associated_with_deployment, mcp_tools_in_server
+        )
+        mock_associate_mcp_tools_with_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_associate_with_mcp_server_deployment.return_value
+        )
+        mock_dissociate_mcp_tools_from_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.return_value
+        )

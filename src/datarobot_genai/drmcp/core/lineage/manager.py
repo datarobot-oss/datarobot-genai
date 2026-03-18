@@ -92,3 +92,30 @@ class LineageManager:
         for mcp_tool in mcp_tools:
             datarobot_mcp_tool = mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment()
             datarobot_mcp_tool.delete()
+
+    async def sync_metadata_of_mcp_tools_in_server(self) -> None:
+        mcp_tools_associated_with_deployment = (
+            await self.get_mcp_tools_associated_with_mcp_server_deployment()
+        )
+        mcp_tools_in_server = await self.get_mcp_tools_in_mcp_server()
+
+        mcp_tools_to_associated_with_deployment = (
+            self.get_mcp_items_to_associate_with_mcp_server_deployment(
+                mcp_tools_associated_with_deployment, mcp_tools_in_server
+            )
+        )
+        mcp_tools_to_dissociate_from_deployment = (
+            self.get_mcp_items_to_dissociate_from_mcp_server_deployment(
+                mcp_tools_associated_with_deployment, mcp_tools_in_server
+            )
+        )
+
+        await self.associate_mcp_tools_with_mcp_server_deployment(
+            mcp_tools_to_associated_with_deployment
+        )
+        await self.dissociate_mcp_tools_from_mcp_server_deployment(
+            mcp_tools_to_dissociate_from_deployment
+        )
+
+    async def sync_mcp_item_metadata_with_mcp_items_in_server(self) -> None:
+        pass
