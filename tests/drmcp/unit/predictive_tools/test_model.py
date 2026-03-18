@@ -244,14 +244,15 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
 
     mock_client = MagicMock()
     mock_dataset = MagicMock()
-    df = pd.DataFrame(
+    # get_as_dataframe() returns a pandas DataFrame (SDK behavior); polars conversion is internal
+    pandas_df = pd.DataFrame(
         {
             "date": pd.date_range("2020-01-01", periods=200),
             "target": range(200),
             "feature": range(200),
         }
     )
-    mock_dataset.get_as_dataframe.return_value = df
+    mock_dataset.get_as_dataframe.return_value = pandas_df
     mock_client.Dataset.get.return_value = mock_dataset
     with (
         patch(
@@ -275,13 +276,14 @@ async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
 
     mock_client = MagicMock()
     mock_dataset = MagicMock()
-    df = pd.DataFrame(
+    # get_as_dataframe() returns a pandas DataFrame (SDK behavior); polars conversion is internal
+    pandas_df = pd.DataFrame(
         {
             "date": pd.date_range("2020-01-01", periods=50),
             "target": range(50),
         }
     )
-    mock_dataset.get_as_dataframe.return_value = df
+    mock_dataset.get_as_dataframe.return_value = pandas_df
     mock_client.Dataset.get.return_value = mock_dataset
     with (
         patch(

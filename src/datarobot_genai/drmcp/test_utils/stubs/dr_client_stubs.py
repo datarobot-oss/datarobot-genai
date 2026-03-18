@@ -16,6 +16,9 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+import numpy as np
+import pandas as pd
+
 # Project id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_PROJECT_ID = "test_project_123"
 
@@ -136,9 +139,6 @@ class StubDataset:
 
     def get_as_dataframe(self) -> Any:
         """Return a stub DataFrame suitable for time-series eligibility checks."""
-        import numpy as np
-        import pandas as pd
-
         n = self.row_count
         dates = pd.date_range("2023-01-01", periods=n, freq="D")
         return pd.DataFrame(
