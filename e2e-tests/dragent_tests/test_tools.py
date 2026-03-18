@@ -18,16 +18,11 @@ import httpx
 import pytest
 from ag_ui.core import EventType
 
-from dragent_tests.helpers import GENERATE_STREAM_PATH
+from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS, GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
-
-pytest.skip(
-    reason="Not all frameworks emit TOOL_CALL AG-UI events yet. TODO: BUZZOK-29784",
-    allow_module_level=True
-)
 
 CALCULATOR_PROMPT = (
     "You MUST use the calculator tool to compute the following expression. "
@@ -38,7 +33,6 @@ CALCULATOR_PROMPT = (
 )
 
 EXPECTED_RESULT = str((1234 * 567890) + 91011)
-
 
 
 def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
@@ -62,16 +56,21 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
         EventType.TOOL_CALL_ARGS,
         EventType.TOOL_CALL_RESULT,
     }
-    assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
+    if FRAMEWORK_SUPPORTS_TOOL_CALLS:
+        assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
 
-    # THEN: the tool call events contain the calculator tool
-    tool_call_names = {
-        e.tool_call_name for e in ag_ui_events if e.type == EventType.TOOL_CALL_START
-    }
-    assert "calculator" in tool_call_names, (
-        "No tool call event found for calculator. "
-        f"Got: {tool_call_names}"
-    )
+        # THEN: the tool call events contain the calculator tool
+        tool_call_names = {
+            e.tool_call_name for e in ag_ui_events if e.type == EventType.TOOL_CALL_START
+        }
+        assert "calculator" in tool_call_names, (
+            "No tool call event found for calculator. "
+            f"Got: {tool_call_names}"
+        )
+    else:
+        assert not event_types & tool_types, (
+            f"Tool call events found when framework does not support them. Got: {event_types}"
+        )
 
     # THEN: the tool call events contain the correct result
     full_text = collect_text(ag_ui_events)

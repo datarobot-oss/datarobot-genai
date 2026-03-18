@@ -18,6 +18,7 @@ import httpx
 import pytest
 from ag_ui.core import EventType
 
+from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
@@ -28,16 +29,16 @@ pytestmark = pytest.mark.skipif(
     reason="MCP_DEPLOYMENT_ID not set; skipping MCP tests",
 )
 
-pytest.skip(
-    reason="MCP tests are not implemented yet. TODO: BUZZOK-29837",
-    allow_module_level=True
-)
-
 MCP_TOOL_PROMPT = (
     "You MUST use the search_datarobot_agentic_docs tool to search for 'MCP server'. "
     "Call it with query='MCP server' and max_results=1. "
     "Report only the title of the first result."
 )
+
+EXPECTED_TOOL_CALL_NAMES = {
+    "search_datarobot_agentic_docs",
+    "mcp_tools__search_datarobot_agentic_docs"
+}
 
 
 def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
@@ -52,21 +53,26 @@ def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[
     # THEN: a response is correct AG UI events
     mcp_ag_ui_events = collect_ag_ui_events(sse_events)
 
-    # THEN: the events contain tool call events
-    event_types = {e.type for e in mcp_ag_ui_events}
+    # THEN: the events contain tool call events (if framework supports tool calls)
     tool_types = {
         EventType.TOOL_CALL_START,
         EventType.TOOL_CALL_END,
         EventType.TOOL_CALL_ARGS,
         EventType.TOOL_CALL_RESULT,
     }
-    assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
+    event_types = {e.type for e in mcp_ag_ui_events}
+    if FRAMEWORK_SUPPORTS_TOOL_CALLS:
+        assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
 
-    # THEN: the tool call events contain mcp_tools__search_datarobot_agentic_docs
-    tool_call_names = {
-        e.tool_call_name for e in mcp_ag_ui_events if e.type == EventType.TOOL_CALL_START
-    }
-    assert "mcp_tools__search_datarobot_agentic_docs" in tool_call_names, (
-        "No tool call event found for mcp_tools__search_datarobot_agentic_docs. "
-        f"Got: {tool_call_names}"
-    )
+        # THEN: the tool call events contain mcp_tools__search_datarobot_agentic_docs
+        tool_call_names = {
+            e.tool_call_name for e in mcp_ag_ui_events if e.type == EventType.TOOL_CALL_START
+        }
+        assert EXPECTED_TOOL_CALL_NAMES & tool_call_names, (
+            "No tool call event found for mcp_tools__search_datarobot_agentic_docs. "
+            f"Got: {tool_call_names}"
+        )
+    else:
+        assert not event_types & tool_types, (
+            f"Tool call events found when framework does not support them. Got: {event_types}"
+        )

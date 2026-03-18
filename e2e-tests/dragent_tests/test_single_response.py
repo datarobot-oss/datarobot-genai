@@ -20,11 +20,11 @@ import httpx
 import pytest
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
+from dragent_tests.helpers import FRAMEWORK
 from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 
-FRAMEWORK = os.environ.get("FRAMEWORK")
 
 @pytest.mark.skipif(
     FRAMEWORK == "nat",
