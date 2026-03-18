@@ -36,7 +36,9 @@ async def list_vector_databases() -> ToolResult:
     rest_client = dr_module.client.get_client()
 
     response = rest_client.get("deployments/", params={"limit": 100})
-    all_deployments = response.json().get("data", [])
+    data = response.json()
+    all_deployments = data.get("data", [])
+    next_page = data.get("next")
 
     vdbs = [
         d
@@ -56,6 +58,7 @@ async def list_vector_databases() -> ToolResult:
                 for d in vdbs
             ],
             "count": len(vdbs),
+            "has_more": next_page is not None,
         },
     )
 
