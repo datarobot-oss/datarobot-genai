@@ -13,10 +13,13 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from typing import Annotated
 
+from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_function
 from nat.data_models.agent import AgentBaseConfig
+from nat.data_models.streaming import Streaming
 
 
 class BaseAgentConfig(AgentBaseConfig, name="base_agent"):
@@ -28,14 +31,19 @@ class BaseAgentConfig(AgentBaseConfig, name="base_agent"):
 )
 async def base_agent(config: BaseAgentConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
+    from datarobot_genai.dragent.frontends.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     from dragent.base.myagent import MyAgent  # noqa: PLC0415
 
     async def _response_fn(
         input_message: RunAgentInput,
-    ) -> AsyncGenerator[DRAgentEventResponse, None]:
+    ) -> Annotated[
+        AsyncGenerator[DRAgentEventResponse, None],
+        # Streaming tells NAT how to go from a list of streaming events to a single response
+        # object for non-streaming routes.
+        Streaming(convert=aggregate_dragent_event_responses),
+    ]:
         agent = MyAgent()
 
         async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):

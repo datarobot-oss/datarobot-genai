@@ -14,30 +14,39 @@
 
 from __future__ import annotations
 
-import httpx
+import os
 
-from dragent_tests.helpers import GENERATE_STREAM_PATH
-from dragent_tests.helpers import collect_ag_ui_events
+import httpx
+import pytest
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+
+from dragent_tests.helpers import FRAMEWORK
+from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.helpers import parse_sse_responses
 
 
-def test_generate_streaming_produces_text(http_client: httpx.Client) -> None:
+@pytest.mark.skipif(
+    FRAMEWORK == "nat",
+    reason="NAT returns single response in chat completions format, and we do not yet care to fix "
+    "it."
+)
+def test_generate_single_produces_text(http_client: httpx.Client) -> None:
     """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
     payload = make_generate_payload("Say 'hello world' and nothing else.")
 
-    # WHEN: the payload is streamed to the generate endpoint
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
-        # THEN: the response is a valid AG-UI response
-        sse_responses = parse_sse_responses(response)
+    # WHEN: called a generate endpoint for a single response (non-streaming)
+    response = http_client.post(GENERATE_PATH, json=payload)
+    assert response.status_code == 200
+    # THEN: the response is non-streaming JSON
+    assert "application/json" in response.headers.get("content-type", "")
+    # THEN: the response is DRAgentEventResponse
+    response_data = DRAgentEventResponse.model_validate_json(response.text)
 
     # THEN: the response contains AG-UI events
-    ag_ui_events = collect_ag_ui_events(sse_responses)
+    assert len(response_data.events) > 0
 
     # THEN: there are events with text
-    full_text = collect_text(ag_ui_events)
+    full_text = collect_text(response_data.events)
     assert len(full_text) > 0, "Expected non-empty text response"

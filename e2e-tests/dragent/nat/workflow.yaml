@@ -27,6 +27,9 @@ functions:
       You are a concise writer. Using the planner's outline, write a short
       response in 2-3 sentences.
     description: A tool that writes the content for the requested topic.
+  calculator:
+    _type: calculator
+    description: A tool that calculates the result of a mathematical expression.
 
 llms:
   datarobot_llm:
@@ -47,6 +50,7 @@ workflow:
     - planner
     - writer
     - mcp_tools
+    - calculator
   return_direct:
     - writer
   system_prompt: |

@@ -4,9 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.7.8
+## 0.8.2
 - Added model and deployment tools: get_model_details (with optional feature impact and ROC curve), is_eligible_for_timeseries_training, get_prediction_history (MODEL-22809)
 - CODEOWNERS: MCP team owns drtools; default Buzok with MCP overrides (last match wins)
+
+## 0.8.1
+- Fixed issue with NAT profiler interacting with MCP tools for langgraph
+- Enabled MCP and tool tests for all agents
+- Implemented decorator `nat_tool` which allows registering a function in NAT with a single line
+
+## 0.8.0
+- Allowed configuring step adaptor
+- Reorganized `dragent` to submodules
+- Disabled step adaptor for custom DataRobot models to prevert reporting events twice
+- Added example of producing a single (non-streaming) response
+
+## 0.7.8
+- Updated enum values under DataRobotMCPPromptCategory and DataRobotMCPToolCategory to make them align with accepted enums of DataRobot public API.
+- Removed UNKNOWN enum value from DataRobotMCPPromptCategory, DataRobotMCPToolCategory, and DataRobotMCPResourceCategory.
 
 ## 0.7.7
 - Forwarded `x-untrusted-*` headers alongside `x-datarobot-*` headers in NAT `extract_datarobot_headers_from_context()`

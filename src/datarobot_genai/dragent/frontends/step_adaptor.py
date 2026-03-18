@@ -41,10 +41,11 @@ from nat.data_models.api_server import ResponseSerializable
 from nat.data_models.intermediate_step import IntermediateStepCategory
 from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.step_adaptor import StepAdaptorConfig
+from nat.data_models.step_adaptor import StepAdaptorMode
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
 
-from datarobot_genai.dragent.response import DRAgentEventResponse
+from .response import DRAgentEventResponse
 
 logger = logging.getLogger(__name__)
 
@@ -55,25 +56,33 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
     This adaptor interprets LLM events from the root level function as TEXT, and
     downstream functions as REASONING.
-
-    TODO: make it configurable to support different behavior
     """
 
     def __init__(self, config: StepAdaptorConfig) -> None:
-        # Override the config to default
-        default_config = StepAdaptorConfig()
-        if default_config != config:
-            raise ValueError(
-                f"Step config {config} is not supported for nested reasoning processing. "
-                f"Using default config {default_config}",
-                UserWarning,
-            )
-        super().__init__(default_config)
+        super().__init__(config)
         self.function_level = 0
         self.seen_llm_new_token = False
 
+    def _step_matches_filter(self, step: IntermediateStep, config: StepAdaptorConfig) -> bool:  # noqa: PLR0911
+        """Returns True if this intermediate step should be included (based on the config.mode)."""  # noqa: D401
+        if config.mode == StepAdaptorMode.OFF:
+            return False
+
+        if config.mode == StepAdaptorMode.DEFAULT:
+            # Process all steps
+            return True
+
+        if config.mode == StepAdaptorMode.CUSTOM:
+            # pass only what the user explicitly listed
+            return step.event_type in config.custom_event_types
+
+        return False
+
     def process(self, step: IntermediateStep) -> ResponseSerializable | None:
         result = super().process(step)
+
+        if not self._step_matches_filter(step, self.config):
+            return None
 
         try:
             payload = step.payload
@@ -297,8 +306,3 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         event = CustomEvent(name=payload.event_type, value=payload)
         response = DRAgentEventResponse(events=[event])
         return response
-
-
-class DRAgentEmptyStepAdaptor(StepAdaptor):
-    def process(self, step: IntermediateStep) -> ResponseSerializable | None:
-        return None

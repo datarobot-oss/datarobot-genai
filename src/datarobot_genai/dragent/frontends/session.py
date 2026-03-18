@@ -19,8 +19,9 @@ from nat.runtime.session import SessionManager
 from pydantic import BaseModel
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
-from datarobot_genai.dragent.request import DRAgentRunAgentInput
-from datarobot_genai.dragent.response import DRAgentEventResponse
+
+from .request import DRAgentRunAgentInput
+from .response import DRAgentEventResponse
 
 logger = logging.getLogger(__name__)
 

@@ -46,7 +46,7 @@ class MyAgent(CrewAIAgent):
                 "outline with 3-5 key points. No paragraphs, no explanations — just the list."
             ),
             llm=self._llm,
-            tools=self.mcp_tools,
+            tools=[calculator_tool] + self.mcp_tools,
             verbose=self.verbose,
         )
         writer = Agent(

@@ -35,6 +35,7 @@ lint = [
 ]
 
 [project.entry-points.'nat.plugins']
+nat_agent = "dragent.nat.register"
 langgraph_agent = "dragent.langgraph.register"
 crewai_agent = "dragent.crewai.register"
 llamaindex_agent = "dragent.llamaindex.register"

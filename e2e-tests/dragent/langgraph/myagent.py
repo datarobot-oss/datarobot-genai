@@ -63,7 +63,7 @@ class MyAgent(LangGraphAgent):
     def agent_planner(self) -> Any:
         return create_agent(
             self._llm,
-            tools=self.mcp_tools,
+            tools=[calculator_tool] + self.mcp_tools,
             system_prompt=make_system_prompt(
                 "You are a content planner. Given a topic, produce a short bullet-point "
                 "outline with 3-5 key points. No paragraphs, no explanations — just the list."
