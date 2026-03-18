@@ -30,7 +30,7 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_header
 
 _AGENT_URL = "http://agent.example.com"
 
-_MODULE = "datarobot_genai.dragent.auth_a2a_client"
+_MODULE = "datarobot_genai.dragent.plugins.auth_a2a_client"
 
 
 # ---------------------------------------------------------------------------
