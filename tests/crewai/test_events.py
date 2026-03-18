@@ -22,10 +22,14 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 from ragas.messages import ToolMessage
 
+from datarobot_genai.crewai.events import AgentReasoningCompletedEvent
+from datarobot_genai.crewai.events import AgentReasoningStartedEvent
 from datarobot_genai.crewai.events import AgentExecutionCompletedEvent
 from datarobot_genai.crewai.events import AgentExecutionStartedEvent
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
 from datarobot_genai.crewai.events import CrewKickoffStartedEvent
+from datarobot_genai.crewai.events import TaskCompletedEvent
+from datarobot_genai.crewai.events import TaskStartedEvent
 from datarobot_genai.crewai.events import ToolUsageFinishedEvent
 from datarobot_genai.crewai.events import ToolUsageStartedEvent
 
@@ -58,6 +62,26 @@ class _AgentCompleted:
 
 
 @dataclass
+class _AgentReasoningStarted:
+    type: str
+
+
+@dataclass
+class _AgentReasoningCompleted:
+    plan: str
+
+
+@dataclass
+class _TaskStarted:
+    context: str
+
+
+@dataclass
+class _TaskCompleted:
+    output: dict[str, Any]
+
+
+@dataclass
 class _ToolStarted:
     tool_name: str
     tool_args: Any
@@ -81,6 +105,22 @@ def test_crewai_event_listener_accumulates_messages() -> None:
     for fn in bus.handlers.get(AgentExecutionStartedEvent, []):
         fn(None, _AgentStarted(task_prompt="prompt"))
 
+    # Fire agent reasoning started (AI with type)
+    for fn in bus.handlers.get(AgentReasoningStartedEvent, []):
+        fn(None, _AgentReasoningStarted(type="type"))
+
+    # Fire agent reasoning completed (AI with plan)
+    for fn in bus.handlers.get(AgentReasoningCompletedEvent, []):
+        fn(None, _AgentReasoningCompleted(plan="plan"))
+
+    # Fire task started (AI with context)
+    for fn in bus.handlers.get(TaskStartedEvent, []):
+        fn(None, _TaskStarted(context="context"))
+
+    # Fire task completed (AI with output)
+    for fn in bus.handlers.get(TaskCompletedEvent, []):
+        fn(None, _TaskCompleted(output={"output": 1}))
+
     # Fire tool started (adds ToolCall to last AI)
     for fn in bus.handlers.get(ToolUsageStartedEvent, []):
         fn(None, _ToolStarted(tool_name="t", tool_args={"a": 1}))
@@ -96,8 +136,12 @@ def test_crewai_event_listener_accumulates_messages() -> None:
     # Validate message sequence
     assert isinstance(listener.messages[0], HumanMessage)
     assert isinstance(listener.messages[1], AIMessage)
-    assert isinstance(listener.messages[2], ToolMessage)
+    assert isinstance(listener.messages[2], AIMessage)
     assert isinstance(listener.messages[3], AIMessage)
+    assert isinstance(listener.messages[4], AIMessage)
+    assert isinstance(listener.messages[5], AIMessage)
+    assert isinstance(listener.messages[6], ToolMessage)
+    assert isinstance(listener.messages[7], AIMessage)
     # Tool call was attached to second message (AI)
     assert isinstance(listener.messages[1], AIMessage)
-    assert listener.messages[1].tool_calls and listener.messages[1].tool_calls[0].name == "t"
+    assert listener.messages[5].tool_calls and listener.messages[5].tool_calls[0].name == "t"

@@ -86,9 +86,7 @@ class CrewAIRagasEventListener:
         def on_agent_task_completed(_: Any, event: Any) -> None:
             self.step_event = False
             self.messages.append(
-                AIMessage(
-                    content=f"Task output: '{json.dumps(event.output.json_dict)}'", tool_calls=[]
-                )
+                AIMessage(content=f"Task output: '{json.dumps(event.output)}'", tool_calls=[])
             )
 
         @crewai_event_bus.on(TaskFailedEvent)
