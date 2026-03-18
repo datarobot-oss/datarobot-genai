@@ -22,8 +22,8 @@ from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
     integration_test_mcp_server_params,
-    integration_test_mcp_session,
 )
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOYMENT_ID
 
 
