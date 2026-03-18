@@ -2,6 +2,7 @@
 * @datarobot-oss/buzok
 
 # Shared files: either Buzok or MCP can approve
+/.github/CODEOWNERS @datarobot-oss/buzok @datarobot-oss/mcp
 /CHANGELOG.md @datarobot-oss/buzok @datarobot-oss/mcp
 /pyproject.toml @datarobot-oss/buzok @datarobot-oss/mcp
 /uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
