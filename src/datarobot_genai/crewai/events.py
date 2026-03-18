@@ -18,7 +18,6 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 
-
 if TYPE_CHECKING:
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
@@ -27,12 +26,12 @@ if TYPE_CHECKING:
 from crewai.events.event_bus import CrewAIEventsBus
 from crewai.events.event_types import AgentExecutionCompletedEvent
 from crewai.events.event_types import AgentExecutionStartedEvent
-from crewai.events.event_types import CrewKickoffStartedEvent
-from crewai.events.event_types import AgentReasoningStartedEvent
 from crewai.events.event_types import AgentReasoningCompletedEvent
 from crewai.events.event_types import AgentReasoningFailedEvent
-from crewai.events.event_types import TaskFailedEvent
+from crewai.events.event_types import AgentReasoningStartedEvent
+from crewai.events.event_types import CrewKickoffStartedEvent
 from crewai.events.event_types import TaskCompletedEvent
+from crewai.events.event_types import TaskFailedEvent
 from crewai.events.event_types import TaskStartedEvent
 from crewai.events.event_types import ToolUsageErrorEvent
 from crewai.events.event_types import ToolUsageFinishedEvent

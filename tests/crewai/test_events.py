@@ -22,10 +22,10 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 from ragas.messages import ToolMessage
 
-from datarobot_genai.crewai.events import AgentReasoningCompletedEvent
-from datarobot_genai.crewai.events import AgentReasoningStartedEvent
 from datarobot_genai.crewai.events import AgentExecutionCompletedEvent
 from datarobot_genai.crewai.events import AgentExecutionStartedEvent
+from datarobot_genai.crewai.events import AgentReasoningCompletedEvent
+from datarobot_genai.crewai.events import AgentReasoningStartedEvent
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
 from datarobot_genai.crewai.events import CrewKickoffStartedEvent
 from datarobot_genai.crewai.events import TaskCompletedEvent
