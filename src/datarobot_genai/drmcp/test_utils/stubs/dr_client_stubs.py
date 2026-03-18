@@ -317,8 +317,21 @@ def test_create_dr_client() -> StubDRClient:
     # --- REST method stubs for dr_module.client.get_client() ---
     def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.get() REST calls."""
-        if "deployments" in url and "predictions" not in url:
-            # list_vector_databases calls GET deployments/ to find VDB deployments
+        if "predictionResults" in url:
+            limit = (params or {}).get("limit", 100)
+            rows = [
+                {
+                    "rowId": i,
+                    "predictionValue": round(0.7 + i * 0.01, 2),
+                    "timestamp": f"2024-01-{i + 1:02d}T00:00:00Z",
+                }
+                for i in range(min(limit, 5))
+            ]
+            return StubRestResponse({"data": rows, "next": None})
+        if "externalDataDrivers" in url and "tables" in url:
+            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
+        if url.rstrip("/") == "deployments" or url.rstrip("/").endswith("deployments"):
+            # list_vector_databases calls GET deployments/ to list all deployments
             return StubRestResponse(
                 {
                     "data": [
@@ -340,19 +353,6 @@ def test_create_dr_client() -> StubDRClient:
                     "next": None,
                 }
             )
-        if "predictionResults" in url:
-            limit = (params or {}).get("limit", 100)
-            rows = [
-                {
-                    "rowId": i,
-                    "predictionValue": round(0.7 + i * 0.01, 2),
-                    "timestamp": f"2024-01-{i + 1:02d}T00:00:00Z",
-                }
-                for i in range(min(limit, 5))
-            ]
-            return StubRestResponse({"data": rows, "next": None})
-        if "externalDataDrivers" in url and "tables" in url:
-            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         if "useCases" in url:
             data: list[dict] = [
                 {"id": STUB_USE_CASE_ID, "name": "Stub Use Case"},
