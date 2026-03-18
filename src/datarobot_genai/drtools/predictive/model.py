@@ -290,9 +290,7 @@ async def is_eligible_for_timeseries_training(
     if target_column not in df.columns:
         errors.append(f"Target column '{target_column}' not found in dataset.")
 
-    null_pct = (
-        df[target_column].null_count() / row_count if target_column in df.columns else None
-    )
+    null_pct = df[target_column].null_count() / row_count if target_column in df.columns else None
     if null_pct is not None:
         infos.append(f"Target null rate: {null_pct:.1%}")
         if null_pct > _MAX_NULL_RATE_FOR_ELIGIBILITY:
