@@ -21,8 +21,8 @@ from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
     integration_test_mcp_server_params,
-    integration_test_mcp_session,
 )
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_USE_CASE_ID
 
 
@@ -80,9 +80,7 @@ class TestMCPUseCaseToolsIntegration:
     async def test_list_use_cases_with_search_no_results(self) -> None:
         """list_use_cases with a non-matching search filter returns empty list."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
-            result = await session.call_tool(
-                "list_use_cases", {"search": "zzz_nonexistent_zzz"}
-            )
+            result = await session.call_tool("list_use_cases", {"search": "zzz_nonexistent_zzz"})
             assert not result.isError
             data = json.loads(result.content[0].text)
             assert data["use_cases"] == []
