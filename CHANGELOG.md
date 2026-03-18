@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.1
+- Fixed issue with NAT profiler interacting with MCP tools for langgraph
+- Enabled MCP and tool tests for all agents
+- Implemented decorator `nat_tool` which allows registering a function in NAT with a single line
+
 ## 0.8.0
 - Allowed configuring step adaptor
 - Reorganized `dragent` to submodules
