@@ -240,18 +240,21 @@ async def test_get_model_details_feature_impact_error() -> None:
 
 @pytest.mark.asyncio
 async def test_is_eligible_for_timeseries_training_success() -> None:
-    import pandas as pd
+    import polars as pl
 
     mock_client = MagicMock()
     mock_dataset = MagicMock()
-    # get_as_dataframe() returns a pandas DataFrame (SDK behavior); polars conversion is internal
-    pandas_df = pd.DataFrame(
+    # Build with polars, convert to pandas at boundary (SDK returns pandas)
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True
+    )
+    pandas_df = pl.DataFrame(
         {
-            "date": pd.date_range("2020-01-01", periods=200),
+            "date": dates,
             "target": range(200),
             "feature": range(200),
         }
-    )
+    ).to_pandas()
     mock_dataset.get_as_dataframe.return_value = pandas_df
     mock_client.Dataset.get.return_value = mock_dataset
     with (
@@ -272,17 +275,20 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
 
 @pytest.mark.asyncio
 async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
-    import pandas as pd
+    import polars as pl
 
     mock_client = MagicMock()
     mock_dataset = MagicMock()
-    # get_as_dataframe() returns a pandas DataFrame (SDK behavior); polars conversion is internal
-    pandas_df = pd.DataFrame(
+    # Build with polars, convert to pandas at boundary (SDK returns pandas)
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=49), eager=True
+    )
+    pandas_df = pl.DataFrame(
         {
-            "date": pd.date_range("2020-01-01", periods=50),
+            "date": dates,
             "target": range(50),
         }
-    )
+    ).to_pandas()
     mock_dataset.get_as_dataframe.return_value = pandas_df
     mock_client.Dataset.get.return_value = mock_dataset
     with (
