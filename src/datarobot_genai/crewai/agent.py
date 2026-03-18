@@ -30,6 +30,14 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from ag_ui.core import EventType
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
+
+from ag_ui.core import ReasoningStartEvent
+from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -41,7 +49,7 @@ from crewai import Crew
 from crewai.events import crewai_event_bus
 from crewai.tools import BaseTool
 from crewai.types.streaming import CrewStreamingOutput
-from crewai.types.stremaing import StreamChunkType
+from crewai.types.streaming import StreamChunkType
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -166,7 +174,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
-        breakpoint()
 
         zero_metrics: UsageMetrics = {
             "completion_tokens": 0,
@@ -210,47 +217,132 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             f"\n\nPrior conversation:\n{history_summary}"
                         )
                 message_id = str(uuid.uuid4())
-
-                crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
+                crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
 
                 if isinstance(crew_output, CrewStreamingOutput):
                     current_task = ""
+                    reasoning_started = False
+                    step_started = False
                     text_started = False
                     async for chunk in crew_output:
                         # Show task transitions
+                        # print(f"curr chunk {chunk.chunk_type} {chunk.agent_role}")
                         if chunk.task_name != current_task:
                             current_task = chunk.task_name
                             print(f"\n[{chunk.agent_role}] Working on: {chunk.task_name}")
                             print("-" * 60)
 
-                        # Display text chunks
-                        if chunk.chunk_type == StreamChunkType.TEXT:
-                            print(chunk.content, end="", flush=True)
-                            if not text_started:
+                        if ragas_event_listener.reasoning_event:
+                            if not reasoning_started:
                                 yield (
-                                    TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START,
+                                    ReasoningStartEvent(
+                                        type=EventType.REASONING_START,
                                         message_id=message_id,
                                     ),
                                     None,
                                     zero_metrics,
                                 )
-                            text_started = True
-                            usage_metrics = self._extract_usage_metrics(crew_output)
+                                # yield (
+                                #     ReasoningMessageStartEvent(
+                                #         type=EventType.REASONING_MESSAGE_START,
+                                #         message_id=message_id,
+                                #         role="assistant",
+                                #     ),
+                                #     None,
+                                #     zero_metrics,
+                                # )
+                                reasoning_started = True
+                        elif reasoning_started:
+                            # yield (
+                            #     ReasoningMessageEndEvent(
+                            #         type=EventType.REASONING_MESSAGE_END, message_id=message_id
+                            #     ),
+                            #     None,
+                            #     zero_metrics,
+                            # )
+                            # yield (
+                            #     ReasoningEndEvent(
+                            #         type=EventType.REASONING_END,
+                            #         message_id=message_id,
+                            #     ),
+                            #     None,
+                            #     zero_metrics,
+                            # )
+                            # reasoning_started = False
+                            pass
+
+                        if ragas_event_listener.step_event:
+                            if not step_started:
+                                yield (
+                                    StepStartedEvent(
+                                        type=EventType.STEP_STARTED,
+                                        step_name=chunk.task_name,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                step_started = True
+                        elif step_started:
                             yield (
-                                TextMessageContentEvent(
-                                    type=EventType.TEXT_MESSAGE_CONTENT,
-                                    message_id=message_id,
-                                    delta=chunk.content,
+                                StepFinishedEvent(
+                                    type=EventType.STEP_FINISHED,
+                                    step_name=chunk.task_name,
                                 ),
                                 None,
                                 zero_metrics,
                             )
+                            step_started = False
+
+                        # Display text chunks
+                        if chunk.chunk_type == StreamChunkType.TEXT:
+                            if ragas_event_listener.reasoning_event:
+                                yield (
+                                    ReasoningMessageContentEvent(
+                                        type=EventType.REASONING_MESSAGE_CONTENT,
+                                        message_id=message_id,
+                                        delta=chunk.content,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                            else:
+                                if not text_started:
+                                    if reasoning_started:
+                                        yield (
+                                            ReasoningEndEvent(
+                                                type=EventType.REASONING_END,
+                                                message_id=message_id,
+                                            ),
+                                            None,
+                                            zero_metrics,
+                                        )
+                                        reasoning_started = False
+                                    yield (
+                                        TextMessageStartEvent(
+                                            type=EventType.TEXT_MESSAGE_START,
+                                            message_id=message_id,
+                                        ),
+                                        None,
+                                        zero_metrics,
+                                    )
+                                text_started = True
+                                yield (
+                                    TextMessageContentEvent(
+                                        type=EventType.TEXT_MESSAGE_CONTENT,
+                                        message_id=message_id,
+                                        delta=chunk.content,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
                         # Display tool calls
                         elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
                             print(f"\nUsing tool: {chunk.tool_call.tool_name}")
-
+                    pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                        ragas_event_listener.messages
+                    )
                     if text_started:
+                        usage_metrics = self._extract_usage_metrics(crew_output)
                         yield (
                             TextMessageEndEvent(
                                 type=EventType.TEXT_MESSAGE_END, message_id=message_id
