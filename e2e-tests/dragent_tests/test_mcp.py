@@ -18,7 +18,7 @@ import httpx
 import pytest
 from ag_ui.core import EventType
 
-from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import FRAMEWORK, FRAMEWORK_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
@@ -40,7 +40,10 @@ EXPECTED_TOOL_CALL_NAMES = {
     "mcp_tools__search_datarobot_agentic_docs"
 }
 
-
+@pytest.mark.skipif(
+    FRAMEWORK == "base",
+    reason="Base framework does not implement anything, skipping MCP tool call tests",
+)
 def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
     """Agent invokes an MCP tool (search_datarobot_agentic_docs)."""
     # GIVEN: a prompt that invokes the search_datarobot_agentic_docs tool

@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 from ag_ui.core import EventType
+import pytest
 
-from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS, GENERATE_STREAM_PATH
+from dragent_tests.helpers import FRAMEWORK, FRAMEWORK_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
@@ -34,7 +35,10 @@ CALCULATOR_PROMPT = (
 
 EXPECTED_RESULT = str((1234 * 567890) + 91011)
 
-
+@pytest.mark.skipif(
+    FRAMEWORK == "base",
+    reason="Base framework does not implement anything, skipping tool call tests",
+)
 def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
     """Agent uses calculator tool when asked to compute."""
     # GIVEN: a payload that requests the calculator tool to compute the expression
