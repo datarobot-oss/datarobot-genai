@@ -11,23 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 from datarobot._experimental.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
 from datarobot._experimental.models.user_mcp_server_deployment import (
     TypeOfToolInUserMCPServerDeployment,
 )
+from datarobot.errors import ClientError as DataRobotAPIClientError
 from fastmcp import FastMCP
 
-from datarobot_genai.drmcp.core.clients import get_api_client as get_datarobot_client
+from datarobot_genai.drmcp.core.clients import get_dr_api_client_with_static_config_in_container
 from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.entities import BASE_MCP_METADATA_TYPE
 from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVars
 
+logger = logging.getLogger(__name__)
+
 
 class LineageManager:
     def __init__(self, mcp_server_instance: FastMCP) -> None:
-        self.datarobot_client = get_datarobot_client()
+        get_dr_api_client_with_static_config_in_container()
         self.feature_flag_enabled = FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled
         self.mcp_server_deployment_id = LRSEnvVars.MLOPS_DEPLOYMENT_ID.get_os_env_value()
         self.mcp_server_version_id = LRSEnvVars.MLOPS_MODEL_ID.get_os_env_value()
@@ -76,24 +80,40 @@ class LineageManager:
         ]
 
     async def associate_mcp_tools_with_mcp_server_deployment(
-        self, mcp_tools: list[MCPToolMetadata]
+        self, mcp_tool_metadatas: list[MCPToolMetadata]
     ) -> None:
-        for mcp_tool in mcp_tools:
-            ToolInUserMCPServerDeployment.create(
-                mcp_server_deployment_id=self.mcp_server_deployment_id,
-                name=mcp_tool.name,
-                type=TypeOfToolInUserMCPServerDeployment.from_string(mcp_tool.type),
-            )
+        for mcp_tool_metadata in mcp_tool_metadatas:
+            try:
+                ToolInUserMCPServerDeployment.create(
+                    mcp_server_deployment_id=self.mcp_server_deployment_id,
+                    name=mcp_tool_metadata.name,
+                    type=TypeOfToolInUserMCPServerDeployment.from_string(mcp_tool_metadata.type),
+                )
+            except DataRobotAPIClientError:
+                error_msg = (
+                    f"Fail during associating one mcp tool (name: {mcp_tool_metadata.name})"
+                    f"from mcp server deployment (ID: {self.mcp_server_deployment_id})"
+                )
+                logger.exception(error_msg)
+                continue
 
     @staticmethod
     async def dissociate_mcp_tools_from_mcp_server_deployment(
-        mcp_tools: list[MCPToolMetadata],
+        mcp_tool_metadatas: list[MCPToolMetadata],
     ) -> None:
-        for mcp_tool in mcp_tools:
-            datarobot_mcp_tool = mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment()
-            datarobot_mcp_tool.delete()
+        for mcp_tool_metadata in mcp_tool_metadatas:
+            mcp_tool = mcp_tool_metadata.to_datarobot_mcp_item_in_mcp_server_deployment()
+            try:
+                mcp_tool.delete()
+            except DataRobotAPIClientError:
+                error_msg = (
+                    f"Fail during dissociating one mcp tool (ID: {mcp_tool.id})"
+                    f"from mcp server deployment (ID: {mcp_tool.mcp_server_deployment_id})"
+                )
+                logger.exception(error_msg)
+                continue
 
-    async def sync_metadata_of_mcp_tools_in_server(self) -> None:
+    async def sync_mcp_tools(self) -> None:
         mcp_tools_associated_with_deployment = (
             await self.get_mcp_tools_associated_with_mcp_server_deployment()
         )

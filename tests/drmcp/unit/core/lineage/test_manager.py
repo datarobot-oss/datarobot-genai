@@ -33,19 +33,23 @@ class TestLineageManager:
         return "datarobot_genai.drmcp.core.lineage.manager"
 
     @pytest.fixture
-    def mock_get_datarobot_client(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.get_datarobot_client") as mock_func:
+    def mock_lrs_env_var(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.LRSEnvVars") as mock_enum:
+            yield mock_enum
+
+    @pytest.fixture
+    def mock_get_dr_api_client_with_static_config_in_container(
+        self, module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(
+            f"{module_under_test}.get_dr_api_client_with_static_config_in_container",
+        ) as mock_func:
             yield mock_func
 
     @pytest.fixture
     def mock_feature_flag_create(self) -> Iterator[Mock]:
         with patch.object(FeatureFlag, "create") as mock_func:
             yield mock_func
-
-    @pytest.fixture
-    def mock_lrs_env_var(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.LRSEnvVars") as mock_enum:
-            yield mock_enum
 
     @pytest.fixture
     def mock_type_of_tool_in_user_mcp_server_deployment_from_string(self) -> Iterator[Mock]:
@@ -132,18 +136,17 @@ class TestLineageManager:
     def test_init(
         self,
         mock_feature_flag_create: Mock,
-        mock_get_datarobot_client: Mock,
+        mock_get_dr_api_client_with_static_config_in_container: Mock,
         mock_lrs_env_var: Mock,
     ) -> None:
         mock_mcp_server_instance = Mock()
         manager = LineageManager(mock_mcp_server_instance)
 
-        mock_get_datarobot_client.assert_called_once_with()
+        mock_get_dr_api_client_with_static_config_in_container.assert_called_once_with()
         mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
         mock_lrs_env_var.MLOPS_DEPLOYMENT_ID.get_os_env_value.assert_called_once_with()
         mock_lrs_env_var.MLOPS_MODEL_ID.get_os_env_value.assert_called_once_with()
 
-        assert manager.datarobot_client == mock_get_datarobot_client.return_value
         assert manager.feature_flag_enabled == mock_feature_flag_create.return_value.enabled
         assert (
             manager.mcp_server_deployment_id
@@ -158,7 +161,7 @@ class TestLineageManager:
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
         "mock_feature_flag_create",
-        "mock_get_datarobot_client",
+        "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_tools_associated_with_mcp_server_deployment(
@@ -186,7 +189,7 @@ class TestLineageManager:
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
         "mock_feature_flag_create",
-        "mock_get_datarobot_client",
+        "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_tools_in_mcp_server(
@@ -232,7 +235,7 @@ class TestLineageManager:
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
         "mock_feature_flag_create",
-        "mock_get_datarobot_client",
+        "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_associate_mcp_tools_with_mcp_server_deployment(
@@ -270,10 +273,10 @@ class TestLineageManager:
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
         "mock_feature_flag_create",
-        "mock_get_datarobot_client",
+        "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
-    async def test_sync_metadata_of_mcp_tools_in_server(
+    async def test_sync_mcp_tools(
         self,
         mock_get_mcp_tools_associated_with_mcp_server_deployment: AsyncMock,
         mock_get_mcp_tools_in_mcp_server: AsyncMock,
@@ -284,7 +287,7 @@ class TestLineageManager:
     ) -> None:
         manager = LineageManager(Mock())
 
-        await manager.sync_metadata_of_mcp_tools_in_server()
+        await manager.sync_mcp_tools()
 
         mock_get_mcp_tools_associated_with_mcp_server_deployment.assert_called_once_with()
         mock_get_mcp_tools_in_mcp_server.assert_called_once_with()
