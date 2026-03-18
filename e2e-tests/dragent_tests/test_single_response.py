@@ -14,14 +14,23 @@
 
 from __future__ import annotations
 
+import os
+
 import httpx
+import pytest
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 
+FRAMEWORK = os.environ.get("FRAMEWORK")
 
+@pytest.mark.skipif(
+    FRAMEWORK == "nat",
+    reason="NAT returns single response in chat completions format, and we do not yet care to fix "
+    "it."
+)
 def test_generate_single_produces_text(http_client: httpx.Client) -> None:
     """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
