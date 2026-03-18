@@ -14,7 +14,6 @@
 
 import os
 from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
@@ -41,7 +40,45 @@ def mock_load_mcp_tools():
 
 @pytest.fixture
 def mock_tools():
-    return [MagicMock(), MagicMock()]
+    from langchain_core.tools import StructuredTool
+    from pydantic import BaseModel
+    from pydantic import Field
+
+    # Dummy argument schema for a test tool
+    class DummyToolInput(BaseModel):
+        foo: str = Field(..., description="A foo string argument")
+        bar: int = Field(42, description="A bar integer argument")
+
+    async def dummy_tool_func(foo: str, bar: int = 42, runtime=None):
+        """Do something."""
+        # Runtime arg to mimic MCP runtime-injected parameter
+        return ({"content": f"foo={foo}; bar={bar}", "artifact": None}, [])
+
+    # Dummy 1: tool using args_schema and coroutine
+    dummy_tool_1 = StructuredTool(
+        name="dummy-tool-1",
+        description="A dummy MCP-like tool for testing.",
+        args_schema=DummyToolInput,
+        coroutine=dummy_tool_func,
+        response_format="content_and_artifact",
+        metadata={"_meta": {"example": 1}},
+    )
+
+    # Dummy 2: Minimal version, no response_format or metadata
+    class Tool2Input(BaseModel):
+        val: int = Field(...)
+
+    async def tool2_func(val: int, runtime=None):
+        return ({"content": str(val * 10), "artifact": None}, [])
+
+    dummy_tool_2 = StructuredTool(
+        name="tool-2",
+        description="A second dummy MCP tool.",
+        args_schema=Tool2Input,
+        coroutine=tool2_func,
+    )
+
+    return [dummy_tool_1, dummy_tool_2]
 
 
 @pytest.fixture
@@ -50,6 +87,20 @@ def mock_session_instance():
     session_instance.__aenter__.return_value = session_instance
     session_instance.__aexit__.return_value = None
     return session_instance
+
+
+@pytest.fixture
+def assert_mock_tools_expected(mock_tools):
+    tool_names = [t.name for t in mock_tools]
+    tool_descriptions = [t.description for t in mock_tools]
+    tool_args_schemas = [t.args_schema for t in mock_tools]
+
+    def assert_mock_tools_expected(tools):
+        assert [t.name for t in tools] == tool_names
+        assert [t.description for t in tools] == tool_descriptions
+        assert [t.args_schema for t in tools] == tool_args_schemas
+
+    return assert_mock_tools_expected
 
 
 @pytest.fixture
@@ -70,7 +121,9 @@ class TestMCPToolsContext:
             async with mcp_tools_context() as tools:
                 assert tools == []
 
-    async def test_mcp_tools_context_with_external_url(self, setup_session_and_tools):
+    async def test_mcp_tools_context_with_external_url(
+        self, setup_session_and_tools, assert_mock_tools_expected
+    ):
         test_headers = '{"X-API-Key": "test-key", "Content-Type": "application/json"}'
         test_transport = "sse"
         external_url = "https://mcp-server.example.com/mcp"
@@ -85,7 +138,7 @@ class TestMCPToolsContext:
             clear=True,
         ):
             async with mcp_tools_context() as tools:
-                assert tools == setup_session_and_tools["tools"]
+                assert_mock_tools_expected(tools)
 
                 # Verify create_session was called with correct connection config
                 setup_session_and_tools["session"].assert_called_once()
@@ -103,13 +156,13 @@ class TestMCPToolsContext:
                 )
 
     async def test_mcp_tools_context_with_external_url_default_transport(
-        self, setup_session_and_tools
+        self, setup_session_and_tools, assert_mock_tools_expected
     ):
         external_url = "https://mcp-server.example.com/mcp"
 
         with patch.dict(os.environ, {"EXTERNAL_MCP_URL": external_url}, clear=True):
             async with mcp_tools_context() as tools:
-                assert tools == setup_session_and_tools["tools"]
+                assert_mock_tools_expected(tools)
 
                 # Verify create_session was called with correct connection config
                 # (default transport)
@@ -126,7 +179,7 @@ class TestMCPToolsContext:
                 )
 
     async def test_mcp_tools_context_with_datarobot_deployment(
-        self, setup_session_and_tools, agent_auth_context_data
+        self, setup_session_and_tools, agent_auth_context_data, assert_mock_tools_expected
     ):
         deployment_id = "abc123def456789012345678"
         api_base = "https://app.datarobot.com/api/v2"
@@ -146,7 +199,7 @@ class TestMCPToolsContext:
             clear=True,
         ):
             async with mcp_tools_context() as tools:
-                assert tools == setup_session_and_tools["tools"]
+                assert_mock_tools_expected(tools)
                 # Check that create_session was called with correct connection config
                 setup_session_and_tools["session"].assert_called_once()
                 call_args = setup_session_and_tools["session"].call_args
@@ -159,7 +212,7 @@ class TestMCPToolsContext:
                 )
 
     async def test_mcp_tools_context_with_parameters(
-        self, setup_session_and_tools, agent_auth_context_data
+        self, setup_session_and_tools, agent_auth_context_data, assert_mock_tools_expected
     ):
         deployment_id = "abc123def456789012345678"
         custom_api_base = "https://custom.datarobot.com/api/v2"
@@ -179,7 +232,7 @@ class TestMCPToolsContext:
             clear=True,
         ):
             async with mcp_tools_context() as tools:
-                assert tools == setup_session_and_tools["tools"]
+                assert_mock_tools_expected(tools)
                 # Check that create_session was called with custom parameters
                 setup_session_and_tools["session"].assert_called_once()
                 call_args = setup_session_and_tools["session"].call_args
@@ -188,7 +241,9 @@ class TestMCPToolsContext:
                 assert connection_config["url"] == expected_url
                 assert connection_config["headers"]["Authorization"] == f"Bearer {custom_api_key}"
 
-    async def test_mcp_tools_context_with_sse_transport(self, setup_session_and_tools):
+    async def test_mcp_tools_context_with_sse_transport(
+        self, setup_session_and_tools, assert_mock_tools_expected
+    ):
         external_url = "https://mcp-server.example.com/mcp"
 
         with patch.dict(
@@ -197,7 +252,7 @@ class TestMCPToolsContext:
             clear=True,
         ):
             async with mcp_tools_context() as tools:
-                assert tools == setup_session_and_tools["tools"]
+                assert_mock_tools_expected(tools)
                 # Verify create_session was called with SSE transport
                 setup_session_and_tools["session"].assert_called_once()
                 call_args = setup_session_and_tools["session"].call_args
