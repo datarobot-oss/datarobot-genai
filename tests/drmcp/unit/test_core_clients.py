@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from collections.abc import Iterator
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -26,8 +26,14 @@ from datarobot_genai.drmcp.core.clients import _extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import _extract_token_from_headers_with_fallback
 from datarobot_genai.drmcp.core.clients import dr
 from datarobot_genai.drmcp.core.clients import get_api_client
+from datarobot_genai.drmcp.core.clients import get_dr_api_client_with_static_config_in_container
 from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
+
+
+@pytest.fixture
+def mock_module_under_test() -> str:
+    return "datarobot_genai.drmcp.core.clients"
 
 
 def test_get_sdk_client_returns_dr() -> None:
@@ -64,6 +70,33 @@ class TestGetApiClient:
         assert result == mock_rest_client
         mock_get_sdk_client.assert_called_once()
         mock_client.get_client.assert_called_once()
+
+
+class TestDRAPIClientWithStaticConfigInContainer:
+    @pytest.fixture
+    def mock_get_credentials(self, mock_module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{mock_module_under_test}.get_credentials") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_dr_client_cls(self) -> Iterator[Mock]:
+        with patch.object(dr, "Client") as mock_cls:
+            yield mock_cls
+
+    def test_get_dr_api_client_with_static_config_in_container(
+        self,
+        mock_dr_client_cls: Mock,
+        mock_get_credentials: Mock,
+    ) -> None:
+        output = get_dr_api_client_with_static_config_in_container()
+
+        mock_get_credentials.assert_called_once_with()
+        mock_credentials = mock_get_credentials.return_value
+        mock_dr_client_cls.assert_called_once_with(
+            token=mock_credentials.datarobot.application_api_token,
+            endpoint=mock_credentials.datarobot.endpoint,
+        )
+        assert output == mock_dr_client_cls.return_value
 
 
 class TestPrefixMountPath:
