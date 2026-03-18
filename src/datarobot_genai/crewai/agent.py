@@ -222,7 +222,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     text_started = False
                     async for chunk in crew_output:
                         # Show task transitions
-                        # print(f"curr chunk {chunk.chunk_type} {chunk.agent_role}")
                         if chunk.task_name != current_task:
                             current_task = chunk.task_name
                             print(f"\n[{chunk.agent_role}] Working on: {chunk.task_name}")
@@ -238,34 +237,17 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                     None,
                                     zero_metrics,
                                 )
-                                # yield (
-                                #     ReasoningMessageStartEvent(
-                                #         type=EventType.REASONING_MESSAGE_START,
-                                #         message_id=message_id,
-                                #         role="assistant",
-                                #     ),
-                                #     None,
-                                #     zero_metrics,
-                                # )
                                 reasoning_started = True
                         elif reasoning_started:
-                            # yield (
-                            #     ReasoningMessageEndEvent(
-                            #         type=EventType.REASONING_MESSAGE_END, message_id=message_id
-                            #     ),
-                            #     None,
-                            #     zero_metrics,
-                            # )
-                            # yield (
-                            #     ReasoningEndEvent(
-                            #         type=EventType.REASONING_END,
-                            #         message_id=message_id,
-                            #     ),
-                            #     None,
-                            #     zero_metrics,
-                            # )
-                            # reasoning_started = False
-                            pass
+                            yield (
+                                ReasoningEndEvent(
+                                    type=EventType.REASONING_END,
+                                    message_id=message_id,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
+                            reasoning_started = False
 
                         if ragas_event_listener.step_event:
                             if not step_started:
