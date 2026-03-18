@@ -16,8 +16,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
-import numpy as np
-import pandas as pd
+import polars as pl
 
 # Project id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_PROJECT_ID = "test_project_123"
@@ -138,16 +137,26 @@ class StubDataset:
         self.row_count = row_count
 
     def get_as_dataframe(self) -> Any:
-        """Return a stub DataFrame suitable for time-series eligibility checks."""
+        """Return a stub pandas DataFrame suitable for time-series eligibility checks.
+
+        Returns pandas because the real DataRobot SDK's get_as_dataframe() returns pandas.
+        Production code converts to polars internally via pl.from_pandas().
+        """
+        import random
+
         n = self.row_count
-        dates = pd.date_range("2023-01-01", periods=n, freq="D")
-        return pd.DataFrame(
+        rng = random.Random(42)
+        dates = pl.date_range(
+            pl.date(2023, 1, 1), pl.date(2023, 1, 1) + pl.duration(days=n - 1), eager=True
+        )
+        df = pl.DataFrame(
             {
-                "date": dates.strftime("%Y-%m-%d"),
-                "sales": np.random.default_rng(42).uniform(100, 1000, n),
+                "date": dates.cast(pl.Utf8),
+                "sales": [rng.uniform(100, 1000) for _ in range(n)],
                 "store_id": [f"store_{i % 5}" for i in range(n)],
             }
         )
+        return df.to_pandas()
 
     def get_raw_sample_data(self) -> Any:
         """Return a small stub sample DataFrame (subset, avoids full download)."""
