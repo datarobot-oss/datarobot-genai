@@ -111,7 +111,8 @@ def set_sandbox_provider(provider: SandboxProvider) -> None:
 async def execute_code(
     *,
     code: Annotated[str, "The Python code to execute"] | None = None,
-    session_id: Annotated[str, "Optional session ID for stateful execution"] | None = None,
+    session_id: Annotated[str, "Optional session ID (reserved for future stateful execution)"]
+    | None = None,
     timeout_seconds: Annotated[int, "Execution timeout in seconds"] = 30,
 ) -> ToolResult:
     """Execute Python code in a sandboxed environment.
