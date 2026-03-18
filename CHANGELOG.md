@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.0
+- Allow configuring step adaptor
+- Disable step adaptor for custom DataRobot models to prevert reporting events twice
+- Add example of producing a single (non-streaming) response
+
 ## 0.7.8
 - Updated enum values under DataRobotMCPPromptCategory and DataRobotMCPToolCategory to make them align with accepted enums of DataRobot public API.
 - Removed UNKNOWN enum value from DataRobotMCPPromptCategory, DataRobotMCPToolCategory, and DataRobotMCPResourceCategory.
