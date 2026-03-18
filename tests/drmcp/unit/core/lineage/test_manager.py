@@ -48,6 +48,14 @@ class TestLineageManager:
             yield mock_enum
 
     @pytest.fixture
+    def mock_type_of_tool_in_user_mcp_server_deployment_from_string(self) -> Iterator[Mock]:
+        with patch.object(
+            TypeOfToolInUserMCPServerDeployment,
+            "from_string",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
     def mock_get_mcp_tools_associated_with_mcp_server_deployment(self) -> Iterator[Mock]:
         with patch.object(
             LineageManager,
@@ -230,16 +238,20 @@ class TestLineageManager:
     async def test_associate_mcp_tools_with_mcp_server_deployment(
         self,
         mock_create_tool_in_user_mcp_server_deployment: Mock,
+        mock_type_of_tool_in_user_mcp_server_deployment_from_string: Mock,
     ) -> None:
         manager = LineageManager(Mock())
 
-        mcp_tool = Mock(type="USER_TOOL")
+        mcp_tool = Mock()
         await manager.associate_mcp_tools_with_mcp_server_deployment([mcp_tool])
 
+        mock_type_of_tool_in_user_mcp_server_deployment_from_string.assert_called_once_with(
+            mcp_tool.type,
+        )
         mock_create_tool_in_user_mcp_server_deployment.assert_called_once_with(
             mcp_server_deployment_id=manager.mcp_server_deployment_id,
             name=mcp_tool.name,
-            type=TypeOfToolInUserMCPServerDeployment.from_api_representation(mcp_tool.type),
+            type=mock_type_of_tool_in_user_mcp_server_deployment_from_string.return_value,
         )
 
     @pytest.mark.asyncio

@@ -82,7 +82,7 @@ class LineageManager:
             ToolInUserMCPServerDeployment.create(
                 mcp_server_deployment_id=self.mcp_server_deployment_id,
                 name=mcp_tool.name,
-                type=TypeOfToolInUserMCPServerDeployment.from_api_representation(mcp_tool.type),
+                type=TypeOfToolInUserMCPServerDeployment.from_string(mcp_tool.type),
             )
 
     @staticmethod
