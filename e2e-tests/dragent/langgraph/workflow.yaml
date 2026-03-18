@@ -12,6 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+general:
+  front_end:
+    _type: dragent_fastapi
+    step_adaptor:
+      mode: "off"
+
 llms:
   datarobot_llm:
     _type: datarobot-llm-component

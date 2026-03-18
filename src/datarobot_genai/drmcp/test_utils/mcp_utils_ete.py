@@ -71,6 +71,10 @@ def get_openai_llm_client_config() -> dict[str, str]:
         config["openai_api_version"] = openai_api_version
     config["save_llm_responses"] = str(save_llm_responses)
 
+    llm_temperature = os.environ.get("LLM_TEMPERATURE")
+    if llm_temperature is not None:
+        config["temperature"] = llm_temperature
+
     return config
 
 
@@ -95,6 +99,10 @@ def get_dr_llm_gateway_client_config() -> dict[str, str]:
     config["model"] = dr_llm_gateway_model
     if datarobot_endpoint:
         config["datarobot_endpoint"] = datarobot_endpoint
+
+    llm_temperature = os.environ.get("LLM_TEMPERATURE")
+    if llm_temperature is not None:
+        config["temperature"] = llm_temperature
 
     return config
 
@@ -138,7 +146,7 @@ async def ete_test_mcp_session(
             ) as session:
                 await asyncio.wait_for(session.initialize(), timeout=5)
                 yield session
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise TimeoutError(f"Check if the MCP server is running at {get_dr_mcp_server_url()}")
 
 

@@ -27,7 +27,7 @@ from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "write", "upload", "catalog"})
+@dr_mcp_integration_tool(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
 async def upload_dataset_to_ai_catalog(
     *,
     file_path: Annotated[str, "The path to the dataset file to upload."] | None = None,
@@ -69,7 +69,7 @@ async def upload_dataset_to_ai_catalog(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "read", "list", "catalog"})
+@dr_mcp_integration_tool(tags={"predictive", "data", "read", "list", "catalog", "daria"})
 async def list_ai_catalog_items() -> ToolResult:
     """List all AI Catalog items (datasets) for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -88,6 +88,133 @@ async def list_ai_catalog_items() -> ToolResult:
         structured_content={
             "datasets": datasets_dict,
             "count": len(datasets),
+        },
+    )
+
+
+@dr_mcp_integration_tool(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})
+async def get_dataset_details(
+    *,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset"] | None = None,
+    include_sample: Annotated[bool, "Whether to include sample rows"] = True,
+    sample_rows: Annotated[int, "Number of sample rows to return"] = 10,
+) -> ToolError | ToolResult:
+    """Get DataRobot dataset metadata and optional sample rows."""
+    if not dataset_id:
+        raise ToolError("Dataset ID must be provided")
+
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
+    dataset = client.Dataset.get(dataset_id)
+
+    result: dict = {
+        "id": dataset.id,
+        "name": dataset.name,
+        "created_at": str(dataset.created_at),
+        "row_count": getattr(dataset, "row_count", None),
+    }
+    if include_sample:
+        try:
+            df = dataset.get_raw_sample_data()
+            result["columns"] = list(df.columns)
+            result["sample"] = df.head(sample_rows).to_dict(orient="records")
+        except Exception as exc:
+            result["sample_error"] = str(exc)
+
+    return ToolResult(structured_content=result)
+
+
+@dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "list", "daria"})
+async def list_datastores() -> ToolResult:
+    """List available DataRobot data connections (datastores)."""
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
+    datastores = client.DataStore.list()
+
+    return ToolResult(
+        structured_content={
+            "datastores": [
+                {
+                    "id": ds.id,
+                    "canonical_name": getattr(ds, "canonical_name", ""),
+                    "creator_id": getattr(ds, "creator_id", ""),
+                    "params": getattr(ds, "params", {}),
+                }
+                for ds in datastores
+            ],
+            "count": len(datastores),
+        },
+    )
+
+
+@dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
+async def browse_datastore(
+    *,
+    datastore_id: Annotated[str, "The ID of the datastore to browse"] | None = None,
+    path: Annotated[str, "The path to browse within the datastore"] | None = None,
+    offset: Annotated[int, "Pagination offset"] = 0,
+    limit: Annotated[int, "Maximum number of items to return"] = 100,
+    search: Annotated[str, "Search filter for items"] | None = None,
+) -> ToolError | ToolResult:
+    """Browse a DataRobot data connection to list catalogs, schemas, and tables."""
+    if not datastore_id:
+        raise ToolError("Datastore ID must be provided")
+
+    token = await get_datarobot_access_token()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
+
+    params: dict = {"offset": offset, "limit": limit}
+    if path:
+        params["path"] = path
+    if search:
+        params["search"] = search
+    response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+    data = response.json()
+    items = data.get("data", data) if isinstance(data, dict) else data
+
+    return ToolResult(
+        structured_content={
+            "datastore_id": datastore_id,
+            "path": path or "/",
+            "items": items,
+            "count": len(items),
+        },
+    )
+
+
+@dr_mcp_integration_tool(
+    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"}
+)
+async def query_datastore(
+    *,
+    datastore_id: Annotated[str, "The ID of the datastore to query"] | None = None,
+    sql: Annotated[str, "The SQL query to execute"] | None = None,
+    limit: Annotated[int, "Maximum number of rows to return"] = 1000,
+) -> ToolError | ToolResult:
+    """Execute a SQL query against a DataRobot datastore connection.
+
+    Only data manipulation language queries (insert, update, and delete data)
+    are supported — no commits or rollbacks.
+    """
+    if not datastore_id:
+        raise ToolError("Datastore ID must be provided")
+    if not sql:
+        raise ToolError("SQL query must be provided")
+
+    token = await get_datarobot_access_token()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
+
+    payload = {"query": sql, "limit": limit}
+    response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
+    data = response.json()
+
+    return ToolResult(
+        structured_content={
+            "rows": data.get("data", []),
+            "row_count": len(data.get("data", [])),
+            "columns": data.get("columns", []),
         },
     )
 

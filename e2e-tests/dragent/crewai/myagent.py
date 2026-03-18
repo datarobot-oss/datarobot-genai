@@ -12,18 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime
 from typing import Any
 
 from crewai import Agent
 from crewai import Crew
 from crewai import Task
+from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import CrewAIAgent
+from datarobot_genai.drtools.calculator import calculator
+
+calculator_tool = tool(calculator)
 
 
 class MyAgent(CrewAIAgent):
-    """CrewAI planner/writer agent with NAT."""
+    """Planner -> Writer CrewAI agent with calculator tool for e2e testing."""
 
     def __init__(
         self,
@@ -35,60 +38,35 @@ class MyAgent(CrewAIAgent):
 
     @property
     def agents(self) -> list[Any]:
-        """Planner and writer agents."""
         planner = Agent(
             role="Content Planner",
-            goal=(
-                "Create a brief, structured outline for a blog article on the topic: {topic}. "
-                "Make sure to find relevant information given the current year is "
-                f"{datetime.now().year}."
-            ),
+            goal="Create a short bullet-point outline with 3-5 key points about: {topic}.",
             backstory=make_system_prompt(
-                "You are a content planner. You create brief, structured outlines for blog "
-                "articles. You identify the most important points and cite relevant sources. "
-                "Keep it simple and to the point - this is just an outline for the writer.\n\n"
-                "Create a simple outline with:\n"
-                "1. 10-15 key points or facts (bullet points only, no paragraphs)\n"
-                "2. 2-3 relevant sources or references\n"
-                "3. A brief suggested structure (intro, 2-3 sections, conclusion)\n\n"
-                "Do NOT write paragraphs or detailed explanations. Just provide a focused list."
+                "You are a content planner. Given a topic, produce a short bullet-point "
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list."
             ),
             llm=self._llm,
-            tools=self.mcp_tools,
+            tools=[calculator_tool] + self.mcp_tools,
             verbose=self.verbose,
         )
-
         writer = Agent(
             role="Content Writer",
-            goal="Write a compelling blog post based on the planner's outline about: {topic}.",
+            goal="Write a 2-3 sentence response based on the planner's outline about: {topic}.",
             backstory=make_system_prompt(
-                "You are a content writer working with a planner colleague. "
-                "You write opinion pieces based on the planner's outline and context. "
-                "You provide objective and impartial insights backed by the planner's "
-                "information. You acknowledge when your statements are opinions versus "
-                "objective facts.\n\n"
-                "1. Use the content plan to craft a compelling blog post.\n"
-                "2. Structure with an engaging introduction, insightful body, and "
-                "summarizing conclusion.\n"
-                "3. Sections/Subtitles are properly named in an engaging manner.\n"
-                "4. CRITICAL: Keep the total output under 500 words. Each section should "
-                "have 1-2 brief paragraphs.\n\n"
-                "Write in markdown format, ready for publication."
+                "You are a concise writer. Using the planner's outline, write a short response "
+                "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
             llm=self._llm,
-            tools=self.mcp_tools,
+            tools=[calculator_tool] + self.mcp_tools,
             verbose=self.verbose,
         )
-
         return [planner, writer]
 
     @property
     def tasks(self) -> list[Any]:
-        """Plan then write tasks — only used via ``crew()`` below."""
         return self._tasks_for(self.agents)
 
     def crew(self) -> Crew:
-        """Build a Crew ensuring agents and tasks share the same object references."""
         agents = self.agents
         return Crew(agents=agents, tasks=self._tasks_for(agents), verbose=self.verbose)
 
@@ -97,33 +75,23 @@ class MyAgent(CrewAIAgent):
         return [
             Task(
                 description=(
-                    "Research and create a structured outline for a blog article about: {topic}. "
+                    "Create a short outline about: {topic}. "
                     "Prior conversation context (may be empty): {chat_history}"
                 ),
-                expected_output=(
-                    "A structured outline with 10-15 key points, 2-3 sources, "
-                    "and a brief suggested structure."
-                ),
+                expected_output="A bullet-point outline with 3-5 key points.",
                 agent=planner,
             ),
             Task(
                 description=(
-                    "Using the planner's outline, write a compelling blog post about: {topic}. "
+                    "Using the planner's outline, write a short response about: {topic}. "
                     "Prior conversation context (may be empty): {chat_history}"
                 ),
-                expected_output=(
-                    "A well-structured blog post in markdown format, under 500 words, "
-                    "with an engaging introduction, insightful body, and summarizing conclusion."
-                ),
+                expected_output="A concise 2-3 sentence response.",
                 agent=writer,
             ),
         ]
 
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-        """Build inputs for Crew.kickoff.
-
-        Includes chat_history key to opt into automatic history injection.
-        """
         return {
             "topic": user_prompt_content,
             "chat_history": "",

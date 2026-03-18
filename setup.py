@@ -41,16 +41,12 @@ memory = [
     "mem0ai>=1.0.4,<2.0.0; python_version < '3.13'",
 ]
 
-dragent = core + [
-    "nvidia-nat==1.4.1; python_version >= '3.11'",
-    "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
-]
-
 crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.1.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
+    "nvidia-nat-crewai==1.4.1",
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "pybase64>=1.4.2,<2.0.0",
 ]
@@ -59,6 +55,7 @@ langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
     "langgraph>=1.0.0,<1.1.0",
     "langgraph-prebuilt>=1.0.0,<1.1.0",
+    "nvidia-nat-langchain==1.4.1",
     "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
 ]
 
@@ -69,28 +66,23 @@ llamaindex = core + [
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
     "llama-index-llms-openai>=0.6.0,<0.7.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
+    "nvidia-nat-llama-index==1.4.1",
     "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
     "pypdf>=6.0.0,<7.0.0",
 ]
 
 nat = core + [
-    "nvidia-nat==1.4.1; python_version >= '3.11'",
-    "nvidia-nat-a2a==1.4.1; python_version >= '3.11'",
-    "nvidia-nat-opentelemetry==1.4.1; python_version >= '3.11'",
-    "nvidia-nat-langchain==1.4.1; python_version >= '3.11'",
-    "nvidia-nat-llama-index==1.4.1; python_version >= '3.11'",
-    "nvidia-nat-mcp==1.4.1; python_version >= '3.11'",
-    "crewai>=1.1.0; python_version >= '3.11'",
-    "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Need this to support datarobot-llm plugin
-    "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
-    "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
-    "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
+    "nvidia-nat==1.4.1",
+    "nvidia-nat-a2a==1.4.1",
+    "nvidia-nat-opentelemetry==1.4.1",
+    "nvidia-nat-langchain==1.4.1",  # NAT built-in agents require this
+    "nvidia-nat-mcp==1.4.1",
     "anyio==4.11.0",
 ]
 
-pydanticai = core + [
-    "pydantic-ai-slim[ag-ui,anthropic,bedrock,cli,cohere,evals,fastmcp,google,groq,huggingface,logfire,mcp,mistral,openai,retries,vertexai]>=1.0.5,<1.9.0",
-]
+dragent = nat + []
+
+# Eventually NAT will be merged into dragent
 
 # drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
@@ -144,7 +136,6 @@ extras_require = {
     "langgraph": langgraph,
     "llamaindex": llamaindex,
     "nat": nat,
-    "pydanticai": pydanticai,
     "auth": auth,
     "drmcp": drmcp,
     "drtools": drtools,

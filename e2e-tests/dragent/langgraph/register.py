@@ -13,11 +13,18 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from typing import Annotated
 
+from ag_ui.core import RunAgentInput
+from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.nat.helpers import extract_authorization_from_context
+from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
-from nat.cli.register_workflow import register_function
+from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.agent import AgentBaseConfig
+from nat.data_models.streaming import Streaming
 
 
 class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
@@ -28,24 +35,38 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
     """
 
 
-@register_function(
+@register_per_user_function(
     config_type=LanggraphAgentConfig,
+    input_type=RunAgentInput,  # noqa: F821
+    single_output_type=DRAgentEventResponse,
+    streaming_output_type=DRAgentEventResponse,
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )
 async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
-    from ag_ui.core import RunAgentInput  # noqa: PLC0415
-    from datarobot_genai.dragent.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     from dragent.langgraph.myagent import MyAgent  # noqa: PLC0415
 
-    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-
-    agent = MyAgent(llm=llm)
-
     async def _response_fn(
         input_message: RunAgentInput,
-    ) -> AsyncGenerator[DRAgentEventResponse, None]:
+    ) -> Annotated[
+        AsyncGenerator[DRAgentEventResponse, None],
+        # Streaming tells NAT how to go from a list of streaming events to a single response
+        # object for non-streaming routes.
+        Streaming(convert=aggregate_dragent_event_responses),
+    ]:
+        # LLM might contain user-specific headers
+        llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+
+        # Agent contains user-specific headers and authorization context
+        forwarded_headers = extract_datarobot_headers_from_context()
+        authorization_context = extract_authorization_from_context()
+        agent = MyAgent(
+            llm=llm,
+            forwarded_headers=forwarded_headers,
+            authorization_context=authorization_context,
+        )
+
         async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
             yield DRAgentEventResponse(
                 events=[event],

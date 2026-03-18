@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.6.13"
+version = "0.8.2"
 description = "Generic helpers for GenAI"
 readme = "README.md"
-requires-python = ">=3.10, <3.14"
+requires-python = ">=3.11, <3.14"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DataRobot, Inc." }]
 dynamic = ["optional-dependencies"]
@@ -18,23 +18,29 @@ dynamic = ["optional-dependencies"]
 Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
 [project.entry-points.'nat.plugins']
+authenticated_a2a_client = "datarobot_genai.dragent.plugins.auth_a2a_client"
+per_user_tool_calling_agent = "datarobot_genai.dragent.plugins.per_user_tool_calling_agent"
 datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
 datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 
 [project.entry-points.'nat.front_ends']
-dragent = "datarobot_genai.dragent.register"
+dragent = "datarobot_genai.dragent.frontends.register"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-datarobot_genai = ["py.typed"]
+datarobot_genai = [
+    "py.typed",
+    "drmcp/core/dynamic_tools/deployment/schemas/*.json",
+]
 
 [tool.uv]
 package = true
 override-dependencies = [
+  "crewai[litellm]>=1.1.0,<2.0.0",
   "ragas>=0.3.8,<0.4.0",
   "onnxruntime==1.23.1; python_version == '3.10'",
 ]
@@ -54,6 +60,7 @@ dev = [
   "responses>=0.25.8",
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
+  "respx>=0.22.0",
 ]
 
 [tool.mypy]

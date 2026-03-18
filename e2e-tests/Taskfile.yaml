@@ -17,16 +17,29 @@ includes:
     flatten: true
 
 tasks:
+  default:
+    cmds:
+      - task --list
   install:
     desc: "🔧 Install dependencies for a specific group of functionality"
     requires:
       vars:
       - name: GROUP
         enum:
-          - dragent-nat
-          - dragent-langgraph
-          - dragent-crewai
-          - dragent-llamaindex
+          - nat
+          - langgraph
+          - crewai
+          - llamaindex
     cmds:
       - echo "🔧 Installing dependencies for {{.GROUP}}"
-      - uv sync --group {{.GROUP}}
+      - uv sync --group dragent-{{.GROUP}} --group lint
+  test-dragent:
+    desc: "🧪 Run tests for dragent"
+    cmds:
+      - echo "🧪 Running tests for dragent"
+      - uv run pytest dragent_tests -vv -s
+  test-drmcp:
+    desc: "🧪 Run tests for drmcp"
+    cmds:
+      - echo "🧪 Running tests for drmcp"
+      - uv run pytest drmcp_tests -vv -s

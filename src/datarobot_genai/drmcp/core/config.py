@@ -337,15 +337,16 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable memory management",
     )
-    mcp_cli_configs: str = Field(
-        default="",
+    mcp_cli_configs: str | None = Field(
+        default=None,
         validation_alias=AliasChoices(
             RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_CLI_CONFIGS",
             "MCP_CLI_CONFIGS",
         ),
         description="Comma-separated list of features to enable: dynamic_tools, dynamic_prompts, "
         "predictive, gdrive, microsoft_graph, jira, confluence, perplexity, tavily. "
-        "Individual env vars (e.g. ENABLE_PREDICTIVE_TOOLS) take precedence when set.",
+        "When unset (None), defaults apply. When set to empty string, all listed features are "
+        "disabled. Individual env vars (e.g. ENABLE_PREDICTIVE_TOOLS) take precedence when set.",
     )
 
     tool_config: MCPToolConfig = Field(
@@ -413,11 +414,17 @@ def _individual_env_set_for_field(
 
 
 def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig:
-    """Apply MCP_CLI_CONFIGS: listed options enabled; others disabled unless individual env set."""
-    raw = (config.mcp_cli_configs or "").strip()
-    if not raw:
+    """Apply MCP_CLI_CONFIGS from config: listed options enabled; others disabled
+    unless individual env set.
+
+    - If mcp_cli_configs is None (unset), do not apply overrides (defaults apply).
+    - If mcp_cli_configs is set but empty string, treat as disable all (enabled set is empty).
+    - If mcp_cli_configs is set and non-empty, parse comma list and apply as before.
+    """
+    if config.mcp_cli_configs is None:
         return config
-    enabled = {s.strip().lower() for s in raw.split(",") if s.strip()}
+    raw = (config.mcp_cli_configs or "").strip()
+    enabled = {s.strip().lower() for s in raw.split(",") if s.strip()} if raw else set()
     root_updates: dict[str, Any] = {}
     tool_updates: dict[str, Any] = {}
     for mcp_opt, root_attr, tool_attr in MCP_CLI_OPTS:

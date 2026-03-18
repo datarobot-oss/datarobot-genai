@@ -19,7 +19,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Literal
 
-from nat.cli.register_workflow import register_function_group
+from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client.client_base import AuthAdapter
 from nat.plugins.mcp.client.client_base import MCPStreamableHTTPClient
@@ -131,7 +131,7 @@ class DataRobotMCPStreamableHTTPClient(MCPStreamableHTTPClient):
         )
 
 
-@register_function_group(config_type=DataRobotMCPClientConfig)
+@register_per_user_function_group(config_type=DataRobotMCPClientConfig)
 async def datarobot_mcp_client_function_group(
     config: DataRobotMCPClientConfig, _builder: Builder
 ) -> MCPFunctionGroup:

@@ -16,9 +16,9 @@ import json
 import logging
 import re
 import uuid
+from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
-from datetime import timezone
 from typing import Any
 from typing import Optional
 
@@ -711,7 +711,7 @@ class MemoryManager:
             older_than_by_days: Optional number of days to compare against. If not provided,
                        defaults to 1 day ago.
         """
-        older_than = datetime.now(timezone.utc) - timedelta(days=older_than_by_days)
+        older_than = datetime.now(UTC) - timedelta(days=older_than_by_days)
 
         try:
             prefix = "resources/"
@@ -784,7 +784,7 @@ class MemoryManager:
                 agent_identifier=agent_identifier,
                 storage_id=storage_id,
                 label=label,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
 
             key = self._get_active_storage_mapping_key(agent_identifier)

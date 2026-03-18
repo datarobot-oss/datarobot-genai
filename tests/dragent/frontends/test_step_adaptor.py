@@ -45,34 +45,8 @@ from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.data_models.step_adaptor import StepAdaptorMode
 
-from datarobot_genai.dragent.response import DRAgentEventResponse
-from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
-
-
-@pytest.mark.parametrize(
-    "config",
-    [
-        StepAdaptorConfig(
-            mode=StepAdaptorMode.CUSTOM, custom_event_types=[IntermediateStepType.CUSTOM_START]
-        ),
-        StepAdaptorConfig(mode=StepAdaptorMode.OFF),
-    ],
-)
-def test_step_adaptor_init_fails_with_non_default_config(config):
-    with pytest.raises(ValueError):
-        DRAgentNestedReasoningStepAdaptor(config)
-
-
-@pytest.mark.parametrize(
-    "config",
-    [
-        StepAdaptorConfig(mode=StepAdaptorMode.DEFAULT),
-        StepAdaptorConfig(),
-    ],
-)
-def test_step_adaptor_init_succeeds_with_default_config(config):
-    adaptor = DRAgentNestedReasoningStepAdaptor(config)
-    assert adaptor.config == StepAdaptorConfig()
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
 @pytest.fixture
@@ -136,7 +110,7 @@ def payloads():
         "tool_args_content_writer": (
             '{"input_message": "Write a detailed description of an AI assistant."}'
         ),
-        "tool_args_planner": "Write a detailed description of an AI assistant.",
+        "tool_args_planner": '{"input": "Write a detailed description of an AI assistant."}',
     }
 
 
@@ -235,7 +209,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
                 ToolCallArgsEvent(
                     tool_call_id=intermediate_steps_ids["writer_tool_call_id"],
-                    delta=payloads["planner_outline"],
+                    delta=json.dumps({"outline": payloads["planner_outline"]}),
                 ),
             ]
         ),
@@ -438,7 +412,10 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                     input="Write a detailed description of an AI assistant.",
                     output=None,
                 ),
-                metadata=TraceMetadata(tool_info={"name": "planner", "description": "planner"}),
+                metadata=TraceMetadata(
+                    tool_inputs={"input": "Write a detailed description of an AI assistant."},
+                    tool_info={"name": "planner", "description": "planner"},
+                ),
             ),
         ),
         # FUNCTION_START planner
@@ -533,7 +510,10 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                 name="writer",
                 UUID=intermediate_steps_ids["writer_tool_call_id"],
                 data=StreamEventData(input=payloads["planner_outline"], output=None),
-                metadata=TraceMetadata(tool_info={"name": "writer", "description": "writer"}),
+                metadata=TraceMetadata(
+                    tool_inputs={"outline": payloads["planner_outline"]},
+                    tool_info={"name": "writer", "description": "writer"},
+                ),
             ),
         ),
         # FUNCTION_START writer
@@ -668,7 +648,7 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
     ]
 
 
-def test_adaptor_processes_nested_reasoning_steps(
+def test_step_adaptor_processes_nested_reasoning_steps(
     step_adaptor, intermediate_steps_for_nested_reasoning, expected_responses
 ):
     actual_responses = []
@@ -688,3 +668,98 @@ def test_adaptor_processes_nested_reasoning_steps(
         )
         for j, (actual_ev, expected_ev) in enumerate(zip(actual_resp.events, expected_resp.events)):
             assert actual_ev == expected_ev, f"Response {i} event {j}: {actual_ev} != {expected_ev}"
+
+
+def test_step_adaptor_sends_nothing_in_mode_off(intermediate_steps_for_nested_reasoning):
+    step_adaptor = DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig(mode=StepAdaptorMode.OFF))
+    for step in intermediate_steps_for_nested_reasoning:
+        result = step_adaptor.process(step)
+        assert result is None
+
+
+def _make_tool_start_step(
+    tool_call_id: str, data_input, metadata: TraceMetadata
+) -> IntermediateStep:
+    return IntermediateStep(
+        parent_id="root",
+        function_ancestry=InvocationNode(
+            function_id="root", function_name="root", parent_id=None, parent_name=None
+        ),
+        payload=IntermediateStepPayload(
+            event_type=IntermediateStepType.TOOL_START,
+            name="my_tool",
+            UUID=tool_call_id,
+            data=StreamEventData(input=data_input, output=None),
+            metadata=metadata,
+        ),
+    )
+
+
+class TestHandleToolArgsEncoding:
+    """Tests for the tool_inputs / data.input fallback logic in _handle_tool."""
+
+    def test_tool_inputs_dict_used_when_present(self, step_adaptor):
+        """metadata.tool_inputs (dict) takes precedence; result must be valid JSON."""
+        tool_call_id = str(uuid.uuid4())
+        inputs = {"param": "value", "count": 3}
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input="{'param': 'value', 'count': 3}",  # LangChain-style non-JSON string
+            metadata=TraceMetadata(tool_inputs=inputs),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == json.dumps(inputs)
+
+    def test_data_input_dict_serialized_to_json(self, step_adaptor):
+        """When tool_inputs is absent, a dict data.input is JSON-serialized."""
+        tool_call_id = str(uuid.uuid4())
+        input_dict = {"key": "val"}
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input=input_dict,
+            metadata=TraceMetadata(),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == json.dumps(input_dict)
+
+    def test_data_input_valid_json_string_passed_through(self, step_adaptor):
+        """When tool_inputs is absent and data.input is a valid JSON string, it is used as-is."""
+        tool_call_id = str(uuid.uuid4())
+        valid_json = '{"key": "value"}'
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input=valid_json,
+            metadata=TraceMetadata(),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == valid_json
+
+    def test_data_input_invalid_json_string_falls_back_to_empty_object(self, step_adaptor):
+        """When tool_inputs is absent and data.input is a non-JSON string (e.g. Python repr),
+        delta falls back to '{}' and a warning is logged.
+        """
+        tool_call_id = str(uuid.uuid4())
+        repr_string = "{'key': 'value'}"  # single-quoted Python repr, not valid JSON
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input=repr_string,
+            metadata=TraceMetadata(),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == "{}"
+
+    def test_data_input_none_produces_empty_json_object(self, step_adaptor):
+        """When both tool_inputs and data.input are absent, delta defaults to '{}'."""
+        tool_call_id = str(uuid.uuid4())
+        step = _make_tool_start_step(
+            tool_call_id,
+            data_input=None,
+            metadata=TraceMetadata(),
+        )
+        response = step_adaptor.process(step)
+        args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
+        assert args_event.delta == "{}"
