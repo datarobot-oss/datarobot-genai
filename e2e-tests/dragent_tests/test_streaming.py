@@ -30,12 +30,12 @@ def test_generate_streaming_produces_text(http_client: httpx.Client) -> None:
     payload = make_generate_payload("Say 'hello world' and nothing else.")
 
     # WHEN: the payload is streamed to the generate endpoint
-    response = http_client.post(GENERATE_STREAM_PATH, json=payload)
-    assert response.status_code == 200
-    # THEN: the response is streaming
-    assert "text/event-stream" in response.headers.get("content-type", "")
-    # THEN: the response is a valid AG-UI response
-    sse_responses = parse_sse_responses(response)
+    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
+        assert response.status_code == 200
+        # THEN: the response is streaming
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        # THEN: the response is a valid AG-UI response
+        sse_responses = parse_sse_responses(response)
 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_responses)
