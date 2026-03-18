@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import uuid
 
 import httpx
@@ -20,6 +21,8 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
+FRAMEWORK = os.environ.get("FRAMEWORK")
+FRAMEWORK_SUPPORTS_TOOL_CALLS = FRAMEWORK in ["langgraph", "nat"]
 
 
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
