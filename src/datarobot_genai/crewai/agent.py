@@ -239,13 +239,14 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 )
                                 reasoning_started = True
                         elif reasoning_started:
+                            usage_metrics = self._extract_usage_metrics(crew_output)
                             yield (
                                 ReasoningEndEvent(
                                     type=EventType.REASONING_END,
                                     message_id=message_id,
                                 ),
                                 None,
-                                zero_metrics,
+                                usage_metrics,
                             )
                             reasoning_started = False
 
@@ -254,20 +255,21 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 yield (
                                     StepStartedEvent(
                                         type=EventType.STEP_STARTED,
-                                        step_name=chunk.task_name,
+                                        step_name=current_task,
                                     ),
                                     None,
                                     zero_metrics,
                                 )
                                 step_started = True
                         elif step_started:
+                            usage_metrics = self._extract_usage_metrics(crew_output)
                             yield (
                                 StepFinishedEvent(
                                     type=EventType.STEP_FINISHED,
-                                    step_name=chunk.task_name,
+                                    step_name=current_task,
                                 ),
                                 None,
-                                zero_metrics,
+                                usage_metrics,
                             )
                             step_started = False
 
@@ -285,16 +287,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 )
                             else:
                                 if not text_started:
-                                    if reasoning_started:
-                                        yield (
-                                            ReasoningEndEvent(
-                                                type=EventType.REASONING_END,
-                                                message_id=message_id,
-                                            ),
-                                            None,
-                                            zero_metrics,
-                                        )
-                                        reasoning_started = False
                                     yield (
                                         TextMessageStartEvent(
                                             type=EventType.TEXT_MESSAGE_START,
@@ -319,11 +311,20 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     pipeline_interactions = self.create_pipeline_interactions_from_messages(
                         ragas_event_listener.messages
                     )
+                    usage_metrics = self._extract_usage_metrics(crew_output)
                     if text_started:
-                        usage_metrics = self._extract_usage_metrics(crew_output)
                         yield (
                             TextMessageEndEvent(
                                 type=EventType.TEXT_MESSAGE_END, message_id=message_id
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                    if step_started:
+                        yield (
+                            StepFinishedEvent(
+                                type=EventType.STEP_FINISHED,
+                                step_name=current_task,
                             ),
                             None,
                             usage_metrics,
