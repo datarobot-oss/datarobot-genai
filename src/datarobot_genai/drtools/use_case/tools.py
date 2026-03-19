@@ -63,7 +63,9 @@ async def list_use_case_assets(
     """List datasets, deployments, and experiments belonging to one or more use cases."""
     multi = use_case_ids is not None
     ids: list[str] = []
-    if use_case_ids:
+    if use_case_ids is not None:
+        if not use_case_ids:
+            raise ToolError("use_case_ids must not be empty.")
         ids = use_case_ids
     elif use_case_id:
         ids = [use_case_id]
