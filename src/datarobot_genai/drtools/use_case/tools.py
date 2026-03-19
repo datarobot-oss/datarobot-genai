@@ -74,11 +74,16 @@ async def list_use_case_assets(
 
     results: list[dict] = []
     for uc_id in ids:
-        use_case = dr_module.UseCase.get(uc_id)
-        entry: dict = {
-            "use_case_id": uc_id,
-            "name": use_case.name,
-        }
+        entry: dict = {"use_case_id": uc_id}
+
+        try:
+            use_case = dr_module.UseCase.get(uc_id)
+        except Exception as exc:
+            entry["error"] = str(exc)
+            results.append(entry)
+            continue
+
+        entry["name"] = use_case.name
 
         try:
             datasets = list(use_case.list_datasets())
