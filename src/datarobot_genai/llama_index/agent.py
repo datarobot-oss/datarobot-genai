@@ -131,7 +131,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         run_id = run_agent_input.run_id
         usage_metrics: UsageMetrics = default_usage_metrics()
 
-        # Partial AG-UI: lifecycle + text + tool calls + steps
+        # AG-UI: lifecycle + text + tool calls + steps
         yield (
             RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
             None,
@@ -182,8 +182,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
 
-            # Best-effort debug/event messages printed to CLI (do not stream as content)
-            try:
                 # Agent switch banner if available on event
                 if hasattr(event, "current_agent_name"):
                     agent = getattr(event, "current_agent_name", None)
@@ -281,9 +279,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         None,
                         usage_metrics,
                     )
-            except Exception:
-                # Ignore best-effort debug rendering errors
-                pass
         if agent is not None:
             yield (
                 StepFinishedEvent(step_name=agent),
