@@ -79,6 +79,7 @@ class CrewAIRagasEventListener:
 
         @crewai_event_bus.on(AgentReasoningFailedEvent)
         def on_agent_reasoning_failed(_: Any, event: Any) -> None:
+            self.reasoning_event = False
             self.messages.append(AIMessage(content=event.task_id, tool_calls=[]))
 
         @crewai_event_bus.on(TaskCompletedEvent)
@@ -90,6 +91,7 @@ class CrewAIRagasEventListener:
 
         @crewai_event_bus.on(TaskFailedEvent)
         def on_agent_task_failed(_: Any, event: Any) -> None:
+            self.step_event = False
             self.messages.append(AIMessage(content=event.error, tool_calls=[]))
 
         @crewai_event_bus.on(TaskStartedEvent)
