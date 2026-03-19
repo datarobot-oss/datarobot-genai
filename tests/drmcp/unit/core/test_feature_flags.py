@@ -27,7 +27,9 @@ class TestFeatureFlags:
 
     @pytest.fixture
     def mock_get_datarobot_client(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.get_datarobot_client") as mock_func:
+        with patch(
+            f"{module_under_test}.get_dr_api_client_with_static_config_in_container"
+        ) as mock_func:
             yield mock_func
 
     def test_create(self, mock_get_datarobot_client: Mock) -> None:
