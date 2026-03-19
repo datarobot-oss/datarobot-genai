@@ -82,3 +82,7 @@ dist/
 
 # Profile results
 prof/
+
+# IDE state
+.cursor/hooks/state/
+AGENTS.md

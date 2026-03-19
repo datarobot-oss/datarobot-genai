@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.5
+- Added vector database tools: list_vector_databases and query_vector_database (MODEL-22811)
+
 ## 0.8.4
 - Added use case tools: list_use_cases and list_use_case_assets (MODEL-22810)
 - Added ToolType registrations for use_case, vdb, code_execution, and optimization
