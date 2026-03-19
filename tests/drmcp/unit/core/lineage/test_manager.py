@@ -22,7 +22,6 @@ from datarobot._experimental.models.user_mcp_server_deployment import (
     TypeOfToolInUserMCPServerDeployment,
 )
 
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 
@@ -44,11 +43,6 @@ class TestLineageManager:
         with patch(
             f"{module_under_test}.get_dr_api_client_with_static_config_in_container",
         ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_feature_flag_create(self) -> Iterator[Mock]:
-        with patch.object(FeatureFlag, "create") as mock_func:
             yield mock_func
 
     @pytest.fixture
@@ -135,7 +129,6 @@ class TestLineageManager:
 
     def test_init(
         self,
-        mock_feature_flag_create: Mock,
         mock_get_dr_api_client_with_static_config_in_container: Mock,
         mock_lrs_env_var: Mock,
     ) -> None:
@@ -143,11 +136,9 @@ class TestLineageManager:
         manager = LineageManager(mock_mcp_server_instance)
 
         mock_get_dr_api_client_with_static_config_in_container.assert_called_once_with()
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
         mock_lrs_env_var.MLOPS_DEPLOYMENT_ID.get_os_env_value.assert_called_once_with()
         mock_lrs_env_var.MLOPS_MODEL_ID.get_os_env_value.assert_called_once_with()
 
-        assert manager.feature_flag_enabled == mock_feature_flag_create.return_value.enabled
         assert (
             manager.mcp_server_deployment_id
             == mock_lrs_env_var.MLOPS_DEPLOYMENT_ID.get_os_env_value.return_value
@@ -160,7 +151,6 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
         "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
@@ -188,7 +178,6 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
         "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
@@ -234,7 +223,6 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
         "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
@@ -272,7 +260,6 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
         "mock_get_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )

@@ -21,7 +21,6 @@ from datarobot.errors import ClientError as DataRobotAPIClientError
 from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.clients import get_dr_api_client_with_static_config_in_container
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.entities import BASE_MCP_METADATA_TYPE
 from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVars
@@ -32,7 +31,6 @@ logger = logging.getLogger(__name__)
 class LineageManager:
     def __init__(self, mcp_server_instance: FastMCP) -> None:
         get_dr_api_client_with_static_config_in_container()
-        self.feature_flag_enabled = FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled
         self.mcp_server_deployment_id = LRSEnvVars.MLOPS_DEPLOYMENT_ID.get_os_env_value()
         self.mcp_server_version_id = LRSEnvVars.MLOPS_MODEL_ID.get_os_env_value()
         self.mcp_server_instance = mcp_server_instance
