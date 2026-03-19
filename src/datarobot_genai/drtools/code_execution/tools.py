@@ -62,7 +62,7 @@ class InProcessSandbox:
                 try:
                     exec(compile(code, "<mcp_tool>", "exec"), namespace)  # noqa: S102
                     result = namespace.get("result")
-                except Exception:
+                except BaseException:
                     error = traceback.format_exc()
 
         loop = asyncio.get_event_loop()
@@ -71,7 +71,7 @@ class InProcessSandbox:
                 loop.run_in_executor(None, _run_sync),
                 timeout=timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             error = f"Execution timed out after {timeout_seconds} seconds"
 
         return {
