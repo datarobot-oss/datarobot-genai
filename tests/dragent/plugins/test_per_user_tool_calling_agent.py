@@ -14,7 +14,9 @@
 
 from nat.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 
-from datarobot_genai.dragent.per_user_tool_calling_agent import PerUserToolCallAgentWorkflowConfig
+from datarobot_genai.dragent.plugins.per_user_tool_calling_agent import (
+    PerUserToolCallAgentWorkflowConfig,
+)
 
 
 class TestPerUserToolCallAgentWorkflowConfig:
@@ -35,4 +37,4 @@ class TestPerUserToolCallAgentWorkflowConfig:
 
     def test_registered_as_per_user_function(self):
         """Importing the module registers a per-user function; verify no exception is raised."""
-        import datarobot_genai.dragent.per_user_tool_calling_agent  # noqa: F401
+        import datarobot_genai.dragent.plugins.per_user_tool_calling_agent  # noqa: F401

@@ -45,7 +45,7 @@ class MyAgent(LlamaIndexAgent):
                 "When done, hand off to the writer agent."
             ),
             llm=self._llm,
-            tools=self.mcp_tools,
+            tools=[calculator] + self.mcp_tools,
             can_handoff_to=["writer"],
         )
         writer = FunctionAgent(

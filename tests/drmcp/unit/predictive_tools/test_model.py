@@ -179,6 +179,136 @@ async def test_score_dataset_with_model_error() -> None:
         assert "Error in score_dataset_with_model: Exception: fail" == str(exc_info.value)
 
 
+@pytest.mark.asyncio
+async def test_get_model_details_success() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.target = "target_col"
+    mock_project.metric = "AUC"
+    mock_model = MagicMock(
+        id="mid",
+        model_type="XGBoost",
+        featurelist_name="Informative Features",
+        metrics={"AUC": {"validation": 0.9}},
+        sample_pct=64,
+    )
+    mock_model.get_or_request_feature_impact.return_value = [{"feature": "f1", "impact": 0.8}]
+    mock_client.Project.get.return_value = mock_project
+    mock_client.Model.get.return_value = mock_model
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.get_model_details(project_id="pid", model_id="mid")
+    assert hasattr(result, "structured_content")
+    assert result.structured_content["model_id"] == "mid"
+    assert result.structured_content["model_type"] == "XGBoost"
+    assert result.structured_content["target"] == "target_col"
+
+
+@pytest.mark.asyncio
+async def test_get_model_details_missing_project_id() -> None:
+    """Required param project_id is enforced by signature (wrapped as ToolError)."""
+    with pytest.raises(ToolError, match="project_id"):
+        await model.get_model_details(model_id="mid")
+
+
+@pytest.mark.asyncio
+async def test_get_model_details_missing_model_id() -> None:
+    """Required param model_id is enforced by signature (wrapped as ToolError)."""
+    with pytest.raises(ToolError, match="model_id"):
+        await model.get_model_details(project_id="pid")
+
+
+@pytest.mark.asyncio
+async def test_get_model_details_feature_impact_error() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.target = "target_col"
+    mock_project.metric = "AUC"
+    mock_model = MagicMock(id="mid", model_type="XGBoost", metrics={}, sample_pct=64)
+    mock_model.get_or_request_feature_impact.side_effect = Exception("not available")
+    mock_client.Project.get.return_value = mock_project
+    mock_client.Model.get.return_value = mock_model
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.get_model_details(
+            project_id="pid", model_id="mid", include_feature_impact=True
+        )
+    assert "feature_impact_error" in result.structured_content
+
+
+@pytest.mark.asyncio
+async def test_is_eligible_for_timeseries_training_success() -> None:
+    import pandas as pd
+
+    mock_client = MagicMock()
+    mock_dataset = MagicMock()
+    # get_as_dataframe() returns a pandas DataFrame (SDK behavior); polars conversion is internal
+    pandas_df = pd.DataFrame(
+        {
+            "date": pd.date_range("2020-01-01", periods=200),
+            "target": range(200),
+            "feature": range(200),
+        }
+    )
+    mock_dataset.get_as_dataframe.return_value = pandas_df
+    mock_client.Dataset.get.return_value = mock_dataset
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.model.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.is_eligible_for_timeseries_training(
+            dataset_id="ds1", datetime_column="date", target_column="target"
+        )
+    assert result.structured_content["status"] == "ELIGIBLE"
+    assert result.structured_content["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
+    import pandas as pd
+
+    mock_client = MagicMock()
+    mock_dataset = MagicMock()
+    # get_as_dataframe() returns a pandas DataFrame (SDK behavior); polars conversion is internal
+    pandas_df = pd.DataFrame(
+        {
+            "date": pd.date_range("2020-01-01", periods=50),
+            "target": range(50),
+        }
+    )
+    mock_dataset.get_as_dataframe.return_value = pandas_df
+    mock_client.Dataset.get.return_value = mock_dataset
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.model.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.is_eligible_for_timeseries_training(
+            dataset_id="ds1", datetime_column="date", target_column="target"
+        )
+    assert result.structured_content["status"] == "NOT_ELIGIBLE"
+    assert any("Too few rows" in e for e in result.structured_content["errors"])
+
+
+@pytest.mark.asyncio
+async def test_is_eligible_for_timeseries_training_missing_params() -> None:
+    with pytest.raises(ToolError, match="Dataset ID must be provided"):
+        await model.is_eligible_for_timeseries_training(
+            datetime_column="date", target_column="target"
+        )
+
+
 class TestModelToDict:
     """Test cases for model_to_dict function."""
 

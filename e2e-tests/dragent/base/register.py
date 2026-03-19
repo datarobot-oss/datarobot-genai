@@ -15,36 +15,26 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from ag_ui.core.types import RunAgentInput
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
-from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.nat.helpers import extract_authorization_from_context
-from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from nat.builder.builder import Builder
-from nat.builder.framework_enum import LLMFrameworkEnum
-from nat.builder.function_info import Streaming
-from nat.cli.register_workflow import register_per_user_function
+from nat.cli.register_workflow import register_function
 from nat.data_models.agent import AgentBaseConfig
+from nat.data_models.streaming import Streaming
 
 
-class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
-    """NAT config for the CrewAI agent.
-
-    Extends AgentBaseConfig which provides: llm_name, description, verbose.
-    The LLM is managed by NAT and accessed via builder.get_llm().
-    """
+class BaseAgentConfig(AgentBaseConfig, name="base_agent"):
+    """NAT config for the base agent."""
 
 
-@register_per_user_function(
-    config_type=CrewaiAgentConfig,
-    input_type=RunAgentInput,  # noqa: F821
-    single_output_type=DRAgentEventResponse,  # noqa: F821
-    framework_wrappers=[LLMFrameworkEnum.CREWAI],
+@register_function(
+    config_type=BaseAgentConfig,
 )
-async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
+async def base_agent(config: BaseAgentConfig, builder: Builder) -> AsyncGenerator:
+    from ag_ui.core import RunAgentInput  # noqa: PLC0415
+    from datarobot_genai.dragent.frontends.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
-    from dragent.crewai.myagent import MyAgent  # noqa: PLC0415
+    from dragent.base.myagent import MyAgent  # noqa: PLC0415
 
     async def _response_fn(
         input_message: RunAgentInput,
@@ -54,17 +44,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
         # object for non-streaming routes.
         Streaming(convert=aggregate_dragent_event_responses),
     ]:
-        # LLM might contain user-specific headers
-        llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.CREWAI)
-
-        # Agent contains user-specific headers and authorization context
-        forwarded_headers = extract_datarobot_headers_from_context()
-        authorization_context = extract_authorization_from_context()
-        agent = MyAgent(
-            llm=llm,
-            forwarded_headers=forwarded_headers,
-            authorization_context=authorization_context,
-        )
+        agent = MyAgent()
 
         async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
             yield DRAgentEventResponse(

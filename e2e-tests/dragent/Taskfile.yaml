@@ -26,3 +26,9 @@ tasks:
     cmds:
       - echo "🔨 Running LlamaIndex agent via NAT"
       - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT | default "8080"}}
+  run-base:
+    desc: "🔨 Running base agent via NAT"
+    dir: ./base
+    cmds:
+      - echo "🔨 Running base agent via NAT"
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT | default "8080"}}

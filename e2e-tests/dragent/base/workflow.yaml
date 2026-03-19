@@ -23,6 +23,6 @@ llms:
     _type: datarobot-llm-component
 
 workflow:
-  _type: langgraph_agent
+  _type: base_agent
   llm_name: datarobot_llm
-  description: LangGraph planner/writer agent
+  description: Base agent example

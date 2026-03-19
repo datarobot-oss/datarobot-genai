@@ -327,6 +327,18 @@ def test_extract_headers_from_context(
             {"X-DataRobot-Identity-Token": "identity-123", "X-Other-Header": "other-value"},
             {"x-datarobot-identity-token": "identity-123"},
         ),
+        (
+            {"X-Untrusted-Foo": "foo-val", "X-Other-Header": "other-value"},
+            {"x-untrusted-foo": "foo-val"},
+        ),
+        (
+            {
+                "X-DataRobot-Identity-Token": "identity-123",
+                "X-Untrusted-Foo": "foo-val",
+                "X-Other-Header": "other-value",
+            },
+            {"x-datarobot-identity-token": "identity-123", "x-untrusted-foo": "foo-val"},
+        ),
     ],
 )
 def test_extract_datarobot_headers_from_context(headers, expected_headers, nat_context_set_headers):

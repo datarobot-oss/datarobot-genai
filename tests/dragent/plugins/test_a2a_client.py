@@ -23,14 +23,14 @@ from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
-from datarobot_genai.dragent.auth_a2a_client import AuthenticatedA2AClientConfig
-from datarobot_genai.dragent.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
-from datarobot_genai.dragent.auth_a2a_client import _AuthenticatedA2ABaseClient
-from datarobot_genai.dragent.auth_a2a_client import _extract_auth_headers
+from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
+from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
+from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_headers
 
 _AGENT_URL = "http://agent.example.com"
 
-_MODULE = "datarobot_genai.dragent.auth_a2a_client"
+_MODULE = "datarobot_genai.dragent.plugins.auth_a2a_client"
 
 
 # ---------------------------------------------------------------------------

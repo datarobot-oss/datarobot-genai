@@ -194,6 +194,68 @@ async def test_deploy_model_error() -> None:
         assert "fail servers" in str(exc_info.value)
 
 
+@pytest.mark.asyncio
+async def test_get_prediction_history_success() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {"prediction": 0.8, "timestamp": "2025-01-01T00:00:00Z"},
+            {"prediction": 0.6, "timestamp": "2025-01-02T00:00:00Z"},
+        ]
+    }
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_dr_module
+        result = await deployment.get_prediction_history(deployment_id="dep1")
+        assert result.structured_content["deployment_id"] == "dep1"
+        assert result.structured_content["row_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_prediction_history_missing_id() -> None:
+    with pytest.raises(ToolError, match="Deployment ID must be provided"):
+        await deployment.get_prediction_history()
+
+
+@pytest.mark.asyncio
+async def test_get_prediction_history_with_time_range() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": []}
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_dr_module
+        result = await deployment.get_prediction_history(
+            deployment_id="dep1",
+            start_time="2025-01-01T00:00:00Z",
+            end_time="2025-01-31T00:00:00Z",
+        )
+        assert result.structured_content["row_count"] == 0
+        # Verify params were passed correctly
+        call_args = mock_rest_client.get.call_args
+        assert call_args[1]["params"]["startTime"] == "2025-01-01T00:00:00Z"
+        assert call_args[1]["params"]["endTime"] == "2025-01-31T00:00:00Z"
+
+
 # custom_model fixtures: custom.py and requirements.txt are required by the DataRobot
 # custom model format, not by pytest. They are used as fixture content when testing
 # deploy_custom_model.

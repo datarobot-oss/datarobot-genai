@@ -34,8 +34,8 @@ from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
 
-from datarobot_genai.dragent.session import DRAgentAGUISessionManager
-from datarobot_genai.dragent.step_adaptor import DRAgentNestedReasoningStepAdaptor
+from .session import DRAgentAGUISessionManager
+from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 A2A_MOUNT_PATH = "a2a"

@@ -16,8 +16,24 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+import polars as pl
+
 # Project id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_PROJECT_ID = "test_project_123"
+
+# Dataset id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_DATASET_ID = "stub_dataset_id"
+
+
+class StubRocCurve:
+    """Stub DataRobot ROC curve object."""
+
+    def __init__(self) -> None:
+        self.roc_points = [
+            {"fpr": 0.0, "tpr": 0.0, "threshold": 1.0},
+            {"fpr": 0.1, "tpr": 0.7, "threshold": 0.5},
+            {"fpr": 1.0, "tpr": 1.0, "threshold": 0.0},
+        ]
 
 
 class StubModel:
@@ -27,12 +43,32 @@ class StubModel:
         self.id = model_id
         self.model_type = model_type
         self.metrics = metrics
+        self.featurelist_name = "Informative Features"
+        self.sample_pct = 64.0
 
     def score(self, dataset_url: str) -> MagicMock:
         """Stub scoring method. Raises for fake URLs so integration tests can assert errors."""
         if "example.com" in (dataset_url or ""):
             raise Exception("404 client error: {'message': 'Not Found'}")
         return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
+
+    def request_feature_impact(self) -> None:
+        """Stub request_feature_impact; no-op in tests."""
+
+    def get_or_request_feature_impact(self) -> list[dict[str, Any]]:
+        """Stub get_or_request_feature_impact; returns canned feature impact list."""
+        return [
+            {"featureName": "text_review", "impactNormalized": 1.0, "impactUnnormalized": 0.45},
+            {
+                "featureName": "product_category",
+                "impactNormalized": 0.4,
+                "impactUnnormalized": 0.18,
+            },
+        ]
+
+    def get_roc_curve(self, source: str = "validation") -> "StubRocCurve":
+        """Stub get_roc_curve; returns canned ROC curve object."""
+        return StubRocCurve()
 
 
 class StubDatetimePartitioning:
@@ -51,6 +87,7 @@ class StubProject:
         self.id = project_id
         self._models = models or []
         self.target = "sentiment"
+        self.metric = "AUC"
         self.target_type = "Binary"
         self.datetime_partitioning = None
 
@@ -92,7 +129,7 @@ class StubDataset:
         self,
         dataset_id: str,
         name: str = "stub_dataset",
-        row_count: int = 100,
+        row_count: int = 200,
     ):
         self.id = dataset_id
         self.name = name
@@ -100,16 +137,26 @@ class StubDataset:
         self.row_count = row_count
 
     def get_as_dataframe(self) -> Any:
-        """Return a small stub DataFrame."""
-        import pandas as pd
+        """Return a stub pandas DataFrame suitable for time-series eligibility checks.
 
-        return pd.DataFrame(
+        Returns pandas because the real DataRobot SDK's get_as_dataframe() returns pandas.
+        Production code converts to polars internally via pl.from_pandas().
+        """
+        import random
+
+        n = self.row_count
+        rng = random.Random(42)
+        dates = pl.date_range(
+            pl.date(2023, 1, 1), pl.date(2023, 1, 1) + pl.duration(days=n - 1), eager=True
+        )
+        df = pl.DataFrame(
             {
-                "feature_1": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "feature_2": ["a", "b", "c", "d", "e"],
-                "target": [0, 1, 0, 1, 0],
+                "date": dates.cast(pl.Utf8),
+                "sales": [rng.uniform(100, 1000) for _ in range(n)],
+                "store_id": [f"store_{i % 5}" for i in range(n)],
             }
         )
+        return df.to_pandas()
 
     def get_raw_sample_data(self) -> Any:
         """Return a small stub sample DataFrame (subset, avoids full download)."""
@@ -212,10 +259,10 @@ def test_create_dr_client() -> StubDRClient:
         )
 
     # --- Dataset stubs ---
-    stub_dataset = StubDataset("stub_dataset_id", name="stub_dataset.csv", row_count=100)
+    stub_dataset = StubDataset(STUB_DATASET_ID, name="stub_dataset.csv", row_count=200)
 
     def get_dataset(dataset_id: str) -> StubDataset:
-        if dataset_id == "stub_dataset_id":
+        if dataset_id == STUB_DATASET_ID:
             return stub_dataset
         raise Exception(f"404 client error: {{'message': 'Dataset {dataset_id} not found'}}")
 
@@ -228,15 +275,26 @@ def test_create_dr_client() -> StubDRClient:
     def list_datastores() -> list[StubDataStore]:
         return [stub_datastore]
 
-    # --- REST method stubs for client.get() / client.post() ---
+    # --- REST method stubs for dr_module.client.get_client() ---
     def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
-        """Stub for client.get() REST calls."""
+        """Stub for rest_client.get() REST calls."""
+        if "predictionResults" in url:
+            limit = (params or {}).get("limit", 100)
+            rows = [
+                {
+                    "rowId": i,
+                    "predictionValue": round(0.7 + i * 0.01, 2),
+                    "timestamp": f"2024-01-{i + 1:02d}T00:00:00Z",
+                }
+                for i in range(min(limit, 5))
+            ]
+            return StubRestResponse({"data": rows, "next": None})
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         return StubRestResponse({"data": [], "next": None})
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
-        """Stub for client.post() REST calls."""
+        """Stub for rest_client.post() REST calls."""
         if "externalDataDrivers" in url and "execute" in url:
             return StubRestResponse(
                 {
