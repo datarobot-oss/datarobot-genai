@@ -121,9 +121,9 @@ class LineageManager:
         return [MCPPromptMetadata.from_fastmcp_item(mcp_prompt) for mcp_prompt in mcp_prompts]
 
     async def get_mcp_resources_in_mcp_server(self) -> list[MCPResourceMetadata]:
-        mcp_resource = await self.mcp_server_instance._list_resources_mcp()
+        mcp_resources = await self.mcp_server_instance._list_resources_mcp()
         return [
-            MCPResourceMetadata.from_fastmcp_item(mcp_resource) for mcp_resource in mcp_resource
+            MCPResourceMetadata.from_fastmcp_item(mcp_resource) for mcp_resource in mcp_resources
         ]
 
     async def associate_mcp_tools_with_mcp_server_deployment(
@@ -139,7 +139,7 @@ class LineageManager:
             except DataRobotAPIClientError:
                 error_msg = (
                     f"Fail during associating one mcp tool (name: {mcp_tool_metadata.name})"
-                    f"from mcp server deployment (ID: {self.mcp_server_deployment_id})"
+                    f" from mcp server deployment (ID: {self.mcp_server_deployment_id})"
                 )
                 logger.exception(error_msg)
                 continue
@@ -159,7 +159,7 @@ class LineageManager:
             except DataRobotAPIClientError:
                 error_msg = (
                     f"Fail during associating one mcp prompt (name: {mcp_prompt_metadata.name})"
-                    f"from mcp server deployment (ID: {self.mcp_server_deployment_id})"
+                    f" from mcp server deployment (ID: {self.mcp_server_deployment_id})"
                 )
                 logger.exception(error_msg)
                 continue
@@ -180,7 +180,7 @@ class LineageManager:
             except DataRobotAPIClientError:
                 error_msg = (
                     f"Fail during associating one mcp resource (name: {mcp_resource_metadata.name})"
-                    f"from mcp server deployment (ID: {self.mcp_server_deployment_id})"
+                    f" from mcp server deployment (ID: {self.mcp_server_deployment_id})"
                 )
                 logger.exception(error_msg)
                 continue
