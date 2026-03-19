@@ -21,6 +21,8 @@ from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
@@ -197,7 +199,7 @@ def mock_load_mcp_tools(monkeypatch: Any) -> None:
 async def test_llama_index_agent_invoke(
     agent: MyLlamaAgent, run_agent_input: RunAgentInput
 ) -> None:
-    # GIVEN: fake agent with fake workflow and some events
+    # GIVEN: fake agent with fake workflow (two agent steps + tool call in fixture)
     # WHEN: invoke the agent with a run agent input
     resp = agent.invoke(run_agent_input)
 
@@ -211,8 +213,9 @@ async def test_llama_index_agent_invoke(
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: text message events contain the expected deltas
-    assert isinstance(ag_events[1], TextMessageStartEvent)
+    # THEN: text message events contain the expected deltas (after step / lifecycle events)
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    assert len(text_starts) == 1
     content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
 
@@ -277,6 +280,71 @@ def test_make_input_message_zero_history_disables_summary(
 
     text = agent.make_input_message(run_agent_input_with_history)
     assert text == "Follow-up"
+
+
+@pytest.mark.usefixtures("mock_load_mcp_tools")
+async def test_invoke_agent_output_with_dict_tool_calls(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """AgentOutput with tool_calls as list of dicts (tool_name from .get()) is handled."""
+
+    class AgentOutputLike:
+        response = None
+        current_agent_name = "A"
+        tool_calls = [{"tool_name": "dict_tool", "tool_kwargs": {"x": 1}, "tool_id": "id1"}]
+
+    AgentOutputLike.__name__ = "AgentOutput"
+
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentOutputLike(),
+            AgentStream(delta="hey", response="", current_agent_name="A"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, pipeline, _ = zip(*events_out)
+
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+    content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert [e.delta for e in content] == ["hey"]
+    assert pipeline[-1] is not None
+
+
+@pytest.mark.usefixtures("mock_load_mcp_tools")
+async def test_invoke_agent_stream_multiple_agents(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Multi-agent stream yields text, step events, and completes."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(delta="one", response="", current_agent_name="Agent1"),
+            AgentStream(delta=" two", response="", current_agent_name="Agent2"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert [e.delta for e in content] == ["one", " two"]
+    assert any(isinstance(e, TextMessageStartEvent) for e in ag_events)
+    assert any(isinstance(e, TextMessageEndEvent) for e in ag_events)
+
+    step_started = [e for e in ag_events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in ag_events if isinstance(e, StepFinishedEvent)]
+    if step_started:
+        assert {e.step_name for e in step_started} <= {"Agent1", "Agent2"}
+    if step_finished:
+        assert {e.step_name for e in step_finished} <= {"Agent1", "Agent2"}
+
+    assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
 @pytest.mark.usefixtures("mock_load_mcp_tools")
