@@ -51,11 +51,11 @@ class TestLineageManager:
             yield mock_enum
 
     @pytest.fixture
-    def mock_get_dr_api_client_with_static_config_in_container(
+    def mock_setup_and_return_dr_api_client_with_static_config_in_container(
         self, module_under_test: str
     ) -> Iterator[Mock]:
         with patch(
-            f"{module_under_test}.get_dr_api_client_with_static_config_in_container",
+            f"{module_under_test}.setup_and_return_dr_api_client_with_static_config_in_container",
         ) as mock_func:
             yield mock_func
 
@@ -255,33 +255,33 @@ class TestLineageManager:
     @pytest.fixture
     def mock_from_datarobot_tool_in_mcp_server_deployment(self) -> Iterator[Mock]:
         with patch.object(
-            MCPToolMetadata, "from_datarobot_mcp_item_in_mcp_server_deployment"
+            MCPToolMetadata, "from_datarobot_mcp_server_deployment_item"
         ) as mock_func:
             yield mock_func
 
     @pytest.fixture
     def mock_from_datarobot_prompt_in_mcp_server_deployment(self) -> Iterator[Mock]:
         with patch.object(
-            MCPPromptMetadata, "from_datarobot_mcp_item_in_mcp_server_deployment"
+            MCPPromptMetadata, "from_datarobot_mcp_server_deployment_item"
         ) as mock_func:
             yield mock_func
 
     @pytest.fixture
     def mock_from_datarobot_resource_in_mcp_server_deployment(self) -> Iterator[Mock]:
         with patch.object(
-            MCPResourceMetadata, "from_datarobot_mcp_item_in_mcp_server_deployment"
+            MCPResourceMetadata, "from_datarobot_mcp_server_deployment_item"
         ) as mock_func:
             yield mock_func
 
     def test_init(
         self,
-        mock_get_dr_api_client_with_static_config_in_container: Mock,
+        mock_setup_and_return_dr_api_client_with_static_config_in_container: Mock,
         mock_lrs_env_var: Mock,
     ) -> None:
         mock_mcp_server_instance = Mock()
         manager = LineageManager(mock_mcp_server_instance)
 
-        mock_get_dr_api_client_with_static_config_in_container.assert_called_once_with()
+        mock_setup_and_return_dr_api_client_with_static_config_in_container.assert_called_once_with()
         mock_lrs_env_var.MLOPS_DEPLOYMENT_ID.get_os_env_value.assert_called_once_with()
 
         assert (
@@ -294,10 +294,10 @@ class TestLineageManager:
         share_item = Mock(name="adfa")
         diff_item_one = Mock(name="212rads")
         diff_item_two = Mock(name="32qerqew")
-        items_already_associated_with_mcp_server_deployments = [share_item, diff_item_one]
+        mcp_items_associated_with_mcp_server_deployments = [share_item, diff_item_one]
         mcp_items_in_mcp_server = [share_item, diff_item_two]
         outputs = LineageManager.get_mcp_items_to_associate_with_mcp_server_deployment(
-            items_already_associated_with_mcp_server_deployments,
+            mcp_items_associated_with_mcp_server_deployments,
             mcp_items_in_mcp_server,
         )
 
@@ -307,10 +307,10 @@ class TestLineageManager:
         share_item = Mock(name="adfa")
         diff_item_one = Mock(name="212rads")
         diff_item_two = Mock(name="32qerqew")
-        items_already_associated_with_mcp_server_deployments = [share_item, diff_item_one]
+        mcp_items_associated_with_mcp_server_deployments = [share_item, diff_item_one]
         mcp_items_in_mcp_server = [share_item, diff_item_two]
         outputs = LineageManager.get_mcp_items_to_dissociate_from_mcp_server_deployment(
-            items_already_associated_with_mcp_server_deployments,
+            mcp_items_associated_with_mcp_server_deployments,
             mcp_items_in_mcp_server,
         )
 
@@ -318,7 +318,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_tools_associated_with_mcp_server_deployment(
@@ -345,7 +345,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_prompts_associated_with_mcp_server_deployment(
@@ -372,7 +372,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_resources_associated_with_mcp_server_deployment(
@@ -399,7 +399,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_tools_in_mcp_server(
@@ -418,7 +418,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_prompts_in_mcp_server(
@@ -437,7 +437,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_get_mcp_resources_in_mcp_server(
@@ -456,7 +456,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_associate_mcp_tools_with_mcp_server_deployment(
@@ -480,7 +480,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_associate_mcp_prompts_with_mcp_server_deployment(
@@ -504,7 +504,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_associate_mcp_resources_with_mcp_server_deployment(
@@ -522,6 +522,7 @@ class TestLineageManager:
         )
         mock_create_resource_in_user_mcp_server_deployment.assert_called_once_with(
             mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            uri=mcp_resource.uri,
             name=mcp_resource.name,
             type=mock_type_of_resource_in_user_mcp_server_deployment_from_string.return_value,
         )
@@ -533,10 +534,8 @@ class TestLineageManager:
         mcp_tool = Mock()
         await LineageManager.dissociate_mcp_tools_from_mcp_server_deployment([mcp_tool])
 
-        mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment.assert_called_once_with()
-        datarobot_mcp_tool_object = (
-            mcp_tool.to_datarobot_mcp_item_in_mcp_server_deployment.return_value
-        )
+        mcp_tool.to_datarobot_mcp_server_deployment_item.assert_called_once_with()
+        datarobot_mcp_tool_object = mcp_tool.to_datarobot_mcp_server_deployment_item.return_value
         datarobot_mcp_tool_object.delete.assert_called_once_with()
 
     @pytest.mark.asyncio
@@ -546,9 +545,9 @@ class TestLineageManager:
         mcp_prompt = Mock()
         await LineageManager.dissociate_mcp_prompts_from_mcp_server_deployment([mcp_prompt])
 
-        mcp_prompt.to_datarobot_mcp_item_in_mcp_server_deployment.assert_called_once_with()
+        mcp_prompt.to_datarobot_mcp_server_deployment_item.assert_called_once_with()
         datarobot_mcp_prompt_object = (
-            mcp_prompt.to_datarobot_mcp_item_in_mcp_server_deployment.return_value
+            mcp_prompt.to_datarobot_mcp_server_deployment_item.return_value
         )
         datarobot_mcp_prompt_object.delete.assert_called_once_with()
 
@@ -559,15 +558,15 @@ class TestLineageManager:
         mcp_resource = Mock()
         await LineageManager.dissociate_mcp_resources_from_mcp_server_deployment([mcp_resource])
 
-        mcp_resource.to_datarobot_mcp_item_in_mcp_server_deployment.assert_called_once_with()
+        mcp_resource.to_datarobot_mcp_server_deployment_item.assert_called_once_with()
         datarobot_mcp_resource_object = (
-            mcp_resource.to_datarobot_mcp_item_in_mcp_server_deployment.return_value
+            mcp_resource.to_datarobot_mcp_server_deployment_item.return_value
         )
         datarobot_mcp_resource_object.delete.assert_called_once_with()
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_sync_mcp_tools(
@@ -604,7 +603,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_sync_mcp_prompts(
@@ -641,7 +640,7 @@ class TestLineageManager:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_get_dr_api_client_with_static_config_in_container",
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
         "mock_lrs_env_var",
     )
     async def test_sync_mcp_resources(

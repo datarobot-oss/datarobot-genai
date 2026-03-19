@@ -32,7 +32,9 @@ from datarobot._experimental.models.user_mcp_server_deployment import (
 from datarobot.errors import ClientError as DataRobotAPIClientError
 from fastmcp import FastMCP
 
-from datarobot_genai.drmcp.core.clients import get_dr_api_client_with_static_config_in_container
+from datarobot_genai.drmcp.core.clients import (
+    setup_and_return_dr_api_client_with_static_config_in_container,
+)
 from datarobot_genai.drmcp.core.lineage.entities import BASE_MCP_METADATA_TYPE
 from datarobot_genai.drmcp.core.lineage.entities import MCPPromptMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPResourceMetadata
@@ -44,44 +46,70 @@ logger = logging.getLogger(__name__)
 
 class LineageManager:
     def __init__(self, mcp_server_instance: FastMCP) -> None:
-        get_dr_api_client_with_static_config_in_container()
+        setup_and_return_dr_api_client_with_static_config_in_container()
         self.mcp_server_deployment_id = LRSEnvVars.MLOPS_DEPLOYMENT_ID.get_os_env_value()
         self.mcp_server_instance = mcp_server_instance
+
+    @staticmethod
+    def get_mcp_items_to_associate_with_mcp_server_deployment(
+        mcp_items_associated_with_mcp_server_deployment: list[BASE_MCP_METADATA_TYPE],
+        mcp_items_in_mcp_server: list[BASE_MCP_METADATA_TYPE],
+    ) -> list[BASE_MCP_METADATA_TYPE]:
+        names_of_mcp_items_associate_with_mcp_server_deployment = {
+            mcp_item.name for mcp_item in mcp_items_associated_with_mcp_server_deployment
+        }
+        return [
+            mcp_item
+            for mcp_item in mcp_items_in_mcp_server
+            if mcp_item.name not in names_of_mcp_items_associate_with_mcp_server_deployment
+        ]
+
+    @staticmethod
+    def get_mcp_items_to_dissociate_from_mcp_server_deployment(
+        mcp_items_associated_with_mcp_server_deployment: list[BASE_MCP_METADATA_TYPE],
+        mcp_items_in_mcp_server: list[BASE_MCP_METADATA_TYPE],
+    ) -> list[BASE_MCP_METADATA_TYPE]:
+        names_of_mcp_items_in_mcp_server = {mcp_item.name for mcp_item in mcp_items_in_mcp_server}
+        return [
+            mcp_item
+            for mcp_item in mcp_items_associated_with_mcp_server_deployment
+            if mcp_item.name not in names_of_mcp_items_in_mcp_server
+        ]
 
     async def get_mcp_tools_associated_with_mcp_server_deployment(
         self,
     ) -> list[MCPToolMetadata]:
-        datarobot_public_api_tool_dtos = ToolInUserMCPServerDeployment.list(
+        mcp_tools = ToolInUserMCPServerDeployment.list(
             mcp_server_deployment_id=self.mcp_server_deployment_id,
             limit=0,
         )
         return [
-            MCPToolMetadata.from_datarobot_mcp_item_in_mcp_server_deployment(datarobot_dto)
-            for datarobot_dto in datarobot_public_api_tool_dtos
+            MCPToolMetadata.from_datarobot_mcp_server_deployment_item(mcp_tool)
+            for mcp_tool in mcp_tools
         ]
 
     async def get_mcp_prompts_associated_with_mcp_server_deployment(
         self,
     ) -> list[MCPPromptMetadata]:
-        datarobot_public_api_prompt_dtos = PromptInUserMCPServerDeployment.list(
+        mcp_prompts = PromptInUserMCPServerDeployment.list(
             mcp_server_deployment_id=self.mcp_server_deployment_id,
             limit=0,
         )
         return [
-            MCPPromptMetadata.from_datarobot_mcp_item_in_mcp_server_deployment(datarobot_dto)
-            for datarobot_dto in datarobot_public_api_prompt_dtos
+            MCPPromptMetadata.from_datarobot_mcp_server_deployment_item(mcp_prompt)
+            for mcp_prompt in mcp_prompts
         ]
 
     async def get_mcp_resources_associated_with_mcp_server_deployment(
         self,
     ) -> list[MCPResourceMetadata]:
-        datarobot_public_api_resource_dtos = ResourceInUserMCPServerDeployment.list(
+        mcp_resources = ResourceInUserMCPServerDeployment.list(
             mcp_server_deployment_id=self.mcp_server_deployment_id,
             limit=0,
         )
         return [
-            MCPResourceMetadata.from_datarobot_mcp_item_in_mcp_server_deployment(datarobot_dto)
-            for datarobot_dto in datarobot_public_api_resource_dtos
+            MCPResourceMetadata.from_datarobot_mcp_server_deployment_item(mcp_resource)
+            for mcp_resource in mcp_resources
         ]
 
     async def get_mcp_tools_in_mcp_server(self) -> list[MCPToolMetadata]:
@@ -96,32 +124,6 @@ class LineageManager:
         mcp_resource = await self.mcp_server_instance._list_resources_mcp()
         return [
             MCPResourceMetadata.from_fastmcp_item(mcp_resource) for mcp_resource in mcp_resource
-        ]
-
-    @staticmethod
-    def get_mcp_items_to_associate_with_mcp_server_deployment(
-        items_already_associated_with_mcp_server_deployments: list[BASE_MCP_METADATA_TYPE],
-        mcp_items_in_mcp_server: list[BASE_MCP_METADATA_TYPE],
-    ) -> list[BASE_MCP_METADATA_TYPE]:
-        names_of_mcp_items_associate_with_mcp_server_deployment = {
-            mcp_item.name for mcp_item in items_already_associated_with_mcp_server_deployments
-        }
-        return [
-            mcp_item
-            for mcp_item in mcp_items_in_mcp_server
-            if mcp_item.name not in names_of_mcp_items_associate_with_mcp_server_deployment
-        ]
-
-    @staticmethod
-    def get_mcp_items_to_dissociate_from_mcp_server_deployment(
-        items_already_associated_with_mcp_server_deployments: list[BASE_MCP_METADATA_TYPE],
-        mcp_items_in_mcp_server: list[BASE_MCP_METADATA_TYPE],
-    ) -> list[BASE_MCP_METADATA_TYPE]:
-        names_of_mcp_items_in_mcp_server = {mcp_item.name for mcp_item in mcp_items_in_mcp_server}
-        return [
-            mcp_item
-            for mcp_item in items_already_associated_with_mcp_server_deployments
-            if mcp_item.name not in names_of_mcp_items_in_mcp_server
         ]
 
     async def associate_mcp_tools_with_mcp_server_deployment(
@@ -169,6 +171,7 @@ class LineageManager:
             try:
                 ResourceInUserMCPServerDeployment.create(
                     mcp_server_deployment_id=self.mcp_server_deployment_id,
+                    uri=mcp_resource_metadata.uri,
                     name=mcp_resource_metadata.name,
                     type=TypeOfResourceInUserMCPServerDeployment.from_string(
                         mcp_resource_metadata.type
@@ -187,7 +190,7 @@ class LineageManager:
         mcp_tool_metadatas: list[MCPToolMetadata],
     ) -> None:
         for mcp_tool_metadata in mcp_tool_metadatas:
-            mcp_tool = mcp_tool_metadata.to_datarobot_mcp_item_in_mcp_server_deployment()
+            mcp_tool = mcp_tool_metadata.to_datarobot_mcp_server_deployment_item()
             try:
                 mcp_tool.delete()
             except DataRobotAPIClientError:
@@ -203,7 +206,7 @@ class LineageManager:
         mcp_prompt_metadatas: list[MCPPromptMetadata],
     ) -> None:
         for mcp_prompt_metadata in mcp_prompt_metadatas:
-            mcp_prompt = mcp_prompt_metadata.to_datarobot_mcp_item_in_mcp_server_deployment()
+            mcp_prompt = mcp_prompt_metadata.to_datarobot_mcp_server_deployment_item()
             try:
                 mcp_prompt.delete()
             except DataRobotAPIClientError:
@@ -219,7 +222,7 @@ class LineageManager:
         mcp_resource_metadatas: list[MCPResourceMetadata],
     ) -> None:
         for mcp_resource_metadata in mcp_resource_metadatas:
-            mcp_resource = mcp_resource_metadata.to_datarobot_mcp_item_in_mcp_server_deployment()
+            mcp_resource = mcp_resource_metadata.to_datarobot_mcp_server_deployment_item()
             try:
                 mcp_resource.delete()
             except DataRobotAPIClientError:

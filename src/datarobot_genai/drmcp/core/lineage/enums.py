@@ -18,7 +18,6 @@ from enum import auto
 
 class LRSEnvVars(Enum):
     MLOPS_DEPLOYMENT_ID = auto()
-    MLOPS_MODEL_ID = auto()
 
     def to_env_name(self) -> str:
         return self.name

@@ -13,7 +13,9 @@
 # limitations under the License.
 from dataclasses import dataclass
 
-from datarobot_genai.drmcp.core.clients import get_dr_api_client_with_static_config_in_container
+from datarobot_genai.drmcp.core.clients import (
+    setup_and_return_dr_api_client_with_static_config_in_container,
+)
 
 
 @dataclass
@@ -23,7 +25,7 @@ class FeatureFlag:
 
     @classmethod
     def create(cls, feature_flag_name: str) -> "FeatureFlag":
-        client = get_dr_api_client_with_static_config_in_container()
+        client = setup_and_return_dr_api_client_with_static_config_in_container()
         flags_json = {"entitlements": [{"name": feature_flag_name}]}
         response = client.post("entitlements/evaluate/", json=flags_json)
 

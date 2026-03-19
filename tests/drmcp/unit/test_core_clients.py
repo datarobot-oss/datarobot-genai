@@ -26,8 +26,10 @@ from datarobot_genai.drmcp.core.clients import _extract_token_from_headers
 from datarobot_genai.drmcp.core.clients import _extract_token_from_headers_with_fallback
 from datarobot_genai.drmcp.core.clients import dr
 from datarobot_genai.drmcp.core.clients import get_api_client
-from datarobot_genai.drmcp.core.clients import get_dr_api_client_with_static_config_in_container
 from datarobot_genai.drmcp.core.clients import get_sdk_client
+from datarobot_genai.drmcp.core.clients import (
+    setup_and_return_dr_api_client_with_static_config_in_container,
+)
 from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
 
 
@@ -83,12 +85,12 @@ class TestDRAPIClientWithStaticConfigInContainer:
         with patch.object(dr, "Client") as mock_cls:
             yield mock_cls
 
-    def test_get_dr_api_client_with_static_config_in_container(
+    def test_setup_and_return_dr_api_client_with_static_config_in_container(
         self,
         mock_dr_client_cls: Mock,
         mock_get_credentials: Mock,
     ) -> None:
-        output = get_dr_api_client_with_static_config_in_container()
+        output = setup_and_return_dr_api_client_with_static_config_in_container()
 
         mock_get_credentials.assert_called_once_with()
         mock_credentials = mock_get_credentials.return_value

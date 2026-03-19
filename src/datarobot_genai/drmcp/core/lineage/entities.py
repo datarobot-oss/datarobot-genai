@@ -42,7 +42,7 @@ class BaseMCPMetadata(ABC):
 
     @classmethod
     @abstractmethod
-    def from_datarobot_mcp_item_in_mcp_server_deployment(
+    def from_datarobot_mcp_server_deployment_item(
         cls,
         datarobot_mcp_item: ToolInUserMCPServerDeployment
         | PromptInUserMCPServerDeployment
@@ -50,7 +50,7 @@ class BaseMCPMetadata(ABC):
     ) -> "BaseMCPMetadata":
         pass
 
-    def to_datarobot_mcp_item_in_mcp_server_deployment(
+    def to_datarobot_mcp_server_deployment_item(
         self,
     ) -> (
         ToolInUserMCPServerDeployment
@@ -79,7 +79,7 @@ class MCPToolMetadata(BaseMCPMetadata):
         )
 
     @classmethod
-    def from_datarobot_mcp_item_in_mcp_server_deployment(
+    def from_datarobot_mcp_server_deployment_item(
         cls, datarobot_mcp_item: ToolInUserMCPServerDeployment
     ) -> "MCPToolMetadata":
         return cls(
@@ -92,7 +92,7 @@ class MCPToolMetadata(BaseMCPMetadata):
             mcp_server_deployment_id=datarobot_mcp_item.mcp_server_deployment_id,
         )
 
-    def to_datarobot_mcp_item_in_mcp_server_deployment(
+    def to_datarobot_mcp_server_deployment_item(
         self,
     ) -> ToolInUserMCPServerDeployment:
         return ToolInUserMCPServerDeployment(
@@ -122,7 +122,7 @@ class MCPPromptMetadata(BaseMCPMetadata):
         )
 
     @classmethod
-    def from_datarobot_mcp_item_in_mcp_server_deployment(
+    def from_datarobot_mcp_server_deployment_item(
         cls, datarobot_mcp_item: PromptInUserMCPServerDeployment
     ) -> "MCPPromptMetadata":
         return cls(
@@ -135,7 +135,7 @@ class MCPPromptMetadata(BaseMCPMetadata):
             mcp_server_deployment_id=datarobot_mcp_item.mcp_server_deployment_id,
         )
 
-    def to_datarobot_mcp_item_in_mcp_server_deployment(
+    def to_datarobot_mcp_server_deployment_item(
         self,
     ) -> PromptInUserMCPServerDeployment:
         return PromptInUserMCPServerDeployment(
@@ -167,7 +167,7 @@ class MCPResourceMetadata(BaseMCPMetadata):
         )
 
     @classmethod
-    def from_datarobot_mcp_item_in_mcp_server_deployment(
+    def from_datarobot_mcp_server_deployment_item(
         cls, datarobot_mcp_item: ResourceInUserMCPServerDeployment
     ) -> "MCPResourceMetadata":
         return cls(
@@ -181,7 +181,7 @@ class MCPResourceMetadata(BaseMCPMetadata):
             mcp_server_deployment_id=datarobot_mcp_item.mcp_server_deployment_id,
         )
 
-    def to_datarobot_mcp_item_in_mcp_server_deployment(
+    def to_datarobot_mcp_server_deployment_item(
         self,
     ) -> ResourceInUserMCPServerDeployment:
         return ResourceInUserMCPServerDeployment(

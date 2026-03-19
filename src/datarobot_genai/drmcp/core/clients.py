@@ -237,7 +237,7 @@ def get_api_client(headers_auth_only: bool = False) -> RESTClientObject:
     return cast(RESTClientObject, dr.client.get_client())
 
 
-def get_dr_api_client_with_static_config_in_container() -> RESTClientObject:
+def setup_and_return_dr_api_client_with_static_config_in_container() -> RESTClientObject:
     credentials = get_credentials()
 
     return dr.Client(
