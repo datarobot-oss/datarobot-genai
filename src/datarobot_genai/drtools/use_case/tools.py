@@ -61,6 +61,7 @@ async def list_use_case_assets(
     use_case_ids: Annotated[list[str], "List of use case IDs to fetch assets for"] | None = None,
 ) -> ToolError | ToolResult:
     """List datasets, deployments, and experiments belonging to one or more use cases."""
+    multi = use_case_ids is not None
     ids: list[str] = []
     if use_case_ids:
         ids = use_case_ids
@@ -105,7 +106,7 @@ async def list_use_case_assets(
 
         results.append(entry)
 
-    # Single use case: return flat result for backward compatibility
-    if len(results) == 1:
+    # use_case_id → flat dict; use_case_ids → always list format
+    if not multi:
         return ToolResult(structured_content=results[0])
     return ToolResult(structured_content={"use_cases": results, "count": len(results)})
