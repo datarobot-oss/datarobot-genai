@@ -182,7 +182,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
 
-            # Agent switch banner if available on event
+                # Agent switch banner if available on event
             if hasattr(event, "current_agent_name"):
                 agent = getattr(event, "current_agent_name", None)
                 if agent is not None and agent != current_agent_name:
@@ -256,6 +256,30 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
             elif event_type == "ToolCall":
+                tname = getattr(event, "tool_name", None)
+                tkwargs = getattr(event, "tool_kwargs", None)
+                tid = getattr(event, "tool_id", None)
+                print(f"🔨 Calling Tool: {tname}", flush=True)
+                print(f"  With arguments: {tkwargs}", flush=True)
+                yield (
+                    ToolCallStartEvent(
+                        type=EventType.TOOL_CALL_START,
+                        tool_call_id=tid,
+                        tool_call_name=tname,
+                    ),
+                    None,
+                    usage_metrics,
+                )
+                yield (
+                    ToolCallArgsEvent(
+                        type=EventType.TOOL_CALL_ARGS,
+                        tool_call_id=tid,
+                        delta=json.dumps(tkwargs, default=str),
+                    ),
+                    None,
+                    usage_metrics,
+                )
+
         if agent is not None:
             yield (
                 StepFinishedEvent(step_name=agent),
