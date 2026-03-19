@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import polars as pl
 import pytest
 from fastmcp.exceptions import ToolError
 
@@ -240,8 +241,6 @@ async def test_get_model_details_feature_impact_error() -> None:
 
 @pytest.mark.asyncio
 async def test_is_eligible_for_timeseries_training_success() -> None:
-    import polars as pl
-
     mock_client = MagicMock()
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
@@ -275,8 +274,6 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
 
 @pytest.mark.asyncio
 async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
-    import polars as pl
-
     mock_client = MagicMock()
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)

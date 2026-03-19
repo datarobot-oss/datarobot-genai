@@ -135,8 +135,42 @@ async def test_list_use_case_assets_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_use_case_assets_multiple_ids() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
+    ):
+        mock_client = MagicMock()
+
+        mock_uc1 = MagicMock()
+        mock_uc1.name = "UC 1"
+        mock_uc1.list_datasets.return_value = [MagicMock(id="ds1", name="DS 1")]
+        mock_uc1.list_deployments.return_value = []
+        mock_uc1.list_projects.return_value = []
+
+        mock_uc2 = MagicMock()
+        mock_uc2.name = "UC 2"
+        mock_uc2.list_datasets.return_value = []
+        mock_uc2.list_deployments.return_value = [MagicMock(id="dep1", label="Dep 1")]
+        mock_uc2.list_projects.return_value = []
+
+        mock_client.UseCase.get.side_effect = lambda uid: {"uc1": mock_uc1, "uc2": mock_uc2}[uid]
+        mock_drc.return_value.get_client.return_value = mock_client
+
+        result = await tools.list_use_case_assets(use_case_ids=["uc1", "uc2"])
+        assert isinstance(result, ToolResult)
+        assert result.structured_content["count"] == 2
+        assert result.structured_content["use_cases"][0]["name"] == "UC 1"
+        assert result.structured_content["use_cases"][1]["name"] == "UC 2"
+
+
+@pytest.mark.asyncio
 async def test_list_use_case_assets_missing_id() -> None:
-    with pytest.raises(ToolError, match="Use case ID must be provided"):
+    with pytest.raises(ToolError, match="use_case_id.*or.*use_case_ids.*must be provided"):
         await tools.list_use_case_assets()
 
 

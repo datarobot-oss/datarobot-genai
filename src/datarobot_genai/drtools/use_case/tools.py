@@ -57,37 +57,50 @@ async def list_use_cases(
 @dr_mcp_integration_tool(tags={"use_case", "read", "assets", "daria"})
 async def list_use_case_assets(
     *,
-    use_case_id: Annotated[str, "The ID of the DataRobot use case"] | None = None,
+    use_case_id: Annotated[str, "The ID of a single DataRobot use case"] | None = None,
+    use_case_ids: Annotated[list[str], "List of use case IDs to fetch assets for"] | None = None,
 ) -> ToolError | ToolResult:
-    """List datasets, deployments, and experiments belonging to a use case."""
-    if not use_case_id:
-        raise ToolError("Use case ID must be provided")
+    """List datasets, deployments, and experiments belonging to one or more use cases."""
+    ids: list[str] = []
+    if use_case_ids:
+        ids = use_case_ids
+    elif use_case_id:
+        ids = [use_case_id]
+    else:
+        raise ToolError("Either use_case_id or use_case_ids must be provided.")
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
-    use_case = dr_module.UseCase.get(use_case_id)
 
-    result: dict = {
-        "use_case_id": use_case_id,
-        "name": use_case.name,
-    }
+    results: list[dict] = []
+    for uc_id in ids:
+        use_case = dr_module.UseCase.get(uc_id)
+        entry: dict = {
+            "use_case_id": uc_id,
+            "name": use_case.name,
+        }
 
-    try:
-        datasets = list(use_case.list_datasets())
-        result["datasets"] = [{"id": d.id, "name": d.name} for d in datasets]
-    except Exception as exc:
-        result["datasets_error"] = str(exc)
+        try:
+            datasets = list(use_case.list_datasets())
+            entry["datasets"] = [{"id": d.id, "name": d.name} for d in datasets]
+        except Exception as exc:
+            entry["datasets_error"] = str(exc)
 
-    try:
-        deployments = list(use_case.list_deployments())
-        result["deployments"] = [{"id": d.id, "label": d.label} for d in deployments]
-    except Exception as exc:
-        result["deployments_error"] = str(exc)
+        try:
+            deployments = list(use_case.list_deployments())
+            entry["deployments"] = [{"id": d.id, "label": d.label} for d in deployments]
+        except Exception as exc:
+            entry["deployments_error"] = str(exc)
 
-    try:
-        projects = list(use_case.list_projects())
-        result["experiments"] = [{"id": p.id, "name": p.project_name} for p in projects]
-    except Exception as exc:
-        result["experiments_error"] = str(exc)
+        try:
+            projects = list(use_case.list_projects())
+            entry["experiments"] = [{"id": p.id, "name": p.project_name} for p in projects]
+        except Exception as exc:
+            entry["experiments_error"] = str(exc)
 
-    return ToolResult(structured_content=result)
+        results.append(entry)
+
+    # Single use case: return flat result for backward compatibility
+    if len(results) == 1:
+        return ToolResult(structured_content=results[0])
+    return ToolResult(structured_content={"use_cases": results, "count": len(results)})

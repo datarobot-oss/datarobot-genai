@@ -19,25 +19,16 @@ import json
 import pytest
 from mcp.types import TextContent
 
-from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_server_params,
-)
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
+    integration_test_server_params_with_env,
+)
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_USE_CASE_ID
 
 
 def _use_case_server_params():
     """Return server params with use case tools enabled."""
-    params = integration_test_mcp_server_params(use_stub=True)
-    env = dict(params.env or {})
-    env["ENABLE_USE_CASE_TOOLS"] = "true"
-    from mcp.client.stdio import StdioServerParameters
-
-    return StdioServerParameters(
-        command=params.command,
-        args=params.args,
-        env=env,
-    )
+    return integration_test_server_params_with_env({"ENABLE_USE_CASE_TOOLS": "true"})
 
 
 @pytest.mark.asyncio
