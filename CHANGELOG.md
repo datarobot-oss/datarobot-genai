@@ -4,10 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.8.3
-- Added Streaming support for CrewAI
-- Added the following Events support: `AgentReasoningStartedEvent``, `AgentReasoningCompletedEvent`, `AgentReasoningFailedEvent`, `TaskFailedEvent`, `TaskCompletedEvent``, `TaskStartedEvent`
+## 0.8.4
+- Added AG-UI Events for CrewAI
 
+## 0.8.3
+- Added AG-UI Events for Llamaindex
 
 ## 0.8.2
 - Added model and deployment tools: get_model_details (with optional feature impact and ROC curve), is_eligible_for_timeseries_training, get_prediction_history (MODEL-22809)

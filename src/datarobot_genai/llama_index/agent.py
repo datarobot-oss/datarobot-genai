@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import abc
 import inspect
+import json
 import uuid
 from typing import TYPE_CHECKING
 from typing import Any
@@ -24,9 +25,15 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -80,7 +87,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         return self._mcp_tools
 
     @abc.abstractmethod
-    def build_workflow(self) -> Any:
+    async def build_workflow(self) -> Any:
         """Return an AgentWorkflow instance ready to run."""
         raise NotImplementedError
 
@@ -122,23 +129,25 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
+        usage_metrics: UsageMetrics = default_usage_metrics()
 
-        # Partial AG-UI: workflow lifecycle + text message events
+        # Partial AG-UI: lifecycle + text + tool calls + steps
         yield (
             RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
             None,
-            default_usage_metrics(),
+            usage_metrics,
         )
 
-        workflow = self.build_workflow()
+        # Subclasses may implement build_workflow as async or sync; support both.
+        built: Any = self.build_workflow()
+        workflow = await built if inspect.isawaitable(built) else built
         handler = workflow.run(user_msg=input_message)
-
-        usage_metrics: UsageMetrics = default_usage_metrics()
 
         events: list[Any] = []
         current_agent_name: str | None = None
         message_id = str(uuid.uuid4())
         text_started = False
+        agent: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
@@ -173,60 +182,118 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
 
-            # Best-effort debug/event messages printed to CLI (do not stream as content)
-            try:
                 # Agent switch banner if available on event
-                if hasattr(event, "current_agent_name"):
-                    new_agent = getattr(event, "current_agent_name")
-                    if isinstance(new_agent, str) and new_agent and new_agent != current_agent_name:
-                        current_agent_name = new_agent
-                        # Print banner for agent switch (do not emit as streamed content)
-                        print("\n" + "=" * 50, flush=True)
-                        print(f"🤖 Agent: {current_agent_name}", flush=True)
-                        print("=" * 50 + "\n", flush=True)
+            if hasattr(event, "current_agent_name"):
+                agent = getattr(event, "current_agent_name", None)
+                if agent is not None and agent != current_agent_name:
+                    if current_agent_name is not None:
+                        yield (
+                            StepFinishedEvent(step_name=current_agent_name),
+                            None,
+                            usage_metrics,
+                        )
 
-                event_type = type(event).__name__
-                if event_type == "AgentInput" and hasattr(event, "input"):
-                    print("📥 Input:", getattr(event, "input"), flush=True)
-                elif event_type == "AgentOutput":
-                    # Output content
-                    resp = getattr(event, "response", None)
-                    if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                        print("📤 Output:", getattr(resp, "content"), flush=True)
-                    # Planned tool calls
-                    tcalls = getattr(event, "tool_calls", None)
-                    if isinstance(tcalls, list) and tcalls:
-                        names = []
-                        for c in tcalls:
-                            try:
-                                nm = getattr(c, "tool_name", None) or (
-                                    c.get("tool_name") if isinstance(c, dict) else None
-                                )
-                                if nm:
-                                    names.append(str(nm))
-                            except Exception:
-                                pass
-                        if names:
-                            print("🛠️  Planning to use tools:", names, flush=True)
-                elif event_type == "ToolCallResult":
-                    tname = getattr(event, "tool_name", None)
-                    tkwargs = getattr(event, "tool_kwargs", None)
-                    tout = getattr(event, "tool_output", None)
-                    print(f"🔧 Tool Result ({tname}):", flush=True)
-                    print(f"  Arguments: {tkwargs}", flush=True)
-                    print(f"  Output: {tout}", flush=True)
-                elif event_type == "ToolCall":
-                    tname = getattr(event, "tool_name", None)
-                    tkwargs = getattr(event, "tool_kwargs", None)
-                    print(f"🔨 Calling Tool: {tname}", flush=True)
-                    print(f"  With arguments: {tkwargs}", flush=True)
-            except Exception:
-                # Ignore best-effort debug rendering errors
-                pass
+                    yield (
+                        StepStartedEvent(step_name=agent),
+                        None,
+                        usage_metrics,
+                    )
+                    current_agent_name = agent
+                    agent = None
+                    # Print banner for agent switch (do not emit as streamed content)
+                    print("\n" + "=" * 50, flush=True)
+                    print(f"🤖 Agent: {current_agent_name}", flush=True)
+                    print("=" * 50 + "\n", flush=True)
+
+            event_type = type(event).__name__
+            if event_type == "AgentInput" and hasattr(event, "input"):
+                print("📥 Input:", getattr(event, "input"), flush=True)
+            elif event_type == "AgentOutput":
+                # Output content
+                resp = getattr(event, "response", None)
+                if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
+                    print("📤 Output:", getattr(resp, "content"), flush=True)
+                # Planned tool calls
+                tcalls = getattr(event, "tool_calls", None)
+                if isinstance(tcalls, list) and tcalls:
+                    names = []
+                    for c in tcalls:
+                        try:
+                            nm = getattr(c, "tool_name", None) or (
+                                c.get("tool_name") if isinstance(c, dict) else None
+                            )
+                            if nm:
+                                names.append(str(nm))
+                        except Exception:
+                            pass
+                    if names:
+                        print("🛠️  Planning to use tools:", names, flush=True)
+            elif event_type == "ToolCallResult":
+                tname = getattr(event, "tool_name", None)
+                tid = getattr(event, "tool_id", None)
+                tkwargs = getattr(event, "tool_kwargs", None)
+                tout = getattr(event, "tool_output", None)
+                print(f"🔧 Tool Result ({tname}):", flush=True)
+                print(f"  Arguments: {tkwargs}", flush=True)
+                print(f"  Output: {tout}", flush=True)
+                yield (
+                    ToolCallEndEvent(
+                        type=EventType.TOOL_CALL_END,
+                        tool_call_id=tid,
+                    ),
+                    None,
+                    usage_metrics,
+                )
+                yield (
+                    ToolCallResultEvent(
+                        type=EventType.TOOL_CALL_RESULT,
+                        message_id=message_id,
+                        tool_call_id=tid,
+                        content=json.dumps(tout, default=str),
+                        role="tool",
+                    ),
+                    None,
+                    usage_metrics,
+                )
+            elif event_type == "ToolCall":
+                tname = getattr(event, "tool_name", None)
+                tkwargs = getattr(event, "tool_kwargs", None)
+                tid = getattr(event, "tool_id", None)
+                print(f"🔨 Calling Tool: {tname}", flush=True)
+                print(f"  With arguments: {tkwargs}", flush=True)
+                yield (
+                    ToolCallStartEvent(
+                        type=EventType.TOOL_CALL_START,
+                        tool_call_id=tid,
+                        tool_call_name=tname,
+                    ),
+                    None,
+                    usage_metrics,
+                )
+                yield (
+                    ToolCallArgsEvent(
+                        type=EventType.TOOL_CALL_ARGS,
+                        tool_call_id=tid,
+                        delta=json.dumps(tkwargs, default=str),
+                    ),
+                    None,
+                    usage_metrics,
+                )
+
+        if agent is not None:
+            yield (
+                StepFinishedEvent(step_name=agent),
+                None,
+                usage_metrics,
+            )
+            agent = None
 
         if text_started:
             yield (
-                TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=message_id,
+                ),
                 None,
                 usage_metrics,
             )
