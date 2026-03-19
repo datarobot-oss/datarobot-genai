@@ -5,10 +5,12 @@
 /.github/CODEOWNERS @datarobot-oss/buzok @datarobot-oss/mcp
 /CHANGELOG.md @datarobot-oss/buzok @datarobot-oss/mcp
 /pyproject.toml @datarobot-oss/buzok @datarobot-oss/mcp
+/setup.py @datarobot-oss/buzok @datarobot-oss/mcp
 /uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
 
 # MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
 /src/datarobot_genai/drtools/ @datarobot-oss/mcp
 /tests/drmcp/ @datarobot-oss/mcp
+/e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp

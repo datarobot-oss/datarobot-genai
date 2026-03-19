@@ -107,6 +107,42 @@ class MCPToolConfig(BaseSettings):
         description="Enable/disable DataRobot documentation search tools",
     )
 
+    enable_use_case_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_USE_CASE_TOOLS",
+            "ENABLE_USE_CASE_TOOLS",
+        ),
+        description="Enable/disable use case tools",
+    )
+
+    enable_vdb_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_VDB_TOOLS",
+            "ENABLE_VDB_TOOLS",
+        ),
+        description="Enable/disable vector database tools",
+    )
+
+    enable_code_execution_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CODE_EXECUTION_TOOLS",
+            "ENABLE_CODE_EXECUTION_TOOLS",
+        ),
+        description="Enable/disable code execution tools",
+    )
+
+    enable_optimization_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_OPTIMIZATION_TOOLS",
+            "ENABLE_OPTIMIZATION_TOOLS",
+        ),
+        description="Enable/disable optimization tools",
+    )
+
     is_atlassian_oauth_provider_configured: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -162,6 +198,10 @@ class MCPToolConfig(BaseSettings):
         "enable_perplexity_tools",
         "enable_tavily_tools",
         "enable_dr_docs_tools",
+        "enable_use_case_tools",
+        "enable_vdb_tools",
+        "enable_code_execution_tools",
+        "enable_optimization_tools",
         "is_atlassian_oauth_provider_configured",
         "is_google_oauth_provider_configured",
         "is_microsoft_oauth_provider_configured",

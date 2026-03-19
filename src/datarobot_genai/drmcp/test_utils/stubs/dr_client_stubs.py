@@ -24,6 +24,9 @@ STUB_PROJECT_ID = "test_project_123"
 # Dataset id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_DATASET_ID = "stub_dataset_id"
 
+# Use case id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_USE_CASE_ID = "stub_use_case_id"
+
 
 class StubRocCurve:
     """Stub DataRobot ROC curve object."""
@@ -90,6 +93,7 @@ class StubProject:
         self.metric = "AUC"
         self.target_type = "Binary"
         self.datetime_partitioning = None
+        self.project_name = f"Project {project_id}"
 
     def get_models(self) -> list:
         """Stub get_models (matches real API: no arguments)."""
@@ -103,6 +107,7 @@ class StubDeployment:
         self, deployment_id: str, project_id: str = "test_project_123", model_id: str = "model_1"
     ):
         self.id = deployment_id
+        self.label = f"Deployment {deployment_id}"
         self.model = {"project_id": project_id, "id": model_id}
         self.status = "active"
 
@@ -163,6 +168,28 @@ class StubDataset:
         return self.get_as_dataframe()
 
 
+class StubUseCase:
+    """Stub DataRobot use case object."""
+
+    def __init__(self, use_case_id: str, name: str = "Stub Use Case"):
+        self.id = use_case_id
+        self.name = name
+
+    def list_datasets(self) -> list:
+        """Return stub datasets associated with this use case."""
+        return [StubDataset("uc_dataset_1", name="Use Case Dataset")]
+
+    def list_deployments(self) -> list:
+        """Return stub deployments associated with this use case."""
+        return [
+            StubDeployment("uc_deployment_1", project_id="test_project_123", model_id="model_1")
+        ]
+
+    def list_projects(self) -> list:
+        """Return stub projects (experiments) associated with this use case."""
+        return [StubProject("test_project_123")]
+
+
 class StubDataStore:
     """Stub DataRobot datastore object."""
 
@@ -192,6 +219,7 @@ class StubDRClient:
         self.Deployment = MagicMock()
         self.Dataset = MagicMock()
         self.DataStore = MagicMock()
+        self.UseCase = MagicMock()
         self.client = MagicMock()
         self.stub_rest_get: Any = None
         self.stub_rest_post: Any = None
@@ -275,6 +303,14 @@ def test_create_dr_client() -> StubDRClient:
     def list_datastores() -> list[StubDataStore]:
         return [stub_datastore]
 
+    # --- UseCase stubs ---
+    def get_use_case(use_case_id: str) -> StubUseCase:
+        """Stub UseCase.get; returns a stub use case or raises for unknown IDs."""
+        if use_case_id == "nonexistent_use_case":
+            raise Exception(f"404 client error: {{'message': 'Use case {use_case_id} not found'}}")
+        name = "Stub Use Case" if use_case_id == STUB_USE_CASE_ID else f"Use Case {use_case_id}"
+        return StubUseCase(use_case_id, name=name)
+
     # --- REST method stubs for dr_module.client.get_client() ---
     def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.get() REST calls."""
@@ -291,6 +327,15 @@ def test_create_dr_client() -> StubDRClient:
             return StubRestResponse({"data": rows, "next": None})
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
+        if "useCases" in url:
+            data: list[dict] = [
+                {"id": STUB_USE_CASE_ID, "name": "Stub Use Case"},
+                {"id": "stub_use_case_id_2", "name": "Another Use Case"},
+            ]
+            search = (params or {}).get("search")
+            if search:
+                data = [uc for uc in data if search.lower() in uc["name"].lower()]
+            return StubRestResponse({"data": data, "next": None})
         return StubRestResponse({"data": [], "next": None})
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
@@ -311,6 +356,7 @@ def test_create_dr_client() -> StubDRClient:
     client.Dataset.get = get_dataset
     client.Dataset.list = list_datasets
     client.DataStore.list = list_datastores
+    client.UseCase.get = get_use_case
     # Store REST stubs on the client so integration_mcp_server can wire them
     # onto mock_rest after replacing client.client.
     client.stub_rest_get = stub_get
