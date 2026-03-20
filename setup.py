@@ -120,7 +120,7 @@ drmcp = drtools + [
     "opentelemetry-exporter-otlp>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
-    "datarobot-early-access>=3.14.0.2026.3.18.162920"
+    "datarobot-early-access==3.14.0.2026.3.18.162920"
 ]
 
 # auth is standalone set of dependencies for auth utilities only
