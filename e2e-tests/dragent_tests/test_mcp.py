@@ -14,6 +14,7 @@
 
 import os
 
+from ag_ui.verify import validate_sequence
 import httpx
 import pytest
 from ag_ui.core import EventType
@@ -55,6 +56,9 @@ def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[
 
     # THEN: a response is correct AG UI events
     mcp_ag_ui_events = collect_ag_ui_events(sse_events)
+
+    # THEN: the events are a valid AG-UI sequence
+    validate_sequence(mcp_ag_ui_events, debug=True)
 
     # THEN: the events contain tool call events (if framework supports tool calls)
     tool_types = {

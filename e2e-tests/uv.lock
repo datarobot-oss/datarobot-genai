@@ -28,14 +28,10 @@ wheels = [
 
 [[package]]
 name = "ag-ui-protocol"
-version = "0.1.13"
-source = { registry = "https://pypi.org/simple" }
+version = "0.1.14"
+source = { git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence#2eca856589f48118323b941d06f1780c69fefdd7" }
 dependencies = [
     { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/04/b5/fc0b65b561d00d88811c8a7d98ee735833f81554be244340950e7b65820c/ag_ui_protocol-0.1.13.tar.gz", hash = "sha256:811d7d7dcce4783dec252918f40b717ebfa559399bf6b071c4ba47c0c1e21bcb", size = 5671, upload-time = "2026-02-19T18:40:38.602Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/9f/b833c1ab1999da35ebad54841ae85d2c2764c931da9a6f52d8541b6901b2/ag_ui_protocol-0.1.13-py3-none-any.whl", hash = "sha256:1393fa894c1e8416efe184168a50689e760d05b32f4646eebb8ff423dddf8e8f", size = 8053, upload-time = "2026-02-19T18:40:37.27Z" },
 ]
 
 [[package]]
@@ -845,7 +841,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.8.3"
+version = "0.8.5"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1119,6 +1115,7 @@ name = "datarobot-genai-e2e-tests"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "ag-ui-protocol" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
@@ -1149,6 +1146,7 @@ lint = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ag-ui-protocol", git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },

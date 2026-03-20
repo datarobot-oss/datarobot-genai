@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 
+from ag_ui.verify import validate_sequence
 import httpx
 import pytest
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -31,7 +32,7 @@ from dragent_tests.helpers import make_generate_payload
     reason="NAT returns single response in chat completions format, and we do not yet care to fix "
     "it."
 )
-def test_generate_single_produces_text(http_client: httpx.Client) -> None:
+def test_generate_single(http_client: httpx.Client) -> None:
     """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
     payload = make_generate_payload("Say 'hello world' and nothing else.")
@@ -46,6 +47,9 @@ def test_generate_single_produces_text(http_client: httpx.Client) -> None:
 
     # THEN: the response contains AG-UI events
     assert len(response_data.events) > 0
+
+    # THEN: the events are a valid AG-UI sequence
+    validate_sequence(response_data.events, debug=True)
 
     # THEN: there are events with text
     full_text = collect_text(response_data.events)

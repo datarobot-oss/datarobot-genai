@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import httpx
+from ag_ui.verify import validate_sequence
 
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
@@ -23,8 +24,7 @@ from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
 
-# TODO: analyze that its a correct AG-UI sequence
-def test_generate_streaming_produces_text(http_client: httpx.Client) -> None:
+def test_generate_streaming(http_client: httpx.Client) -> None:
     """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
     payload = make_generate_payload("Say 'hello world' and nothing else.")
@@ -39,6 +39,9 @@ def test_generate_streaming_produces_text(http_client: httpx.Client) -> None:
 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_responses)
+
+    # THEN: the events are a valid AG-UI sequence
+    validate_sequence(ag_ui_events, debug=True)
 
     # THEN: there are events with text
     full_text = collect_text(ag_ui_events)
