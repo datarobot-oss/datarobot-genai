@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc. and its affiliates.
+# Copyright 2026 DataRobot, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ from ag_ui.core import RunAgentInput
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.config import get_max_history_messages_default
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
@@ -78,6 +79,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         authorization_context: dict[str, Any] | None = None,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
         **_: Any,
     ) -> None:
         self._max_history_messages = max_history_messages
@@ -97,6 +99,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self._authorization_context = authorization_context or {}
         self._forwarded_headers: dict[str, str] = forwarded_headers or {}
         self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
+        self._memory_client: BaseMemoryClient | None = memory_client
 
     def set_mcp_tools(self, tools: list[TTool]) -> None:
         self._mcp_tools = tools
@@ -138,6 +141,57 @@ class BaseAgent(Generic[TTool], abc.ABC):
         ``chat_history`` variable in prompts across different agent types.
         """
         return build_history_summary_from_messages(run_agent_input, self.max_history_messages)
+
+    def _get_memory_client(self) -> BaseMemoryClient | None:
+        if self._memory_client is not None:
+            return self._memory_client
+        try:
+            from datarobot_genai.core.memory.mem0client import Mem0Client
+        except ImportError:
+            return None
+        try:
+            self._memory_client = Mem0Client()
+        except Exception:
+            return None
+        return self._memory_client
+
+    async def retrieve_memory(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        client = self._get_memory_client()
+        if not client:
+            return ""
+        return await client.retrieve(
+            prompt=prompt,
+            run_id=run_id,
+            agent_id=agent_id,
+            app_id=app_id,
+            attributes=attributes,
+        )
+
+    async def store_memory(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        client = self._get_memory_client()
+        if not client:
+            return
+        await client.store(
+            user_message=user_message,
+            run_id=run_id,
+            agent_id=agent_id,
+            app_id=app_id,
+            attributes=attributes,
+        )
 
     @classmethod
     def create_pipeline_interactions_from_events(
