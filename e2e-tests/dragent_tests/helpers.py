@@ -14,6 +14,7 @@
 import os
 import uuid
 
+from ag_ui.verify import validate_sequence
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -66,3 +67,23 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
         if event.type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):
             parts.append(event.delta)
     return "".join(parts)
+
+
+def validate_dragent_ag_ui_sequence(events: list[Event]) -> None:
+    """Validate a sequence of DRAgent events against AG-UI protocol validators,
+    and also againts our internal assumptions about the sequence.
+    """
+    validate_sequence(events, debug=True)
+
+    # Additional rule 1: no events but custom within tool calls
+    tool_call_is_active = False
+    for event in events:
+        if event.type == EventType.CUSTOM:
+            continue # custom events are allowed within tool calls
+        if tool_call_is_active:
+            if event.type not in (EventType.TOOL_CALL_ARGS, EventType.TOOL_CALL_END):
+                raise ValueError(f"Invalid event within tool call: {event.type}")
+            if event.type == EventType.TOOL_CALL_END:
+                tool_call_is_active = False
+        elif event.type == EventType.TOOL_CALL_START:
+            tool_call_is_active = True

@@ -14,9 +14,6 @@
 
 from __future__ import annotations
 
-import os
-
-from ag_ui.verify import validate_sequence
 import httpx
 import pytest
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -25,6 +22,7 @@ from dragent_tests.helpers import FRAMEWORK
 from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
+from dragent_tests.helpers import validate_dragent_ag_ui_sequence
 
 
 @pytest.mark.skipif(
@@ -49,7 +47,7 @@ def test_generate_single(http_client: httpx.Client) -> None:
     assert len(response_data.events) > 0
 
     # THEN: the events are a valid AG-UI sequence
-    validate_sequence(response_data.events, debug=True)
+    validate_dragent_ag_ui_sequence(response_data.events)
 
     # THEN: there are events with text
     full_text = collect_text(response_data.events)

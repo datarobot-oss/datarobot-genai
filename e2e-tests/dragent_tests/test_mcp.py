@@ -14,16 +14,17 @@
 
 import os
 
-from ag_ui.verify import validate_sequence
 import httpx
 import pytest
 from ag_ui.core import EventType
 
-from dragent_tests.helpers import FRAMEWORK, FRAMEWORK_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import FRAMEWORK
+from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
+from dragent_tests.helpers import validate_dragent_ag_ui_sequence
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("MCP_DEPLOYMENT_ID"),
@@ -58,7 +59,7 @@ def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[
     mcp_ag_ui_events = collect_ag_ui_events(sse_events)
 
     # THEN: the events are a valid AG-UI sequence
-    validate_sequence(mcp_ag_ui_events, debug=True)
+    validate_dragent_ag_ui_sequence(mcp_ag_ui_events)
 
     # THEN: the events contain tool call events (if framework supports tool calls)
     tool_types = {
