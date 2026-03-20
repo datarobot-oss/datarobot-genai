@@ -239,14 +239,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 )
                                 reasoning_started = True
                         elif reasoning_started:
-                            usage_metrics = self._extract_usage_metrics(crew_output)
                             yield (
                                 ReasoningEndEvent(
                                     type=EventType.REASONING_END,
                                     message_id=message_id,
                                 ),
                                 None,
-                                usage_metrics,
+                                zero_metrics,
                             )
                             reasoning_started = False
 
@@ -262,14 +261,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 )
                                 step_started = True
                         elif step_started:
-                            usage_metrics = self._extract_usage_metrics(crew_output)
                             yield (
                                 StepFinishedEvent(
                                     type=EventType.STEP_FINISHED,
                                     step_name=current_task,
                                 ),
                                 None,
-                                usage_metrics,
+                                zero_metrics,
                             )
                             step_started = False
 
@@ -318,7 +316,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 type=EventType.TEXT_MESSAGE_END, message_id=message_id
                             ),
                             None,
-                            usage_metrics,
+                            zero_metrics,
                         )
                     if step_started:
                         yield (
@@ -327,7 +325,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 step_name=current_task,
                             ),
                             None,
-                            usage_metrics,
+                            zero_metrics,
                         )
                 else:
                     response_text = str(crew_output.raw)
@@ -344,7 +342,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 delta=response_text,
                             ),
                             None,
-                            usage_metrics,
+                            zero_metrics,
                         )
 
                 yield (
