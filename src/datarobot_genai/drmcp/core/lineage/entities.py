@@ -50,6 +50,7 @@ class BaseMCPMetadata(ABC):
     ) -> "BaseMCPMetadata":
         pass
 
+    @abstractmethod
     def to_datarobot_mcp_server_deployment_item(
         self,
     ) -> (
