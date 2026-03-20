@@ -235,3 +235,11 @@ def get_api_client(headers_auth_only: bool = False) -> RESTClientObject:
     dr = get_sdk_client(headers_auth_only=headers_auth_only)
 
     return cast(RESTClientObject, dr.client.get_client())
+
+
+def setup_and_return_dr_api_client_with_static_config_in_container() -> RESTClientObject:
+    credentials = get_credentials()
+
+    return dr.Client(
+        token=credentials.datarobot.application_api_token, endpoint=credentials.datarobot.endpoint
+    )

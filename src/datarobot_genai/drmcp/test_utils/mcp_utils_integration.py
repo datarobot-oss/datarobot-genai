@@ -71,6 +71,24 @@ def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerPara
     )
 
 
+def integration_test_server_params_with_env(
+    extra_env: dict[str, str],
+    use_stub: bool = True,
+) -> StdioServerParameters:
+    """Return integration test server params with additional environment variables.
+
+    Useful for enabling specific tool groups (e.g. {"ENABLE_USE_CASE_TOOLS": "true"}).
+    """
+    params = integration_test_mcp_server_params(use_stub=use_stub)
+    env = dict(params.env or {})
+    env.update(extra_env)
+    return StdioServerParameters(
+        command=params.command,
+        args=params.args,
+        env=env,
+    )
+
+
 @contextlib.asynccontextmanager
 async def integration_test_mcp_session(
     server_params: StdioServerParameters | None = None,

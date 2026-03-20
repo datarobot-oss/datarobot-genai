@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import polars as pl
 import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
@@ -256,9 +257,7 @@ async def test_get_dataset_details_success() -> None:
         mock_dataset.created_at = "2025-01-01"
         mock_dataset.row_count = 100
 
-        import pandas as pd
-
-        mock_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        mock_df = pl.DataFrame({"a": [1, 2], "b": [3, 4]}).to_pandas()
         mock_dataset.get_raw_sample_data.return_value = mock_df
         mock_client.Dataset.get.return_value = mock_dataset
         mock_data_robot_client.return_value.get_client.return_value = mock_client
