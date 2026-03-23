@@ -1411,12 +1411,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = ">=0.1.9,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = ">=0.1.9,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = ">=0.1.9,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.9,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.9,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.9,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.14,<0.2.0" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.9.0,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.9.0,<4.0.0" },
@@ -2194,8 +2194,8 @@ name = "h2"
 version = "4.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "hpack" },
-    { name = "hyperframe" },
+    { name = "hpack", marker = "python_full_version < '3.13'" },
+    { name = "hyperframe", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1d/17/afa56379f94ad0fe8defd37d6eb3f89a25404ffc71d4d848893d270325fc/h2-4.3.0.tar.gz", hash = "sha256:6c59efe4323fa18b47a632221a1888bd7fde6249819beda254aeca909f221bf1", size = 2152026, upload-time = "2025-08-23T18:12:19.778Z" }
 wheels = [
@@ -2294,7 +2294,7 @@ wheels = [
 
 [package.optional-dependencies]
 http2 = [
-    { name = "h2" },
+    { name = "h2", marker = "python_full_version < '3.13'" },
 ]
 
 [[package]]
@@ -3871,15 +3871,15 @@ name = "mem0ai"
 version = "1.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "openai" },
-    { name = "posthog" },
+    { name = "openai", marker = "python_full_version < '3.13'" },
+    { name = "posthog", marker = "python_full_version < '3.13'" },
     { name = "protobuf", version = "5.29.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
-    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version != '3.12.*'" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "pydantic", version = "2.11.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
-    { name = "pydantic", version = "2.12.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version != '3.12.*'" },
-    { name = "pytz" },
-    { name = "qdrant-client" },
-    { name = "sqlalchemy" },
+    { name = "pydantic", version = "2.12.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "pytz", marker = "python_full_version < '3.13'" },
+    { name = "qdrant-client", marker = "python_full_version < '3.13'" },
+    { name = "sqlalchemy", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c5/a7/ad272ecb8e67690d08f6fb59d7162260dbbbaf9f1b9336c52bef254bfbcd/mem0ai-1.0.7.tar.gz", hash = "sha256:57ec923d9703cd0f9bc0ffac511d2839ed99448a28c9ad8c017335083846d338", size = 188641, upload-time = "2026-03-20T22:46:24.734Z" }
 wheels = [
@@ -6582,16 +6582,16 @@ name = "qdrant-client"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "grpcio" },
-    { name = "httpx", extra = ["http2"] },
+    { name = "grpcio", marker = "python_full_version < '3.13'" },
+    { name = "httpx", extra = ["http2"], marker = "python_full_version < '3.13'" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "portalocker" },
+    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
+    { name = "portalocker", marker = "python_full_version < '3.13'" },
     { name = "protobuf", version = "5.29.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
-    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version != '3.12.*'" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "pydantic", version = "2.11.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
-    { name = "pydantic", version = "2.12.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version != '3.12.*'" },
-    { name = "urllib3" },
+    { name = "pydantic", version = "2.12.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "urllib3", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/30/dd/f8a8261b83946af3cd65943c93c4f83e044f01184e8525404989d22a81a5/qdrant_client-1.17.1.tar.gz", hash = "sha256:22f990bbd63485ed97ba551a4c498181fcb723f71dcab5d6e4e43fe1050a2bc0", size = 344979, upload-time = "2026-03-13T17:13:44.678Z" }
 wheels = [

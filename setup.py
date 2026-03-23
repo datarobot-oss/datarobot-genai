@@ -34,7 +34,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
-    "ag-ui-protocol>=0.1.9,<0.2.0",
+    "ag-ui-protocol>=0.1.14,<0.2.0",
     "pyarrow==21.0.0",
 ]
 

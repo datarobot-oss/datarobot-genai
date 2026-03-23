@@ -168,7 +168,7 @@ def expected_responses(intermediate_steps_ids, payloads):
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["planner_message_id"]),
                 ReasoningMessageStartEvent(
-                    message_id=intermediate_steps_ids["planner_message_id"], role="assistant"
+                    message_id=intermediate_steps_ids["planner_message_id"], role="resoning"
                 ),
             ],
             model="vertex_ai/claude-3-5-haiku@20241022",
@@ -218,7 +218,7 @@ def expected_responses(intermediate_steps_ids, payloads):
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["writer_message_id"]),
                 ReasoningMessageStartEvent(
-                    message_id=intermediate_steps_ids["writer_message_id"], role="assistant"
+                    message_id=intermediate_steps_ids["writer_message_id"], role="reasoning"
                 ),
             ],
             model="vertex_ai/claude-3-5-haiku@20241022",
