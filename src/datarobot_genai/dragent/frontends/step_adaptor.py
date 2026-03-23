@@ -181,7 +181,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         events = []
         if payload.event_type == IntermediateStepType.LLM_START:
             events.append(ReasoningStartEvent(message_id=payload.UUID))
-            events.append(ReasoningMessageStartEvent(message_id=payload.UUID, role="assistant"))
+            events.append(ReasoningMessageStartEvent(message_id=payload.UUID, role="reasoning"))
             self.seen_llm_new_token = False
         elif payload.event_type == IntermediateStepType.LLM_END:
             if not self.seen_llm_new_token:
