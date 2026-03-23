@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import abc
 import json
+import logging
 import os
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
@@ -39,6 +40,8 @@ if TYPE_CHECKING:
     from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
+
+logger = logging.getLogger(__name__)
 
 
 class BaseAgent(Generic[TTool], abc.ABC):
@@ -147,11 +150,13 @@ class BaseAgent(Generic[TTool], abc.ABC):
             return self._memory_client
         try:
             from datarobot_genai.core.memory.mem0client import Mem0Client
-        except ImportError:
+        except ImportError as exc:
+            logger.warning("Mem0Client import failed: %s", exc)
             return None
         try:
             self._memory_client = Mem0Client()
-        except Exception:
+        except Exception as exc:
+            logger.warning("Mem0Client initialization failed: %s", exc)
             return None
         return self._memory_client
 

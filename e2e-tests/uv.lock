@@ -874,7 +874,15 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
+<<<<<<< HEAD
 version = "0.8.11"
+=======
+<<<<<<< HEAD
+version = "0.8.9"
+=======
+version = "0.8.7"
+>>>>>>> 05ddafb (Add exception handling and logging for failed instantiation of memory clients)
+>>>>>>> 9288240 (Add exception handling and logging for failed instantiation of memory clients)
 source = { editable = "../" }
 
 [package.optional-dependencies]
