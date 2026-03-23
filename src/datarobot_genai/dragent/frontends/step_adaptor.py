@@ -181,7 +181,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         events = []
         if payload.event_type == IntermediateStepType.LLM_START:
             events.append(ReasoningStartEvent(message_id=payload.UUID))
-            events.append(ReasoningMessageStartEvent(message_id=payload.UUID, role="assistant"))
+            events.append(ReasoningMessageStartEvent(message_id=payload.UUID, role="reasoning"))
             self.seen_llm_new_token = False
         elif payload.event_type == IntermediateStepType.LLM_END:
             if not self.seen_llm_new_token:
@@ -208,8 +208,10 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # run id and thread id are set on the API level, should not be set here
         if payload.event_type == IntermediateStepType.WORKFLOW_START:
             event = RunStartedEvent(run_id="", thread_id="")
+            event = StepStartedEvent(step_name=payload.name)
         elif payload.event_type == IntermediateStepType.WORKFLOW_END:
             event = RunFinishedEvent(run_id="", thread_id="")
+            event = StepFinishedEvent(step_name=payload.name)
         else:
             raise self._unknown_step_type(payload)
 
@@ -285,20 +287,15 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_function(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
-        # NAT function -> AG-UI step
-        event = None
-        # run id and thread id are set on the API level, should not be set here
+        # Just track the function level so we can handle nested functions correctly
         if payload.event_type == IntermediateStepType.FUNCTION_START:
             self.function_level += 1
-            event = StepStartedEvent(step_name=payload.name)
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
             self.function_level -= 1
-            event = StepFinishedEvent(step_name=payload.name)
         else:
             raise self._unknown_step_type(payload)
 
-        response = DRAgentEventResponse(events=[event])
-        return response
+        return None
 
     def _handle_custom(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
