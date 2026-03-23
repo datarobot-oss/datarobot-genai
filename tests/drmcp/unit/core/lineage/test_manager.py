@@ -1,0 +1,676 @@
+# Copyright 2026 DataRobot, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from collections.abc import Iterator
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
+from unittest.mock import patch
+
+import pytest
+from datarobot._experimental.models.user_mcp_server_deployment import (
+    PromptInUserMCPServerDeployment,
+)
+from datarobot._experimental.models.user_mcp_server_deployment import (
+    ResourceInUserMCPServerDeployment,
+)
+from datarobot._experimental.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
+from datarobot._experimental.models.user_mcp_server_deployment import (
+    TypeOfPromptInUserMCPServerDeployment,
+)
+from datarobot._experimental.models.user_mcp_server_deployment import (
+    TypeOfResourceInUserMCPServerDeployment,
+)
+from datarobot._experimental.models.user_mcp_server_deployment import (
+    TypeOfToolInUserMCPServerDeployment,
+)
+
+from datarobot_genai.drmcp.core.lineage.entities import MCPPromptMetadata
+from datarobot_genai.drmcp.core.lineage.entities import MCPResourceMetadata
+from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
+from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+
+
+class TestLineageManager:
+    @pytest.fixture
+    def module_under_test(self) -> str:
+        return "datarobot_genai.drmcp.core.lineage.manager"
+
+    @pytest.fixture
+    def mock_lrs_env_var(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.LRSEnvVars") as mock_enum:
+            yield mock_enum
+
+    @pytest.fixture
+    def mock_setup_and_return_dr_api_client_with_static_config_in_container(
+        self, module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(
+            f"{module_under_test}.setup_and_return_dr_api_client_with_static_config_in_container",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_type_of_tool_in_user_mcp_server_deployment_from_string(self) -> Iterator[Mock]:
+        with patch.object(
+            TypeOfToolInUserMCPServerDeployment,
+            "from_string",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_type_of_prompt_in_user_mcp_server_deployment_from_string(self) -> Iterator[Mock]:
+        with patch.object(
+            TypeOfPromptInUserMCPServerDeployment,
+            "from_string",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_type_of_resource_in_user_mcp_server_deployment_from_string(self) -> Iterator[Mock]:
+        with patch.object(
+            TypeOfResourceInUserMCPServerDeployment,
+            "from_string",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_tools_associated_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_tools_associated_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_prompts_associated_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_prompts_associated_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_resources_associated_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_resources_associated_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_tools_in_mcp_server(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_tools_in_mcp_server",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_prompts_in_mcp_server(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_prompts_in_mcp_server",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_resources_in_mcp_server(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_resources_in_mcp_server",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_items_to_associate_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_items_to_associate_with_mcp_server_deployment",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_items_to_dissociate_from_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "get_mcp_items_to_dissociate_from_mcp_server_deployment",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_associate_mcp_tools_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "associate_mcp_tools_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_associate_mcp_prompts_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "associate_mcp_prompts_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_associate_mcp_resources_with_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "associate_mcp_resources_with_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_dissociate_mcp_tools_from_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "dissociate_mcp_tools_from_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_dissociate_mcp_prompts_from_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "dissociate_mcp_prompts_from_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_dissociate_mcp_resources_from_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            LineageManager,
+            "dissociate_mcp_resources_from_mcp_server_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_list_tools_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(ToolInUserMCPServerDeployment, "list") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_list_prompts_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(PromptInUserMCPServerDeployment, "list") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_list_resources_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(ResourceInUserMCPServerDeployment, "list") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_create_tool_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(ToolInUserMCPServerDeployment, "create") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_create_prompt_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(PromptInUserMCPServerDeployment, "create") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_create_resource_in_user_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(ResourceInUserMCPServerDeployment, "create") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_fastmcp_tool(self) -> Iterator[Mock]:
+        with patch.object(MCPToolMetadata, "from_fastmcp_item") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_fastmcp_prompt(self) -> Iterator[Mock]:
+        with patch.object(MCPPromptMetadata, "from_fastmcp_item") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_fastmcp_resource(self) -> Iterator[Mock]:
+        with patch.object(MCPResourceMetadata, "from_fastmcp_item") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_datarobot_tool_in_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            MCPToolMetadata, "from_datarobot_mcp_server_deployment_item"
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_datarobot_prompt_in_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            MCPPromptMetadata, "from_datarobot_mcp_server_deployment_item"
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_datarobot_resource_in_mcp_server_deployment(self) -> Iterator[Mock]:
+        with patch.object(
+            MCPResourceMetadata, "from_datarobot_mcp_server_deployment_item"
+        ) as mock_func:
+            yield mock_func
+
+    def test_init(
+        self,
+        mock_setup_and_return_dr_api_client_with_static_config_in_container: Mock,
+        mock_lrs_env_var: Mock,
+    ) -> None:
+        mock_mcp_server_instance = Mock()
+        manager = LineageManager(mock_mcp_server_instance)
+
+        mock_setup_and_return_dr_api_client_with_static_config_in_container.assert_called_once_with()
+        mock_lrs_env_var.MLOPS_DEPLOYMENT_ID.get_os_env_value.assert_called_once_with()
+
+        assert (
+            manager.mcp_server_deployment_id
+            == mock_lrs_env_var.MLOPS_DEPLOYMENT_ID.get_os_env_value.return_value
+        )
+        assert manager.mcp_server_instance == mock_mcp_server_instance
+
+    def test_get_mcp_items_to_associate_with_mcp_server_deployment(self) -> None:
+        share_item = Mock(name="adfa")
+        diff_item_one = Mock(name="212rads")
+        diff_item_two = Mock(name="32qerqew")
+        mcp_items_associated_with_mcp_server_deployments = [share_item, diff_item_one]
+        mcp_items_in_mcp_server = [share_item, diff_item_two]
+        outputs = LineageManager.get_mcp_items_to_associate_with_mcp_server_deployment(
+            mcp_items_associated_with_mcp_server_deployments,
+            mcp_items_in_mcp_server,
+        )
+
+        assert outputs == [diff_item_two]
+
+    def test_get_mcp_items_to_dissociate_from_mcp_server_deployment(self) -> None:
+        share_item = Mock(name="adfa")
+        diff_item_one = Mock(name="212rads")
+        diff_item_two = Mock(name="32qerqew")
+        mcp_items_associated_with_mcp_server_deployments = [share_item, diff_item_one]
+        mcp_items_in_mcp_server = [share_item, diff_item_two]
+        outputs = LineageManager.get_mcp_items_to_dissociate_from_mcp_server_deployment(
+            mcp_items_associated_with_mcp_server_deployments,
+            mcp_items_in_mcp_server,
+        )
+
+        assert outputs == [diff_item_one]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_get_mcp_tools_associated_with_mcp_server_deployment(
+        self,
+        mock_from_datarobot_tool_in_mcp_server_deployment: Mock,
+        mock_list_tools_in_user_mcp_server_deployment: Mock,
+    ) -> None:
+        mock_tool_in_user_mcp_server_deployment = Mock()
+        mock_list_tools_in_user_mcp_server_deployment.return_value = [
+            mock_tool_in_user_mcp_server_deployment
+        ]
+
+        manager = LineageManager(Mock())
+        mcp_tools = await manager.get_mcp_tools_associated_with_mcp_server_deployment()
+
+        mock_list_tools_in_user_mcp_server_deployment.assert_called_once_with(
+            mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            limit=0,
+        )
+        mock_from_datarobot_tool_in_mcp_server_deployment.assert_called_once_with(
+            mock_tool_in_user_mcp_server_deployment
+        )
+        assert mcp_tools == [mock_from_datarobot_tool_in_mcp_server_deployment.return_value]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_get_mcp_prompts_associated_with_mcp_server_deployment(
+        self,
+        mock_from_datarobot_prompt_in_mcp_server_deployment: Mock,
+        mock_list_prompts_in_user_mcp_server_deployment: Mock,
+    ) -> None:
+        mock_prompt_in_user_mcp_server_deployment = Mock()
+        mock_list_prompts_in_user_mcp_server_deployment.return_value = [
+            mock_prompt_in_user_mcp_server_deployment
+        ]
+
+        manager = LineageManager(Mock())
+        mcp_prompts = await manager.get_mcp_prompts_associated_with_mcp_server_deployment()
+
+        mock_list_prompts_in_user_mcp_server_deployment.assert_called_once_with(
+            mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            limit=0,
+        )
+        mock_from_datarobot_prompt_in_mcp_server_deployment.assert_called_once_with(
+            mock_prompt_in_user_mcp_server_deployment
+        )
+        assert mcp_prompts == [mock_from_datarobot_prompt_in_mcp_server_deployment.return_value]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_get_mcp_resources_associated_with_mcp_server_deployment(
+        self,
+        mock_from_datarobot_resource_in_mcp_server_deployment: Mock,
+        mock_list_resources_in_user_mcp_server_deployment: Mock,
+    ) -> None:
+        mock_prompt_in_user_mcp_server_deployment = Mock()
+        mock_list_resources_in_user_mcp_server_deployment.return_value = [
+            mock_prompt_in_user_mcp_server_deployment
+        ]
+
+        manager = LineageManager(Mock())
+        mcp_resources = await manager.get_mcp_resources_associated_with_mcp_server_deployment()
+
+        mock_list_resources_in_user_mcp_server_deployment.assert_called_once_with(
+            mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            limit=0,
+        )
+        mock_from_datarobot_resource_in_mcp_server_deployment.assert_called_once_with(
+            mock_prompt_in_user_mcp_server_deployment
+        )
+        assert mcp_resources == [mock_from_datarobot_resource_in_mcp_server_deployment.return_value]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_get_mcp_tools_in_mcp_server(
+        self,
+        mock_from_fastmcp_tool: Mock,
+    ) -> None:
+        mock_mcp_server = Mock()
+        mock_fastmcp_tool = Mock()
+        mock_mcp_server._list_tools_mcp = AsyncMock(return_value=[mock_fastmcp_tool])
+
+        manager = LineageManager(mock_mcp_server)
+        mcp_tools = await manager.get_mcp_tools_in_mcp_server()
+
+        mock_from_fastmcp_tool.assert_called_once_with(mock_fastmcp_tool)
+        assert mcp_tools == [mock_from_fastmcp_tool.return_value]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_get_mcp_prompts_in_mcp_server(
+        self,
+        mock_from_fastmcp_prompt: Mock,
+    ) -> None:
+        mock_mcp_server = Mock()
+        mock_fastmcp_prompt = Mock()
+        mock_mcp_server._list_prompts_mcp = AsyncMock(return_value=[mock_fastmcp_prompt])
+
+        manager = LineageManager(mock_mcp_server)
+        mcp_tools = await manager.get_mcp_prompts_in_mcp_server()
+
+        mock_from_fastmcp_prompt.assert_called_once_with(mock_fastmcp_prompt)
+        assert mcp_tools == [mock_from_fastmcp_prompt.return_value]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_get_mcp_resources_in_mcp_server(
+        self,
+        mock_from_fastmcp_resource: Mock,
+    ) -> None:
+        mock_mcp_server = Mock()
+        mock_fastmcp_resource = Mock()
+        mock_mcp_server._list_resources_mcp = AsyncMock(return_value=[mock_fastmcp_resource])
+
+        manager = LineageManager(mock_mcp_server)
+        mcp_tools = await manager.get_mcp_resources_in_mcp_server()
+
+        mock_from_fastmcp_resource.assert_called_once_with(mock_fastmcp_resource)
+        assert mcp_tools == [mock_from_fastmcp_resource.return_value]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_associate_mcp_tools_with_mcp_server_deployment(
+        self,
+        mock_create_tool_in_user_mcp_server_deployment: Mock,
+        mock_type_of_tool_in_user_mcp_server_deployment_from_string: Mock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        mcp_tool = Mock()
+        await manager.associate_mcp_tools_with_mcp_server_deployment([mcp_tool])
+
+        mock_type_of_tool_in_user_mcp_server_deployment_from_string.assert_called_once_with(
+            mcp_tool.type,
+        )
+        mock_create_tool_in_user_mcp_server_deployment.assert_called_once_with(
+            mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            name=mcp_tool.name,
+            type=mock_type_of_tool_in_user_mcp_server_deployment_from_string.return_value,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_associate_mcp_prompts_with_mcp_server_deployment(
+        self,
+        mock_create_prompt_in_user_mcp_server_deployment: Mock,
+        mock_type_of_prompt_in_user_mcp_server_deployment_from_string: Mock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        mcp_prompt = Mock()
+        await manager.associate_mcp_prompts_with_mcp_server_deployment([mcp_prompt])
+
+        mock_type_of_prompt_in_user_mcp_server_deployment_from_string.assert_called_once_with(
+            mcp_prompt.type,
+        )
+        mock_create_prompt_in_user_mcp_server_deployment.assert_called_once_with(
+            mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            name=mcp_prompt.name,
+            type=mock_type_of_prompt_in_user_mcp_server_deployment_from_string.return_value,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_associate_mcp_resources_with_mcp_server_deployment(
+        self,
+        mock_create_resource_in_user_mcp_server_deployment: Mock,
+        mock_type_of_resource_in_user_mcp_server_deployment_from_string: Mock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        mcp_resource = Mock()
+        await manager.associate_mcp_resources_with_mcp_server_deployment([mcp_resource])
+
+        mock_type_of_resource_in_user_mcp_server_deployment_from_string.assert_called_once_with(
+            mcp_resource.type,
+        )
+        mock_create_resource_in_user_mcp_server_deployment.assert_called_once_with(
+            mcp_server_deployment_id=manager.mcp_server_deployment_id,
+            uri=mcp_resource.uri,
+            name=mcp_resource.name,
+            type=mock_type_of_resource_in_user_mcp_server_deployment_from_string.return_value,
+        )
+
+    @pytest.mark.asyncio
+    async def test_dissociate_mcp_tools_from_mcp_server_deployment(
+        self,
+    ) -> None:
+        mcp_tool = Mock()
+        await LineageManager.dissociate_mcp_tools_from_mcp_server_deployment([mcp_tool])
+
+        mcp_tool.to_datarobot_mcp_server_deployment_item.assert_called_once_with()
+        datarobot_mcp_tool_object = mcp_tool.to_datarobot_mcp_server_deployment_item.return_value
+        datarobot_mcp_tool_object.delete.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_dissociate_mcp_prompts_from_mcp_server_deployment(
+        self,
+    ) -> None:
+        mcp_prompt = Mock()
+        await LineageManager.dissociate_mcp_prompts_from_mcp_server_deployment([mcp_prompt])
+
+        mcp_prompt.to_datarobot_mcp_server_deployment_item.assert_called_once_with()
+        datarobot_mcp_prompt_object = (
+            mcp_prompt.to_datarobot_mcp_server_deployment_item.return_value
+        )
+        datarobot_mcp_prompt_object.delete.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_dissociate_mcp_resources_from_mcp_server_deployment(
+        self,
+    ) -> None:
+        mcp_resource = Mock()
+        await LineageManager.dissociate_mcp_resources_from_mcp_server_deployment([mcp_resource])
+
+        mcp_resource.to_datarobot_mcp_server_deployment_item.assert_called_once_with()
+        datarobot_mcp_resource_object = (
+            mcp_resource.to_datarobot_mcp_server_deployment_item.return_value
+        )
+        datarobot_mcp_resource_object.delete.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_sync_mcp_tools(
+        self,
+        mock_get_mcp_tools_associated_with_mcp_server_deployment: AsyncMock,
+        mock_get_mcp_tools_in_mcp_server: AsyncMock,
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment: Mock,
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment: Mock,
+        mock_associate_mcp_tools_with_mcp_server_deployment: AsyncMock,
+        mock_dissociate_mcp_tools_from_mcp_server_deployment: AsyncMock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        await manager.sync_mcp_tools()
+
+        mock_get_mcp_tools_associated_with_mcp_server_deployment.assert_called_once_with()
+        mock_get_mcp_tools_in_mcp_server.assert_called_once_with()
+        mcp_tools_associated_with_deployment = (
+            mock_get_mcp_tools_associated_with_mcp_server_deployment.return_value
+        )
+        mcp_tools_in_server = mock_get_mcp_tools_in_mcp_server.return_value
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment.assert_called_once_with(
+            mcp_tools_associated_with_deployment, mcp_tools_in_server
+        )
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.assert_called_once_with(
+            mcp_tools_associated_with_deployment, mcp_tools_in_server
+        )
+        mock_associate_mcp_tools_with_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_associate_with_mcp_server_deployment.return_value
+        )
+        mock_dissociate_mcp_tools_from_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.return_value
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_sync_mcp_prompts(
+        self,
+        mock_get_mcp_prompts_associated_with_mcp_server_deployment: AsyncMock,
+        mock_get_mcp_prompts_in_mcp_server: AsyncMock,
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment: Mock,
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment: Mock,
+        mock_associate_mcp_prompts_with_mcp_server_deployment: AsyncMock,
+        mock_dissociate_mcp_prompts_from_mcp_server_deployment: AsyncMock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        await manager.sync_mcp_prompts()
+
+        mock_get_mcp_prompts_associated_with_mcp_server_deployment.assert_called_once_with()
+        mock_get_mcp_prompts_in_mcp_server.assert_called_once_with()
+        mcp_prompts_associated_with_deployment = (
+            mock_get_mcp_prompts_associated_with_mcp_server_deployment.return_value
+        )
+        mcp_prompts_in_server = mock_get_mcp_prompts_in_mcp_server.return_value
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment.assert_called_once_with(
+            mcp_prompts_associated_with_deployment, mcp_prompts_in_server
+        )
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.assert_called_once_with(
+            mcp_prompts_associated_with_deployment, mcp_prompts_in_server
+        )
+        mock_associate_mcp_prompts_with_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_associate_with_mcp_server_deployment.return_value
+        )
+        mock_dissociate_mcp_prompts_from_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.return_value
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_setup_and_return_dr_api_client_with_static_config_in_container",
+        "mock_lrs_env_var",
+    )
+    async def test_sync_mcp_resources(
+        self,
+        mock_get_mcp_resources_associated_with_mcp_server_deployment: AsyncMock,
+        mock_get_mcp_resources_in_mcp_server: AsyncMock,
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment: Mock,
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment: Mock,
+        mock_associate_mcp_resources_with_mcp_server_deployment: AsyncMock,
+        mock_dissociate_mcp_resources_from_mcp_server_deployment: AsyncMock,
+    ) -> None:
+        manager = LineageManager(Mock())
+
+        await manager.sync_mcp_resources()
+
+        mock_get_mcp_resources_associated_with_mcp_server_deployment.assert_called_once_with()
+        mock_get_mcp_resources_in_mcp_server.assert_called_once_with()
+        mcp_resources_associated_with_deployment = (
+            mock_get_mcp_resources_associated_with_mcp_server_deployment.return_value
+        )
+        mcp_resources_in_server = mock_get_mcp_resources_in_mcp_server.return_value
+        mock_get_mcp_items_to_associate_with_mcp_server_deployment.assert_called_once_with(
+            mcp_resources_associated_with_deployment, mcp_resources_in_server
+        )
+        mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.assert_called_once_with(
+            mcp_resources_associated_with_deployment, mcp_resources_in_server
+        )
+        mock_associate_mcp_resources_with_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_associate_with_mcp_server_deployment.return_value
+        )
+        mock_dissociate_mcp_resources_from_mcp_server_deployment.assert_called_once_with(
+            mock_get_mcp_items_to_dissociate_from_mcp_server_deployment.return_value
+        )
