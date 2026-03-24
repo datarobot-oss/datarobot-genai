@@ -17,6 +17,7 @@ from __future__ import annotations
 import httpx
 import pytest
 from ag_ui.core import EventType
+from ag_ui.verify import validate_sequence
 
 from dragent_tests.helpers import FRAMEWORK
 from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
@@ -25,7 +26,6 @@ from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
-from dragent_tests.helpers import validate_dragent_ag_ui_sequence
 
 CALCULATOR_PROMPT = (
     "You MUST use the calculator tool to compute the following expression. "
@@ -59,7 +59,7 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
     ag_ui_events = collect_ag_ui_events(sse_events)
 
     # THEN: the events are a valid AG-UI sequence
-    validate_dragent_ag_ui_sequence(ag_ui_events)
+    validate_sequence(ag_ui_events)
 
     # THEN: there are events with tool call
     event_types = {e.type for e in ag_ui_events}

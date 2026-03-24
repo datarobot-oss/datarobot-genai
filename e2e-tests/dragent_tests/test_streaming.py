@@ -15,13 +15,13 @@
 from __future__ import annotations
 
 import httpx
+from ag_ui.verify import validate_sequence
 
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
-from dragent_tests.helpers import validate_dragent_ag_ui_sequence
 
 
 def test_generate_streaming(http_client: httpx.Client) -> None:
@@ -41,7 +41,7 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     ag_ui_events = collect_ag_ui_events(sse_responses)
 
     # THEN: the events are a valid AG-UI sequence
-    validate_dragent_ag_ui_sequence(ag_ui_events)
+    validate_sequence(ag_ui_events)
 
     # THEN: there are events with text
     full_text = collect_text(ag_ui_events)
