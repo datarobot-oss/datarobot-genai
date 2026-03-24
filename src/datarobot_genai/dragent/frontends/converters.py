@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import logging
-import uuid
 
+from ag_ui.core import CustomEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -79,13 +79,16 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 ## --- NAT chat completions -> dragent AG-UI ---
 
 
+# When NAT native agent is used it returns a string with the response in streaming mode
+# We don't need it: it is already returned from LLM events in StepAdaptor
+# So we
 def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
     return DRAgentEventResponse(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        events=[TextMessageChunkEvent(message_id=str(uuid.uuid4()), delta=response)],
+        events=[CustomEvent(name="DEFAULT_NAT_RESPONSE", value={"delta": response})],
     )
 
 
