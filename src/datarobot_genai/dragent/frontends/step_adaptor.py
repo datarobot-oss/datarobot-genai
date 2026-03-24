@@ -204,18 +204,18 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_workflow(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
-        event = None
+        events = []
         # run id and thread id are set on the API level, should not be set here
         if payload.event_type == IntermediateStepType.WORKFLOW_START:
-            event = RunStartedEvent(run_id="", thread_id="")
-            event = StepStartedEvent(step_name=payload.name)
+            events.append(RunStartedEvent(run_id="", thread_id=""))
+            events.append(StepStartedEvent(step_name=payload.name))
         elif payload.event_type == IntermediateStepType.WORKFLOW_END:
-            event = RunFinishedEvent(run_id="", thread_id="")
-            event = StepFinishedEvent(step_name=payload.name)
+            events.append(StepFinishedEvent(step_name=payload.name))
+            events.append(RunFinishedEvent(run_id="", thread_id=""))
         else:
             raise self._unknown_step_type(payload)
 
-        response = DRAgentEventResponse(events=[event])
+        response = DRAgentEventResponse(events=events)
         return response
 
     @staticmethod
