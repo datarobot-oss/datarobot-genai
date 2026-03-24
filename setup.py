@@ -46,6 +46,7 @@ crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.1.0,<2.0.0",
+    "litellm>=1.72.1,<2.0.0,!=1.82.7,!=1.82.8",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
     "nvidia-nat-crewai==1.4.1",
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
@@ -65,6 +66,7 @@ llamaindex = core + [
     "llama-index-core>=0.14.0,<0.15.0",
     "llama-index-llms-langchain>=0.6.1,<0.8.0",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
+    "litellm>=1.72.1,<2.0.0,!=1.82.7,!=1.82.8",
     "llama-index-llms-openai>=0.6.0,<0.7.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
     "nvidia-nat-llama-index==1.4.1",
