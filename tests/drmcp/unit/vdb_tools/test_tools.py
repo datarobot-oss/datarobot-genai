@@ -33,14 +33,7 @@ async def test_list_vector_databases_success() -> None:
                 "label": "VDB 1",
                 "status": "active",
                 "capabilities": {"supportsVectorDatabaseQuerying": True},
-                "model": {},
-            },
-            {
-                "id": "dep2",
-                "label": "Non-VDB",
-                "status": "active",
-                "capabilities": {},
-                "model": {},
+                "model": {"targetType": "VectorDatabase"},
             },
         ]
     }
@@ -62,6 +55,10 @@ async def test_list_vector_databases_success() -> None:
         assert isinstance(result, ToolResult)
         assert result.structured_content["count"] == 1
         assert result.structured_content["vector_databases"][0]["deployment_id"] == "dep1"
+        mock_rest_client.get.assert_called_once_with(
+            "deployments/",
+            params={"limit": 100, "modelTargetType": "VectorDatabase"},
+        )
 
 
 @pytest.mark.asyncio
@@ -85,6 +82,10 @@ async def test_list_vector_databases_empty() -> None:
         result = await tools.list_vector_databases()
         assert result.structured_content["count"] == 0
         assert result.structured_content["vector_databases"] == []
+        mock_rest_client.get.assert_called_once_with(
+            "deployments/",
+            params={"limit": 100, "modelTargetType": "VectorDatabase"},
+        )
 
 
 @pytest.mark.asyncio
@@ -95,8 +96,6 @@ async def test_query_vector_database_success() -> None:
     mock_rest_client.post.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    mock_deployment = MagicMock(id="dep1")
-    mock_dr_module.Deployment.get.return_value = mock_deployment
     with (
         patch(
             "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
@@ -111,6 +110,14 @@ async def test_query_vector_database_success() -> None:
         assert isinstance(result, ToolResult)
         assert result.structured_content["count"] == 1
         assert result.structured_content["deployment_id"] == "dep1"
+        mock_rest_client.post.assert_called_once_with(
+            "deployments/dep1/predictions/",
+            json={
+                "query": "test query",
+                "num_results": 5,
+                "retrieval_mode": "similarity",
+            },
+        )
 
 
 @pytest.mark.asyncio

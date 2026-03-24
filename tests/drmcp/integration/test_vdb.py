@@ -19,8 +19,8 @@ import json
 import pytest
 from mcp.types import TextContent
 
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_session,
     integration_test_server_params_with_env,
 )
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOYMENT_ID
