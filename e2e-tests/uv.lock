@@ -875,14 +875,23 @@ wheels = [
 [[package]]
 name = "datarobot-genai"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.8.11"
 =======
+=======
+>>>>>>> bbb34f6 (Remove store and retrieve from agents)
 <<<<<<< HEAD
 version = "0.8.9"
 =======
 version = "0.8.7"
 >>>>>>> 05ddafb (Add exception handling and logging for failed instantiation of memory clients)
+<<<<<<< HEAD
 >>>>>>> 9288240 (Add exception handling and logging for failed instantiation of memory clients)
+=======
+=======
+version = "0.8.11"
+>>>>>>> f3dd86c (Remove store and retrieve from agents)
+>>>>>>> bbb34f6 (Remove store and retrieve from agents)
 source = { editable = "../" }
 
 [package.optional-dependencies]

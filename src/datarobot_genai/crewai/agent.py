@@ -149,40 +149,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             }
         return default_usage_metrics()
 
-    async def retrieve_memory(
-        self,
-        prompt: str,
-        run_id: str | None = None,
-        agent_id: str | None = None,
-        app_id: str | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> str:
-        """mem0 integration hook (placeholder)."""
-        return await super().retrieve_memory(
-            prompt=prompt,
-            run_id=run_id,
-            agent_id=agent_id,
-            app_id=app_id,
-            attributes=attributes,
-        )
-
-    async def store_memory(
-        self,
-        user_message: str,
-        run_id: str | None = None,
-        agent_id: str | None = None,
-        app_id: str | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> None:
-        """mem0 integration hook (placeholder)."""
-        await super().store_memory(
-            user_message=user_message,
-            run_id=run_id,
-            agent_id=agent_id,
-            app_id=app_id,
-            attributes=attributes,
-        )
-
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
