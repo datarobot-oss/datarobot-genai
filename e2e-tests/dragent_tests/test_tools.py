@@ -41,10 +41,7 @@ EXPECTED_RESULT = str((1234 * 567890) + 91011)
     FRAMEWORK == "base",
     reason="Base framework does not implement anything, skipping tool call tests",
 )
-@pytest.mark.xfail(
-    condition=FRAMEWORK == "llamaindex",
-    reason="BUZZOK-29956: Not returning text message in the end of the response"
-)
+
 def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
     """Agent uses calculator tool when asked to compute."""
     # GIVEN: a payload that requests the calculator tool to compute the expression
