@@ -7,12 +7,14 @@ Public API:
 from datarobot_genai.core.mcp.common import MCPConfig
 
 from .agent import CrewAIAgent
-from .events import CrewAIRagasEventListener
 from .mcp import mcp_tools_context
+from .ragas_events import CrewAIRagasEventListener
+from .streaming_events import CrewAIStreamingEventListener
 
 __all__ = [
     "mcp_tools_context",
     "CrewAIAgent",
     "CrewAIRagasEventListener",
+    "CrewAIStreamingEventListener",
     "MCPConfig",
 ]
