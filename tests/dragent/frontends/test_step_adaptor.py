@@ -150,7 +150,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[StepStartedEvent(step_name="content_writer_pipeline")]),
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
@@ -163,7 +162,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[StepStartedEvent(step_name="planner")]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["planner_message_id"]),
@@ -189,7 +187,6 @@ def expected_responses(intermediate_steps_ids, payloads):
             ],
             model="claude-3-5-haiku@20241022",
         ),
-        DRAgentEventResponse(events=[StepFinishedEvent(step_name="planner")]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["planner_tool_call_id"]),
@@ -213,7 +210,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[StepStartedEvent(step_name="writer")]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["writer_message_id"]),
@@ -239,7 +235,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 700,
             },
         ),
-        DRAgentEventResponse(events=[StepFinishedEvent(step_name="writer")]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["writer_tool_call_id"]),
@@ -251,7 +246,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[StepFinishedEvent(step_name="content_writer_pipeline")]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(
