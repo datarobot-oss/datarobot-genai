@@ -23,6 +23,9 @@ from fastmcp.prompts.prompt import Prompt
 from pydantic import Field
 
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
+from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
 
 from .dr_lib import get_datarobot_prompt_template_versions
@@ -52,6 +55,10 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
             await register_prompt_from_datarobot_prompt_management(prompt, latest_version)
         except DynamicPromptRegistrationError:
             pass
+
+    if prompts and FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+        linear_manager = LineageManager(mcp)
+        await linear_manager.sync_mcp_prompts()
 
 
 async def register_prompt_from_datarobot_prompt_management(

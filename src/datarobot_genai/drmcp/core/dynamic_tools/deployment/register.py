@@ -20,6 +20,9 @@ from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
 from datarobot_genai.drmcp.core.exceptions import DynamicToolRegistrationError
+from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,10 @@ async def register_tools_of_datarobot_deployments() -> None:
         except Exception as exc:
             logger.error(f"Unexpected error for deployment {deployment_id}: {exc}")
             pass
+
+    if deployment_ids and FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+        linear_manager = LineageManager(mcp)
+        await linear_manager.sync_mcp_tools()
 
 
 async def register_tool_of_datarobot_deployment(
