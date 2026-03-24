@@ -51,7 +51,8 @@ async def test_mcp_interactive() -> None:
 
     # Optional DataRobot settings
     datarobot_endpoint = os.environ.get("DATAROBOT_ENDPOINT")
-    model = os.environ.get("MODEL")
+    dr_llm_gateway_model = os.environ.get("DR_LLM_GATEWAY_MODEL")
+    llm_temperature = os.environ.get("LLM_TEMPERATURE")
 
     print("🤖 Initializing LLM MCP Client...")
 
@@ -62,8 +63,15 @@ async def test_mcp_interactive() -> None:
     }
     if datarobot_endpoint:
         config["datarobot_endpoint"] = datarobot_endpoint
-    if model:
-        config["model"] = model
+    if dr_llm_gateway_model:
+        config["model"] = dr_llm_gateway_model
+    if llm_temperature is not None:
+        config["temperature"] = llm_temperature
+
+    if not config.get("model"):
+        print("❌ Error: no LLM model configured")
+        print("Set DR_LLM_GATEWAY_MODEL in your .env (same as ETE tests).")
+        return
 
     llm_client = DRLLMGatewayMCPClient(str(config))
 

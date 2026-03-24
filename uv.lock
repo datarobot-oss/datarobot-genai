@@ -1157,7 +1157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.8.9"
+version = "0.8.10"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1226,6 +1226,7 @@ dragent = [
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
     { name = "fastapi" },
+    { name = "litellm" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -1315,6 +1316,7 @@ langgraph = [
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
+    { name = "litellm" },
     { name = "nvidia-nat-langchain" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client", version = "0.55b1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
@@ -1375,6 +1377,7 @@ nat = [
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
+    { name = "litellm" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -1468,7 +1471,10 @@ requires-dist = [
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
     { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
     { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.6.1,<0.8.0" },
