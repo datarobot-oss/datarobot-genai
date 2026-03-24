@@ -36,16 +36,14 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 _SIMPLE_LP_PROBLEM = {
     "type": "lp",
     "objective": {"minimize": ["x", "y"], "coefficients": [1.0, 2.0]},
-    "constraints": [
-        {"lhs": ["x", "y"], "coefficients": [1.0, 1.0], "rhs": 1.0, "sense": ">="}
-    ],
+    "constraints": [{"lhs": ["x", "y"], "coefficients": [1.0, 1.0], "rhs": 1.0, "sense": ">="}],
     "bounds": {"x": [0, None], "y": [0, None]},
 }
 
 
 @pytest.fixture(scope="session")
 def expectations_for_cuopt_solve_success() -> ETETestExpectations:
-    """Expected tool call when LLM is asked to solve an LP problem."""
+    """Return expectations for a successful cuopt_solve LP solve call."""
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
@@ -65,7 +63,7 @@ def expectations_for_cuopt_solve_success() -> ETETestExpectations:
 
 @pytest.fixture(scope="session")
 def expectations_for_cuopt_solve_preview_success() -> ETETestExpectations:
-    """Expected tool call when LLM is asked to validate (preview) an LP problem."""
+    """Return expectations for a cuopt_solve preview (validate) call."""
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
@@ -84,7 +82,7 @@ def expectations_for_cuopt_solve_preview_success() -> ETETestExpectations:
 
 @pytest.fixture(scope="session")
 def expectations_for_cuopt_solve_missing_deployment_error() -> ETETestExpectations:
-    """Expected error when CUOPT_DEPLOYMENT_ID is not configured."""
+    """Return expectations when CUOPT_DEPLOYMENT_ID is not configured."""
     return ETETestExpectations(
         potential_no_tool_calls=True,
         tool_calls_expected=[
@@ -150,9 +148,7 @@ class TestCuoptSolveE2E(ToolBaseE2E):
         """Test that LLM correctly calls cuopt_solve with preview=True for validation."""
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = (
-                frame.f_code.co_name if frame else "test_cuopt_solve_preview_success"
-            )
+            test_name = frame.f_code.co_name if frame else "test_cuopt_solve_preview_success"
             await self._run_test_with_expectations(
                 prompt_template,
                 expectations_for_cuopt_solve_preview_success,

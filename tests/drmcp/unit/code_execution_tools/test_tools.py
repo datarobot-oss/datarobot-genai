@@ -67,9 +67,7 @@ async def test_in_process_sandbox_runtime_error() -> None:
 @pytest.mark.asyncio
 async def test_in_process_sandbox_timeout() -> None:
     sandbox = InProcessSandbox()
-    result = await sandbox.execute(
-        "import time; time.sleep(10)", "session1", timeout_seconds=1
-    )
+    result = await sandbox.execute("import time; time.sleep(10)", "session1", timeout_seconds=1)
     assert result["error"] is not None
     assert "timed out" in result["error"]
 

@@ -19,8 +19,8 @@ import json
 import pytest
 from mcp.types import TextContent
 
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_session,
     integration_test_server_params_with_env,
 )
 
@@ -72,9 +72,7 @@ class TestMCPOptimizationToolsIntegration:
 
     async def test_cuopt_solve_missing_problem_definition_raises_error(self) -> None:
         """cuopt_solve without problem_definition raises a ToolError."""
-        server_params = _optimization_server_params(
-            cuopt_deployment_id=_STUB_CUOPT_DEPLOYMENT_ID
-        )
+        server_params = _optimization_server_params(cuopt_deployment_id=_STUB_CUOPT_DEPLOYMENT_ID)
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.call_tool(
                 "cuopt_solve",
@@ -87,9 +85,7 @@ class TestMCPOptimizationToolsIntegration:
 
     async def test_cuopt_solve_returns_solution(self) -> None:
         """cuopt_solve with valid inputs returns a solution from the stub."""
-        server_params = _optimization_server_params(
-            cuopt_deployment_id=_STUB_CUOPT_DEPLOYMENT_ID
-        )
+        server_params = _optimization_server_params(cuopt_deployment_id=_STUB_CUOPT_DEPLOYMENT_ID)
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.call_tool(
                 "cuopt_solve",
@@ -107,9 +103,7 @@ class TestMCPOptimizationToolsIntegration:
 
     async def test_cuopt_solve_preview_mode(self) -> None:
         """cuopt_solve with preview=True returns validation result."""
-        server_params = _optimization_server_params(
-            cuopt_deployment_id=_STUB_CUOPT_DEPLOYMENT_ID
-        )
+        server_params = _optimization_server_params(cuopt_deployment_id=_STUB_CUOPT_DEPLOYMENT_ID)
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.call_tool(
                 "cuopt_solve",
@@ -128,9 +122,7 @@ class TestMCPOptimizationToolsIntegration:
         server_params = _optimization_server_params()
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.list_tools()
-            cuopt_tool = next(
-                (t for t in result.tools if t.name == "cuopt_solve"), None
-            )
+            cuopt_tool = next((t for t in result.tools if t.name == "cuopt_solve"), None)
             assert cuopt_tool is not None
             if cuopt_tool.meta:
                 fastmcp_meta = cuopt_tool.meta.get("_fastmcp", {})

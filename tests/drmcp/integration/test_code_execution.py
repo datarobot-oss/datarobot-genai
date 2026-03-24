@@ -19,8 +19,8 @@ import json
 import pytest
 from mcp.types import TextContent
 
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_session,
     integration_test_server_params_with_env,
 )
 
@@ -43,7 +43,7 @@ class TestMCPCodeExecutionToolsIntegration:
             assert "execute_code" in tool_names
 
     async def test_execute_code_noop_sandbox_returns_error(self) -> None:
-        """The default sandbox is NoopSandbox; it returns an informative error with empty outputs."""
+        """NoopSandbox returns an error and empty stdout/stderr/result."""
         server_params = _code_execution_server_params()
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.call_tool(
@@ -79,9 +79,7 @@ class TestMCPCodeExecutionToolsIntegration:
         server_params = _code_execution_server_params()
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.list_tools()
-            execute_code_tool = next(
-                (t for t in result.tools if t.name == "execute_code"), None
-            )
+            execute_code_tool = next((t for t in result.tools if t.name == "execute_code"), None)
             assert execute_code_tool is not None
             if execute_code_tool.meta:
                 fastmcp_meta = execute_code_tool.meta.get("_fastmcp", {})

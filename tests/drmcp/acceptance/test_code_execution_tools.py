@@ -36,7 +36,7 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 
 @pytest.fixture(scope="session")
 def expectations_for_execute_code_print_success() -> ETETestExpectations:
-    """Expected tool call when LLM is asked to run a simple print statement."""
+    """Return expectations for an execute_code print tool call."""
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
@@ -56,7 +56,7 @@ def expectations_for_execute_code_print_success() -> ETETestExpectations:
 
 @pytest.fixture(scope="session")
 def expectations_for_execute_code_arithmetic_success() -> ETETestExpectations:
-    """Expected tool call when LLM is asked to compute a result."""
+    """Return expectations for an execute_code arithmetic tool call."""
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
@@ -75,7 +75,7 @@ def expectations_for_execute_code_arithmetic_success() -> ETETestExpectations:
 
 @pytest.fixture(scope="session")
 def expectations_for_execute_code_no_code_error() -> ETETestExpectations:
-    """Expected error when LLM tries to call execute_code without providing code."""
+    """Return expectations when execute_code is invoked without code."""
     return ETETestExpectations(
         potential_no_tool_calls=True,
         tool_calls_expected=[
@@ -99,9 +99,7 @@ class TestExecuteCodeE2E(ToolBaseE2E):
 
     @pytest.mark.parametrize(
         "prompt_template",
-        [
-            "Please run this Python code using the execute_code tool: print('Hello, World!')"
-        ],
+        ["Please run this Python code using the execute_code tool: print('Hello, World!')"],
     )
     async def test_execute_code_print_success(
         self,
@@ -137,9 +135,7 @@ class TestExecuteCodeE2E(ToolBaseE2E):
         """Test that LLM correctly calls execute_code with arithmetic code."""
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = (
-                frame.f_code.co_name if frame else "test_execute_code_arithmetic_success"
-            )
+            test_name = frame.f_code.co_name if frame else "test_execute_code_arithmetic_success"
             await self._run_test_with_expectations(
                 prompt_template,
                 expectations_for_execute_code_arithmetic_success,
