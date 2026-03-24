@@ -57,6 +57,7 @@ langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
     "langgraph>=1.0.0,<1.1.0",
     "langgraph-prebuilt>=1.0.0,<1.1.0",
+    "litellm>=1.72.1,<2.0.0,!=1.82.7,!=1.82.8",
     "nvidia-nat-langchain==1.4.1",
     "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
 ]
@@ -75,6 +76,7 @@ llamaindex = core + [
 ]
 
 nat = core + [
+    "litellm>=1.72.1,<2.0.0,!=1.82.7,!=1.82.8",
     "nvidia-nat==1.4.1",
     "nvidia-nat-a2a==1.4.1",
     "nvidia-nat-opentelemetry==1.4.1",
