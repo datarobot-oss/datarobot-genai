@@ -184,7 +184,9 @@ class TestDRAgentFastApiFrontEndPluginWorker:
     def test_get_a2a_endpoint_url_deployment_missing_endpoint_raises(self, worker):
         cfg = A2AFrontEndConfig(host="localhost", port=8000)
         with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "abc123"}, clear=True):
-            with pytest.raises(ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT must be set"):
+            with pytest.raises(
+                ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set"
+            ):
                 worker._get_a2a_endpoint_url(cfg)
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(

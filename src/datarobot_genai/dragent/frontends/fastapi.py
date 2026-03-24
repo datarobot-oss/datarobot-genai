@@ -154,7 +154,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             )
             if not datarobot_endpoint:
                 raise ValueError(
-                    "DATAROBOT_PUBLIC_API_ENDPOINT must be set when MLOPS_DEPLOYMENT_ID is set"
+                    "DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set "
+                    "when MLOPS_DEPLOYMENT_ID is set"
                 )
             base = datarobot_endpoint.rstrip("/")
             return f"{base}/deployments/{mlops_deployment_id}/directAccess/{A2A_MOUNT_PATH}/"
