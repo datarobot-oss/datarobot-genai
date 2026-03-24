@@ -24,6 +24,7 @@ from setuptools import setup
 core = [
     "requests>=2.32.4,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
+    "datarobot-early-access==3.14.0.2026.3.18.162920",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=1.76.2,<2.0.0",
     "ragas>=0.3.8,<0.4.0",
@@ -33,7 +34,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
-    "ag-ui-protocol>=0.1.9,<0.2.0",
+    "ag-ui-protocol>=0.1.14,<0.2.0",
     "pyarrow==21.0.0",
 ]
 
@@ -80,7 +81,12 @@ nat = core + [
     "anyio==4.11.0",
 ]
 
-dragent = nat + []
+dragent = nat + [
+    # 'FastAPI' object has no attribute 'add_event_handler'
+    # in fastapi_front_end_plugin_worker.py", line 328, in configure
+    "fastapi<0.133.0",
+    "starlette<1.0.0",
+]
 
 # Eventually NAT will be merged into dragent
 
@@ -98,6 +104,7 @@ drtools = [
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
+    "datarobot-early-access==3.14.0.2026.3.18.162920",
     "aiohttp>=3.9.0,<4.0.0",
     "fastmcp>=2.13.0.2,<3.0.0",
 ]
