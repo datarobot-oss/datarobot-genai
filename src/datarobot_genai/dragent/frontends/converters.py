@@ -80,8 +80,8 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 
 
 # When NAT native agent is used it returns a string with the response in streaming mode
-# We don't need it: it is already returned from LLM events in StepAdaptor
-# So we
+# we don't need it: it is already returned from LLM events in StepAdaptor.
+# So we return it as a custom event just to keep the interface consistent.
 def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
