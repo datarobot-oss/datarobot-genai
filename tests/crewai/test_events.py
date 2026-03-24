@@ -22,16 +22,16 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 from ragas.messages import ToolMessage
 
-from datarobot_genai.crewai.events import AgentExecutionCompletedEvent
-from datarobot_genai.crewai.events import AgentExecutionStartedEvent
-from datarobot_genai.crewai.events import AgentReasoningCompletedEvent
-from datarobot_genai.crewai.events import AgentReasoningStartedEvent
-from datarobot_genai.crewai.events import CrewAIRagasEventListener
-from datarobot_genai.crewai.events import CrewKickoffStartedEvent
-from datarobot_genai.crewai.events import TaskCompletedEvent
-from datarobot_genai.crewai.events import TaskStartedEvent
-from datarobot_genai.crewai.events import ToolUsageFinishedEvent
-from datarobot_genai.crewai.events import ToolUsageStartedEvent
+from datarobot_genai.crewai.ragas_events import AgentExecutionCompletedEvent
+from datarobot_genai.crewai.ragas_events import AgentExecutionStartedEvent
+from datarobot_genai.crewai.ragas_events import AgentReasoningCompletedEvent
+from datarobot_genai.crewai.ragas_events import AgentReasoningStartedEvent
+from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
+from datarobot_genai.crewai.ragas_events import CrewKickoffStartedEvent
+from datarobot_genai.crewai.ragas_events import TaskCompletedEvent
+from datarobot_genai.crewai.ragas_events import TaskStartedEvent
+from datarobot_genai.crewai.ragas_events import ToolUsageFinishedEvent
+from datarobot_genai.crewai.ragas_events import ToolUsageStartedEvent
 
 
 class _FakeBus:

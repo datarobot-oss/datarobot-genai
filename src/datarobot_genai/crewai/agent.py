@@ -52,7 +52,8 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.crewai.events import CrewAIRagasEventListener
+from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
+from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
 from .mcp import mcp_tools_context
 
@@ -197,6 +198,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             with crewai_event_bus.scoped_handlers():
                 ragas_event_listener = CrewAIRagasEventListener()
                 ragas_event_listener.setup_listeners(crewai_event_bus)
+                streaming_event_listener = CrewAIStreamingEventListener()
+                streaming_event_listener.setup_listeners(crewai_event_bus)
 
                 crew = self.crew()
 
@@ -227,7 +230,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             print(f"\n[{chunk.agent_role}] Working on: {chunk.task_name}")
                             print("-" * 60)
 
-                        if ragas_event_listener.reasoning_event:
+                        if streaming_event_listener.reasoning_event:
                             if not reasoning_started:
                                 yield (
                                     ReasoningStartEvent(
@@ -249,7 +252,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             )
                             reasoning_started = False
 
-                        if ragas_event_listener.step_event:
+                        if streaming_event_listener.step_event:
                             if not step_started:
                                 yield (
                                     StepStartedEvent(
@@ -273,7 +276,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                         # Display text chunks
                         if chunk.chunk_type == StreamChunkType.TEXT:
-                            if ragas_event_listener.reasoning_event:
+                            if streaming_event_listener.reasoning_event:
                                 yield (
                                     ReasoningMessageContentEvent(
                                         type=EventType.REASONING_MESSAGE_CONTENT,

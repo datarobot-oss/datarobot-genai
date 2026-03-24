@@ -43,8 +43,6 @@ class CrewAIRagasEventListener:
 
     def __init__(self) -> None:
         self.messages: list[HumanMessage | AIMessage | ToolMessage] = []
-        self.reasoning_event = False
-        self.step_event = False
 
     def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
         # Lazy import to reduce memory overhead when ragas is not used
@@ -69,34 +67,28 @@ class CrewAIRagasEventListener:
 
         @crewai_event_bus.on(AgentReasoningStartedEvent)
         def on_agent_reasoning_started(_: Any, event: Any) -> None:
-            self.reasoning_event = True
             self.messages.append(AIMessage(content=event.type, tool_calls=[]))
 
         @crewai_event_bus.on(AgentReasoningCompletedEvent)
         def on_agent_reasoning_completed(_: Any, event: Any) -> None:
-            self.reasoning_event = False
             self.messages.append(AIMessage(content=event.plan, tool_calls=[]))
 
         @crewai_event_bus.on(AgentReasoningFailedEvent)
         def on_agent_reasoning_failed(_: Any, event: Any) -> None:
-            self.reasoning_event = False
             self.messages.append(AIMessage(content=event.task_id, tool_calls=[]))
 
         @crewai_event_bus.on(TaskCompletedEvent)
         def on_agent_task_completed(_: Any, event: Any) -> None:
-            self.step_event = False
             self.messages.append(
                 AIMessage(content=f"Task output: '{json.dumps(event.output)}'", tool_calls=[])
             )
 
         @crewai_event_bus.on(TaskFailedEvent)
         def on_agent_task_failed(_: Any, event: Any) -> None:
-            self.step_event = False
             self.messages.append(AIMessage(content=event.error, tool_calls=[]))
 
         @crewai_event_bus.on(TaskStartedEvent)
         def on_agent_task_started(_: Any, event: Any) -> None:
-            self.step_event = True
             self.messages.append(AIMessage(content=event.context, tool_calls=[]))
 
         @crewai_event_bus.on(ToolUsageStartedEvent)
