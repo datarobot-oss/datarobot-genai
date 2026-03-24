@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.8.9
+## 0.8.10
 - Added vector database tools: list_vector_databases and query_vector_database (MODEL-22811)
 - Added code execution tool: execute_code with pluggable sandbox backend (MODEL-22812)
 - Added optimization tool: cuopt_solve for NVIDIA cuOpt solver integration (MODEL-22812)
+
+## 0.8.9
+- Pin LiteLLM to safe version to prevent exploit (see https://github.com/BerriAI/litellm/issues/24518)
 
 ## 0.8.8
 - When constructing the agent card, prefer the DATAROBOT_PUBLIC_API_ENDPOINT over DATAROBOT_API_ENDPOINT, avoiding connection issues in onprem environments.
