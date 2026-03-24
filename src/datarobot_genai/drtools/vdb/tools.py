@@ -35,17 +35,13 @@ async def list_vector_databases() -> ToolResult:
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
 
-    response = rest_client.get("deployments/", params={"limit": 100})
+    response = rest_client.get(
+        "deployments/",
+        params={"limit": 100, "modelTargetType": "VectorDatabase"},
+    )
     data = response.json()
-    all_deployments = data.get("data", [])
+    vdbs = data.get("data", [])
     next_page = data.get("next")
-
-    vdbs = [
-        d
-        for d in all_deployments
-        if d.get("capabilities", {}).get("supportsVectorDatabaseQuerying")
-        or d.get("model", {}).get("targetType") == "VectorDatabase"
-    ]
 
     return ToolResult(
         structured_content={
@@ -83,15 +79,13 @@ async def query_vector_database(
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
 
-    deployment = dr_module.Deployment.get(deployment_id)
-
     payload: dict[str, Any] = {
         "query": query,
         "num_results": num_results,
         "retrieval_mode": retrieval_mode,
     }
     response = rest_client.post(
-        f"deployments/{deployment.id}/predictions/",
+        f"deployments/{deployment_id}/predictions/",
         json=payload,
     )
     data = response.json()

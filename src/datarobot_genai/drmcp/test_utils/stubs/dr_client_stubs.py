@@ -331,28 +331,29 @@ def test_create_dr_client() -> StubDRClient:
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         if url.rstrip("/") == "deployments" or url.rstrip("/").endswith("deployments"):
-            # list_vector_databases calls GET deployments/ to list all deployments
-            return StubRestResponse(
+            all_deployments = [
                 {
-                    "data": [
-                        {
-                            "id": STUB_VDB_DEPLOYMENT_ID,
-                            "label": "Stub VDB Deployment",
-                            "status": "active",
-                            "capabilities": {"supportsVectorDatabaseQuerying": True},
-                            "model": {"targetType": "VectorDatabase"},
-                        },
-                        {
-                            "id": "stub_regular_deployment_id",
-                            "label": "Regular Deployment",
-                            "status": "active",
-                            "capabilities": {"supportsVectorDatabaseQuerying": False},
-                            "model": {"targetType": "Binary"},
-                        },
-                    ],
-                    "next": None,
-                }
-            )
+                    "id": STUB_VDB_DEPLOYMENT_ID,
+                    "label": "Stub VDB Deployment",
+                    "status": "active",
+                    "capabilities": {"supportsVectorDatabaseQuerying": True},
+                    "model": {"targetType": "VectorDatabase"},
+                },
+                {
+                    "id": "stub_regular_deployment_id",
+                    "label": "Regular Deployment",
+                    "status": "active",
+                    "capabilities": {"supportsVectorDatabaseQuerying": False},
+                    "model": {"targetType": "Binary"},
+                },
+            ]
+            model_target_type = (params or {}).get("modelTargetType")
+            if model_target_type:
+                all_deployments = [
+                    d for d in all_deployments
+                    if d.get("model", {}).get("targetType") == model_target_type
+                ]
+            return StubRestResponse({"data": all_deployments, "next": None})
         if "useCases" in url:
             data: list[dict] = [
                 {"id": STUB_USE_CASE_ID, "name": "Stub Use Case"},

@@ -17,26 +17,18 @@
 import json
 
 import pytest
-from mcp.client.stdio import StdioServerParameters
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_server_params,
+    integration_test_mcp_session,
+    integration_test_server_params_with_env,
 )
-from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_test_mcp_session
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOYMENT_ID
 
 
-def _vdb_server_params() -> StdioServerParameters:
+def _vdb_server_params():
     """Return server params with VDB tools enabled."""
-    params = integration_test_mcp_server_params(use_stub=True)
-    env = dict(params.env or {})
-    env["ENABLE_VDB_TOOLS"] = "true"
-    return StdioServerParameters(
-        command=params.command,
-        args=params.args,
-        env=env,
-    )
+    return integration_test_server_params_with_env({"ENABLE_VDB_TOOLS": "true"})
 
 
 @pytest.mark.asyncio
