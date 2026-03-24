@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.8.6
+## 0.8.8
 - Added AG-UI Events for CrewAI
+
+## 0.8.7
+- Rework NAT AG-UI integration
+- Do not return final response from NAT twice
+
+## 0.8.6
+- Locked upperbound for dragent dependencies (fastapi, starlette) to avoid compatibility issues
+- Locked lowerbound for AG-UI because of a change in reasoning events validation
 
 ## 0.8.5
 - Added logic to sync MCP server deployment associated metadata with items in MCP server.
