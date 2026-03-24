@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.9
+- Added GitHub Actions workflow `integration.yml`: path-filtered **Integration Tests** job for drmcp (runs when `src/datarobot_genai/drmcp`, `src/datarobot_genai/drtools`, `setup.py`, `tests/drmcp/integration`, or the workflow file changes; aligned with the e2e workflow pattern)
+- DRMCP integration/ETE: `tests/drmcp/stub_credentials.py` plus `ete_test_server.py` default stub `DATAROBOT_*` env so `task drmcp-integration` can start the MCP server without a real API token in `.env`; shared stub token constant wired from `tests/drmcp/conftest.py`
+- `test_interactive.py`: read `DR_LLM_GATEWAY_MODEL` and optional `LLM_TEMPERATURE` into the LLM Gateway client config (consistent with ETE helpers)
+
 ## 0.8.8
 - When constructing the agent card, prefer the DATAROBOT_PUBLIC_API_ENDPOINT over DATAROBOT_API_ENDPOINT, avoiding connection issues in onprem environments.
 
