@@ -8,7 +8,10 @@ resolution-markers = [
 ]
 
 [manifest]
-overrides = [{ name = "crewai", extras = ["litellm"], specifier = ">=1.1.0,<2.0.0" }]
+overrides = [
+    { name = "crewai", extras = ["litellm"], specifier = ">=1.1.0,<2.0.0" },
+    { name = "litellm", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+]
 
 [[package]]
 name = "a2a-sdk"
@@ -871,7 +874,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.8.7"
+version = "0.8.9"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -884,6 +887,7 @@ crewai = [
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
+    { name = "litellm" },
     { name = "nvidia-nat-crewai" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -905,6 +909,7 @@ dragent = [
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
     { name = "fastapi" },
+    { name = "litellm" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -930,6 +935,7 @@ langgraph = [
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
+    { name = "litellm" },
     { name = "nvidia-nat-langchain" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -948,6 +954,7 @@ llamaindex = [
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
+    { name = "litellm" },
     { name = "llama-index" },
     { name = "llama-index-core" },
     { name = "llama-index-llms-langchain" },
@@ -1024,6 +1031,11 @@ requires-dist = [
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
+    { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
     { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.6.1,<0.8.0" },
