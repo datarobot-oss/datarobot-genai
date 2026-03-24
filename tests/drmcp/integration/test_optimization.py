@@ -17,12 +17,11 @@
 import json
 
 import pytest
-from mcp.client.stdio import StdioServerParameters
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_server_params,
     integration_test_mcp_session,
+    integration_test_server_params_with_env,
 )
 
 # A minimal LP problem definition for testing
@@ -37,18 +36,12 @@ _SIMPLE_LP_PROBLEM = {
 _STUB_CUOPT_DEPLOYMENT_ID = "stub_cuopt_deployment_id"
 
 
-def _optimization_server_params(cuopt_deployment_id: str | None = None) -> StdioServerParameters:
+def _optimization_server_params(cuopt_deployment_id: str | None = None):
     """Return server params with optimization tools enabled."""
-    params = integration_test_mcp_server_params(use_stub=True)
-    env = dict(params.env or {})
-    env["ENABLE_OPTIMIZATION_TOOLS"] = "true"
+    extra_env = {"ENABLE_OPTIMIZATION_TOOLS": "true"}
     if cuopt_deployment_id:
-        env["CUOPT_DEPLOYMENT_ID"] = cuopt_deployment_id
-    return StdioServerParameters(
-        command=params.command,
-        args=params.args,
-        env=env,
-    )
+        extra_env["CUOPT_DEPLOYMENT_ID"] = cuopt_deployment_id
+    return integration_test_server_params_with_env(extra_env)
 
 
 @pytest.mark.asyncio

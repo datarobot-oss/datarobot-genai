@@ -15,6 +15,7 @@
 """Code execution tool with pluggable sandbox backend."""
 
 import asyncio
+import contextlib
 import logging
 import traceback
 from io import StringIO
@@ -22,6 +23,7 @@ from typing import Annotated
 from typing import Any
 from typing import Protocol
 
+from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
@@ -47,8 +49,6 @@ class InProcessSandbox:
     async def execute(
         self, code: str, session_id: str, timeout_seconds: int = 30
     ) -> dict[str, Any]:
-        import contextlib
-
         stdout_buf = StringIO()
         stderr_buf = StringIO()
         result: Any = None
@@ -122,8 +122,6 @@ async def execute_code(
     - Global MCP (multi-tenant): returns an error (sandboxed execution pending)
     """
     if not code:
-        from fastmcp.exceptions import ToolError
-
         raise ToolError("Code must be provided")
 
     result = await _sandbox.execute(code, session_id or "default", timeout_seconds)

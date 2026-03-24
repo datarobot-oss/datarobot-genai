@@ -17,26 +17,17 @@
 import json
 
 import pytest
-from mcp.client.stdio import StdioServerParameters
 from mcp.types import TextContent
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
-    integration_test_mcp_server_params,
     integration_test_mcp_session,
+    integration_test_server_params_with_env,
 )
 
 
-def _code_execution_server_params() -> StdioServerParameters:
+def _code_execution_server_params():
     """Return server params with code_execution tools enabled."""
-    params = integration_test_mcp_server_params(use_stub=True)
-    # params.env is the full env dict (includes PYTHONPATH, MCP_USE_CLIENT_STUBS, etc.)
-    env = dict(params.env or {})
-    env["ENABLE_CODE_EXECUTION_TOOLS"] = "true"
-    return StdioServerParameters(
-        command=params.command,
-        args=list(params.args),
-        env=env,
-    )
+    return integration_test_server_params_with_env({"ENABLE_CODE_EXECUTION_TOOLS": "true"})
 
 
 @pytest.mark.asyncio
@@ -52,14 +43,13 @@ class TestMCPCodeExecutionToolsIntegration:
             assert "execute_code" in tool_names
 
     async def test_execute_code_noop_sandbox_returns_error(self) -> None:
-        """The default sandbox is NoopSandbox; it returns an informative error message."""
+        """The default sandbox is NoopSandbox; it returns an informative error with empty outputs."""
         server_params = _code_execution_server_params()
         async with integration_test_mcp_session(server_params=server_params) as session:
             result = await session.call_tool(
                 "execute_code",
-                {"code": "print('hello')"},
+                {"code": "print('hello')", "session_id": "test-session"},
             )
-            # NoopSandbox returns structured content (not isError), with an error key
             assert len(result.content) > 0
             content = result.content[0]
             assert isinstance(content, TextContent)
@@ -67,6 +57,9 @@ class TestMCPCodeExecutionToolsIntegration:
             assert "error" in data
             assert data["error"] is not None
             assert "not available" in data["error"].lower() or "planned" in data["error"].lower()
+            assert data["stdout"] == ""
+            assert data["stderr"] == ""
+            assert data["result"] is None
 
     async def test_execute_code_missing_code_raises_error(self) -> None:
         """Calling execute_code without code should raise a ToolError."""
@@ -80,22 +73,6 @@ class TestMCPCodeExecutionToolsIntegration:
             content = result.content[0]
             assert isinstance(content, TextContent)
             assert "Code must be provided" in content.text
-
-    async def test_execute_code_noop_sandbox_stdout_empty(self) -> None:
-        """NoopSandbox returns empty stdout regardless of code."""
-        server_params = _code_execution_server_params()
-        async with integration_test_mcp_session(server_params=server_params) as session:
-            result = await session.call_tool(
-                "execute_code",
-                {"code": "print('should not appear')", "session_id": "test-session"},
-            )
-            assert len(result.content) > 0
-            content = result.content[0]
-            assert isinstance(content, TextContent)
-            data = json.loads(content.text)
-            assert data["stdout"] == ""
-            assert data["stderr"] == ""
-            assert data["result"] is None
 
     async def test_execute_code_tool_has_expected_tags(self) -> None:
         """Verify execute_code has the expected tags (code_execution, python, sandbox, daria)."""
