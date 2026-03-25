@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import httpx
-import logging
 import pytest
 from ag_ui.core import EventType
 from ag_ui.verify import validate_sequence
@@ -27,8 +26,6 @@ from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
-
-logger = logging.getLogger(__name__)
 
 CALCULATOR_PROMPT = (
     "You MUST use the calculator tool to compute the following expression. "
