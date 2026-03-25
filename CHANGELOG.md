@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.8.11
-- Migrate dragent to nvidia-nat 1.5.0
+- Migrated dragent to nvidia-nat 1.5.0
 
 ## 0.8.10
 - Added GitHub Actions workflow `integration.yml`: path-filtered **Integration Tests** job for drmcp (runs when `src/datarobot_genai/drmcp`, `src/datarobot_genai/drtools`, `setup.py`, `tests/drmcp/integration`, or the workflow file changes; aligned with the e2e workflow pattern)
