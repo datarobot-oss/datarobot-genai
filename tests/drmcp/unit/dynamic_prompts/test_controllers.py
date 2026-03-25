@@ -150,7 +150,7 @@ class TestPromptTemplatesAdd:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
+        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )
@@ -190,7 +190,7 @@ class TestPromptTemplatesAdd:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
+        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )
@@ -214,7 +214,7 @@ class TestPromptTemplatesAdd:
     @pytest.mark.asyncio
     async def test_sync_mcp_metadata_after_registering_with_prompt_template_id(
         self,
-        mock_feature_flag_create: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_get_datarobot_prompt_template: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_prompts: Mock,
@@ -228,14 +228,14 @@ class TestPromptTemplatesAdd:
         mock_register_prompt_from_datarobot_prompt_management.assert_called_once_with(
             prompt_template=mock_prompt_template,
         )
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)
         mock_sync_mcp_prompts.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_sync_mcp_metadata_after_registering_with_prompt_template_and_version_ids(
         self,
-        mock_feature_flag_create: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_get_datarobot_prompt_template: Mock,
         mock_get_datarobot_prompt_template_version: Mock,
         mock_lineage_manager_init: Mock,
@@ -260,7 +260,7 @@ class TestPromptTemplatesAdd:
             prompt_template=mock_prompt_template,
             prompt_template_version=mock_prompt_template_version,
         )
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)
         mock_sync_mcp_prompts.assert_called_once_with()
 
@@ -298,7 +298,7 @@ class TestPromptTemplatesDeletion:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
+        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )
@@ -334,7 +334,7 @@ class TestPromptTemplatesDeletion:
     @pytest.mark.asyncio
     async def test_sync_mcp_metadata_after_deletion(
         self,
-        mock_feature_flag_create: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_prompts: Mock,
         mcp_server: DataRobotMCP,
@@ -344,7 +344,7 @@ class TestPromptTemplatesDeletion:
 
         await delete_registered_prompt_template(prompt_id)
 
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)
         mock_sync_mcp_prompts.assert_called_once_with()
 
@@ -368,7 +368,7 @@ class TestPromptTemplatesRefresh:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
+        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )
@@ -405,13 +405,13 @@ class TestPromptTemplatesRefresh:
     )
     async def test_sync_mcp_metadata_after_refresh_prompts(
         self,
-        mock_feature_flag_create: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_prompts: Mock,
         mcp_server: DataRobotMCP,
     ) -> None:
         await refresh_registered_prompt_template()
 
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)
         mock_sync_mcp_prompts.assert_called_once_with()

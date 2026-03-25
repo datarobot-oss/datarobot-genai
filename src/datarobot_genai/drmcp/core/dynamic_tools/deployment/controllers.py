@@ -43,7 +43,7 @@ async def register_tool_for_deployment_id(deployment_id: str) -> Tool:
     """
     deployment = get_sdk_client(headers_auth_only=True).Deployment.get(deployment_id)
     registered_tool = await register_tool_of_datarobot_deployment(deployment)
-    if FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         linear_manager = LineageManager(mcp)
         await linear_manager.sync_mcp_tools()
 
@@ -66,7 +66,7 @@ async def delete_registered_tool_deployment(deployment_id: str) -> bool:
     tool_name = deployments[deployment_id]
     await mcp.remove_deployment_mapping(deployment_id)
     logger.info(f"Deleted tool {tool_name} for deployment {deployment_id}")
-    if FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         linear_manager = LineageManager(mcp)
         await linear_manager.sync_mcp_tools()
     return True

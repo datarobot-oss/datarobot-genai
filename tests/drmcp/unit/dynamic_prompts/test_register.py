@@ -126,7 +126,7 @@ class TestRegisterPrompt:
             yield mock_mcp
 
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
+        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )
@@ -144,7 +144,7 @@ class TestRegisterPrompt:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_feature_flag_create",
+        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )
@@ -169,7 +169,7 @@ class TestRegisterPrompt:
         self,
         mock_get_datarobot_prompt_templates: Mock,
         mock_get_datarobot_prompt_template_versions: Mock,
-        mock_feature_flag_create: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_prompts: Mock,
         mock_mcp_server: Mock,
@@ -192,7 +192,7 @@ class TestRegisterPrompt:
             mock_prompt,
             prompt_template_version,
         )
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mock_mcp_server)
         mock_sync_mcp_prompts.assert_called_once_with()
 
@@ -201,7 +201,7 @@ class TestRegisterPrompt:
         self,
         mock_get_datarobot_prompt_templates: Mock,
         mock_get_datarobot_prompt_template_versions: Mock,
-        mock_feature_flag_create: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_prompts: Mock,
     ) -> None:
@@ -213,6 +213,6 @@ class TestRegisterPrompt:
         mock_get_datarobot_prompt_template_versions.assert_called_once_with(
             prompt_template_ids=[],
         )
-        mock_feature_flag_create.assert_not_called()
+        mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
         mock_lineage_manager_init.assert_not_called()
         mock_sync_mcp_prompts.assert_not_called()
