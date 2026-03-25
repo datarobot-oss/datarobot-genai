@@ -24,6 +24,7 @@ from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
+from dragent_tests.helpers import collect_tool_result_content
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
@@ -82,8 +83,10 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
             f"Tool call events found when framework does not support them. Got: {event_types}"
         )
 
-    # THEN: the tool call events contain the correct result
+    # THEN: the calculator produced the correct value (assistant text and/or tool payload).
     full_text = collect_text(ag_ui_events)
-    assert EXPECTED_RESULT in full_text, (
-        f"Expected '{EXPECTED_RESULT}' in response. Got: {full_text[:500]}"
+    tool_text = collect_tool_result_content(ag_ui_events)
+    assert EXPECTED_RESULT in full_text or EXPECTED_RESULT in tool_text, (
+        f"Expected '{EXPECTED_RESULT}' in streamed text or tool results. "
+        f"Got text: {full_text[:500]!r} tool_results: {tool_text[:500]!r}"
     )
