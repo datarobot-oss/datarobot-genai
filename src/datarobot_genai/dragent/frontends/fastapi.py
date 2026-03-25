@@ -164,6 +164,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
 
+        self._register_extra_health_routes(app)
+
         if self.front_end_config.a2a is None:
             logger.info("A2A server endpoints are disabled")
             return
@@ -217,8 +219,9 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.router.lifespan_context = lifespan
         return app
 
-    async def add_health_route(self, app: FastAPI) -> None:
-        """Add a health check endpoint to the FastAPI app."""
+    @staticmethod
+    def _register_extra_health_routes(app: FastAPI) -> None:
+        """Register DataRobot-specific health routes that NAT does not provide."""
 
         class HealthResponse(BaseModel):
             status: str = Field(description="Health status of the server")
