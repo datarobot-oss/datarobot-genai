@@ -14,7 +14,6 @@
 
 import logging
 
-from ag_ui.core import CustomEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -80,15 +79,15 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 
 
 # When NAT native agent is used it returns a string with the response in streaming mode
-# we don't need it: it is already returned from LLM events in StepAdaptor.
-# So we return it as a custom event just to keep the interface consistent.
+# NAT 1.5 can stream plain string chunks without corresponding LLM intermediate
+# events, so expose them as AG-UI text chunks.
 def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
     return DRAgentEventResponse(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        events=[CustomEvent(name="DEFAULT_NAT_RESPONSE", value={"delta": response})],
+        events=[TextMessageChunkEvent(message_id="default_nat_response", delta=response)],
     )
 
 

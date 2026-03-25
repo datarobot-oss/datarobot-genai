@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import Tool
 from ag_ui.core import UserMessage
@@ -193,9 +194,9 @@ def test_convert_str_to_dragent_event_response() -> None:
     assert result.events is not None
     assert len(result.events) == 1
 
-    # THEN event is a CustomEvent with the correct name and value
-    assert result.events[0].value["delta"] == delta
-    assert result.events[0].name == "DEFAULT_NAT_RESPONSE"
+    # THEN event is a text chunk event with the correct delta
+    assert isinstance(result.events[0], TextMessageChunkEvent)
+    assert result.events[0].delta == delta
 
 
 # --- Various converters ---

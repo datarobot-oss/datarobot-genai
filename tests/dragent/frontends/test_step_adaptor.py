@@ -774,3 +774,66 @@ class TestHandleToolArgsEncoding:
         response = step_adaptor.process(step)
         args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
         assert args_event.delta == "{}"
+
+
+class TestFunctionBasedToolCalls:
+    def test_function_start_emits_tool_call_when_tool_start_is_missing(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        step_adaptor.function_level = 1
+        step = IntermediateStep(
+            parent_id="root-function",
+            function_ancestry=InvocationNode(
+                function_id="calculator-call",
+                function_name="calculator",
+                parent_id="root",
+                parent_name="tool_calling_agent",
+            ),
+            payload=IntermediateStepPayload(
+                event_type=IntermediateStepType.FUNCTION_START,
+                name="calculator",
+                UUID="calculator-call",
+                data=StreamEventData(input={"expression": "1 + 1"}, output=None),
+            ),
+        )
+
+        response = step_adaptor.process(step)
+
+        assert response is not None
+        assert response.events == [
+            ToolCallStartEvent(tool_call_name="calculator", tool_call_id="calculator-call"),
+            ToolCallArgsEvent(tool_call_id="calculator-call", delta='{"expression": "1 + 1"}'),
+        ]
+
+    def test_function_end_emits_tool_result_when_tool_end_is_missing(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        step_adaptor.function_level = 2
+        step = IntermediateStep(
+            parent_id="root-function",
+            function_ancestry=InvocationNode(
+                function_id="calculator-call",
+                function_name="calculator",
+                parent_id="root",
+                parent_name="tool_calling_agent",
+            ),
+            payload=IntermediateStepPayload(
+                event_type=IntermediateStepType.FUNCTION_END,
+                name="calculator",
+                UUID="calculator-call",
+                data=StreamEventData(input={"expression": "1 + 1"}, output="2"),
+            ),
+        )
+
+        response = step_adaptor.process(step)
+
+        assert response is not None
+        assert response.events == [
+            ToolCallEndEvent(tool_call_id="calculator-call"),
+            ToolCallResultEvent(
+                message_id="calculator-call",
+                tool_call_id="calculator-call",
+                content="2",
+                role="tool",
+            ),
+        ]

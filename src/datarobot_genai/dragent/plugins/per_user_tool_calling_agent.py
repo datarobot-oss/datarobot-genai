@@ -27,12 +27,12 @@ before ``@register_function`` wrapped it with ``asynccontextmanager``.
 so no implementation needs to be duplicated here.
 """
 
-from nat.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
-from nat.agent.tool_calling_agent.register import tool_calling_agent_workflow
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
+from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
+from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling_agent_workflow
 
 
 class PerUserToolCallAgentWorkflowConfig(

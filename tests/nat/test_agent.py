@@ -33,9 +33,9 @@ from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
 from nat.data_models.intermediate_step import IntermediateStepType
 from nat.data_models.intermediate_step import StreamEventData
+from nat.data_models.intermediate_step import TokenUsageBaseModel
 from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.invocation_node import InvocationNode
-from nat.profiler.callbacks.token_usage_base_model import TokenUsageBaseModel
 from ragas import MultiTurnSample
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage

@@ -62,6 +62,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         super().__init__(config)
         self.function_level = 0
         self.seen_llm_new_token = False
+        self._active_explicit_tool_events: dict[str, int] = {}
 
     def _step_matches_filter(self, step: IntermediateStep, config: StepAdaptorConfig) -> bool:  # noqa: PLR0911
         """Returns True if this intermediate step should be included (based on the config.mode)."""  # noqa: D401
@@ -262,6 +263,9 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         # run id and thread id are set on the API level, should not be set here
         if payload.event_type == IntermediateStepType.TOOL_START:
+            self._active_explicit_tool_events[payload.name] = (
+                self._active_explicit_tool_events.get(payload.name, 0) + 1
+            )
             events.append(
                 ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID)
             )
@@ -278,6 +282,11 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                     role="tool",
                 )
             )
+            active_count = self._active_explicit_tool_events.get(payload.name, 0)
+            if active_count <= 1:
+                self._active_explicit_tool_events.pop(payload.name, None)
+            else:
+                self._active_explicit_tool_events[payload.name] = active_count - 1
         else:
             raise self._unknown_step_type(payload)
 
@@ -287,13 +296,52 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_function(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
-        # Just track the function level so we can handle nested functions correctly
+        has_explicit_tool_event = self._active_explicit_tool_events.get(payload.name, 0) > 0
+        response_events: list[Event] = []
+
         if payload.event_type == IntermediateStepType.FUNCTION_START:
+            if (
+                payload.name != "<workflow>"
+                and self.function_level > 0
+                and not has_explicit_tool_event
+            ):
+                response_events.extend(
+                    [
+                        ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID),
+                        ToolCallArgsEvent(
+                            tool_call_id=payload.UUID,
+                            delta=self._serialize_tool_args(payload),
+                        ),
+                    ]
+                )
             self.function_level += 1
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
+            if (
+                payload.name != "<workflow>"
+                and self.function_level > 1
+                and not has_explicit_tool_event
+            ):
+                tool_output = payload.data.output
+                if tool_output is None:
+                    tool_output = ""
+
+                response_events.extend(
+                    [
+                        ToolCallEndEvent(tool_call_id=payload.UUID),
+                        ToolCallResultEvent(
+                            message_id=payload.UUID,
+                            tool_call_id=payload.UUID,
+                            content=GlobalTypeConverter.get().convert(tool_output, str),
+                            role="tool",
+                        ),
+                    ]
+                )
             self.function_level -= 1
         else:
             raise self._unknown_step_type(payload)
+
+        if response_events:
+            return DRAgentEventResponse(events=response_events)
 
         return None
 

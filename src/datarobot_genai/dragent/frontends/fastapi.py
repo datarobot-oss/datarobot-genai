@@ -163,6 +163,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
+        await self.add_health_route(app)
 
         if self.front_end_config.a2a is None:
             logger.info("A2A server endpoints are disabled")
@@ -227,7 +228,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             """Health check endpoint for liveness/readiness probes."""
             return HealthResponse(status="healthy")
 
+        existing_paths = {route.path for route in app.router.routes if hasattr(route, "path")}
+
         for path in DATAROBOT_EXPECTED_HEALTH_ROUTES:
+            if path in existing_paths:
+                logger.info("Health check endpoint already exists at %s", path)
+                continue
+
             app.add_api_route(
                 path=path,
                 endpoint=health_check,
@@ -243,6 +250,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 },
             )
 
+            existing_paths.add(path)
             logger.info(f"Added health check endpoint at {path}")
 
 
