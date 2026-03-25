@@ -60,14 +60,24 @@ async def perplexity_search(
     ] = MAX_TOKENS_PER_PAGE_DEFAULT,
 ) -> dict[str, Any]:
     """Perplexity web search tool combining multi-query research and content extraction control."""
-    if query and isinstance(query, str) and not query.strip():
+    # Check if query is empty or None
+    if not query:
         raise ToolError("Argument validation error: query cannot be empty.")
-    if query and isinstance(query, list) and len(query) > MAX_QUERIES:
-        raise ToolError(
-            f"Argument validation error: query list cannot be bigger than {MAX_QUERIES}."
-        )
-    if query and isinstance(query, list) and not all(q.strip() for q in query):
-        raise ToolError("Argument validation error: query cannot contain empty str.")
+
+    # Handle string queries
+    if isinstance(query, str):
+        if not query.strip():
+            raise ToolError("Argument validation error: query cannot be empty or whitespace only.")
+    # Handle list queries
+    elif isinstance(query, list):
+        if not query:  # Empty list
+            raise ToolError("Argument validation error: query list cannot be empty.")
+        if len(query) > MAX_QUERIES:
+            raise ToolError(
+                f"Argument validation error: query list cannot be bigger than {MAX_QUERIES}."
+            )
+        if not all(q.strip() for q in query):
+            raise ToolError("Argument validation error: query cannot contain empty strings.")
     if search_domain_filter and len(search_domain_filter) > MAX_SEARCH_DOMAIN_FILTER:
         raise ToolError(
             f"Argument validation error: "

@@ -19,7 +19,6 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drtools.predictive import training
 
@@ -75,8 +74,7 @@ async def test_suggest_use_cases() -> None:
     )
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    # Mock analyze_dataset to return ToolResult
-    mock_insights_dict = {
+    mock_insights = {
         "total_columns": 4,
         "total_rows": 3,
         "numerical_columns": ["features"],
@@ -86,9 +84,6 @@ async def test_suggest_use_cases() -> None:
         "potential_targets": ["binary_target", "multi_target", "regression_target"],
         "missing_data_summary": {},
     }
-    mock_insights = ToolResult(
-        structured_content=mock_insights_dict,
-    )
 
     with (
         patch(
@@ -121,8 +116,7 @@ async def test_get_exploratory_insights() -> None:
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    # Mock analyze_dataset to return ToolResult
-    mock_insights_dict = {
+    mock_insights = {
         "total_columns": 2,
         "total_rows": 3,
         "numerical_columns": ["features", "target"],
@@ -132,9 +126,6 @@ async def test_get_exploratory_insights() -> None:
         "potential_targets": ["target"],
         "missing_data_summary": {},
     }
-    mock_insights = ToolResult(
-        structured_content=mock_insights_dict,
-    )
 
     with (
         patch(

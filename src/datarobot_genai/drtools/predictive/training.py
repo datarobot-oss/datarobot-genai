@@ -151,7 +151,7 @@ async def suggest_use_cases(
 
     # Get dataset insights first
     insights_result = await analyze_dataset(dataset_id=dataset_id)
-    insights = insights_result.structured_content
+    insights = insights_result
 
     suggestions = []
     for target_col in insights["potential_targets"]:
@@ -180,7 +180,7 @@ async def get_exploratory_insights(
 
     # Get dataset insights first
     insights_result = await analyze_dataset(dataset_id=dataset_id)
-    insights = insights_result.structured_content
+    insights = insights_result
 
     eda_insights = {
         "dataset_summary": {
