@@ -80,7 +80,7 @@ def app_with_health(worker):
 
     async def fake_configure(app: FastAPI, builder):
         _ = builder
-        await worker.add_health_route(app)
+        worker._register_extra_health_routes(app)
 
     @asynccontextmanager
     async def mock_from_config(_config):
