@@ -24,13 +24,13 @@ from typing import Literal
 
 import httpx
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
-from fastmcp.exceptions import ToolError
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from pypdf import PdfReader
 
 from datarobot_genai.drmcp.core.auth import get_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 

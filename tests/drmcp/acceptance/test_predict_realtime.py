@@ -27,7 +27,7 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 INLINE_CSV_DATASET = (
     "text_review,product_category\n"
     '"This product has incredible build quality and exceeded all my expectations",electronics\n'
-    '"The software interface is clean and very easy to navigate",software\n'
+    '"The software interface is clean and very easy to navigate",software'
 )
 
 
@@ -169,7 +169,7 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         [
             """
         I have a DataRobot deployment with ID '{deployment_id}'.
-        Please run realtime predictions using this inline CSV data:
+        Please run realtime predictions using this inline CSV data in dataset parameter:
         {dataset}
         """
         ],

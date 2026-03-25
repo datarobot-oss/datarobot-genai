@@ -24,7 +24,7 @@ import pytest
 from dotenv import load_dotenv
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drtools.clients.datarobot import deploy_custom_model_impl
+from datarobot_genai.drtools.core.clients.datarobot import deploy_custom_model_impl
 from datarobot_genai.drtools.predictive import deployment
 
 
@@ -48,8 +48,8 @@ async def test_list_deployments_success() -> None:
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.list_deployments()
-        assert result.structured_content["deployments"]["1"] == "dep1"
-        assert result.structured_content["deployments"]["2"] == "dep2"
+        assert result["deployments"]["1"] == "dep1"
+        assert result["deployments"]["2"] == "dep2"
 
 
 @pytest.mark.asyncio
@@ -66,7 +66,7 @@ async def test_list_deployments_empty() -> None:
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.list_deployments()
-        assert result.structured_content["deployments"] == []
+        assert result["deployments"] == []
 
 
 @pytest.mark.asyncio
@@ -98,8 +98,8 @@ async def test_get_model_info_from_deployment_success() -> None:
         mock_drc.return_value.get_client.return_value = mock_client
         result = await deployment.get_model_info_from_deployment(deployment_id="dep_id")
         mock_client.Deployment.get.assert_called_once_with("dep_id")
-        assert "project_id" in result.content[0].text
-        assert result.structured_content["project_id"] == "pid"
+        assert result["project_id"] == "pid"
+        assert result["model_id"] == "mid"
 
 
 @pytest.mark.asyncio
@@ -154,8 +154,8 @@ async def test_deploy_model_success() -> None:
         result = await deployment.deploy_model(
             model_id="model123", label="Test Deployment", description="desc"
         )
-        assert result.structured_content["deployment_id"] == "dep123"
-        assert result.structured_content["label"] == "Test Deployment"
+        assert result["deployment_id"] == "dep123"
+        assert result["label"] == "Test Deployment"
 
 
 @pytest.mark.asyncio
@@ -217,13 +217,13 @@ async def test_get_prediction_history_success() -> None:
     ):
         mock_drc.return_value.get_client.return_value = mock_dr_module
         result = await deployment.get_prediction_history(deployment_id="dep1")
-        assert result.structured_content["deployment_id"] == "dep1"
-        assert result.structured_content["row_count"] == 2
+        assert result["deployment_id"] == "dep1"
+        assert result["row_count"] == 2
 
 
 @pytest.mark.asyncio
 async def test_get_prediction_history_missing_id() -> None:
-    with pytest.raises(ToolError, match="Deployment ID must be provided"):
+    with pytest.raises(ToolError, match=".*deployment_id.*"):
         await deployment.get_prediction_history()
 
 
@@ -249,7 +249,7 @@ async def test_get_prediction_history_with_time_range() -> None:
             start_time="2025-01-01T00:00:00Z",
             end_time="2025-01-31T00:00:00Z",
         )
-        assert result.structured_content["row_count"] == 0
+        assert result["row_count"] == 0
         # Verify params were passed correctly
         call_args = mock_rest_client.get.call_args
         assert call_args[1]["params"]["startTime"] == "2025-01-01T00:00:00Z"
@@ -323,9 +323,9 @@ async def test_deploy_custom_model_mocked_success() -> None:
             target_type="Binary",
             target_name="target",
         )
-    assert result.structured_content["deployment_id"] == "dep1"
-    assert result.structured_content["label"] == "Test"
-    assert result.structured_content["custom_model_id"] == "cm1"
+    assert result["deployment_id"] == "dep1"
+    assert result["label"] == "Test"
+    assert result["custom_model_id"] == "cm1"
 
 
 @pytest.mark.asyncio
@@ -399,7 +399,7 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
             target_type="Binary",
             target_name="target",
         )
-    assert result.structured_content["deployment_id"] == "d"
+    assert result["deployment_id"] == "d"
 
 
 @pytest.mark.asyncio

@@ -21,12 +21,11 @@ from typing import Annotated
 from typing import Any
 
 import pandas as pd
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +89,8 @@ def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFra
 @dr_mcp_integration_tool(tags={"predictive", "training", "read", "analysis", "dataset"})
 async def analyze_dataset(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
-) -> ToolError | ToolResult:
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"],
+) -> dict[str, Any]:
     """Analyze a dataset to understand its structure and potential use cases."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
@@ -134,16 +133,14 @@ async def analyze_dataset(
     )
     insights_dict = asdict(insights)
 
-    return ToolResult(
-        structured_content=insights_dict,
-    )
+    return insights_dict
 
 
 @dr_mcp_integration_tool(tags={"predictive", "training", "read", "analysis", "usecase"})
 async def suggest_use_cases(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
-) -> ToolError | ToolResult:
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"],
+) -> dict[str, Any]:
     """Analyze a dataset and suggest potential machine learning use cases."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
@@ -164,24 +161,22 @@ async def suggest_use_cases(
     # Sort by confidence score
     suggestions.sort(key=lambda x: x["confidence"], reverse=True)
 
-    return ToolResult(
-        structured_content={"use_case_suggestions": suggestions},
-    )
+    return {"use_case_suggestions": suggestions}
 
 
 @dr_mcp_integration_tool(tags={"predictive", "training", "read", "analysis", "eda"})
 async def get_exploratory_insights(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"] | None = None,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"],
     target_col: Annotated[str, "Optional target column to focus EDA insights on"] | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Generate exploratory data insights for a dataset."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    dataset, df = _get_dataset_or_raise(client, dataset_id)
+    _, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
     insights_result = await analyze_dataset(dataset_id=dataset_id)
@@ -255,9 +250,7 @@ async def get_exploratory_insights(
                     sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
                 )
 
-    return ToolResult(
-        structured_content=eda_insights,
-    )
+    return eda_insights
 
 
 def _identify_potential_targets(
@@ -471,13 +464,14 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
 @dr_mcp_integration_tool(tags={"predictive", "training", "write", "autopilot", "model", "daria"})
 async def start_autopilot(
     *,
-    target: Annotated[str, "Name of the target column for modeling"] | None = None,
+    target: Annotated[str, "Name of the target column for modeling"],
     project_id: Annotated[
         str, "Optional, the ID of the DataRobot project or a new project if no id is provided"
     ]
     | None = None,
-    mode: Annotated[str, "Optional, Autopilot mode ('quick', 'comprehensive', or 'manual')"]
-    | None = "quick",
+    mode: Annotated[
+        str, "Optional, Autopilot mode ('quick', 'comprehensive', or 'manual')"
+    ] = "quick",
     dataset_url: Annotated[
         str,
         """
@@ -496,14 +490,13 @@ async def start_autopilot(
     | None = None,
     project_name: Annotated[
         str, "Optional, name for the project if no id is provided, creates a new project"
-    ]
-    | None = "MCP Project",
+    ] = "MCP Project",
     use_case_id: Annotated[
         str,
         "Optional, ID of the use case to associate this project (required for next-gen platform)",
     ]
     | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Start automated model training (Autopilot) for a project."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -540,9 +533,7 @@ async def start_autopilot(
             "use_case_id": project.use_case_id,
         }
 
-        return ToolResult(
-            structured_content=result,
-        )
+        return result
 
     except Exception as e:
         raise ToolError(f"Failed to start Autopilot: {str(e)}")
@@ -551,17 +542,16 @@ async def start_autopilot(
 @dr_mcp_integration_tool(tags={"prediction", "training", "read", "model", "evaluation"})
 async def get_model_roc_curve(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
-    model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
+    project_id: Annotated[str, "The ID of the DataRobot project"],
+    model_id: Annotated[str, "The ID of the model to analyze"],
     source: Annotated[
         str,
         """
         The source of the data to use for the ROC curve
         ('validation' or 'holdout' or 'crossValidation')
         """,
-    ]
-    | str = "validation",
-) -> ToolError | ToolResult:
+    ] = "validation",
+) -> dict[str, Any]:
     """Get detailed ROC curve for a specific model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
@@ -601,9 +591,7 @@ async def get_model_roc_curve(
             "source": source,
         }
 
-        return ToolResult(
-            structured_content={"data": roc_data},
-        )
+        return {"data": roc_data}
     except Exception as e:
         raise ToolError(f"Failed to get ROC curve: {str(e)}")
 
@@ -611,9 +599,9 @@ async def get_model_roc_curve(
 @dr_mcp_integration_tool(tags={"predictive", "training", "read", "model", "evaluation"})
 async def get_model_feature_impact(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
-    model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
-) -> ToolError | ToolResult:
+    project_id: Annotated[str, "The ID of the DataRobot project"],
+    model_id: Annotated[str, "The ID of the model to analyze"],
+) -> dict[str, Any]:
     """Get detailed feature impact for a specific model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
@@ -628,25 +616,22 @@ async def get_model_feature_impact(
     model.request_feature_impact()
     feature_impact = model.get_or_request_feature_impact()
 
-    return ToolResult(
-        structured_content={"data": feature_impact},
-    )
+    return {"data": feature_impact}
 
 
 @dr_mcp_integration_tool(tags={"predictive", "training", "read", "model", "evaluation"})
 async def get_model_lift_chart(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project"] | None = None,
-    model_id: Annotated[str, "The ID of the model to analyze"] | None = None,
+    project_id: Annotated[str, "The ID of the DataRobot project"],
+    model_id: Annotated[str, "The ID of the model to analyze"],
     source: Annotated[
         str,
         """
         The source of the data to use for the lift chart
         ('validation' or 'holdout' or 'crossValidation')
         """,
-    ]
-    | str = "validation",
-) -> ToolError | ToolResult:
+    ] = "validation",
+) -> dict[str, Any]:
     """Get detailed lift chart for a specific model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
@@ -674,6 +659,4 @@ async def get_model_lift_chart(
         "target_class": lift_chart.target_class,
     }
 
-    return ToolResult(
-        structured_content={"data": lift_chart_data},
-    )
+    return {"data": lift_chart_data}

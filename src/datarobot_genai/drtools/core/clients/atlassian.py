@@ -20,9 +20,9 @@ from typing import Literal
 
 import httpx
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp.core.auth import get_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
