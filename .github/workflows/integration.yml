@@ -1,0 +1,88 @@
+# To add a suite: add a `filters:` entry, a job output, and a job with `if:` as below.
+
+name: Integration Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  TASK_VERSION: 3.48.0
+
+jobs:
+  detect-changes:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      # Expose each paths-filter rule for downstream jobs (add one line per suite).
+      drmcp: ${{ steps.filter.outputs.drmcp }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            drmcp:
+              - 'src/datarobot_genai/drmcp/**'
+              - 'src/datarobot_genai/drtools/**'
+              - 'setup.py'
+              - 'tests/drmcp/integration/**'
+              - '.github/workflows/integration.yml'
+
+  drmcp-integration:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.drmcp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      SESSION_SECRET_KEY: acceptance-test-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: drmcp-integration-uv-${{ runner.os }}-3.12-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            drmcp-integration-uv-${{ runner.os }}-3.12-
+
+      - name: Install dependencies (drmcp)
+        run: uv sync --extra drmcp --dev
+
+      - name: Run drmcp integration tests
+        run: |
+          mkdir -p test_results
+          task drmcp-integration CLI_ARGS='tests/drmcp/integration/ --junitxml=test_results/drmcp-integration.xml --durations=0'
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drmcp-integration-results-py3.12
+          path: test_results/
+          if-no-files-found: ignore
