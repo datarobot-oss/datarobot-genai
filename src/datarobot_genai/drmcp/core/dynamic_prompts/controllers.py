@@ -58,7 +58,7 @@ async def register_prompt_from_prompt_template_id_and_version(
         registered_prompt = await register_prompt_from_datarobot_prompt_management(
             prompt_template=prompt_template
         )
-        if FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+        if FeatureFlag.is_mcp_tools_gallery_support_enabled():
             linear_manager = LineageManager(mcp)
             await linear_manager.sync_mcp_prompts()
         return registered_prompt
@@ -75,7 +75,7 @@ async def register_prompt_from_prompt_template_id_and_version(
     registered_prompt = await register_prompt_from_datarobot_prompt_management(
         prompt_template=prompt_template, prompt_template_version=prompt_template_version
     )
-    if FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         linear_manager = LineageManager(mcp)
         await linear_manager.sync_mcp_prompts()
     return registered_prompt
@@ -94,7 +94,7 @@ async def delete_registered_prompt_template(prompt_template_id: str) -> bool:
         f"Deleted prompt name {prompt_name} for prompt template id {prompt_template_id}, "
         f"version {prompt_template_version_id}"
     )
-    if FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         linear_manager = LineageManager(mcp)
         await linear_manager.sync_mcp_prompts()
     return True
@@ -144,6 +144,6 @@ async def refresh_registered_prompt_template(headers_auth_only: bool = False) ->
             # We need to also delete prompt templates that are
             await mcp.remove_prompt_mapping(mcp_prompt_template_id, mcp_prompt_template_version_id)
 
-    if FeatureFlag.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled:
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         linear_manager = LineageManager(mcp)
         await linear_manager.sync_mcp_prompts()
