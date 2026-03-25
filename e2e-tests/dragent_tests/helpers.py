@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import uuid
-
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -65,15 +64,4 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
     for event in ag_ui_events:
         if event.type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):
             parts.append(event.delta)
-    return "".join(parts)
-
-
-def collect_tool_result_content(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
-    """Join serialized tool outputs from TOOL_CALL_RESULT events."""
-    parts: list[str] = []
-    for event in ag_ui_events:
-        if event.type == EventType.TOOL_CALL_RESULT:
-            content = getattr(event, "content", None)
-            if isinstance(content, str):
-                parts.append(content)
     return "".join(parts)
