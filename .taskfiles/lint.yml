@@ -55,12 +55,21 @@ tasks:
     cmds:
       - |
         COMMON_FILE="$(find {{.PROJECT_SRC}} -name "common.py" -print -quit)"
-        if [ -n "$COMMON_FILE" ]; then
-          echo "Found common.py modules in the project"
-          find {{.PROJECT_SRC}} -name "common.py" -print
+        COMMON_DIR="$(find {{.PROJECT_SRC}} -type d -name "common" -print -quit)"
+
+        if [ -n "$COMMON_FILE" ] || [ -n "$COMMON_DIR" ]; then
+          echo "Found common.py modules or 'common' directories in the project"
+          if [ -n "$COMMON_FILE" ]; then
+            echo "Files named common.py:"
+            find {{.PROJECT_SRC}} -name "common.py" -print
+          fi
+          if [ -n "$COMMON_DIR" ]; then
+            echo "Directories named common:"
+            find {{.PROJECT_SRC}} -type d -name "common" -print
+          fi
           exit 1
         else
-          echo "No common.py modules found in the project"
+          echo "No common.py modules or 'common' directories found in the project"
           exit 0
         fi
     silent: true
