@@ -64,6 +64,4 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
     for event in ag_ui_events:
         if event.type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):
             parts.append(event.delta)
-        elif event.type == EventType.TOOL_CALL_RESULT:
-            parts.append(event.content)
     return "".join(parts)
