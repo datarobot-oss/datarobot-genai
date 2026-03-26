@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.8.14
-- Isolate publish secrets to an environment
+- Isolated publish secrets to an environment
 
 ## 0.8.13
 - Added base agent for retrieving and storing memory
