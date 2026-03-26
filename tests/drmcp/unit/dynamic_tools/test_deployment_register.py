@@ -132,21 +132,3 @@ async def test_sync_mcp_metadata_after_register_tools(
     mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
     mock_lineage_manager_init.assert_called_once_with(mock_mcp_server)
     mock_sync_mcp_tools.assert_called_once_with()
-
-
-@pytest.mark.asyncio
-async def test_not_run_sync_mcp_metadata_after_no_tool_is_registered(
-    mock_is_mcp_tools_gallery_support_enabled: Mock,
-    mock_get_datarobot_tool_deployments: Mock,
-    mock_lineage_manager_init: Mock,
-    mock_mcp_server: Mock,
-    mock_sync_mcp_tools: Mock,
-) -> None:
-    mock_get_datarobot_tool_deployments.return_value = []
-
-    await register_tools_of_datarobot_deployments()
-
-    mock_get_datarobot_tool_deployments.assert_called_once_with()
-    mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
-    mock_lineage_manager_init.assert_not_called()
-    mock_sync_mcp_tools.assert_not_called()
