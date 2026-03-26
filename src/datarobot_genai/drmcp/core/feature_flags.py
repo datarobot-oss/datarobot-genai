@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
+from functools import lru_cache
 
 from datarobot_genai.drmcp.core.clients import (
     setup_and_return_dr_api_client_with_static_config_in_container,
@@ -34,3 +35,8 @@ class FeatureFlag:
             name=feature_flag_info["name"],
             enabled=bool(feature_flag_info["value"]),
         )
+
+    @classmethod
+    @lru_cache(maxsize=1)
+    def is_mcp_tools_gallery_support_enabled(cls) -> bool:
+        return cls.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled

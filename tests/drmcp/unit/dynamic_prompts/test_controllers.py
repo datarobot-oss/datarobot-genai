@@ -11,14 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import AsyncIterator
 from collections.abc import Iterator
+from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import datarobot as dr
 import pytest
-import pytest_asyncio
 
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import delete_registered_prompt_template
 from datarobot_genai.drmcp.core.dynamic_prompts.controllers import (
@@ -31,8 +30,8 @@ from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 
-@pytest_asyncio.fixture
-async def mcp_server() -> AsyncIterator[DataRobotMCP]:
+@pytest.fixture
+def mcp_server() -> Iterator[DataRobotMCP]:
     """Create a separate MCP instance for testing."""
     test_mcp = DataRobotMCP()
 
@@ -118,10 +117,43 @@ def dr_lib_mock_for_refresh() -> Iterator[None]:
         yield
 
 
+@pytest.fixture
+def mock_module_under_test() -> str:
+    return "datarobot_genai.drmcp.core.dynamic_prompts.controllers"
+
+
 class TestPromptTemplatesAdd:
     """Tests for prompt templates add/update functionality."""
 
+    @pytest.fixture
+    def mock_get_datarobot_prompt_template(self, mock_module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{mock_module_under_test}.get_datarobot_prompt_template") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_datarobot_prompt_template_version(
+        self, mock_module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(f"{mock_module_under_test}.get_datarobot_prompt_template_version") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_register_prompt_from_datarobot_prompt_management(
+        self,
+        mock_module_under_test: str,
+    ) -> Iterator[AsyncMock]:
+        with patch(
+            f"{mock_module_under_test}.register_prompt_from_datarobot_prompt_management",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
     async def test_add_prompt_templates(self, mcp_server: DataRobotMCP, dr_lib_mock: None) -> None:
         """Test add prompt template."""
         # Check if there's no data at the beginning
@@ -157,6 +189,11 @@ class TestPromptTemplatesAdd:
         assert internal_mappings == {}
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
     async def test_update_prompt_template(
         self, mcp_server: DataRobotMCP, dr_lib_mock: None
     ) -> None:
@@ -173,6 +210,59 @@ class TestPromptTemplatesAdd:
         # Verify MCP internal state consistency
         internal_mappings = await mcp_server.get_prompt_mapping()
         assert internal_mappings == {"pt1": ("ptv1.1", "pt1 name")}
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_metadata_after_registering_with_prompt_template_id(
+        self,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_get_datarobot_prompt_template: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_prompts: Mock,
+        mock_register_prompt_from_datarobot_prompt_management: AsyncMock,
+        mcp_server: DataRobotMCP,
+    ) -> None:
+        prompt_template_id = Mock()
+        await register_prompt_from_prompt_template_id_and_version(prompt_template_id, None)
+
+        mock_prompt_template = mock_get_datarobot_prompt_template.return_value
+        mock_register_prompt_from_datarobot_prompt_management.assert_called_once_with(
+            prompt_template=mock_prompt_template,
+        )
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mcp_server)
+        mock_sync_mcp_prompts.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_metadata_after_registering_with_prompt_template_and_version_ids(
+        self,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_get_datarobot_prompt_template: Mock,
+        mock_get_datarobot_prompt_template_version: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_prompts: Mock,
+        mock_register_prompt_from_datarobot_prompt_management: Mock,
+        mcp_server: DataRobotMCP,
+    ) -> None:
+        prompt_template_id = Mock()
+        prompt_template_version_id = Mock()
+        await register_prompt_from_prompt_template_id_and_version(
+            prompt_template_id,
+            prompt_template_version_id,
+        )
+
+        mock_get_datarobot_prompt_template.assert_called_once_with(prompt_template_id)
+        mock_prompt_template = mock_get_datarobot_prompt_template.return_value
+        mock_get_datarobot_prompt_template_version.assert_called_once_with(
+            prompt_template_id, prompt_template_version_id
+        )
+        mock_prompt_template_version = mock_get_datarobot_prompt_template_version.return_value
+        mock_register_prompt_from_datarobot_prompt_management.assert_called_once_with(
+            prompt_template=mock_prompt_template,
+            prompt_template_version=mock_prompt_template_version,
+        )
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mcp_server)
+        mock_sync_mcp_prompts.assert_called_once_with()
 
 
 class TestPromptTemplatesListing:
@@ -207,6 +297,11 @@ class TestPromptTemplatesDeletion:
     """Tests for prompt templates deletion functionality."""
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
     async def test_delete_registered_prompt_template(self, mcp_server: DataRobotMCP) -> None:
         """Test delete registered prompt template."""
         # Setup - add test prompts directly to MCP
@@ -236,11 +331,47 @@ class TestPromptTemplatesDeletion:
             "pt1": ("ptv1.1", "abc"),
         }
 
+    @pytest.mark.asyncio
+    async def test_sync_mcp_metadata_after_deletion(
+        self,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_prompts: Mock,
+        mcp_server: DataRobotMCP,
+    ) -> None:
+        prompt_id = Mock()
+        await mcp_server.set_prompt_mapping(prompt_id, Mock(), Mock())
+
+        await delete_registered_prompt_template(prompt_id)
+
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mcp_server)
+        mock_sync_mcp_prompts.assert_called_once_with()
+
 
 class TestPromptTemplatesRefresh:
     """Tests for prompt templates refresh functionality."""
 
+    @pytest.fixture
+    def mock_get_datarobot_prompt_templates(self, mock_module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{mock_module_under_test}.get_datarobot_prompt_templates") as mock_func:
+            mock_func.return_value = []
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_datarobot_prompt_template_versions(
+        self, mock_module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(f"{mock_module_under_test}.get_datarobot_prompt_template_versions") as mock_func:
+            mock_func.return_value = {}
+            yield mock_func
+
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
     async def test_refresh_prompt_templates(
         self, mcp_server: DataRobotMCP, dr_lib_mock_for_refresh: None
     ) -> None:
@@ -266,3 +397,21 @@ class TestPromptTemplatesRefresh:
             "pt3": ("ptv3.1", "pt3 name"),  # New pt3
             # And pt2 deleted
         }
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_get_datarobot_prompt_templates",
+        "mock_get_datarobot_prompt_template_versions",
+    )
+    async def test_sync_mcp_metadata_after_refresh_prompts(
+        self,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_prompts: Mock,
+        mcp_server: DataRobotMCP,
+    ) -> None:
+        await refresh_registered_prompt_template()
+
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mcp_server)
+        mock_sync_mcp_prompts.assert_called_once_with()

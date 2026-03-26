@@ -14,6 +14,8 @@
 
 """Tests for external prompt registration."""
 
+from collections.abc import Iterator
+from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 from uuid import UUID
@@ -94,6 +96,40 @@ class TestToValidFunctionName:
 class TestRegisterPrompt:
     """Tests for register_prompt - happy path."""
 
+    @pytest.fixture
+    def module_under_test(self) -> str:
+        return "datarobot_genai.drmcp.core.dynamic_prompts.register"
+
+    @pytest.fixture
+    def mock_get_datarobot_prompt_templates(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_datarobot_prompt_templates") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_datarobot_prompt_template_versions(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_datarobot_prompt_template_versions") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_register_prompt_from_datarobot_prompt_management(
+        self, module_under_test: str
+    ) -> Iterator[AsyncMock]:
+        with patch(
+            f"{module_under_test}.register_prompt_from_datarobot_prompt_management",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_mcp_server(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.mcp") as mock_mcp:
+            yield mock_mcp
+
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
     @pytest.mark.asyncio
     async def test_register_prompt_from_datarobot_prompt_management(
         self,
@@ -107,6 +143,11 @@ class TestRegisterPrompt:
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
     @patch("datarobot_genai.drmcp.core.dynamic_prompts.utils.uuid4")
     async def test_register_prompt_from_datarobot_prompt_management_duplicated_prompt_names(
         self,
@@ -122,3 +163,35 @@ class TestRegisterPrompt:
 
         assert "Dummy prompt name" in prompts, "`Dummy prompt name` is missing."
         assert "Dummy prompt name (f2bd)" in prompts, "`Dummy prompt name (f2bd)` is missing."
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_metadata_after_register_prompts(
+        self,
+        mock_get_datarobot_prompt_templates: Mock,
+        mock_get_datarobot_prompt_template_versions: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_prompts: Mock,
+        mock_mcp_server: Mock,
+        mock_register_prompt_from_datarobot_prompt_management: AsyncMock,
+    ) -> None:
+        mock_prompt = Mock()
+        mock_get_datarobot_prompt_templates.return_value = [mock_prompt]
+        prompt_template_version = dr.genai.PromptTemplateVersion("adsf", version=1)
+        mock_get_datarobot_prompt_template_versions.return_value = {
+            mock_prompt.id: [prompt_template_version],
+        }
+
+        await register_prompts_from_datarobot_prompt_management()
+
+        mock_get_datarobot_prompt_templates.assert_called_once_with()
+        mock_get_datarobot_prompt_template_versions.assert_called_once_with(
+            prompt_template_ids=[mock_prompt.id],
+        )
+        mock_register_prompt_from_datarobot_prompt_management.assert_called_once_with(
+            mock_prompt,
+            prompt_template_version,
+        )
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mock_mcp_server)
+        mock_sync_mcp_prompts.assert_called_once_with()

@@ -24,6 +24,9 @@ from datarobot_genai.drmcp.core.dynamic_prompts.register import (
     register_prompt_from_datarobot_prompt_management,
 )
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
+from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
+from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
@@ -53,9 +56,17 @@ async def register_prompt_from_prompt_template_id_and_version(
         raise DynamicPromptRegistrationError("Registration failed. Could not find prompt template.")
 
     if not prompt_template_version_id:
-        return await register_prompt_from_datarobot_prompt_management(
+        registered_prompt = await register_prompt_from_datarobot_prompt_management(
             prompt_template=prompt_template
         )
+        if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+            try:
+                linear_manager = LineageManager(mcp)
+                await linear_manager.sync_mcp_prompts()
+            except LRSEnvVarIsNotSetError as error:
+                error_message = f"MCP item metadata is not sync. {str(error)}"
+                logger.warning(error_message)
+        return registered_prompt
 
     prompt_template_version = get_datarobot_prompt_template_version(
         prompt_template_id, prompt_template_version_id
@@ -66,9 +77,17 @@ async def register_prompt_from_prompt_template_id_and_version(
             "Registration failed. Could not find prompt template version."
         )
 
-    return await register_prompt_from_datarobot_prompt_management(
+    registered_prompt = await register_prompt_from_datarobot_prompt_management(
         prompt_template=prompt_template, prompt_template_version=prompt_template_version
     )
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+        try:
+            linear_manager = LineageManager(mcp)
+            await linear_manager.sync_mcp_prompts()
+        except LRSEnvVarIsNotSetError as error:
+            error_message = f"MCP item metadata is not sync. {str(error)}"
+            logger.warning(error_message)
+    return registered_prompt
 
 
 async def delete_registered_prompt_template(prompt_template_id: str) -> bool:
@@ -84,6 +103,13 @@ async def delete_registered_prompt_template(prompt_template_id: str) -> bool:
         f"Deleted prompt name {prompt_name} for prompt template id {prompt_template_id}, "
         f"version {prompt_template_version_id}"
     )
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+        try:
+            linear_manager = LineageManager(mcp)
+            await linear_manager.sync_mcp_prompts()
+        except LRSEnvVarIsNotSetError as error:
+            error_message = f"MCP item metadata is not sync. {str(error)}"
+            logger.warning(error_message)
     return True
 
 
@@ -130,3 +156,11 @@ async def refresh_registered_prompt_template(headers_auth_only: bool = False) ->
         if mcp_prompt_template_id not in prompt_templates_ids:
             # We need to also delete prompt templates that are
             await mcp.remove_prompt_mapping(mcp_prompt_template_id, mcp_prompt_template_version_id)
+
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+        try:
+            linear_manager = LineageManager(mcp)
+            await linear_manager.sync_mcp_prompts()
+        except LRSEnvVarIsNotSetError as error:
+            error_message = f"MCP item metadata is not sync. {str(error)}"
+            logger.warning(error_message)

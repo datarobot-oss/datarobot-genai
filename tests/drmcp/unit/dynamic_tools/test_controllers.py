@@ -11,12 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from collections.abc import Iterator
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
 from fastmcp.tools.tool import Tool
 
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
@@ -68,8 +69,8 @@ def mock_config():
     return config
 
 
-@pytest_asyncio.fixture
-async def mcp_server():
+@pytest.fixture
+def mcp_server() -> Iterator[DataRobotMCP]:
     """Create a separate MCP instance for testing."""
     test_mcp = DataRobotMCP()
 
@@ -96,10 +97,36 @@ def mock_external_dependencies():
         yield {"sdk": mock_sdk, "mock_config": mock_config}
 
 
+@pytest.fixture
+def module_under_test() -> str:
+    return "datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers"
+
+
 class TestToolRegistration:
     """Tests for tool registration functionality."""
 
+    @pytest.fixture
+    def mock_get_sdk_client(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_sdk_client") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_register_tool_of_datarobot_deployment(
+        self,
+        module_under_test: str,
+    ) -> Iterator[AsyncMock]:
+        with patch(
+            f"{module_under_test}.register_tool_of_datarobot_deployment",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+    )
     async def test_register_tool_with_deployment_description(
         self,
         deployment_id,
@@ -128,6 +155,11 @@ class TestToolRegistration:
         assert registered_tools[0].description == "Get weather for cities"
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+    )
     async def test_register_multiple_tools(
         self,
         deployment_id,
@@ -162,6 +194,29 @@ class TestToolRegistration:
         assert len(registered_tools) == 2
         tool_names = {tool.name for tool in registered_tools}
         assert tool_names == {"weather_tool", "Another Tool"}
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_metadata_after_registration(
+        self,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_get_sdk_client: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_tools: Mock,
+        mock_register_tool_of_datarobot_deployment: AsyncMock,
+        mcp_server: DataRobotMCP,
+    ) -> None:
+        tool_id = Mock()
+        await register_tool_for_deployment_id(tool_id)
+
+        mock_get_sdk_client.assert_called_once_with(headers_auth_only=True)
+        mock_sdk_client = mock_get_sdk_client.return_value
+        mock_sdk_client.Deployment.get.assert_called_once_with(tool_id)
+        mock_register_tool_of_datarobot_deployment.assert_called_once_with(
+            mock_sdk_client.Deployment.get.return_value
+        )
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mcp_server)
+        mock_sync_mcp_tools.assert_called_once_with()
 
 
 class TestDeploymentListing:
@@ -202,6 +257,11 @@ class TestDeploymentDeletion:
     """Tests for deployment deletion functionality."""
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+    )
     async def test_delete_existing_deployment_with_logging(
         self,
         deployment_id,
@@ -233,6 +293,11 @@ class TestDeploymentDeletion:
         mock_logger.info.assert_called_once_with(expected_log_msg)
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+    )
     async def test_delete_nonexistent_deployment(
         self,
         deployment_id,
@@ -274,6 +339,11 @@ class TestDeploymentDeletion:
         assert final_mappings == {}
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+    )
     async def test_delete_multiple_deployments_sequentially(
         self,
         deployment_id,
@@ -320,11 +390,33 @@ class TestDeploymentDeletion:
         final_mappings = await mcp_server.get_deployment_mapping()
         assert final_mappings == {}
 
+    @pytest.mark.asyncio
+    async def test_sync_mcp_metadata_after_deletion(
+        self,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_lineage_manager_init: Mock,
+        mock_sync_mcp_tools: Mock,
+        mcp_server: DataRobotMCP,
+    ) -> None:
+        tool_id = Mock()
+        await mcp_server.set_deployment_mapping(tool_id, Mock())
+
+        await delete_registered_tool_deployment(tool_id)
+
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
+        mock_lineage_manager_init.assert_called_once_with(mcp_server)
+        mock_sync_mcp_tools.assert_called_once_with()
+
 
 class TestIntegratedWorkflow:
     """Tests for complete workflow integration."""
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+    )
     async def test_complete_deployment_lifecycle(
         self,
         deployment_id,
