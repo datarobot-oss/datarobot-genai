@@ -100,6 +100,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         if result is not None:
             result.usage_metrics = self._get_usage_metrics(step.usage_info)
+            return result
 
         return result
 
