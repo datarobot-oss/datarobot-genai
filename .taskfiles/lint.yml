@@ -53,9 +53,11 @@ tasks:
   no-common:
     desc: "Check if we have any modules named common"
     cmds:
-      - find {{.PROJECT_SRC}} -name "common.py" -print
-      - if [ $? -eq 0 ]; then
+      - |
+        COMMON_FILE="$(find {{.PROJECT_SRC}} -name "common.py" -print -quit)"
+        if [ -n "$COMMON_FILE" ]; then
           echo "Found common.py modules in the project"
+          find {{.PROJECT_SRC}} -name "common.py" -print
           exit 1
         else
           echo "No common.py modules found in the project"
