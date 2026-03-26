@@ -81,9 +81,10 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 ## --- NAT chat completions -> dragent AG-UI ---
 
 
-# When NAT native agent is used it returns a string with the response in streaming mode.
-# NAT 1.5 native does not emit LLM intermediate events for the final answer, so the
-# raw string stream is the only source of the assistant text message.
+# In NAT 1.5, tool_calling_agent streams the final answer as raw str tokens
+# via _stream_fn (added in github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1595).
+# These raw strings pass through this converter and need AG-UI TextMessage
+# lifecycle events (Start/Content/End).
 #
 # TextMessageStartEvent MUST be bundled with the first content chunk (not emitted
 # earlier from the step adaptor) because the frontend expects Start to be immediately
