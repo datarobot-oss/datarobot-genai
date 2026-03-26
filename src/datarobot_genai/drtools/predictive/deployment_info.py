@@ -110,13 +110,10 @@ async def generate_prediction_data_template(
         n_rows = 1
 
     # Get feature information
-    features_result = await get_deployment_features(deployment_id=deployment_id)
-    # Add error handling for empty or error responses
-    # Get the result directly
-    features_json = json.dumps(features_result)
-    if not features_json or features_json.strip().startswith("Error"):
-        raise ToolError(f"Error with feature information: {features_json}")
-    features_info = json.loads(features_json)
+    features_info = await get_deployment_features(deployment_id=deployment_id)
+    # Check if we got a valid result
+    if not isinstance(features_info, dict) or "features" not in features_info:
+        raise ToolError(f"Invalid feature information received: {features_info}")
 
     # Create template data
     template_data: dict[str, list[Any]] = {}
@@ -213,10 +210,7 @@ async def validate_prediction_data(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
     # Get deployment features
-    features_result = await get_deployment_features(deployment_id=deployment_id)
-    # Get the result directly
-    features_json = json.dumps(features_result)
-    features_info = json.loads(features_json)
+    features_info = await get_deployment_features(deployment_id=deployment_id)
 
     validation_report: dict[str, Any] = {
         "status": "valid",
@@ -335,12 +329,7 @@ async def get_deployment_features(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
 
-    info_result = await get_deployment_info(deployment_id=deployment_id)
-    # Get the result directly
-    info_json = json.dumps(info_result)
-    if not info_json.strip().startswith("{"):
-        raise ToolError(f"Error with deployment info: {info_json}")
-    info = json.loads(info_json)
+    info = await get_deployment_info(deployment_id=deployment_id)
     # Only keep features, time_series_config, and total_features
     result = {
         "features": info.get("features", []),

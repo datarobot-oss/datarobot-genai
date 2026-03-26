@@ -336,9 +336,9 @@ async def test_validate_prediction_data_missing_important_feature(
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = {"error": "something went wrong"}
-    with pytest.raises((ToolError, KeyError)) as exc_info:
+    with pytest.raises(ToolError) as exc_info:
         await generate_prediction_data_template(deployment_id="bad_id")
-    assert "features" in str(exc_info.value)
+    assert "Invalid feature information received" in str(exc_info.value)
 
 
 @patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
