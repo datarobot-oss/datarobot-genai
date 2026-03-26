@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.9.0
-- Remove side-effects in MCPConfig
-- Rename datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
+- Removed side-effects in MCPConfig
+- Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
 
 ## 0.8.12
 - Removed fastmcp dependency from drtools
