@@ -35,8 +35,6 @@ except ImportError:
 def get_api_key_from_headers(header_name: str) -> str | None:
     headers = _get_http_headers()
 
-    # Normalize header name to lowercase for consistent lookup
-    header_name = header_name.lower()
     candidates = [header_name]
 
     if header_name.startswith("x-") and not header_name.startswith("x-datarobot-"):
