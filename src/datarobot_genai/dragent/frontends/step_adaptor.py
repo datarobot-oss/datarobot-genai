@@ -81,22 +81,10 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def process(self, step: IntermediateStep) -> ResponseSerializable | None:
         result = super().process(step)
 
-        # Close the text message lifecycle started by the raw string converter.
-        # This must happen regardless of step_adaptor mode since the converter
-        # fires independently of the step_adaptor filter.
-        if step.payload.event_type == IntermediateStepType.WORKFLOW_END:
-            from .converters import _text_message_started
-
-            if _text_message_started.get():
-                _text_message_started.set(False)
-                end_event = TextMessageEndEvent(message_id="default_nat_response")
-                if result is not None and hasattr(result, "events"):
-                    result.events.insert(0, end_event)
-                else:
-                    result = DRAgentEventResponse(events=[end_event])
-
         if not self._step_matches_filter(step, self.config):
-            return result
+            # Even when the filter suppresses all events, close the text message
+            # lifecycle started by the raw string converter — it fires independently.
+            return self._maybe_close_text_message(step, result)
 
         try:
             payload = step.payload
@@ -114,7 +102,33 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         if result is not None:
             result.usage_metrics = self._get_usage_metrics(step.usage_info)
+
+        return self._maybe_close_text_message(step, result)
+
+    @staticmethod
+    def _maybe_close_text_message(
+        step: IntermediateStep, result: ResponseSerializable | None
+    ) -> ResponseSerializable | None:
+        """Append a TextMessageEndEvent on WORKFLOW_END if the raw string converter started one.
+
+        The raw string converter emits TextMessageStart/Content independently of the
+        step_adaptor mode, so the closing End event must also be emitted regardless of mode.
+        """
+        if step.payload.event_type != IntermediateStepType.WORKFLOW_END:
             return result
+
+        from .converters import _text_message_started
+
+        if not _text_message_started.get():
+            return result
+
+        _text_message_started.set(False)
+        end_event = TextMessageEndEvent(message_id="default_nat_response")
+
+        if result is not None and hasattr(result, "events"):
+            result.events.insert(0, end_event)
+        else:
+            result = DRAgentEventResponse(events=[end_event])
 
         return result
 
