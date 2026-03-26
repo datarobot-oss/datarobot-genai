@@ -52,9 +52,6 @@ from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasonin
 
 @pytest.fixture
 def step_adaptor():
-    from datarobot_genai.dragent.frontends.converters import _text_message_started
-
-    _text_message_started.set(False)
     return DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig())
 
 
@@ -124,6 +121,7 @@ def expected_responses(intermediate_steps_ids, payloads):
             events=[
                 RunStartedEvent(run_id="", thread_id=""),
                 StepStartedEvent(step_name="tool_calling_agent"),
+                TextMessageStartEvent(message_id="default_nat_response"),
             ]
         ),
         # FUNCTION_START tool_calling_agent (root level → custom)
@@ -283,6 +281,7 @@ def expected_responses(intermediate_steps_ids, payloads):
         # WORKFLOW_END
         DRAgentEventResponse(
             events=[
+                TextMessageEndEvent(message_id="default_nat_response"),
                 StepFinishedEvent(step_name="tool_calling_agent"),
                 RunFinishedEvent(run_id="", thread_id=""),
             ]

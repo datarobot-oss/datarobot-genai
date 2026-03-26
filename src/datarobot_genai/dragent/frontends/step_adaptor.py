@@ -82,9 +82,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         result = super().process(step)
 
         if not self._step_matches_filter(step, self.config):
-            # Even when the filter suppresses all events, close the text message
-            # lifecycle started by the raw string converter — it fires independently.
-            return self._maybe_close_text_message(step, result)
+            return result
 
         try:
             payload = step.payload
@@ -102,33 +100,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         if result is not None:
             result.usage_metrics = self._get_usage_metrics(step.usage_info)
-
-        return self._maybe_close_text_message(step, result)
-
-    @staticmethod
-    def _maybe_close_text_message(
-        step: IntermediateStep, result: ResponseSerializable | None
-    ) -> ResponseSerializable | None:
-        """Append a TextMessageEndEvent on WORKFLOW_END if the raw string converter started one.
-
-        The raw string converter emits TextMessageStart/Content independently of the
-        step_adaptor mode, so the closing End event must also be emitted regardless of mode.
-        """
-        if step.payload.event_type != IntermediateStepType.WORKFLOW_END:
-            return result
-
-        from .converters import _text_message_started
-
-        if not _text_message_started.get():
-            return result
-
-        _text_message_started.set(False)
-        end_event = TextMessageEndEvent(message_id="default_nat_response")
-
-        if result is not None and hasattr(result, "events"):
-            result.events.insert(0, end_event)
-        else:
-            result = DRAgentEventResponse(events=[end_event])
 
         return result
 
@@ -237,7 +208,12 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         if payload.event_type == IntermediateStepType.WORKFLOW_START:
             events.append(RunStartedEvent(run_id="", thread_id=""))
             events.append(StepStartedEvent(step_name=payload.name))
+            # Open the TextMessage lifecycle for the raw string stream from NAT native.
+            # The converter emits only TextMessageContentEvent (stateless); Start/End
+            # are managed here so there is no cross-component hidden state.
+            events.append(TextMessageStartEvent(message_id="default_nat_response"))
         elif payload.event_type == IntermediateStepType.WORKFLOW_END:
+            events.append(TextMessageEndEvent(message_id="default_nat_response"))
             events.append(StepFinishedEvent(step_name=payload.name))
             events.append(RunFinishedEvent(run_id="", thread_id=""))
         else:
