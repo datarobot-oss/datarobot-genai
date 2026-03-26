@@ -23,13 +23,11 @@ from typing import Annotated
 from typing import Any
 
 import polars as pl
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-from mcp.types import TextContent
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +35,8 @@ logger = logging.getLogger(__name__)
 @dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata", "daria"})
 async def get_deployment_info(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
-) -> ToolError | ToolResult:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
+) -> dict[str, Any]:
     """
     Retrieve information about the deployment, including the list of
     features needed to make predictions on this deployment.
@@ -96,17 +94,15 @@ async def get_deployment_info(
             "series_id_columns": partition.multiseries_id_columns or [],
         }
 
-    return ToolResult(
-        structured_content=result,
-    )
+    return result
 
 
 @dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "template", "data"})
 async def generate_prediction_data_template(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
     n_rows: Annotated[int, "Number of template rows to generate"] = 1,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Generate a template CSV with the correct structure for making predictions."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
@@ -114,16 +110,10 @@ async def generate_prediction_data_template(
         n_rows = 1
 
     # Get feature information
-    features_result = await get_deployment_features(deployment_id=deployment_id)
-    # Add error handling for empty or error responses
-    # Extract text content from ToolResult
-    if features_result.content and isinstance(features_result.content[0], TextContent):
-        features_json = features_result.content[0].text
-    else:
-        features_json = str(features_result.content)
-    if not features_json or features_json.strip().startswith("Error"):
-        raise ToolError(f"Error with feature information: {features_json}")
-    features_info = json.loads(features_json)
+    features_info = await get_deployment_features(deployment_id=deployment_id)
+    # Check if we got a valid result
+    if not isinstance(features_info, dict) or "features" not in features_info:
+        raise ToolError(f"Invalid feature information received: {features_info}")
 
     # Create template data
     template_data: dict[str, list[Any]] = {}
@@ -194,22 +184,20 @@ async def generate_prediction_data_template(
     if "time_series_config" in features_info:
         structured_content["time_series_config"] = features_info["time_series_config"]
 
-    return ToolResult(
-        structured_content=structured_content,
-    )
+    return structured_content
 
 
 @dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "validation", "data"})
 async def validate_prediction_data(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
     file_path: Annotated[
         str, "Path to the CSV file to validate (optional if csv_string is provided)"
     ]
     | None = None,
     csv_string: Annotated[str, "CSV data as a string (optional, used if file_path is not provided)"]
     | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Validate if a CSV file is suitable for making predictions with a deployment."""
     # Load the data
     if csv_string is not None:
@@ -221,15 +209,8 @@ async def validate_prediction_data(
 
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
-
     # Get deployment features
-    features_result = await get_deployment_features(deployment_id=deployment_id)
-    # Extract text content from ToolResult
-    if features_result.content and isinstance(features_result.content[0], TextContent):
-        features_json = features_result.content[0].text
-    else:
-        features_json = str(features_result.content)
-    features_info = json.loads(features_json)
+    features_info = await get_deployment_features(deployment_id=deployment_id)
 
     validation_report: dict[str, Any] = {
         "status": "valid",
@@ -336,29 +317,19 @@ async def validate_prediction_data(
         "model_type": features_info["model_type"],
     }
 
-    return ToolResult(
-        structured_content=validation_report,
-    )
+    return validation_report
 
 
 @dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "features", "info"})
 async def get_deployment_features(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
-) -> ToolError | ToolResult:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
+) -> dict[str, Any]:
     """Retrieve only the features list for a deployment, as JSON string."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
 
-    info_result = await get_deployment_info(deployment_id=deployment_id)
-    # Extract text content from ToolResult
-    if info_result.content and isinstance(info_result.content[0], TextContent):
-        info_json = info_result.content[0].text
-    else:
-        info_json = str(info_result.content)
-    if not info_json.strip().startswith("{"):
-        raise ToolError(f"Error with deployment info: {info_json}")
-    info = json.loads(info_json)
+    info = await get_deployment_info(deployment_id=deployment_id)
     # Only keep features, time_series_config, and total_features
     result = {
         "features": info.get("features", []),
@@ -373,6 +344,4 @@ async def get_deployment_features(
     if "target_type" in info:
         result["target_type"] = info["target_type"]
 
-    return ToolResult(
-        structured_content=result,
-    )
+    return result

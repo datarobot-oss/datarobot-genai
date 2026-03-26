@@ -19,7 +19,6 @@ from unittest.mock import patch
 import polars as pl
 import pytest
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drtools.predictive import data
 
@@ -47,8 +46,8 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
 
         result = await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
         mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
-        assert isinstance(result, ToolResult)
-        assert result.structured_content == {
+        assert isinstance(result, dict)
+        assert result == {
             "dataset_id": "12345",
             "dataset_version_id": None,
             "dataset_name": "somefile.csv",
@@ -79,8 +78,8 @@ async def test_upload_dataset_to_ai_catalog_success_with_url() -> None:
         mock_client.Dataset.create_from_url.assert_called_once_with(
             "https://example.com/somefile.csv"
         )
-        assert isinstance(result, ToolResult)
-        assert result.structured_content == {
+        assert isinstance(result, dict)
+        assert result == {
             "dataset_id": "12345",
             "dataset_version_id": None,
             "dataset_name": "somefile.csv",
@@ -216,10 +215,10 @@ async def test_list_ai_catalog_items_success() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
-        assert result.structured_content["count"] == 2
+        assert result["count"] == 2
         # datasets is now a dict mapping id to name
-        assert result.structured_content["datasets"]["1"] == "ds1"
-        assert result.structured_content["datasets"]["2"] == "ds2"
+        assert result["datasets"]["1"] == "ds1"
+        assert result["datasets"]["2"] == "ds2"
 
 
 @pytest.mark.asyncio
@@ -237,7 +236,7 @@ async def test_list_ai_catalog_items_empty() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
-        assert result.structured_content["datasets"] == []
+        assert result["datasets"] == []
 
 
 @pytest.mark.asyncio
@@ -263,11 +262,11 @@ async def test_get_dataset_details_success() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.get_dataset_details(dataset_id="ds1")
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["id"] == "ds1"
-        assert result.structured_content["name"] == "Test Dataset"
-        assert "columns" in result.structured_content
-        assert "sample" in result.structured_content
+        assert isinstance(result, dict)
+        assert result["id"] == "ds1"
+        assert result["name"] == "Test Dataset"
+        assert "columns" in result
+        assert "sample" in result
 
 
 @pytest.mark.asyncio
@@ -296,7 +295,7 @@ async def test_get_dataset_details_no_sample() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.get_dataset_details(dataset_id="ds1", include_sample=False)
-        assert "sample" not in result.structured_content
+        assert "sample" not in result
 
 
 @pytest.mark.asyncio
@@ -319,9 +318,9 @@ async def test_list_datastores_success() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_datastores()
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["count"] == 1
-        assert result.structured_content["datastores"][0]["id"] == "store1"
+        assert isinstance(result, dict)
+        assert result["count"] == 1
+        assert result["datastores"][0]["id"] == "store1"
 
 
 @pytest.mark.asyncio
@@ -343,9 +342,9 @@ async def test_browse_datastore_success() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_dr_module
 
         result = await data.browse_datastore(datastore_id="store1", path="/schema1")
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["count"] == 2
-        assert result.structured_content["datastore_id"] == "store1"
+        assert isinstance(result, dict)
+        assert result["count"] == 2
+        assert result["datastore_id"] == "store1"
 
 
 @pytest.mark.asyncio
@@ -376,9 +375,9 @@ async def test_query_datastore_success() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_dr_module
 
         result = await data.query_datastore(datastore_id="store1", sql="SELECT * FROM t")
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["row_count"] == 1
-        assert result.structured_content["columns"] == ["id", "val"]
+        assert isinstance(result, dict)
+        assert result["row_count"] == 1
+        assert result["columns"] == ["id", "val"]
 
 
 @pytest.mark.asyncio

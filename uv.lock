@@ -1157,7 +1157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.8.11"
+version = "0.8.12"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1297,7 +1297,6 @@ drtools = [
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
-    { name = "fastmcp" },
     { name = "httpx" },
     { name = "perplexityai" },
     { name = "polars" },
@@ -1464,7 +1463,6 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
     { name = "fastapi", marker = "extra == 'dragent'", specifier = "<0.133.0" },
     { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=2.13.0.2,<3.0.0" },
-    { name = "fastmcp", marker = "extra == 'drtools'", specifier = ">=2.13.0.2,<3.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },

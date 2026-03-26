@@ -45,8 +45,8 @@ class TestSearchDatarobotAgenticDocs:
 
             result = await search_datarobot_agentic_docs(query="agentic", max_results=5)
 
-            assert result.structured_content is not None
-            content = result.structured_content
+            assert result is not None
+            content = result
             assert content["status"] == "success"
             assert content["query"] == "agentic"
             assert content["total_results"] == 2
@@ -73,8 +73,8 @@ class TestSearchDatarobotAgenticDocs:
 
             result = await search_datarobot_agentic_docs(query="nonexistent", max_results=5)
 
-            assert result.structured_content is not None
-            content = result.structured_content
+            assert result is not None
+            content = result
             assert content["status"] == "no_results"
             assert content["query"] == "nonexistent"
             assert "No documentation pages found" in content["message"]
@@ -101,8 +101,8 @@ class TestFetchDatarobotDocPage:
                 url="https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
             )
 
-            assert result.structured_content is not None
-            content = result.structured_content
+            assert result is not None
+            content = result
             assert (
                 content["url"]
                 == "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
@@ -126,7 +126,7 @@ class TestFetchDatarobotDocPage:
 
             result = await fetch_datarobot_doc_page(url="https://example.com/not-docs/")
 
-            content = result.structured_content
+            content = result
             assert content["title"] == "Error"
             assert "must be a DataRobot documentation page" in content["content"]
 
@@ -147,6 +147,6 @@ class TestFetchDatarobotDocPage:
 
             result = await fetch_datarobot_doc_page(url=_url)
 
-            content = result.structured_content
+            content = result
             assert content["title"] == "Error"
             assert "Failed to fetch content" in content["content"]
