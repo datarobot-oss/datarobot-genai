@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed side-effects in MCPConfig
 - Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
 
+## 0.8.13
+- Added base agent for retrieving and storing memory
+
 ## 0.8.12
 - Removed fastmcp dependency from drtools
 - Fixed all unit tests to handle dict returns instead of ToolResult objects after refactoring
