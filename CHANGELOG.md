@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.14
+- Isolate publish secrets to an environment
+
 ## 0.8.13
 - Added base agent for retrieving and storing memory
 
@@ -16,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Updated helpers.py to use FastMCP's get_http_headers with safe import handling
 
 ## 0.8.11
-- Made build_workflow async 
+- Made build_workflow async
 
 ## 0.8.10
 - Added GitHub Actions workflow `integration.yml`: path-filtered **Integration Tests** job for drmcp (runs when `src/datarobot_genai/drmcp`, `src/datarobot_genai/drtools`, `setup.py`, `tests/drmcp/integration`, or the workflow file changes; aligned with the e2e workflow pattern)

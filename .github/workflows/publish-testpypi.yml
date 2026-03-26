@@ -23,7 +23,7 @@ jobs:
       pull-requests: write
       issues: write
     environment:
-      name: Release
+      name: Build
       deployment: false
     steps:
       - name: Checkout
