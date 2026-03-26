@@ -142,6 +142,6 @@ def test_crewai_event_listener_accumulates_messages() -> None:
     assert isinstance(listener.messages[5], AIMessage)
     assert isinstance(listener.messages[6], ToolMessage)
     assert isinstance(listener.messages[7], AIMessage)
-    # Tool call was attached to second message (AI)
+    # Tool call was attached to most recent message (AI)
     assert isinstance(listener.messages[1], AIMessage)
     assert listener.messages[5].tool_calls and listener.messages[5].tool_calls[0].name == "t"

@@ -32,7 +32,6 @@ class CrewAIStreamingEventListener:
         self.step_event = False
 
     def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
-        # Lazy import to reduce memory overhead when ragas is not used
 
         @crewai_event_bus.on(AgentReasoningStartedEvent)
         def on_agent_reasoning_started(_: Any, event: Any) -> None:
