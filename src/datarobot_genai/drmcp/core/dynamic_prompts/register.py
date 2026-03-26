@@ -57,7 +57,7 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
         except DynamicPromptRegistrationError:
             pass
 
-    if prompts and FeatureFlag.is_mcp_tools_gallery_support_enabled():
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         try:
             linear_manager = LineageManager(mcp)
             await linear_manager.sync_mcp_prompts()

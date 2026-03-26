@@ -195,24 +195,3 @@ class TestRegisterPrompt:
         mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mock_mcp_server)
         mock_sync_mcp_prompts.assert_called_once_with()
-
-    @pytest.mark.asyncio
-    async def test_not_run_sync_mcp_metadata_after_no_prompt_is_registered(
-        self,
-        mock_get_datarobot_prompt_templates: Mock,
-        mock_get_datarobot_prompt_template_versions: Mock,
-        mock_is_mcp_tools_gallery_support_enabled: Mock,
-        mock_lineage_manager_init: Mock,
-        mock_sync_mcp_prompts: Mock,
-    ) -> None:
-        mock_get_datarobot_prompt_templates.return_value = []
-
-        await register_prompts_from_datarobot_prompt_management()
-
-        mock_get_datarobot_prompt_templates.assert_called_once_with()
-        mock_get_datarobot_prompt_template_versions.assert_called_once_with(
-            prompt_template_ids=[],
-        )
-        mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
-        mock_lineage_manager_init.assert_not_called()
-        mock_sync_mcp_prompts.assert_not_called()

@@ -44,7 +44,7 @@ async def register_tools_of_datarobot_deployments() -> None:
             logger.error(f"Unexpected error for deployment {deployment_id}: {exc}")
             pass
 
-    if deployment_ids and FeatureFlag.is_mcp_tools_gallery_support_enabled():
+    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
         try:
             linear_manager = LineageManager(mcp)
             await linear_manager.sync_mcp_tools()
