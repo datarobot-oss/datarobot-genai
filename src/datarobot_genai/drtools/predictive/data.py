@@ -15,14 +15,13 @@
 import logging
 import os
 from typing import Annotated
-
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
+from typing import Any
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.utils import is_valid_url
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ async def upload_dataset_to_ai_catalog(
     *,
     file_path: Annotated[str, "The path to the dataset file to upload."] | None = None,
     file_url: Annotated[str, "The URL to the dataset file to upload."] | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Upload a dataset to the DataRobot AI Catalog / Data Registry."""
     if not file_path and not file_url:
         raise ToolError("Either file_path or file_url must be provided.")
@@ -60,17 +59,15 @@ async def upload_dataset_to_ai_catalog(
     if not catalog_item:
         raise ToolError("Failed to upload dataset.")
 
-    return ToolResult(
-        structured_content={
-            "dataset_id": catalog_item.id,
-            "dataset_version_id": catalog_item.version_id,
-            "dataset_name": catalog_item.name,
-        },
-    )
+    return {
+        "dataset_id": catalog_item.id,
+        "dataset_version_id": catalog_item.version_id,
+        "dataset_name": catalog_item.name,
+    }
 
 
 @dr_mcp_integration_tool(tags={"predictive", "data", "read", "list", "catalog", "daria"})
-async def list_ai_catalog_items() -> ToolResult:
+async def list_ai_catalog_items() -> dict[str, Any]:
     """List all AI Catalog items (datasets) for the authenticated user."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -78,18 +75,14 @@ async def list_ai_catalog_items() -> ToolResult:
 
     if not datasets:
         logger.info("No AI Catalog items found")
-        return ToolResult(
-            structured_content={"datasets": []},
-        )
+        return {"datasets": []}
 
     datasets_dict = {ds.id: ds.name for ds in datasets}
 
-    return ToolResult(
-        structured_content={
-            "datasets": datasets_dict,
-            "count": len(datasets),
-        },
-    )
+    return {
+        "datasets": datasets_dict,
+        "count": len(datasets),
+    }
 
 
 @dr_mcp_integration_tool(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})
@@ -98,7 +91,7 @@ async def get_dataset_details(
     dataset_id: Annotated[str, "The ID of the DataRobot dataset"] | None = None,
     include_sample: Annotated[bool, "Whether to include sample rows"] = True,
     sample_rows: Annotated[int, "Number of sample rows to return"] = 10,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Get DataRobot dataset metadata and optional sample rows."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
@@ -121,30 +114,28 @@ async def get_dataset_details(
         except Exception as exc:
             result["sample_error"] = str(exc)
 
-    return ToolResult(structured_content=result)
+    return result
 
 
 @dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "list", "daria"})
-async def list_datastores() -> ToolResult:
+async def list_datastores() -> dict[str, Any]:
     """List available DataRobot data connections (datastores)."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     datastores = client.DataStore.list()
 
-    return ToolResult(
-        structured_content={
-            "datastores": [
-                {
-                    "id": ds.id,
-                    "canonical_name": getattr(ds, "canonical_name", ""),
-                    "creator_id": getattr(ds, "creator_id", ""),
-                    "params": getattr(ds, "params", {}),
-                }
-                for ds in datastores
-            ],
-            "count": len(datastores),
-        },
-    )
+    return {
+        "datastores": [
+            {
+                "id": ds.id,
+                "canonical_name": getattr(ds, "canonical_name", ""),
+                "creator_id": getattr(ds, "creator_id", ""),
+                "params": getattr(ds, "params", {}),
+            }
+            for ds in datastores
+        ],
+        "count": len(datastores),
+    }
 
 
 @dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
@@ -155,7 +146,7 @@ async def browse_datastore(
     offset: Annotated[int, "Pagination offset"] = 0,
     limit: Annotated[int, "Maximum number of items to return"] = 100,
     search: Annotated[str, "Search filter for items"] | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Browse a DataRobot data connection to list catalogs, schemas, and tables."""
     if not datastore_id:
         raise ToolError("Datastore ID must be provided")
@@ -173,14 +164,12 @@ async def browse_datastore(
     data = response.json()
     items = data.get("data", data) if isinstance(data, dict) else data
 
-    return ToolResult(
-        structured_content={
-            "datastore_id": datastore_id,
-            "path": path or "/",
-            "items": items,
-            "count": len(items),
-        },
-    )
+    return {
+        "datastore_id": datastore_id,
+        "path": path or "/",
+        "items": items,
+        "count": len(items),
+    }
 
 
 @dr_mcp_integration_tool(
@@ -191,7 +180,7 @@ async def query_datastore(
     datastore_id: Annotated[str, "The ID of the datastore to query"] | None = None,
     sql: Annotated[str, "The SQL query to execute"] | None = None,
     limit: Annotated[int, "Maximum number of rows to return"] = 1000,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Execute a SQL query against a DataRobot datastore connection.
 
     Only data manipulation language queries (insert, update, and delete data)
@@ -210,13 +199,11 @@ async def query_datastore(
     response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
     data = response.json()
 
-    return ToolResult(
-        structured_content={
-            "rows": data.get("data", []),
-            "row_count": len(data.get("data", [])),
-            "columns": data.get("columns", []),
-        },
-    )
+    return {
+        "rows": data.get("data", []),
+        "row_count": len(data.get("data", [])),
+        "columns": data.get("columns", []),
+    }
 
 
 # from fastmcp import Context

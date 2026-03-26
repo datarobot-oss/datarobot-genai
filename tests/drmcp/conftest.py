@@ -28,13 +28,12 @@ from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubDeployment
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubModel
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubProject
-
-_STUB_DATAROBOT_API_TOKEN = "test-token"
+from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 
 
 def _is_stub_token() -> bool:
     """Return True when DATAROBOT_API_TOKEN is the stub (no real API calls)."""
-    return os.environ.get("DATAROBOT_API_TOKEN") == _STUB_DATAROBOT_API_TOKEN
+    return os.environ.get("DATAROBOT_API_TOKEN") == STUB_DATAROBOT_API_TOKEN
 
 
 def _stub_project_fixture_dict(
@@ -63,7 +62,7 @@ def _make_dr_client() -> Any:
     # Otherwise the ValueError below is reachable and gives a clear message.
     if not os.environ.get("DATAROBOT_API_TOKEN"):
         if os.environ.get("MCP_USE_CLIENT_STUBS", "true").lower() == "true":
-            os.environ["DATAROBOT_API_TOKEN"] = _STUB_DATAROBOT_API_TOKEN
+            os.environ["DATAROBOT_API_TOKEN"] = STUB_DATAROBOT_API_TOKEN
             if not os.environ.get("DATAROBOT_ENDPOINT"):
                 os.environ["DATAROBOT_ENDPOINT"] = DEFAULT_DATAROBOT_ENDPOINT
             # Stub env persists for the session so all code paths see the same credentials.
@@ -75,7 +74,7 @@ def _make_dr_client() -> Any:
     # Session fixtures in this file (timeseries_regression_project, classification_project,
     # etc.) check _is_stub_token() first and yield stub data without calling dr.*, so they
     # never hit the API when no client is configured.
-    if token != _STUB_DATAROBOT_API_TOKEN:
+    if token != STUB_DATAROBOT_API_TOKEN:
         dr.Client(token=token, endpoint=creds.datarobot.endpoint)
     DRContext.use_case = None
     return dr

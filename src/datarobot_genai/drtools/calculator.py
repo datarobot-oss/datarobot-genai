@@ -18,6 +18,9 @@ from typing import Annotated
 
 def calculator(expression: Annotated[str, "A math expression to calculate, e.g. '15 * 7'."]) -> str:
     """Calculate a math expression, e.g. '15 * 7'."""
+    if not expression or not expression.strip():
+        return "Error: expression cannot be empty"
+
     allowed = set("0123456789+-*/().% ")
     if not all(c in allowed for c in expression):
         return "Error: invalid characters in expression"

@@ -38,8 +38,8 @@ async def test_list_projects_success() -> None:
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await project.list_projects()
-    assert hasattr(result, "structured_content")
-    projects_dict = result.structured_content
+    assert isinstance(result, dict)
+    projects_dict = result
     assert "1" in projects_dict
     assert projects_dict["1"] == "proj1"
     assert "2" in projects_dict
@@ -60,8 +60,8 @@ async def test_list_projects_empty() -> None:
     ):
         mock_drc.return_value.get_client.return_value = mock_client
         result = await project.list_projects()
-    assert hasattr(result, "structured_content")
-    assert result.structured_content == {}
+    assert isinstance(result, dict)
+    assert result == {}
 
 
 @pytest.mark.asyncio
@@ -99,8 +99,8 @@ async def test_get_project_dataset_by_name_success() -> None:
             project_id="pid", dataset_name="training"
         )
     mock_client.Project.get.assert_called_once_with("pid")
-    assert hasattr(result, "structured_content")
-    assert result.structured_content["dataset_id"] == "dsid"
+    assert isinstance(result, dict)
+    assert result["dataset_id"] == "dsid"
 
 
 @pytest.mark.asyncio

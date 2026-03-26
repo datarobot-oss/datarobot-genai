@@ -16,14 +16,13 @@
 
 import logging
 from typing import Annotated
-
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
+from typing import Any
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.atlassian import get_atlassian_access_token
-from datarobot_genai.drtools.clients.confluence import ConfluenceClient
-from datarobot_genai.drtools.clients.confluence import ConfluenceError
+from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
+from datarobot_genai.drtools.core.clients.confluence import ConfluenceClient
+from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ async def confluence_get_page(
         str | None,
         "Required if identifying the page by title. The space key (e.g., 'PROJ').",
     ] = None,
-) -> ToolResult | ToolError:
+) -> dict[str, Any]:
     """Retrieve the content of a specific Confluence page.
 
     Use this tool to fetch Confluence pages by their numeric ID or by title.
@@ -66,9 +65,7 @@ async def confluence_get_page(
                 )
             page_response = await client.get_page_by_title(page_id_or_title, space_key)
 
-    return ToolResult(
-        structured_content=page_response.as_flat_dict(),
-    )
+    return page_response.as_flat_dict()
 
 
 @dr_mcp_integration_tool(tags={"confluence", "write", "create", "page"})
@@ -84,7 +81,7 @@ async def confluence_create_page(
         int | None,
         "The ID of the parent page, used to create a child page.",
     ] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """Create a new documentation page in a specified Confluence space.
 
     Use this tool to create new Confluence pages with content in storage format.
@@ -113,9 +110,7 @@ async def confluence_create_page(
             parent_id=parent_id,
         )
 
-    return ToolResult(
-        structured_content={"new_page_id": page_response.page_id, "title": page_response.title},
-    )
+    return {"new_page_id": page_response.page_id, "title": page_response.title}
 
 
 @dr_mcp_integration_tool(tags={"confluence", "write", "add", "comment"})
@@ -123,7 +118,7 @@ async def confluence_add_comment(
     *,
     page_id: Annotated[str, "The numeric ID of the page where the comment will be added."],
     comment_body: Annotated[str, "The text content of the comment."],
-) -> ToolResult:
+) -> dict[str, Any]:
     """Add a new comment to a specified Confluence page for collaboration.
 
     Use this tool to add comments to Confluence pages to facilitate collaboration
@@ -148,12 +143,10 @@ async def confluence_add_comment(
             comment_body=comment_body,
         )
 
-    return ToolResult(
-        structured_content={
-            "comment_id": comment_response.comment_id,
-            "page_id": page_id,
-        },
-    )
+    return {
+        "comment_id": comment_response.comment_id,
+        "page_id": page_id,
+    }
 
 
 @dr_mcp_integration_tool(tags={"confluence", "search", "content"})
@@ -170,7 +163,7 @@ async def confluence_search(
         "If True, fetch full page body content for each result (slower, "
         "makes additional API calls). Default is False, which returns only excerpts.",
     ] = False,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Search Confluence pages and content efficiently using a CQL query string.
     This pushes the search logic to the Confluence API (Push-Down).
@@ -208,9 +201,7 @@ async def confluence_search(
             data = [result.as_flat_dict() for result in results]
 
     n = len(results)
-    return ToolResult(
-        structured_content={"data": data, "count": n},
-    )
+    return {"data": data, "count": n}
 
 
 @dr_mcp_integration_tool(tags={"confluence", "write", "update", "page"})
@@ -226,7 +217,7 @@ async def confluence_update_page(
         "The current version number of the page, required to prevent update conflicts. "
         "Get this from the confluence_get_page tool.",
     ],
-) -> ToolResult:
+) -> dict[str, Any]:
     """Update the content of an existing Confluence page.
 
     Requires the current version number to ensure atomic updates.
@@ -262,9 +253,7 @@ async def confluence_update_page(
             version_number=version_number,
         )
 
-    return ToolResult(
-        structured_content={
-            "updated_page_id": page_response.page_id,
-            "new_version": page_response.version,
-        },
-    )
+    return {
+        "updated_page_id": page_response.page_id,
+        "new_version": page_response.version,
+    }

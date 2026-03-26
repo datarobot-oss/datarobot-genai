@@ -21,6 +21,11 @@ _project_root = Path(__file__).parent.parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+# Task drmcp-integration starts this process before pytest; fixtures cannot set env here.
+from tests.drmcp.stub_credentials import apply_stub_datarobot_credentials_env  # noqa: E402
+
+apply_stub_datarobot_credentials_env()
+
 from datarobot_genai.drmcp import create_mcp_server  # noqa: E402
 
 # Import to register test tools with the MCP server

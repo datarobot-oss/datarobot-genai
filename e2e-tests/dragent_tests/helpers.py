@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import uuid
-
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType

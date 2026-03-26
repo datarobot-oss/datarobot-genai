@@ -95,12 +95,15 @@ class TestMCPUseCaseToolsIntegration:
             assert len(result.content) > 0
             assert isinstance(result.content[0], TextContent)
             data = json.loads(result.content[0].text)
-            assert data["use_case_id"] == STUB_USE_CASE_ID
-            assert "name" in data
+            assert "use_cases" in data
+            assert data["count"] == 1
+            use_case = data["use_cases"][0]
+            assert use_case["use_case_id"] == STUB_USE_CASE_ID
+            assert "name" in use_case
             # Stub returns datasets, deployments, and experiments
-            assert "datasets" in data or "datasets_error" in data
-            assert "deployments" in data or "deployments_error" in data
-            assert "experiments" in data or "experiments_error" in data
+            assert "datasets" in use_case or "datasets_error" in use_case
+            assert "deployments" in use_case or "deployments_error" in use_case
+            assert "experiments" in use_case or "experiments_error" in use_case
 
     async def test_list_use_case_assets_has_datasets(self) -> None:
         """list_use_case_assets includes datasets list from stub."""
@@ -110,10 +113,12 @@ class TestMCPUseCaseToolsIntegration:
             )
             assert not result.isError
             data = json.loads(result.content[0].text)
-            assert "datasets" in data
-            assert len(data["datasets"]) >= 1
-            assert "id" in data["datasets"][0]
-            assert "name" in data["datasets"][0]
+            assert "use_cases" in data
+            use_case = data["use_cases"][0]
+            assert "datasets" in use_case
+            assert len(use_case["datasets"]) >= 1
+            assert "id" in use_case["datasets"][0]
+            assert "name" in use_case["datasets"][0]
 
     async def test_list_use_case_assets_has_deployments(self) -> None:
         """list_use_case_assets includes deployments list from stub."""
@@ -123,9 +128,11 @@ class TestMCPUseCaseToolsIntegration:
             )
             assert not result.isError
             data = json.loads(result.content[0].text)
-            assert "deployments" in data
-            assert len(data["deployments"]) >= 1
-            assert "id" in data["deployments"][0]
+            assert "use_cases" in data
+            use_case = data["use_cases"][0]
+            assert "deployments" in use_case
+            assert len(use_case["deployments"]) >= 1
+            assert "id" in use_case["deployments"][0]
 
     async def test_list_use_case_assets_has_experiments(self) -> None:
         """list_use_case_assets includes experiments list from stub."""
@@ -135,10 +142,12 @@ class TestMCPUseCaseToolsIntegration:
             )
             assert not result.isError
             data = json.loads(result.content[0].text)
-            assert "experiments" in data
-            assert len(data["experiments"]) >= 1
-            assert "id" in data["experiments"][0]
-            assert "name" in data["experiments"][0]
+            assert "use_cases" in data
+            use_case = data["use_cases"][0]
+            assert "experiments" in use_case
+            assert len(use_case["experiments"]) >= 1
+            assert "id" in use_case["experiments"][0]
+            assert "name" in use_case["experiments"][0]
 
     async def test_list_use_case_assets_missing_use_case_id(self) -> None:
         """list_use_case_assets raises ToolError when use_case_id is not provided."""

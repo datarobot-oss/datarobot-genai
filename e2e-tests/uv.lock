@@ -8,7 +8,10 @@ resolution-markers = [
 ]
 
 [manifest]
-overrides = [{ name = "crewai", extras = ["litellm"], specifier = ">=1.1.0,<2.0.0" }]
+overrides = [
+    { name = "crewai", extras = ["litellm"], specifier = ">=1.1.0,<2.0.0" },
+    { name = "litellm", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+]
 
 [[package]]
 name = "a2a-sdk"
@@ -29,13 +32,9 @@ wheels = [
 [[package]]
 name = "ag-ui-protocol"
 version = "0.1.14"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence#2eca856589f48118323b941d06f1780c69fefdd7" }
 dependencies = [
     { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/53/ee/319d189343e1dc67b1109c950a0d1091fe32498104b5917fbbd806ff58dd/ag_ui_protocol-0.1.14.tar.gz", hash = "sha256:d8e86b308f86a6cf6a5e18ca7154d7642895de2fe94cd2cece57723cdbba6406", size = 5687, upload-time = "2026-03-18T00:43:13.358Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/99/eaa83816924791fc25ebb44ac7987196b687a3fdf597b1e7a62c69306a8d/ag_ui_protocol-0.1.14-py3-none-any.whl", hash = "sha256:ec072e6a45e0d45b8714e6d54919cc9bde3d097fdc36f7e82953b2f21f1cdbef", size = 8069, upload-time = "2026-03-18T00:43:12.1Z" },
 ]
 
 [[package]]
@@ -888,6 +887,7 @@ crewai = [
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
+    { name = "litellm" },
     { name = "nvidia-nat-crewai" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -909,6 +909,7 @@ dragent = [
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
     { name = "fastapi" },
+    { name = "litellm" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -934,6 +935,7 @@ langgraph = [
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
+    { name = "litellm" },
     { name = "nvidia-nat-langchain" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -952,6 +954,7 @@ llamaindex = [
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
+    { name = "litellm" },
     { name = "llama-index" },
     { name = "llama-index-core" },
     { name = "llama-index-llms-langchain" },
@@ -1028,6 +1031,11 @@ requires-dist = [
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<1.1.0" },
+    { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
+    { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.72.1,!=1.82.7,!=1.82.8,<2.0.0" },
     { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.6.1,<0.8.0" },
@@ -1165,6 +1173,7 @@ name = "datarobot-genai-e2e-tests"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "ag-ui-protocol" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
@@ -1195,6 +1204,7 @@ lint = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ag-ui-protocol", git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },

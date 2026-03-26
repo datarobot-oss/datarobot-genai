@@ -14,37 +14,33 @@
 
 import logging
 from typing import Annotated
-
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
+from typing import Any
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
 @dr_mcp_integration_tool(tags={"predictive", "project", "read", "management", "list"})
-async def list_projects() -> ToolResult:
+async def list_projects() -> dict[str, Any]:
     """List all DataRobot projects for the authenticated user."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     projects = client.Project.list()
     projects = {p.id: p.project_name for p in projects}
 
-    return ToolResult(
-        structured_content=projects,
-    )
+    return projects
 
 
 @dr_mcp_integration_tool(tags={"predictive", "project", "read", "data", "info"})
 async def get_project_dataset_by_name(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project."] | None = None,
-    dataset_name: Annotated[str, "The name of the dataset to find (e.g., 'training', 'holdout')."]
-    | None = None,
-) -> ToolResult:
+    project_id: Annotated[str, "The ID of the DataRobot project."],
+    dataset_name: Annotated[str, "The name of the dataset to find (e.g., 'training', 'holdout')."],
+) -> dict[str, Any]:
     """Get a dataset ID by name for a given project.
 
     The dataset ID and the dataset type (source or prediction) as a string, or an error message.
@@ -66,12 +62,10 @@ async def get_project_dataset_by_name(
         all_datasets.extend([{"type": "prediction", "dataset": ds} for ds in prediction_datasets])
     for ds in all_datasets:
         if dataset_name.lower() in ds["dataset"].name.lower():
-            return ToolResult(
-                structured_content={
-                    "dataset_id": ds["dataset"].id,
-                    "dataset_type": ds["type"],
-                },
-            )
+            return {
+                "dataset_id": ds["dataset"].id,
+                "dataset_type": ds["type"],
+            }
     raise ToolError(
         f"Dataset with name containing '{dataset_name}' not found in project {project_id}."
     )

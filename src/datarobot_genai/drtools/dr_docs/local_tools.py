@@ -35,10 +35,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS
-from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS_DEFAULT
-from datarobot_genai.drtools.clients.dr_docs import fetch_page_content
-from datarobot_genai.drtools.clients.dr_docs import search_docs
+from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS
+from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.core.clients.dr_docs import fetch_page_content
+from datarobot_genai.drtools.core.clients.dr_docs import search_docs
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,9 @@ async def search_datarobot_agentic_docs(
     Note:
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
     """
+    if not query or not query.strip():
+        raise ToolError("Argument validation error: 'query' cannot be empty.")
+
     results = await search_docs(query=query, max_results=max_results)
 
     if not results:
@@ -120,4 +124,7 @@ async def fetch_datarobot_doc_page(
     Note:
         - Only works with English DataRobot documentation URLs (e.g. docs.datarobot.com/en/docs/).
     """
+    if not url or not url.strip():
+        raise ToolError("Argument validation error: 'url' cannot be empty.")
+
     return await fetch_page_content(url=url)

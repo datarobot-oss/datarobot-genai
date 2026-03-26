@@ -19,7 +19,6 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.drtools.predictive import training
 
@@ -50,8 +49,8 @@ async def test_analyze_dataset() -> None:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_drc.return_value.get_client.return_value = mock_client
         result = await training.analyze_dataset(dataset_id="test_dataset_id")
-        assert hasattr(result, "structured_content")
-        insights = result.structured_content
+        assert isinstance(result, dict)
+        insights = result
 
         assert insights["total_columns"] == 5
         assert insights["total_rows"] == 3
@@ -75,8 +74,7 @@ async def test_suggest_use_cases() -> None:
     )
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    # Mock analyze_dataset to return ToolResult
-    mock_insights_dict = {
+    mock_insights = {
         "total_columns": 4,
         "total_rows": 3,
         "numerical_columns": ["features"],
@@ -86,9 +84,6 @@ async def test_suggest_use_cases() -> None:
         "potential_targets": ["binary_target", "multi_target", "regression_target"],
         "missing_data_summary": {},
     }
-    mock_insights = ToolResult(
-        structured_content=mock_insights_dict,
-    )
 
     with (
         patch(
@@ -106,8 +101,8 @@ async def test_suggest_use_cases() -> None:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_drc.return_value.get_client.return_value = mock_client
         result = await training.suggest_use_cases(dataset_id="test_dataset_id")
-        assert hasattr(result, "structured_content")
-        suggestions = result.structured_content["use_case_suggestions"]
+        assert isinstance(result, dict)
+        suggestions = result["use_case_suggestions"]
 
         assert len(suggestions) > 0
         assert any(s["problem_type"] == "Binary Classification" for s in suggestions)
@@ -121,8 +116,7 @@ async def test_get_exploratory_insights() -> None:
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    # Mock analyze_dataset to return ToolResult
-    mock_insights_dict = {
+    mock_insights = {
         "total_columns": 2,
         "total_rows": 3,
         "numerical_columns": ["features", "target"],
@@ -132,9 +126,6 @@ async def test_get_exploratory_insights() -> None:
         "potential_targets": ["target"],
         "missing_data_summary": {},
     }
-    mock_insights = ToolResult(
-        structured_content=mock_insights_dict,
-    )
 
     with (
         patch(
@@ -154,8 +145,8 @@ async def test_get_exploratory_insights() -> None:
         result = await training.get_exploratory_insights(
             dataset_id="test_dataset_id", target_col="target"
         )
-        assert hasattr(result, "structured_content")
-        insights = result.structured_content
+        assert isinstance(result, dict)
+        insights = result
 
         assert "dataset_summary" in insights
         assert "target_analysis" in insights
@@ -190,8 +181,8 @@ async def test_start_autopilot_new_project() -> None:
             dataset_url="http://test.com/data.csv",
             project_name="Test Project",
         )
-        assert hasattr(result, "structured_content")
-        response = result.structured_content
+        assert isinstance(result, dict)
+        response = result
 
         assert response["project_id"] == "test_project_id"
         assert response["target"] == "target"
@@ -220,8 +211,8 @@ async def test_start_autopilot_existing_project() -> None:
         result = await training.start_autopilot(
             target="target", project_id="test_project_id", mode="comprehensive"
         )
-        assert hasattr(result, "structured_content")
-        response = result.structured_content
+        assert isinstance(result, dict)
+        response = result
 
         assert response["project_id"] == "test_project_id"
         assert response["target"] == "target"
@@ -262,8 +253,8 @@ async def test_get_model_roc_curve() -> None:
         result = await training.get_model_roc_curve(
             project_id="test_project_id", model_id="test_model_id"
         )
-        assert hasattr(result, "structured_content")
-        response = result.structured_content
+        assert isinstance(result, dict)
+        response = result
 
         assert "data" in response
         assert "roc_points" in response["data"]
@@ -295,8 +286,8 @@ async def test_get_model_feature_impact() -> None:
         result = await training.get_model_feature_impact(
             project_id="test_project_id", model_id="test_model_id"
         )
-        assert hasattr(result, "structured_content")
-        response = result.structured_content
+        assert isinstance(result, dict)
+        response = result
 
         assert "data" in response
         assert len(response["data"]) == 2
@@ -330,8 +321,8 @@ async def test_get_model_lift_chart() -> None:
         result = await training.get_model_lift_chart(
             project_id="test_project_id", model_id="test_model_id"
         )
-        assert hasattr(result, "structured_content")
-        response = result.structured_content
+        assert isinstance(result, dict)
+        response = result
 
         assert "data" in response
         assert "bins" in response["data"]

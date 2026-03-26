@@ -19,9 +19,9 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drtools.clients.perplexity import PerplexityError
-from datarobot_genai.drtools.clients.perplexity import PerplexitySearchResult
-from datarobot_genai.drtools.clients.perplexity import PerplexityThinkResult
+from datarobot_genai.drtools.core.clients.perplexity import PerplexityError
+from datarobot_genai.drtools.core.clients.perplexity import PerplexitySearchResult
+from datarobot_genai.drtools.core.clients.perplexity import PerplexityThinkResult
 from datarobot_genai.drtools.perplexity.tools import perplexity_search
 from datarobot_genai.drtools.perplexity.tools import perplexity_think
 
@@ -115,16 +115,16 @@ class TestPerplexitySearch:
         """Test successful search with single query."""
         result = await perplexity_search(query="test query")
 
-        assert result.structured_content["count"] == 2
-        assert len(result.structured_content["results"]) == 2
-        assert result.structured_content["results"][0]["url"] == "https://foo.com"
-        assert result.structured_content["results"][1]["url"] == "https://bar.com"
-        assert result.structured_content["metadata"]["queriesExecuted"] == 1
-        assert result.structured_content["metadata"]["filtersApplied"] == {
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+        assert result["results"][0].url == "https://foo.com"
+        assert result["results"][1].url == "https://bar.com"
+        assert result["metadata"]["queriesExecuted"] == 1
+        assert result["metadata"]["filtersApplied"] == {
             "domains": None,
             "recency": None,
         }
-        assert result.structured_content["metadata"]["extractionLimit"] == 2048
+        assert result["metadata"]["extractionLimit"] == 2048
 
     @pytest.mark.asyncio
     async def test_search_success_list_of_queries(
@@ -136,16 +136,16 @@ class TestPerplexitySearch:
         """Test successful search with list of queries."""
         result = await perplexity_search(query=["test query 1", "test query 2"])
 
-        assert result.structured_content["count"] == 2
-        assert len(result.structured_content["results"]) == 2
-        assert result.structured_content["results"][0]["url"] == "https://foo.com"
-        assert result.structured_content["results"][1]["url"] == "https://bar.com"
-        assert result.structured_content["metadata"]["queriesExecuted"] == 2
-        assert result.structured_content["metadata"]["filtersApplied"] == {
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+        assert result["results"][0].url == "https://foo.com"
+        assert result["results"][1].url == "https://bar.com"
+        assert result["metadata"]["queriesExecuted"] == 2
+        assert result["metadata"]["filtersApplied"] == {
             "domains": None,
             "recency": None,
         }
-        assert result.structured_content["metadata"]["extractionLimit"] == 2048
+        assert result["metadata"]["extractionLimit"] == 2048
 
     @pytest.mark.asyncio
     async def test_search_success_with_filters(
@@ -162,16 +162,16 @@ class TestPerplexitySearch:
             max_tokens_per_page=1000,
         )
 
-        assert result.structured_content["count"] == 2
-        assert len(result.structured_content["results"]) == 2
-        assert result.structured_content["results"][0]["url"] == "https://foo.com"
-        assert result.structured_content["results"][1]["url"] == "https://bar.com"
-        assert result.structured_content["metadata"]["queriesExecuted"] == 1
-        assert result.structured_content["metadata"]["filtersApplied"] == {
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+        assert result["results"][0].url == "https://foo.com"
+        assert result["results"][1].url == "https://bar.com"
+        assert result["metadata"]["queriesExecuted"] == 1
+        assert result["metadata"]["filtersApplied"] == {
             "domains": ["foo, bar"],
             "recency": "week",
         }
-        assert result.structured_content["metadata"]["extractionLimit"] == 1000
+        assert result["metadata"]["extractionLimit"] == 1000
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -273,10 +273,10 @@ class TestPerplexityThink:
         """Test successful think."""
         result = await perplexity_think(prompt="test prompt")
 
-        assert result.structured_content["model"] == "sonar"
-        assert len(result.structured_content["citations"]) == 2
-        assert result.structured_content["content"] == "Dummy answer"
-        assert result.structured_content["usage"]["cost"]["totalCost"] == 250
+        assert result["model"] == "sonar"
+        assert len(result["citations"]) == 2
+        assert result["content"] == "Dummy answer"
+        assert result["usage"]["cost"]["totalCost"] == 250
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

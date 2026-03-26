@@ -192,7 +192,10 @@ def test_convert_str_to_dragent_event_response() -> None:
     assert result.usage_metrics["total_tokens"] == 0
     assert result.events is not None
     assert len(result.events) == 1
-    assert result.events[0].delta == delta
+
+    # THEN event is a CustomEvent with the correct name and value
+    assert result.events[0].value["delta"] == delta
+    assert result.events[0].name == "DEFAULT_NAT_RESPONSE"
 
 
 # --- Various converters ---
