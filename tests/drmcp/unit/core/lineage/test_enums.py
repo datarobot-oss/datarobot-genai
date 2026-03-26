@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVars
 
 
@@ -32,3 +33,12 @@ class TestLRSEnvVars:
         lrs_env_var.get_os_env_value()
 
         mock_os_getenv.assert_called_with(lrs_env_var.name)
+
+    @pytest.mark.parametrize("lrs_env_var", [lrs_env_var for lrs_env_var in LRSEnvVars])
+    def test_get_os_env_value_raise_error(
+        self, mock_os_getenv: Mock, lrs_env_var: LRSEnvVars
+    ) -> None:
+        mock_os_getenv.return_value = None
+
+        with pytest.raises(LRSEnvVarIsNotSetError):
+            lrs_env_var.get_os_env_value()
