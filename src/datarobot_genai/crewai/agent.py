@@ -345,7 +345,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 delta=response_text,
                             ),
                             None,
-                            zero_metrics,
+                            usage_metrics,
                         )
 
                 yield (
