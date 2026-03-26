@@ -82,7 +82,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         result = super().process(step)
 
         if not self._step_matches_filter(step, self.config):
-            return result
+            return None
 
         try:
             payload = step.payload
