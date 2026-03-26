@@ -7,6 +7,7 @@ tasks:
       - echo "🧹 Running linters (check mode)..."
       - task: check-ruff-format
       - task: check-ruff
+      - task: no-common
       - task: mypy
     silent: true
 
@@ -47,4 +48,17 @@ tasks:
     desc: "Run ruff linter, applying formatting fixes."
     cmds:
       - uv run ruff format {{.PROJECT_SRC}} {{.TESTS_SRC}}
+    silent: true
+
+  no-common:
+    desc: "Check if we have any modules named common"
+    cmds:
+      - find {{.PROJECT_SRC}} -name "common.py" -print
+      - if [ $? -eq 0 ]; then
+          echo "Found common.py modules in the project"
+          exit 1
+        else
+          echo "No common.py modules found in the project"
+          exit 0
+        fi
     silent: true
