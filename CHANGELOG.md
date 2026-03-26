@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.8.13
 - Added base agent for retrieving and storing memory
+- Migrated to NAT 1.5: dependency pins, import path updates, async session manager override
 
 ## 0.8.12
 - Removed fastmcp dependency from drtools
