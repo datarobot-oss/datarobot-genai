@@ -29,7 +29,9 @@ without injecting headers.
 import os
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 
 import datarobot as dr
 import datarobot_predict.deployment as _dr_predict_deployment
@@ -40,6 +42,8 @@ from datarobot_genai.drmcp.core import clients
 from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
 from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
+from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
 from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
     test_create_prediction_result,
@@ -156,6 +160,13 @@ def _apply_prompt_stubs() -> None:
     prompt_register.get_datarobot_prompt_template_versions = _stub_prompt_template_versions
 
 
+def apply_lineage_manager_stubs() -> None:
+    FeatureFlag.is_mcp_tools_gallery_support_enabled = Mock()  # type: ignore[assignment]
+    LineageManager.__init__ = Mock(return_value=None)  # type: ignore[assignment]
+    LineageManager.sync_mcp_tools = AsyncMock()  # type: ignore[assignment]
+    LineageManager.sync_mcp_prompts = AsyncMock()  # type: ignore[assignment]
+
+
 def _apply_dr_client_stubs() -> None:
     """Replace the real DataRobot client with stubs (patches token + client for stdio)."""
     stub_dr = test_create_dr_client()
@@ -185,6 +196,7 @@ def main() -> None:
     """Run the integration test MCP server."""
     if os.environ.get("MCP_USE_CLIENT_STUBS", "true") == "true":
         _apply_dr_client_stubs()
+        apply_lineage_manager_stubs()
     elif os.environ.get("MCP_SERVER_NAME") == "integration":
         _patch_get_sdk_client_for_stdio()
 
