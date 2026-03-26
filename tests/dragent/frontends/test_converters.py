@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import Tool
 from ag_ui.core import UserMessage
@@ -178,25 +177,38 @@ def test_convert_chat_request_to_run_agent_input() -> None:
 # --- Output converters: str -> DRAgentEventResponse ---
 
 
-def test_convert_str_to_dragent_event_response() -> None:
-    # GIVEN a response string
-    delta = "streaming delta"
+def test_convert_str_to_dragent_event_response_first_chunk() -> None:
+    from datarobot_genai.dragent.frontends.converters import _text_message_started
 
-    # WHEN converting to DRAgentEventResponse
-    result = convert_str_to_dragent_event_response(delta)
+    # Reset per-request state
+    _text_message_started.set(False)
 
-    # THEN result has default usage_metrics and events
+    # WHEN converting the first chunk
+    result = convert_str_to_dragent_event_response("first chunk")
+
+    # THEN first call emits TextMessageStartEvent + TextMessageContentEvent
     assert isinstance(result, DRAgentEventResponse)
-    assert result.usage_metrics is not None
-    assert result.usage_metrics["prompt_tokens"] == 0
-    assert result.usage_metrics["completion_tokens"] == 0
-    assert result.usage_metrics["total_tokens"] == 0
-    assert result.events is not None
-    assert len(result.events) == 1
+    assert len(result.events) == 2
+    assert result.events[0].type.value == "TEXT_MESSAGE_START"
+    assert result.events[1].type.value == "TEXT_MESSAGE_CONTENT"
+    assert result.events[1].delta == "first chunk"
 
-    # THEN event is a text chunk event with the correct delta
-    assert isinstance(result.events[0], TextMessageChunkEvent)
-    assert result.events[0].delta == delta
+
+def test_convert_str_to_dragent_event_response_subsequent_chunks() -> None:
+    from datarobot_genai.dragent.frontends.converters import _text_message_started
+
+    # Reset and prime with first chunk
+    _text_message_started.set(False)
+    convert_str_to_dragent_event_response("first chunk")
+
+    # WHEN converting subsequent chunks
+    result = convert_str_to_dragent_event_response("second chunk")
+
+    # THEN only TextMessageContentEvent is emitted (no duplicate Start)
+    assert isinstance(result, DRAgentEventResponse)
+    assert len(result.events) == 1
+    assert result.events[0].type.value == "TEXT_MESSAGE_CONTENT"
+    assert result.events[0].delta == "second chunk"
 
 
 # --- Various converters ---

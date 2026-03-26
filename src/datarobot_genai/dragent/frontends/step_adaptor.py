@@ -210,6 +210,13 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(RunStartedEvent(run_id="", thread_id=""))
             events.append(StepStartedEvent(step_name=payload.name))
         elif payload.event_type == IntermediateStepType.WORKFLOW_END:
+            # Close the text message lifecycle started by the raw string converter.
+            # Import here to avoid circular dependency at module level.
+            from .converters import _text_message_started
+
+            if _text_message_started.get():
+                events.append(TextMessageEndEvent(message_id="default_nat_response"))
+                _text_message_started.set(False)
             events.append(StepFinishedEvent(step_name=payload.name))
             events.append(RunFinishedEvent(run_id="", thread_id=""))
         else:
@@ -287,13 +294,43 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_function(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
-        # Just track the function level so we can handle nested functions correctly
+        response_events: list[Event] = []
+
         if payload.event_type == IntermediateStepType.FUNCTION_START:
+            if payload.name != "<workflow>" and self.function_level > 0:
+                response_events.extend(
+                    [
+                        ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID),
+                        ToolCallArgsEvent(
+                            tool_call_id=payload.UUID,
+                            delta=self._serialize_tool_args(payload),
+                        ),
+                    ]
+                )
             self.function_level += 1
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
+            if payload.name != "<workflow>" and self.function_level > 1:
+                tool_output = payload.data.output
+                if tool_output is None:
+                    tool_output = ""
+
+                response_events.extend(
+                    [
+                        ToolCallEndEvent(tool_call_id=payload.UUID),
+                        ToolCallResultEvent(
+                            message_id=payload.UUID,
+                            tool_call_id=payload.UUID,
+                            content=GlobalTypeConverter.get().convert(tool_output, str),
+                            role="tool",
+                        ),
+                    ]
+                )
             self.function_level -= 1
         else:
             raise self._unknown_step_type(payload)
+
+        if response_events:
+            return DRAgentEventResponse(events=response_events)
 
         return None
 

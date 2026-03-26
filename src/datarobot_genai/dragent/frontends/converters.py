@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import logging
 
+from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageStartEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -78,16 +81,31 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 ## --- NAT chat completions -> dragent AG-UI ---
 
 
-# When NAT native agent is used it returns a string with the response in streaming mode
-# NAT 1.5 can stream plain string chunks without corresponding LLM intermediate
-# events, so expose them as AG-UI text chunks.
+# When NAT native agent is used it returns a string with the response in streaming mode.
+# NAT 1.5 native does not emit LLM intermediate events for the final answer, so the
+# raw string stream is the only source of the assistant text message.  We emit a proper
+# TextMessage lifecycle (Start on first chunk, Content on every chunk) so the frontend
+# can persist the message across page refreshes.  RunFinishedEvent from the workflow
+# acts as the implicit message end.
+#
+# ContextVar ensures per-request isolation in async/concurrent environments.
+_text_message_started: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_text_message_started", default=False
+)
+
+
 def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
+    events: list[Event] = []
+    if not _text_message_started.get():
+        events.append(TextMessageStartEvent(message_id="default_nat_response"))
+        _text_message_started.set(True)
+    events.append(TextMessageContentEvent(message_id="default_nat_response", delta=response))
     return DRAgentEventResponse(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        events=[TextMessageChunkEvent(message_id="default_nat_response", delta=response)],
+        events=events,
     )
 
 
