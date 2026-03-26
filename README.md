@@ -45,12 +45,16 @@ pip install "datarobot-genai[crewai,langgraph,llamaindex]"
   Available extras include: `crewai`, `langgraph`, `llamaindex`, `nat`, `drmcp`, `pydanticai`.
 
 ## Development
-Prerequisites: Python 3.10–3.13, uv, Task CLI, pre-commit.
+Prerequisites: Python 3.11–3.14, uv, Task CLI, pre-commit.
 ```bash
 uv sync --all-extras --dev
 pre-commit install
 task test
 ```
+
+### Semantic versioning
+Every change requires a patch version change. It also requires an entry to CHANGELOG.md.
+Changes breaking backward compatibility requires a minor version change.
 
 ### Test pypi
 To build and publish a dev version of a package, comment `/build` on a PR.
