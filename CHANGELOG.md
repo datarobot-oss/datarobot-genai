@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.13
+- Fixed prompt for calculator to make output for LlamaIndex agents stable
+
 ## 0.8.12
 - Removed fastmcp dependency from drtools
 - Fixed all unit tests to handle dict returns instead of ToolResult objects after refactoring
