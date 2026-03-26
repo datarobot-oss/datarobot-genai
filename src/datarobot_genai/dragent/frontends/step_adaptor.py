@@ -81,8 +81,22 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def process(self, step: IntermediateStep) -> ResponseSerializable | None:
         result = super().process(step)
 
+        # Close the text message lifecycle started by the raw string converter.
+        # This must happen regardless of step_adaptor mode since the converter
+        # fires independently of the step_adaptor filter.
+        if step.payload.event_type == IntermediateStepType.WORKFLOW_END:
+            from .converters import _text_message_started
+
+            if _text_message_started.get():
+                _text_message_started.set(False)
+                end_event = TextMessageEndEvent(message_id="default_nat_response")
+                if result is not None and hasattr(result, "events"):
+                    result.events.insert(0, end_event)
+                else:
+                    result = DRAgentEventResponse(events=[end_event])
+
         if not self._step_matches_filter(step, self.config):
-            return None
+            return result
 
         try:
             payload = step.payload
@@ -210,13 +224,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             events.append(RunStartedEvent(run_id="", thread_id=""))
             events.append(StepStartedEvent(step_name=payload.name))
         elif payload.event_type == IntermediateStepType.WORKFLOW_END:
-            # Close the text message lifecycle started by the raw string converter.
-            # Import here to avoid circular dependency at module level.
-            from .converters import _text_message_started
-
-            if _text_message_started.get():
-                events.append(TextMessageEndEvent(message_id="default_nat_response"))
-                _text_message_started.set(False)
             events.append(StepFinishedEvent(step_name=payload.name))
             events.append(RunFinishedEvent(run_id="", thread_id=""))
         else:
