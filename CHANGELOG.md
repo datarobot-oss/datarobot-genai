@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.8.15
 - Added AG-UI Events for CrewAI
 
+## 0.8.14
+- Isolated publish secrets to an environment
+
+## 0.8.13
+- Added base agent for retrieving and storing memory
+
 ## 0.8.12
 - Removed fastmcp dependency from drtools
 - Fixed all unit tests to handle dict returns instead of ToolResult objects after refactoring
