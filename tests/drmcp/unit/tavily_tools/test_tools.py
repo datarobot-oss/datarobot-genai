@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.clients.tavily import TavilyCrawlResults
-from datarobot_genai.drtools.clients.tavily import TavilyMapResults
-from datarobot_genai.drtools.clients.tavily import TavilySearchResults
+from datarobot_genai.drtools.core.clients.tavily import TavilyCrawlResults
+from datarobot_genai.drtools.core.clients.tavily import TavilyMapResults
+from datarobot_genai.drtools.core.clients.tavily import TavilySearchResults
 from datarobot_genai.drtools.tavily.tools import tavily_crawl
 from datarobot_genai.drtools.tavily.tools import tavily_map
 from datarobot_genai.drtools.tavily.tools import tavily_search
@@ -54,12 +54,11 @@ class TestTavilySearch:
             }
         )
 
-        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.search") as mock:
+        with patch("datarobot_genai.drtools.core.clients.tavily.TavilyClient.search") as mock:
             mock.return_value = mock_response
             result = await tavily_search(query="test query")
 
-        _, structured = result.to_mcp_result()
-        assert structured["resultCount"] == 1
+        assert result["resultCount"] == 1
 
     @pytest.mark.asyncio
     async def test_search_with_answer_and_images(self, mock_tavily_auth: None) -> None:
@@ -73,13 +72,12 @@ class TestTavilySearch:
             }
         )
 
-        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.search") as mock:
+        with patch("datarobot_genai.drtools.core.clients.tavily.TavilyClient.search") as mock:
             mock.return_value = mock_response
             result = await tavily_search(query="test", include_images=True, include_answer=True)
 
-        _, structured = result.to_mcp_result()
-        assert structured["answer"] == "AI summary"
-        assert len(structured["images"]) == 1
+        assert result["answer"] == "AI summary"
+        assert len(result["images"]) == 1
 
 
 class TestTavilyMap:
@@ -89,38 +87,31 @@ class TestTavilyMap:
     async def test_map_default(self, mock_tavily_auth: None) -> None:
         """Test map returns expected things."""
         mock_response = TavilyMapResults(
-            **{
-                "results": ["https://example.com/url1", "https://example.com/url2"],
-            }
+            results=["https://example.com/url1", "https://example.com/url2"], usage=None
         )
 
-        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.map_") as mock:
+        with patch("datarobot_genai.drtools.core.clients.tavily.TavilyClient.map_") as mock:
             mock.return_value = mock_response
             result = await tavily_map(url="https://example.com", include_usage=True)
 
-        _, structured = result.to_mcp_result()
-        assert structured["count"] == 2
-        assert len(structured["results"]) == 2
-        assert structured["usageCredits"] is None
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+        assert result["usageCredits"] is None
 
     @pytest.mark.asyncio
     async def test_map_with_include_usage(self, mock_tavily_auth: None) -> None:
         """Test map returns expected things."""
         mock_response = TavilyMapResults(
-            **{
-                "results": ["https://example.com/url1", "https://example.com/url2"],
-                "usage": {"credits": 4},
-            }
+            results=["https://example.com/url1", "https://example.com/url2"], usage={"credits": 4}
         )
 
-        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.map_") as mock:
+        with patch("datarobot_genai.drtools.core.clients.tavily.TavilyClient.map_") as mock:
             mock.return_value = mock_response
             result = await tavily_map(url="https://example.com", include_usage=True)
 
-        _, structured = result.to_mcp_result()
-        assert structured["count"] == 2
-        assert len(structured["results"]) == 2
-        assert structured["usageCredits"] == 4
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+        assert result["usageCredits"] == 4
 
 
 class TestTavilyCrawl:
@@ -142,11 +133,10 @@ class TestTavilyCrawl:
             }
         )
 
-        with patch("datarobot_genai.drtools.clients.tavily.TavilyClient.crawl") as mock:
+        with patch("datarobot_genai.drtools.core.clients.tavily.TavilyClient.crawl") as mock:
             mock.return_value = mock_response
             result = await tavily_crawl(url="https://example.com")
 
-        _, structured = result.to_mcp_result()
-        assert structured["baseUrl"] == "https://example.com"
-        assert structured["resultCount"] == 1
-        assert structured["results"][0]["url"] == "https://example.com/page1"
+        assert result["baseUrl"] == "https://example.com"
+        assert result["resultCount"] == 1
+        assert result["results"][0]["url"] == "https://example.com/page1"

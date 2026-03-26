@@ -11,14 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
 from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drtools.clients.jira import Issue
+from datarobot_genai.drtools.core.clients.jira import Issue
 from datarobot_genai.drtools.jira.tools import jira_create_issue
 from datarobot_genai.drtools.jira.tools import jira_get_issue
 from datarobot_genai.drtools.jira.tools import jira_search_issues
@@ -38,7 +37,7 @@ def get_atlassian_access_token_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_search_issues_mock() -> Iterator[list[Issue]]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.search_jira_issues"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.search_jira_issues"
     ) as jira_client_search_issues:
         issues = [
             Issue(
@@ -65,7 +64,7 @@ def jira_client_search_issues_mock() -> Iterator[list[Issue]]:
 @pytest.fixture
 def jira_client_search_issues_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.search_jira_issues"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.search_jira_issues"
     ) as jira_client_search_issue:
         jira_client_search_issue.side_effect = ValueError("Dummy error")
         yield
@@ -74,7 +73,7 @@ def jira_client_search_issues_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_get_issue_mock() -> Iterator[Issue]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.get_jira_issue"
     ) as jira_client_get_issue:
         issue = Issue(
             **{
@@ -99,7 +98,7 @@ def jira_client_get_issue_mock() -> Iterator[Issue]:
 @pytest.fixture
 def jira_client_get_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.get_jira_issue"
     ) as jira_client_get_issue:
         jira_client_get_issue.side_effect = ValueError("Dummy error")
         yield
@@ -108,7 +107,7 @@ def jira_client_get_issue_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_get_issue_types_mock() -> Iterator[dict[str, str]]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue_types"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.get_jira_issue_types"
     ) as jira_client_get_issue_types:
         issue_types = {"Bug": "1", "Story": "2"}
         jira_client_get_issue_types.return_value = issue_types
@@ -118,7 +117,7 @@ def jira_client_get_issue_types_mock() -> Iterator[dict[str, str]]:
 @pytest.fixture
 def jira_client_get_issue_types_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.get_jira_issue_types"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.get_jira_issue_types"
     ) as jira_client_get_issue_types:
         jira_client_get_issue_types.side_effect = ValueError("Dummy error")
         yield
@@ -127,7 +126,7 @@ def jira_client_get_issue_types_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_create_issue_mock() -> Iterator[str]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.create_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.create_jira_issue"
     ) as jira_client_create_issue:
         new_issue_key = "PROJ-123"
         jira_client_create_issue.return_value = new_issue_key
@@ -137,7 +136,7 @@ def jira_client_create_issue_mock() -> Iterator[str]:
 @pytest.fixture
 def jira_client_create_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.create_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.create_jira_issue"
     ) as jira_client_create_issue:
         jira_client_create_issue.side_effect = ValueError("Dummy error")
         yield
@@ -146,7 +145,7 @@ def jira_client_create_issue_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_update_issue_mock() -> Iterator[list[str]]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.update_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.update_jira_issue"
     ) as jira_client_update_issue:
         fields_list = ["summary"]
         jira_client_update_issue.return_value = fields_list
@@ -156,7 +155,7 @@ def jira_client_update_issue_mock() -> Iterator[list[str]]:
 @pytest.fixture
 def jira_client_update_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.update_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.update_jira_issue"
     ) as jira_client_update_issue:
         jira_client_update_issue.side_effect = ValueError("Dummy error")
         yield
@@ -165,7 +164,7 @@ def jira_client_update_issue_error_mock() -> Iterator[None]:
 @pytest.fixture
 def jira_client_get_available_transitions_mock() -> Iterator[dict[str, str]]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.get_available_jira_transitions"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.get_available_jira_transitions"
     ) as jira_client_get_available_transitions:
         avialble_transtions = {"Open": "1", "Closed": "2"}
         jira_client_get_available_transitions.return_value = avialble_transtions
@@ -175,7 +174,7 @@ def jira_client_get_available_transitions_mock() -> Iterator[dict[str, str]]:
 @pytest.fixture
 def jira_client_get_available_transitions_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.get_available_jira_transitions"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.get_available_jira_transitions"
     ) as jira_client_get_available_transitions:
         jira_client_get_available_transitions.side_effect = ValueError("Dummy error")
         yield
@@ -183,14 +182,14 @@ def jira_client_get_available_transitions_error_mock() -> Iterator[None]:
 
 @pytest.fixture
 def jira_client_transition_issue_mock() -> Iterator[None]:
-    with patch("datarobot_genai.drtools.clients.jira.JiraClient.transition_jira_issue"):
+    with patch("datarobot_genai.drtools.core.clients.jira.JiraClient.transition_jira_issue"):
         yield
 
 
 @pytest.fixture
 def jira_client_transition_issue_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.jira.JiraClient.transition_jira_issue"
+        "datarobot_genai.drtools.core.clients.jira.JiraClient.transition_jira_issue"
     ) as jira_client_transition_issue:
         jira_client_transition_issue.side_effect = ValueError("Dummy error")
         yield
@@ -206,9 +205,8 @@ class TestJiraSearchIssues:
         """Jira search issues -- happy path."""
         jql_query = "issuetype = Story AND project = PROJ AND summary ~ Dummy"
 
-        tool_result = await jira_search_issues(jql_query=jql_query)
+        result = await jira_search_issues(jql_query=jql_query)
 
-        content, structured_content = tool_result.to_mcp_result()
         expected = {
             "data": [
                 {
@@ -224,8 +222,7 @@ class TestJiraSearchIssues:
             ],
             "count": 1,
         }
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_jira_search_issues_when_error_in_client(
@@ -248,9 +245,8 @@ class TestJiraGetIssue:
         """Jira get issue -- happy path."""
         issue_key = "PROJ-123"
 
-        tool_result = await jira_get_issue(issue_key=issue_key)
+        result = await jira_get_issue(issue_key=issue_key)
 
-        content, structured_content = tool_result.to_mcp_result()
         expected = {
             "id": "123",
             "key": "PROJ-123",
@@ -261,8 +257,7 @@ class TestJiraGetIssue:
             "assigneeEmailAddress": "dummy@assignee.com",
             "reporterEmailAddress": "dummy@reporter.com",
         }
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_jira_get_issue_when_error_in_client(
@@ -291,14 +286,12 @@ class TestJiraCreateIssue:
         issue_type = "Bug"
         description = "Dummy description of bug"
 
-        tool_result = await jira_create_issue(
+        result = await jira_create_issue(
             project_key=project_key, summary=summary, issue_type=issue_type, description=description
         )
 
-        content, structured_content = tool_result.to_mcp_result()
         expected = {"newIssueKey": "PROJ-123", "projectKey": "PROJ"}
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_jira_create_issue_when_not_existing_issue_type(
@@ -373,14 +366,10 @@ class TestJiraUpdateIssue:
         issue_key = "PROJ-123"
         fields_to_update = {"summary": "New dummy summary"}
 
-        tool_result = await jira_update_issue(
-            issue_key=issue_key, fields_to_update=fields_to_update
-        )
+        result = await jira_update_issue(issue_key=issue_key, fields_to_update=fields_to_update)
 
-        content, structured_content = tool_result.to_mcp_result()
         expected = {"updatedIssueKey": "PROJ-123", "fields": jira_client_update_issue_mock}
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_jira_update_issue_when_error_in_client(
@@ -408,18 +397,14 @@ class TestJiraTransitionIssue:
         issue_key = "PROJ-123"
         transition_name = "Closed"
 
-        tool_result = await jira_transition_issue(
-            issue_key=issue_key, transition_name=transition_name
-        )
+        result = await jira_transition_issue(issue_key=issue_key, transition_name=transition_name)
 
-        content, structured_content = tool_result.to_mcp_result()
         expected = {
             "transitionedIssueKey": "PROJ-123",
             "newStatusName": "Closed",
             "newStatusId": "2",
         }
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_jira_transition_issue_when_not_existing_transitions_name(

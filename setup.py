@@ -110,11 +110,11 @@ drtools = [
     "datarobot>=3.10.0,<4.0.0",
     "datarobot-early-access==3.14.0.2026.3.18.162920",
     "aiohttp>=3.9.0,<4.0.0",
-    "fastmcp>=2.13.0.2,<3.0.0",
 ]
 
 # drmcp is standalone set of dependencies for MCP Server only (no core).
 drmcp = drtools + [
+    "fastmcp>=2.13.0.2,<3.0.0",
     "requests>=2.32.4,<3.0.0",
     "openai>=1.76.2,<2.0.0",
     "pyjwt>=2.10.1,<3.0.0",

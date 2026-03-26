@@ -18,20 +18,20 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Annotated
+from typing import Any
 
 import polars as pl
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
 from dateutil import parser as dateutil_parser
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 from pydantic import BaseModel
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.utils import predictions_result_response
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drtools.clients.s3 import get_s3_bucket_info
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.s3 import get_s3_bucket_info
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,10 @@ def _parse_datetime(value: str) -> datetime:
 
 @dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_by_ai_catalog_rt(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
-    | None = None,
-    dataset_id: Annotated[str, "ID of an AI Catalog item to use as input data"] | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
+    dataset_id: Annotated[str, "ID of an AI Catalog item to use as input data"],
     timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """
     Make real-time predictions using a DataRobot deployment and an AI Catalog dataset using the
     datarobot-predict library.
@@ -69,10 +68,10 @@ async def predict_by_ai_catalog_rt(
     will be returned as a resource id and S3 URL; smaller results will be returned inline as a CSV
     string.
     """
-    if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
-    if not dataset_id:
-        raise ToolError("Dataset ID must be provided")
+    if not deployment_id or not deployment_id.strip():
+        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+    if not dataset_id or not dataset_id.strip():
+        raise ToolError("Argument validation error: 'dataset_id' cannot be empty.")
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -120,13 +119,12 @@ async def predict_by_ai_catalog_rt(
         if isinstance(prediction_results, dict)
         else prediction_results.__dict__
     )
-    return ToolResult(structured_content=content)
+    return content
 
 
 @dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_realtime(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
-    | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
     file_path: Annotated[
         str,
         """Path to a CSV file to use as input data. For time series with forecast_point,
@@ -135,7 +133,7 @@ async def predict_realtime(
     | None = None,
     dataset: Annotated[
         str,
-        """CSV or JSON string representing the input data.
+        """CSV or JSON string representing the input data example: "a,b\\na value,b value\\n".
         If provided, this takes precedence over file_path.""",
     ]
     | None = None,
@@ -213,7 +211,7 @@ async def predict_realtime(
     ]
     | None = None,
     timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """
     Make real-time predictions using a DataRobot deployment and a local CSV file or a dataset
     string.
@@ -262,10 +260,14 @@ async def predict_realtime(
                         max_explanations="all", max_ngram_explanations="all",
                         passthrough_columns="document_id,customer_id")
     """
-    if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+    if not deployment_id or not deployment_id.strip():
+        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
     if not dataset and not file_path:
         raise ToolError("Either dataset or file_path must be provided")
+    if dataset is not None and (not dataset or not dataset.strip()):
+        raise ToolError("Argument validation error: 'dataset' cannot be empty.")
+    if file_path is not None and (not file_path or not file_path.strip()):
+        raise ToolError("Argument validation error: 'file_path' cannot be empty.")
 
     # Load input data from dataset string or file_path
     if dataset is not None:
@@ -361,4 +363,4 @@ async def predict_realtime(
         if isinstance(prediction_results, dict)
         else prediction_results.__dict__
     )
-    return ToolResult(structured_content=content)
+    return content

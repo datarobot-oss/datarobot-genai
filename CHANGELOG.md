@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.8.12
+## 0.8.13
 - Added AG-UI Events for CrewAI
+
+## 0.8.12
+- Removed fastmcp dependency from drtools
+- Fixed all unit tests to handle dict returns instead of ToolResult objects after refactoring
+- Removed ToolResult dependencies from test assertions and mock setups
+- Fixed import paths and lint errors across all test files
+- Updated test expectations to work with plain dictionary responses from tools
+- Updated helpers.py to use FastMCP's get_http_headers with safe import handling
 
 ## 0.8.11
 - Made build_workflow async

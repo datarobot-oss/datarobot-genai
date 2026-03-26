@@ -16,13 +16,12 @@
 
 import logging
 from typing import Annotated
-
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
+from typing import Any
 
 from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +29,16 @@ logger = logging.getLogger(__name__)
 @dr_mcp_integration_tool(tags={"use_case", "read", "list", "daria"})
 async def list_use_cases(
     *,
-    search: Annotated[str, "Optional search filter for use case names"] | None = None,
+    search: Annotated[str | None, "Optional search filter for use case names"] = None,
     limit: Annotated[int, "Maximum number of use cases to return"] = 100,
-) -> ToolResult:
+) -> dict[str, Any]:
     """List DataRobot use cases with optional search filter."""
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
+
+    if search is not None and (not search or not search.strip()):
+        raise ToolError("Argument validation error: 'search' cannot be empty.")
 
     params: dict = {"limit": limit}
     if search:
@@ -44,30 +46,31 @@ async def list_use_cases(
     response = rest_client.get("useCases/", params=params)
     items = response.json().get("data", [])
 
-    return ToolResult(
-        structured_content={
-            "use_cases": [
-                {"id": item["id"], "name": item.get("name", "Untitled")} for item in items
-            ],
-            "count": len(items),
-        },
-    )
+    return {
+        "use_cases": [{"id": item["id"], "name": item.get("name", "Untitled")} for item in items],
+        "count": len(items),
+    }
 
 
 @dr_mcp_integration_tool(tags={"use_case", "read", "assets", "daria"})
 async def list_use_case_assets(
     *,
-    use_case_id: Annotated[str, "The ID of a single DataRobot use case"] | None = None,
-    use_case_ids: Annotated[list[str], "List of use case IDs to fetch assets for"] | None = None,
-) -> ToolError | ToolResult:
+    use_case_id: Annotated[str | None, "The ID of a single DataRobot use case"] = None,
+    use_case_ids: Annotated[list[str] | None, "List of use case IDs to fetch assets for"] = None,
+) -> dict[str, Any]:
     """List datasets, deployments, and experiments belonging to one or more use cases."""
-    multi = use_case_ids is not None
     ids: list[str] = []
     if use_case_ids is not None:
         if not use_case_ids:
             raise ToolError("use_case_ids must not be empty.")
+        # Validate each ID in the list
+        for uc_id in use_case_ids:
+            if not uc_id or not uc_id.strip():
+                raise ToolError("Argument validation error: use_case IDs in list cannot be empty.")
         ids = use_case_ids
     elif use_case_id:
+        if not use_case_id or not use_case_id.strip():
+            raise ToolError("Argument validation error: 'use_case_id' cannot be empty.")
         ids = [use_case_id]
     else:
         raise ToolError("Either use_case_id or use_case_ids must be provided.")
@@ -108,7 +111,4 @@ async def list_use_case_assets(
 
         results.append(entry)
 
-    # use_case_id → flat dict; use_case_ids → always list format
-    if not multi:
-        return ToolResult(structured_content=results[0])
-    return ToolResult(structured_content={"use_cases": results, "count": len(results)})
+    return {"use_cases": results, "count": len(results)}
