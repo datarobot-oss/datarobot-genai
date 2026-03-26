@@ -46,7 +46,7 @@ from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
 )
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_template_versions
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_templates
-from datarobot_genai.drtools.clients import datarobot as tools_datarobot_client
+from datarobot_genai.drtools.core.clients import datarobot as tools_datarobot_client
 
 # Import elicitation test tool to register it with the MCP server
 try:
@@ -127,7 +127,7 @@ async def _get_datarobot_access_token_stdio_fallback() -> str:
 def _patch_get_sdk_client_for_stdio() -> None:
     """Patch get_sdk_client and get_datarobot_access_token for stdio (no headers)."""
     from datarobot_genai.drmcp.core import clients
-    from datarobot_genai.drtools.clients import datarobot as tools_datarobot_client
+    from datarobot_genai.drtools.core.clients import datarobot as tools_datarobot_client
 
     def get_sdk_client_with_credentials_fallback(headers_auth_only: bool = False) -> Any:
         try:

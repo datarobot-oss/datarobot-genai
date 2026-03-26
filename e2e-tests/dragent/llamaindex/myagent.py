@@ -35,7 +35,7 @@ class MyAgent(LlamaIndexAgent):
         super().__init__(**kwargs)
         self._llm = llm
 
-    def build_workflow(self) -> AgentWorkflow:
+    async def build_workflow(self) -> AgentWorkflow:
         planner = FunctionAgent(
             name="planner",
             description="Creates short bullet-point outlines",

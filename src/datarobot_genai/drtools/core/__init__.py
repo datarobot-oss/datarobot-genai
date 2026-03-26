@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc.
+# Copyright 2026 DataRobot, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-DataRobot Tools Library.
-
-A reusable library for building tools with DataRobot integration.
-
-Subpackages are loaded on first use to avoid pulling in unused dependencies.
-Import by full path, for example::
-
-    from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-    from datarobot_genai.drtools.dr_docs import search_datarobot_agentic_docs
-    from datarobot_genai.drtools.predictive import ...
-"""
+"""Core utilities and shared components for DataRobot tools."""

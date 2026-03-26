@@ -18,13 +18,13 @@ import logging
 from typing import Any
 from typing import Literal
 
-from fastmcp.exceptions import ToolError
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from tavily import AsyncTavilyClient
 
-from datarobot_genai.drtools.clients.helpers import get_api_key_from_headers
+from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.helpers import get_api_key_from_headers
 
 logger = logging.getLogger(__name__)
 

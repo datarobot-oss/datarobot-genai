@@ -28,12 +28,12 @@ package ``__init__``).
 
 import logging
 from typing import Annotated
-
-from fastmcp.tools.tool import ToolResult
+from typing import Any
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS
-from datarobot_genai.drtools.clients.dr_docs import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS
+from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.dr_docs.local_tools import (
     fetch_datarobot_doc_page as _fetch_datarobot_doc_page,
 )
@@ -57,7 +57,7 @@ async def search_datarobot_agentic_docs(
         int,
         f"Maximum number of documentation pages to return (allowable values: 1 to {MAX_RESULTS}).",
     ] = MAX_RESULTS_DEFAULT,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Search the DataRobot agentic-AI documentation for relevant pages.
 
@@ -76,8 +76,11 @@ async def search_datarobot_agentic_docs(
     Note:
         - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
     """
+    if not query or not query.strip():
+        raise ToolError("Argument validation error: 'query' cannot be empty.")
+
     result = await _search_datarobot_agentic_docs(query=query, max_results=max_results)
-    return ToolResult(structured_content=result)
+    return result
 
 
 @dr_mcp_integration_tool(tags={"datarobot", "docs", "documentation", "fetch", "read"})
@@ -88,7 +91,7 @@ async def fetch_datarobot_doc_page(
         "The full URL of the DataRobot documentation page to fetch. "
         "Must be a URL from docs.datarobot.com/en/docs/.",
     ],
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Fetch and extract the text content of a specific DataRobot documentation page.
 
@@ -103,5 +106,8 @@ async def fetch_datarobot_doc_page(
     Note:
         - Only works with English DataRobot documentation URLs (e.g. docs.datarobot.com/en/docs/).
     """
+    if not url or not url.strip():
+        raise ToolError("Argument validation error: 'url' cannot be empty.")
+
     result = await _fetch_datarobot_doc_page(url=url)
-    return ToolResult(structured_content=result)
+    return result

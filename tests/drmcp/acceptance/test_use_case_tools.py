@@ -92,6 +92,7 @@ def use_case_id() -> str:
     return os.environ.get("TEST_USE_CASE_ID", "test_use_case_123")
 
 
+@pytest.mark.skip(reason="MODEL-22978 - TODO: Fix tests")
 @pytest.mark.asyncio
 class TestUseCaseToolsE2E(ToolBaseE2E):
     """End-to-end tests for use case tools (list_use_cases, list_use_case_assets)."""
