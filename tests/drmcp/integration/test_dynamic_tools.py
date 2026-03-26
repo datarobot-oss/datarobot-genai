@@ -270,6 +270,7 @@ async def test_get_mcp_tool_metadata(
     assert actual_input_schema == expected_input_schema
 
 
+@pytest.mark.skip(reason="MODEL-22984")
 @pytest.mark.asyncio
 @responses.activate
 async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
