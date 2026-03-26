@@ -24,6 +24,7 @@ from pydantic import Field
 
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError
 from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.mcp_instance import register_prompt
@@ -57,8 +58,12 @@ async def register_prompts_from_datarobot_prompt_management() -> None:
             pass
 
     if prompts and FeatureFlag.is_mcp_tools_gallery_support_enabled():
-        linear_manager = LineageManager(mcp)
-        await linear_manager.sync_mcp_prompts()
+        try:
+            linear_manager = LineageManager(mcp)
+            await linear_manager.sync_mcp_prompts()
+        except LRSEnvVarIsNotSetError as error:
+            error_message = f"MCP item metadata is not sync. {str(error)}"
+            logger.warning(error_message)
 
 
 async def register_prompt_from_datarobot_prompt_management(
