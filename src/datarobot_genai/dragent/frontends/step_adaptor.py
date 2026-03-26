@@ -208,12 +208,12 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         if payload.event_type == IntermediateStepType.WORKFLOW_START:
             events.append(RunStartedEvent(run_id="", thread_id=""))
             events.append(StepStartedEvent(step_name=payload.name))
-            # Open the TextMessage lifecycle for the raw string stream from NAT native.
-            # The converter emits only TextMessageContentEvent (stateless); Start/End
-            # are managed here so there is no cross-component hidden state.
-            events.append(TextMessageStartEvent(message_id="default_nat_response"))
         elif payload.event_type == IntermediateStepType.WORKFLOW_END:
-            events.append(TextMessageEndEvent(message_id="default_nat_response"))
+            from .converters import _text_message_started
+
+            if _text_message_started.get():
+                events.append(TextMessageEndEvent(message_id="default_nat_response"))
+                _text_message_started.set(False)
             events.append(StepFinishedEvent(step_name=payload.name))
             events.append(RunFinishedEvent(run_id="", thread_id=""))
         else:
@@ -262,9 +262,14 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_tool(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
+        # When inside a nested function (function_level > 1), _handle_function
+        # already emits ToolCall events for the same invocation.  Skip TOOL
+        # events here to avoid duplicates (e.g. CrewAI emits both).
+        if self.function_level > 1:
+            return None
+
         events = []
 
-        # run id and thread id are set on the API level, should not be set here
         if payload.event_type == IntermediateStepType.TOOL_START:
             events.append(
                 ToolCallStartEvent(tool_call_name=payload.name, tool_call_id=payload.UUID)

@@ -177,15 +177,36 @@ def test_convert_chat_request_to_run_agent_input() -> None:
 # --- Output converters: str -> DRAgentEventResponse ---
 
 
-def test_convert_str_to_dragent_event_response() -> None:
-    # WHEN converting a chunk
-    result = convert_str_to_dragent_event_response("hello")
+def test_convert_str_to_dragent_event_response_first_chunk() -> None:
+    from datarobot_genai.dragent.frontends.converters import _text_message_started
 
-    # THEN only TextMessageContentEvent is emitted (stateless, no Start/End)
+    _text_message_started.set(False)
+
+    # WHEN converting the first chunk
+    result = convert_str_to_dragent_event_response("first chunk")
+
+    # THEN first call emits TextMessageStartEvent + TextMessageContentEvent
+    assert isinstance(result, DRAgentEventResponse)
+    assert len(result.events) == 2
+    assert result.events[0].type.value == "TEXT_MESSAGE_START"
+    assert result.events[1].type.value == "TEXT_MESSAGE_CONTENT"
+    assert result.events[1].delta == "first chunk"
+
+
+def test_convert_str_to_dragent_event_response_subsequent_chunks() -> None:
+    from datarobot_genai.dragent.frontends.converters import _text_message_started
+
+    _text_message_started.set(False)
+    convert_str_to_dragent_event_response("first chunk")
+
+    # WHEN converting subsequent chunks
+    result = convert_str_to_dragent_event_response("second chunk")
+
+    # THEN only TextMessageContentEvent is emitted (no duplicate Start)
     assert isinstance(result, DRAgentEventResponse)
     assert len(result.events) == 1
     assert result.events[0].type.value == "TEXT_MESSAGE_CONTENT"
-    assert result.events[0].delta == "hello"
+    assert result.events[0].delta == "second chunk"
 
 
 # --- Various converters ---
