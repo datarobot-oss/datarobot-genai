@@ -282,6 +282,22 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             await disabled_worker.add_routes(app, mock_builder)
             mock_a2a_worker_cls.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_add_routes_reapplies_custom_health_routes(
+        self, mock_builder, patch_super_add_routes
+    ) -> None:
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            disabled_worker = DRAgentFastApiFrontEndPluginWorker(config)
+        app = FastAPI()
+
+        with patch.object(
+            disabled_worker, "add_health_route", new_callable=AsyncMock
+        ) as mock_add_health_route:
+            await disabled_worker.add_routes(app, mock_builder)
+
+        mock_add_health_route.assert_awaited_once_with(app)
+
 
 class TestPerUserCompatibleAgentExecutor:
     @pytest.fixture

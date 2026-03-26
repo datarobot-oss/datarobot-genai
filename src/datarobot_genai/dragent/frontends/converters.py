@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import logging
 
-from ag_ui.core import CustomEvent
+from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageStartEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -79,16 +81,34 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 ## --- NAT chat completions -> dragent AG-UI ---
 
 
-# When NAT native agent is used it returns a string with the response in streaming mode
-# we don't need it: it is already returned from LLM events in StepAdaptor.
-# So we return it as a custom event just to keep the interface consistent.
+# In NAT 1.5, tool_calling_agent streams the final answer as raw str tokens
+# via _stream_fn (added in github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1595).
+# These raw strings pass through this converter and need AG-UI TextMessage
+# lifecycle events (Start/Content/End).
+#
+# TextMessageStartEvent MUST be bundled with the first content chunk (not emitted
+# earlier from the step adaptor) because the frontend expects Start to be immediately
+# followed by Content — a gap filled with tool-call events breaks persistence on
+# page refresh.  TextMessageEndEvent is emitted by the step adaptor on WORKFLOW_END.
+#
+# ContextVar ensures per-request isolation in async/concurrent environments.
+_text_message_started: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_text_message_started", default=False
+)
+
+
 def convert_str_to_dragent_event_response(
     response: str,
 ) -> DRAgentEventResponse:
+    events: list[Event] = []
+    if not _text_message_started.get():
+        events.append(TextMessageStartEvent(message_id="default_nat_response"))
+        _text_message_started.set(True)
+    events.append(TextMessageContentEvent(message_id="default_nat_response", delta=response))
     return DRAgentEventResponse(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
-        events=[CustomEvent(name="DEFAULT_NAT_RESPONSE", value={"delta": response})],
+        events=events,
     )
 
 

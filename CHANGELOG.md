@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.15
+- Migrated to NAT 1.5: dependency pins, import path updates, async session manager override
+
 ## 0.8.14
 - Isolated publish secrets to an environment
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -58,3 +59,31 @@ class TestDRAgentAGUISessionManager:
     ):
         schema = session_manager.get_workflow_streaming_output_schema()
         assert schema is DRAgentEventResponse
+
+    @pytest.mark.asyncio
+    async def test_set_metadata_from_http_request_awaits_base_and_sets_user_id(
+        self, session_manager
+    ) -> None:
+        request = MagicMock()
+        workflow_parent_tokens = (MagicMock(), MagicMock())
+        auth_context = MagicMock()
+        auth_context.user.id = "user-123"
+
+        with (
+            patch.object(
+                SessionManager,
+                "set_metadata_from_http_request",
+                new_callable=AsyncMock,
+                return_value=workflow_parent_tokens,
+            ) as mock_super,
+            patch(
+                "datarobot_genai.dragent.frontends.session._auth_context_handler.get_context",
+                return_value=auth_context,
+            ) as mock_get_context,
+        ):
+            result = await session_manager.set_metadata_from_http_request(request)
+
+        assert result == workflow_parent_tokens
+        mock_super.assert_awaited_once_with(request)
+        mock_get_context.assert_called_once_with(dict(request.headers))
+        assert session_manager._context_state.user_id.get() == "user-123"

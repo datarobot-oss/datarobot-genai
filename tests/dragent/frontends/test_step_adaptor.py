@@ -52,6 +52,9 @@ from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasonin
 
 @pytest.fixture
 def step_adaptor():
+    from datarobot_genai.dragent.frontends.converters import _text_message_started
+
+    _text_message_started.set(False)
     return DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig())
 
 
@@ -91,9 +94,6 @@ def intermediate_steps_ids():
         "agent_message_id": str(uuid.uuid4()),
         "planner_message_id": str(uuid.uuid4()),
         "writer_message_id": str(uuid.uuid4()),
-        "content_writer_tool_call_id": str(uuid.uuid4()),
-        "planner_tool_call_id": str(uuid.uuid4()),
-        "writer_tool_call_id": str(uuid.uuid4()),
     }
 
 
@@ -117,18 +117,23 @@ def payloads():
 
 @pytest.fixture
 def expected_responses(intermediate_steps_ids, payloads):
+    """Return expected AG-UI events for a pure NAT agent (FUNCTION events only, no TOOL events)."""
     return [
+        # WORKFLOW_START
         DRAgentEventResponse(
             events=[
                 RunStartedEvent(run_id="", thread_id=""),
                 StepStartedEvent(step_name="tool_calling_agent"),
             ]
         ),
+        # FUNCTION_START tool_calling_agent (root level → custom)
         DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # LLM_START agent
         DRAgentEventResponse(
             events=[TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"])],
             model="vertex_ai/claude-3-5-haiku@20241022",
         ),
+        # LLM_END agent
         DRAgentEventResponse(
             events=[
                 TextMessageContentEvent(
@@ -144,32 +149,33 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 300,
             },
         ),
+        # FUNCTION_START content_writer_pipeline (nested → tool call)
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
                     tool_call_name="content_writer_pipeline",
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"],
+                    tool_call_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
                 ),
                 ToolCallArgsEvent(
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"],
+                    tool_call_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
                     delta=payloads["tool_args_content_writer"],
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # FUNCTION_START planner (nested → tool call, args not valid JSON → "{}")
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
                     tool_call_name="planner",
-                    tool_call_id=intermediate_steps_ids["planner_tool_call_id"],
+                    tool_call_id="7d21befe-ed77-4c98-a7a5-149fe51bdc0f",
                 ),
                 ToolCallArgsEvent(
-                    tool_call_id=intermediate_steps_ids["planner_tool_call_id"],
-                    delta=payloads["tool_args_planner"],
+                    tool_call_id="7d21befe-ed77-4c98-a7a5-149fe51bdc0f",
+                    delta="{}",
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # LLM_START planner (nested → reasoning)
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["planner_message_id"]),
@@ -184,6 +190,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 500,
             },
         ),
+        # LLM_END planner
         DRAgentEventResponse(
             events=[
                 ReasoningMessageContentEvent(
@@ -195,31 +202,32 @@ def expected_responses(intermediate_steps_ids, payloads):
             ],
             model="claude-3-5-haiku@20241022",
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # FUNCTION_END planner (nested → tool result)
         DRAgentEventResponse(
             events=[
-                ToolCallEndEvent(tool_call_id=intermediate_steps_ids["planner_tool_call_id"]),
+                ToolCallEndEvent(tool_call_id="7d21befe-ed77-4c98-a7a5-149fe51bdc0f"),
                 ToolCallResultEvent(
-                    message_id=intermediate_steps_ids["planner_tool_call_id"],
-                    tool_call_id=intermediate_steps_ids["planner_tool_call_id"],
+                    message_id="7d21befe-ed77-4c98-a7a5-149fe51bdc0f",
+                    tool_call_id="7d21befe-ed77-4c98-a7a5-149fe51bdc0f",
                     content=payloads["planner_outline"],
                     role="tool",
                 ),
             ]
         ),
+        # FUNCTION_START writer (nested → tool call, args not valid JSON → "{}")
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
                     tool_call_name="writer",
-                    tool_call_id=intermediate_steps_ids["writer_tool_call_id"],
+                    tool_call_id="89873563-a998-4a6e-8970-4681d9fc82c0",
                 ),
                 ToolCallArgsEvent(
-                    tool_call_id=intermediate_steps_ids["writer_tool_call_id"],
-                    delta=json.dumps({"outline": payloads["planner_outline"]}),
+                    tool_call_id="89873563-a998-4a6e-8970-4681d9fc82c0",
+                    delta="{}",
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # LLM_START writer (nested → reasoning)
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["writer_message_id"]),
@@ -229,6 +237,7 @@ def expected_responses(intermediate_steps_ids, payloads):
             ],
             model="vertex_ai/claude-3-5-haiku@20241022",
         ),
+        # LLM_END writer
         DRAgentEventResponse(
             events=[
                 ReasoningMessageContentEvent(
@@ -245,33 +254,34 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 700,
             },
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # FUNCTION_END writer (nested → tool result)
         DRAgentEventResponse(
             events=[
-                ToolCallEndEvent(tool_call_id=intermediate_steps_ids["writer_tool_call_id"]),
+                ToolCallEndEvent(tool_call_id="89873563-a998-4a6e-8970-4681d9fc82c0"),
                 ToolCallResultEvent(
-                    message_id=intermediate_steps_ids["writer_tool_call_id"],
-                    tool_call_id=intermediate_steps_ids["writer_tool_call_id"],
+                    message_id="89873563-a998-4a6e-8970-4681d9fc82c0",
+                    tool_call_id="89873563-a998-4a6e-8970-4681d9fc82c0",
                     content=payloads["writer_content"],
                     role="tool",
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # FUNCTION_END content_writer_pipeline (nested → tool result)
         DRAgentEventResponse(
             events=[
-                ToolCallEndEvent(
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"]
-                ),
+                ToolCallEndEvent(tool_call_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70"),
                 ToolCallResultEvent(
-                    message_id=intermediate_steps_ids["content_writer_tool_call_id"],
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"],
+                    message_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
+                    tool_call_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
                     content=payloads["writer_content"],
                     role="tool",
                 ),
             ]
         ),
+        # FUNCTION_END tool_calling_agent (root level → custom)
         DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # WORKFLOW_END — no TextMessageEndEvent because _text_message_started is
+        # False in this test (no string chunks went through the converter).
         DRAgentEventResponse(
             events=[
                 StepFinishedEvent(step_name="tool_calling_agent"),
@@ -336,7 +346,7 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                 data=StreamEventData(input=None, output=None),
             ),
         ),
-        # LLM_START (agent)
+        # LLM_START (agent - root level)
         IntermediateStep(
             parent_id="31d55980-fc9c-453d-b3b3-934963938bd9",
             function_ancestry=agent_ancestry,
@@ -376,30 +386,9 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                 ),
             ),
         ),
-        # TOOL_START content_writer_pipeline
+        # FUNCTION_START content_writer_pipeline (nested tool call)
         IntermediateStep(
             parent_id="31d55980-fc9c-453d-b3b3-934963938bd9",
-            function_ancestry=agent_ancestry,
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.TOOL_START,
-                name="content_writer_pipeline",
-                UUID=intermediate_steps_ids["content_writer_tool_call_id"],
-                data=StreamEventData(
-                    input=payloads["tool_args_content_writer"],
-                    output=None,
-                ),
-                metadata=TraceMetadata(
-                    tool_inputs=json.loads(payloads["tool_args_content_writer"]),
-                    tool_info={
-                        "name": "content_writer_pipeline",
-                        "description": "A tool that plans and writes content.",
-                    },
-                ),
-            ),
-        ),
-        # FUNCTION_START content_writer_pipeline
-        IntermediateStep(
-            parent_id=intermediate_steps_ids["content_writer_tool_call_id"],
             function_ancestry=pipeline_ancestry,
             payload=IntermediateStepPayload(
                 event_type=IntermediateStepType.FUNCTION_START,
@@ -411,27 +400,9 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                 ),
             ),
         ),
-        # TOOL_START planner
+        # FUNCTION_START planner (nested tool call)
         IntermediateStep(
             parent_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
-            function_ancestry=pipeline_ancestry,
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.TOOL_START,
-                name="planner",
-                UUID=intermediate_steps_ids["planner_tool_call_id"],
-                data=StreamEventData(
-                    input="Write a detailed description of an AI assistant.",
-                    output=None,
-                ),
-                metadata=TraceMetadata(
-                    tool_inputs={"input": "Write a detailed description of an AI assistant."},
-                    tool_info={"name": "planner", "description": "planner"},
-                ),
-            ),
-        ),
-        # FUNCTION_START planner
-        IntermediateStep(
-            parent_id=intermediate_steps_ids["planner_tool_call_id"],
             function_ancestry=planner_ancestry,
             payload=IntermediateStepPayload(
                 event_type=IntermediateStepType.FUNCTION_START,
@@ -485,7 +456,7 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
         ),
         # FUNCTION_END planner
         IntermediateStep(
-            parent_id=intermediate_steps_ids["planner_tool_call_id"],
+            parent_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
             function_ancestry=planner_ancestry,
             payload=IntermediateStepPayload(
                 event_type=IntermediateStepType.FUNCTION_END,
@@ -497,39 +468,9 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                 ),
             ),
         ),
-        # TOOL_END planner
+        # FUNCTION_START writer (nested tool call)
         IntermediateStep(
             parent_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
-            function_ancestry=pipeline_ancestry,
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.TOOL_END,
-                name="planner",
-                UUID=intermediate_steps_ids["planner_tool_call_id"],
-                data=StreamEventData(
-                    input="Write a detailed description of an AI assistant.",
-                    output=payloads["planner_outline"],
-                ),
-                metadata=TraceMetadata(tool_outputs=payloads["planner_outline"]),
-            ),
-        ),
-        # TOOL_START writer
-        IntermediateStep(
-            parent_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
-            function_ancestry=pipeline_ancestry,
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.TOOL_START,
-                name="writer",
-                UUID=intermediate_steps_ids["writer_tool_call_id"],
-                data=StreamEventData(input=payloads["planner_outline"], output=None),
-                metadata=TraceMetadata(
-                    tool_inputs={"outline": payloads["planner_outline"]},
-                    tool_info={"name": "writer", "description": "writer"},
-                ),
-            ),
-        ),
-        # FUNCTION_START writer
-        IntermediateStep(
-            parent_id=intermediate_steps_ids["writer_tool_call_id"],
             function_ancestry=writer_ancestry,
             payload=IntermediateStepPayload(
                 event_type=IntermediateStepType.FUNCTION_START,
@@ -580,7 +521,7 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
         ),
         # FUNCTION_END writer
         IntermediateStep(
-            parent_id="019c7ba7-6881-7f31-ad5a-0b135aa558b7",
+            parent_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
             function_ancestry=writer_ancestry,
             payload=IntermediateStepPayload(
                 event_type=IntermediateStepType.FUNCTION_END,
@@ -591,23 +532,9 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                 ),
             ),
         ),
-        # TOOL_END writer
-        IntermediateStep(
-            parent_id="33f4f8be-ff88-41e1-9b0f-0ecc4b95fc70",
-            function_ancestry=pipeline_ancestry,
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.TOOL_END,
-                name="writer",
-                UUID=intermediate_steps_ids["writer_tool_call_id"],
-                data=StreamEventData(
-                    input=payloads["planner_outline"], output=payloads["writer_content"]
-                ),
-                metadata=TraceMetadata(tool_outputs=payloads["writer_content"]),
-            ),
-        ),
         # FUNCTION_END content_writer_pipeline
         IntermediateStep(
-            parent_id="019c7ba7-4f3c-7073-ae6d-fbb39f4abf73",
+            parent_id="31d55980-fc9c-453d-b3b3-934963938bd9",
             function_ancestry=pipeline_ancestry,
             payload=IntermediateStepPayload(
                 event_type=IntermediateStepType.FUNCTION_END,
@@ -617,21 +544,6 @@ def intermediate_steps_for_nested_reasoning(intermediate_steps_ids, payloads):
                     input={"input_message": "Write a detailed description of an AI assistant."},
                     output=payloads["writer_content"],
                 ),
-            ),
-        ),
-        # TOOL_END content_writer_pipeline (back at agent)
-        IntermediateStep(
-            parent_id="31d55980-fc9c-453d-b3b3-934963938bd9",
-            function_ancestry=agent_ancestry,
-            payload=IntermediateStepPayload(
-                event_type=IntermediateStepType.TOOL_END,
-                name="content_writer_pipeline",
-                UUID=intermediate_steps_ids["content_writer_tool_call_id"],
-                data=StreamEventData(
-                    input="{'input_message': \"...\"}",
-                    output=payloads["writer_content"],
-                ),
-                metadata=TraceMetadata(tool_outputs=payloads["writer_content"]),
             ),
         ),
         # FUNCTION_END tool_calling_agent
