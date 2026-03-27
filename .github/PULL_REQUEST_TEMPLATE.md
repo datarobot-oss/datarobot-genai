@@ -15,6 +15,7 @@ the review may happen while you are asleep / otherwise not able to respond quick
 ## Checklist
 - [ ] Reviewed [guideline](https://datarobot.atlassian.net/wiki/spaces/BUZOK/pages/7305920528/REVIEW+BEFORE+COMMIT+Working+with+agentic+starter+application+and+its+components)
 - [ ] Updated Changelog
+- [ ] New tools in `src/datarobot_genai/drtools/` require to add `integration` tests in `tests/drmcp/integration/` and `acceptance` tests in `tests/drmcp/acceptance/` (this is a MUST)
 
 <!-- Recommended Additional Sections:
 ## SCREENSHOTS
