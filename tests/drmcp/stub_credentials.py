@@ -16,7 +16,7 @@
 
 import os
 
-from datarobot_genai.drmcp.core.constants import DEFAULT_DATAROBOT_ENDPOINT
+from datarobot_genai.drtools.core.constants import DEFAULT_DATAROBOT_ENDPOINT
 
 STUB_DATAROBOT_API_TOKEN = "test-token"
 

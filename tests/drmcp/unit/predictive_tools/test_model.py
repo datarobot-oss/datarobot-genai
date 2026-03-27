@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
-from fastmcp.exceptions import ToolError
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import model
 from datarobot_genai.drtools.predictive.model import ModelEncoder
 from datarobot_genai.drtools.predictive.model import model_to_dict
@@ -71,9 +71,7 @@ async def test_get_best_model_no_models() -> None:
     p1, p2 = _patch_model_client(mock_client)
     with p1, p2 as mock_drc:
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(
-            ToolError, match="Error in get_best_model: ToolError: No models found for this project."
-        ):
+        with pytest.raises(ToolError, match="No models found for this project."):
             await model.get_best_model(project_id="pid", metric="AUC")
 
 
@@ -84,9 +82,7 @@ async def test_get_best_model_project_not_found() -> None:
     p1, p2 = _patch_model_client(mock_client)
     with p1, p2 as mock_drc:
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(
-            ToolError, match="Error in get_best_model: ToolError: Project with ID pid not found."
-        ):
+        with pytest.raises(ToolError, match="Project with ID pid not found."):
             await model.get_best_model(project_id="pid", metric="AUC")
 
 
@@ -99,7 +95,7 @@ async def test_get_best_model_error() -> None:
     ):
         with pytest.raises(Exception) as exc_info:
             await model.get_best_model(project_id="pid", metric="AUC")
-        assert "Error in get_best_model: Exception: fail" == str(exc_info.value)
+        assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -141,9 +137,7 @@ async def test_score_dataset_with_model_project_not_found() -> None:
             await model.score_dataset_with_model(
                 project_id=project_id, model_id="mid", dataset_url="url"
             )
-    assert "Error in score_dataset_with_model: Exception: " + exception_message == str(
-        exc_info.value
-    )
+    assert exception_message == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -161,9 +155,7 @@ async def test_score_dataset_with_model_model_not_found() -> None:
             await model.score_dataset_with_model(
                 project_id="pid", model_id="mid", dataset_url="url"
             )
-    assert "Error in score_dataset_with_model: Exception: " + exception_message == str(
-        exc_info.value
-    )
+    assert exception_message == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -177,7 +169,7 @@ async def test_score_dataset_with_model_error() -> None:
             await model.score_dataset_with_model(
                 project_id="pid", model_id="mid", dataset_url="url"
             )
-        assert "Error in score_dataset_with_model: Exception: fail" == str(exc_info.value)
+        assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -209,14 +201,14 @@ async def test_get_model_details_success() -> None:
 @pytest.mark.asyncio
 async def test_get_model_details_missing_project_id() -> None:
     """Required param project_id is enforced by signature (wrapped as ToolError)."""
-    with pytest.raises(ToolError, match="project_id"):
+    with pytest.raises(TypeError, match="project_id"):
         await model.get_model_details(model_id="mid")
 
 
 @pytest.mark.asyncio
 async def test_get_model_details_missing_model_id() -> None:
     """Required param model_id is enforced by signature (wrapped as ToolError)."""
-    with pytest.raises(ToolError, match="model_id"):
+    with pytest.raises(TypeError, match="model_id"):
         await model.get_model_details(project_id="pid")
 
 
@@ -306,7 +298,7 @@ async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_is_eligible_for_timeseries_training_missing_params() -> None:
-    with pytest.raises(ToolError, match="Error in is_eligible_for_timeseries_training"):
+    with pytest.raises(TypeError, match="dataset_id"):
         await model.is_eligible_for_timeseries_training(
             datetime_column="date", target_column="target"
         )

@@ -19,12 +19,12 @@ from typing import Any
 
 import datarobot as dr
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.core.clients import get_credentials
-from datarobot_genai.drmcp.core.utils import generate_presigned_url
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.s3 import generate_presigned_url
 from datarobot_genai.drtools.core.clients.s3 import get_s3_bucket_info
+from datarobot_genai.drtools.core.credentials import get_credentials
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ def wait_for_preds_and_cache_results(
     return _handle_prediction_resource(job, bucket, key, deployment_id, input_desc)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@tool_metadata(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_file_path(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
     file_path: Annotated[str, "Path to a CSV file to use as input data."],
@@ -127,7 +127,7 @@ async def predict_by_file_path(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@tool_metadata(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_ai_catalog(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
     dataset_id: Annotated[str, "The ID of the AI Catalog dataset to use for prediction"],
@@ -162,7 +162,7 @@ async def predict_by_ai_catalog(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@tool_metadata(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_from_project_data(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
     project_id: Annotated[str, "The ID of the DataRobot project to use for prediction"],

@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import project
 
 
@@ -73,7 +73,7 @@ async def test_list_projects_error() -> None:
     ):
         with pytest.raises(Exception) as exc_info:
             await project.list_projects()
-        assert "Error in list_projects: Exception: fail" == str(exc_info.value)
+        assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -122,8 +122,7 @@ async def test_get_project_dataset_by_name_not_found() -> None:
         with pytest.raises(ToolError) as exc_info:
             await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
     assert (
-        str(exc_info.value) == "Error in get_project_dataset_by_name: ToolError: Dataset with name "
-        "containing 'training' not found in project pid."
+        str(exc_info.value) == "Dataset with name containing 'training' not found in project pid."
     )
 
 
@@ -136,4 +135,4 @@ async def test_get_project_dataset_by_name_error() -> None:
     ):
         with pytest.raises(Exception) as exc_info:
             await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
-        assert "Error in get_project_dataset_by_name: Exception: fail" == str(exc_info.value)
+        assert "fail" == str(exc_info.value)

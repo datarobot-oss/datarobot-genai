@@ -18,8 +18,9 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
-from fastmcp.exceptions import ToolError
+from datarobot.models.data_store import DataStoreParameters
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import data
 
 
@@ -106,10 +107,7 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
 
         with pytest.raises(
             ToolError,
-            match=(
-                "Error in upload_dataset_to_ai_catalog: ToolError: "
-                "Invalid file URL: https:notavalidurl/somefile.csv"
-            ),
+            match="Invalid file URL: https:notavalidurl/somefile.csv",
         ):
             await data.upload_dataset_to_ai_catalog(file_url="https:notavalidurl/somefile.csv")
 
@@ -126,10 +124,7 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     ):
         with pytest.raises(
             ToolError,
-            match=(
-                "Error in upload_dataset_to_ai_catalog: ToolError: "
-                "Either file_path or file_url must be provided."
-            ),
+            match="Either file_path or file_url must be provided.",
         ):
             await data.upload_dataset_to_ai_catalog()
 
@@ -146,10 +141,7 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
     ):
         with pytest.raises(
             ToolError,
-            match=(
-                "Error in upload_dataset_to_ai_catalog: ToolError: "
-                "Please provide either file_path or file_url, not both."
-            ),
+            match="Please provide either file_path or file_url, not both.",
         ):
             await data.upload_dataset_to_ai_catalog(
                 file_path="somefile.csv", file_url="https://example.com/somefile.csv"
@@ -169,7 +161,7 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
     ):
         with pytest.raises(
             ToolError,
-            match="Error in upload_dataset_to_ai_catalog: ToolError: File not found: nofile.csv",
+            match="File not found: nofile.csv",
         ):
             await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
 
@@ -321,6 +313,39 @@ async def test_list_datastores_success() -> None:
         assert isinstance(result, dict)
         assert result["count"] == 1
         assert result["datastores"][0]["id"] == "store1"
+
+
+@pytest.mark.asyncio
+async def test_list_datastores_serializes_sdk_params() -> None:
+    """SDK returns DataStoreParameters objects; tool output must be JSON-serializable."""
+    params = DataStoreParameters(
+        driver_id="pg",
+        jdbc_url="jdbc:postgresql://host/db",
+        fields=None,
+        connector_id=None,
+    )
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_ds = MagicMock()
+        mock_ds.id = "store1"
+        mock_ds.canonical_name = "My Store"
+        mock_ds.creator_id = "user1"
+        mock_ds.params = params
+        mock_client.DataStore.list.return_value = [mock_ds]
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.list_datastores()
+        assert result["datastores"][0]["params"] == {
+            "driver_id": "pg",
+            "jdbc_url": "jdbc:postgresql://host/db",
+        }
 
 
 @pytest.mark.asyncio

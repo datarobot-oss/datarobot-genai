@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from fastmcp.exceptions import ToolError
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import training
 
 
@@ -94,6 +94,7 @@ async def test_suggest_use_cases() -> None:
         patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
         patch(
             "datarobot_genai.drtools.predictive.training.analyze_dataset",
+            new_callable=AsyncMock,
             return_value=mock_insights,
         ),
     ):
@@ -136,6 +137,7 @@ async def test_get_exploratory_insights() -> None:
         patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
         patch(
             "datarobot_genai.drtools.predictive.training.analyze_dataset",
+            new_callable=AsyncMock,
             return_value=mock_insights,
         ),
     ):
@@ -344,20 +346,14 @@ async def test_start_autopilot_validation() -> None:
         mock_drc.return_value.get_client.return_value = MagicMock()
         with pytest.raises(
             ToolError,
-            match=(
-                "Error in start_autopilot: ToolError: "
-                "Either dataset_url or dataset_id must be provided"
-            ),
+            match="Either dataset_url or dataset_id must be provided",
         ):
             await training.start_autopilot(target="target")
 
         # Test conflicting dataset inputs
         with pytest.raises(
             ToolError,
-            match=(
-                "Error in start_autopilot: ToolError: "
-                "Please provide either dataset_url or dataset_id, not both"
-            ),
+            match="Please provide either dataset_url or dataset_id, not both",
         ):
             await training.start_autopilot(
                 target="target",
@@ -368,7 +364,7 @@ async def test_start_autopilot_validation() -> None:
         # Test missing target
         with pytest.raises(
             ToolError,
-            match="Error in start_autopilot: ToolError: Target variable must be specified",
+            match="Target variable must be specified",
         ):
             await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
 

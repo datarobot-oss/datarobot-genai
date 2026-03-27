@@ -22,9 +22,9 @@ from unittest.mock import patch
 
 import pytest
 from dotenv import load_dotenv
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drtools.core.clients.datarobot import deploy_custom_model_impl
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import deployment
 
 
@@ -76,9 +76,9 @@ async def test_list_deployments_error() -> None:
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
-        with pytest.raises(ToolError) as exc_info:
+        with pytest.raises(Exception) as exc_info:
             await deployment.list_deployments()
-        assert "Error in list_deployments: Exception: fail" == str(exc_info.value)
+        assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -115,12 +115,9 @@ async def test_get_model_info_from_deployment_not_found() -> None:
         patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(ToolError) as exc_info:
+        with pytest.raises(Exception) as exc_info:
             await deployment.get_model_info_from_deployment(deployment_id="dep_id")
-        assert (
-            "Error in get_model_info_from_deployment: Exception: 404 client error: "
-            "{'message': 'Not Found'}" == str(exc_info.value)
-        )
+        assert "404 client error: {'message': 'Not Found'}" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -130,9 +127,9 @@ async def test_get_model_info_from_deployment_error() -> None:
         new_callable=AsyncMock,
         side_effect=Exception("fail"),
     ):
-        with pytest.raises(ToolError) as exc_info:
+        with pytest.raises(Exception) as exc_info:
             await deployment.get_model_info_from_deployment(deployment_id="dep_id")
-        assert "Error in get_model_info_from_deployment: Exception: fail" == str(exc_info.value)
+        assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -189,7 +186,7 @@ async def test_deploy_model_error() -> None:
         patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(ToolError) as exc_info:
+        with pytest.raises(Exception) as exc_info:
             await deployment.deploy_model(model_id="model123", label="Test Deployment")
         assert "fail servers" in str(exc_info.value)
 
@@ -223,7 +220,7 @@ async def test_get_prediction_history_success() -> None:
 
 @pytest.mark.asyncio
 async def test_get_prediction_history_missing_id() -> None:
-    with pytest.raises(ToolError, match=".*deployment_id.*"):
+    with pytest.raises(TypeError, match="deployment_id"):
         await deployment.get_prediction_history()
 
 
@@ -265,19 +262,17 @@ def _custom_model_fixture_dir() -> str:
 
 @pytest.mark.asyncio
 async def test_deploy_custom_model_validation_missing_model_folder() -> None:
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(TypeError, match="model_folder"):
         await deployment.deploy_custom_model(name="x", target_type="Binary", target_name="t")
-    assert "model_folder" in str(exc_info.value).lower() or "missing" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio
 async def test_deploy_custom_model_validation_missing_name() -> None:
     folder = _custom_model_fixture_dir()
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(TypeError, match="name"):
         await deployment.deploy_custom_model(
             model_folder=folder, target_type="Binary", target_name="t"
         )
-    assert "name" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio

@@ -1157,7 +1157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.8.13"
+version = "0.8.15"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1254,7 +1254,7 @@ drmcp = [
     { name = "aiohttp-retry" },
     { name = "beautifulsoup4" },
     { name = "boto3" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-asgi-middleware" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1294,7 +1294,8 @@ drmcp = [
 drtools = [
     { name = "aiohttp" },
     { name = "beautifulsoup4" },
-    { name = "datarobot" },
+    { name = "boto3" },
+    { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
     { name = "httpx" },
@@ -1433,6 +1434,7 @@ requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
+    { name = "boto3", marker = "extra == 'drtools'", specifier = ">=1.34.0,<2.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.1.0,<2.0.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
     { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },
@@ -1444,6 +1446,8 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },

@@ -15,13 +15,13 @@ from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drtools.core.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveError
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveFile
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveFileContent
 from datarobot_genai.drtools.core.clients.gdrive import PaginatedResult
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drtools.gdrive.tools import gdrive_find_contents
 from datarobot_genai.drtools.gdrive.tools import gdrive_manage_access
@@ -235,7 +235,7 @@ class TestGdriveReadContent:
             "datarobot_genai.drtools.core.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.side_effect = GoogleDriveError("File with ID 'nonexistent' not found.")
-            with pytest.raises(ToolError, match="not found"):
+            with pytest.raises(GoogleDriveError, match="not found"):
                 await gdrive_read_content(file_id="nonexistent")
 
     @pytest.mark.asyncio
@@ -251,7 +251,7 @@ class TestGdriveReadContent:
                 "Binary files are not supported for reading. "
                 "File 'photo.jpg' has MIME type 'image/jpeg'."
             )
-            with pytest.raises(ToolError, match="Binary files are not supported"):
+            with pytest.raises(GoogleDriveError, match="Binary files are not supported"):
                 await gdrive_read_content(file_id="img123")
 
 
@@ -396,7 +396,7 @@ class TestGdriveCreateFile:
             "datarobot_genai.drtools.core.clients.gdrive.GoogleDriveClient.create_file"
         ) as mock:
             mock.side_effect = GoogleDriveError("Parent folder not found.")
-            with pytest.raises(ToolError, match="Parent folder not found"):
+            with pytest.raises(GoogleDriveError, match="Parent folder not found"):
                 await gdrive_create_file(
                     name="file.txt", mime_type="text/plain", parent_id="nonexistent"
                 )
@@ -509,7 +509,7 @@ class TestGdriveManageAccess:
     ) -> None:
         """Gdrive manage access -- error in client."""
         error_msg = "Dummy Drive API Error."
-        with pytest.raises(ToolError, match=error_msg):
+        with pytest.raises(GoogleDriveError, match=error_msg):
             with patch(
                 "datarobot_genai.drtools.core.clients.gdrive.GoogleDriveClient.manage_access"
             ) as mock:
@@ -583,5 +583,5 @@ class TestGdriveUpdateMetadata:
         gdrive_client_update_file_metadata_error_mock: None,
     ) -> None:
         """Gdrive update metadata -- error in client."""
-        with pytest.raises(ToolError, match="not found"):
+        with pytest.raises(GoogleDriveError, match="not found"):
             await gdrive_update_metadata(file_id="nonexistent", new_name="New.txt")

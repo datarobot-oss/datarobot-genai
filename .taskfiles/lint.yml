@@ -8,6 +8,7 @@ tasks:
       - task: check-ruff-format
       - task: check-ruff
       - task: mypy
+      - task: check-imports
     silent: true
 
   mypy:
@@ -47,4 +48,11 @@ tasks:
     desc: "Run ruff linter, applying formatting fixes."
     cmds:
       - uv run ruff format {{.PROJECT_SRC}} {{.TESTS_SRC}}
+    silent: true
+
+  check-imports:
+    desc: "Check import restrictions"
+    cmds:
+      - echo "Checking import restrictions..."
+      - uv run python scripts/check_imports.py
     silent: true
