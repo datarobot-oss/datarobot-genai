@@ -89,7 +89,7 @@ class ImportChecker(ast.NodeVisitor):
                             (lineno, f"drtools cannot import from '{forbidden}' (found: {module_name})")
                         )
             
-            # Rules for drmcp
+            # Check if the import is local and allowed
             allowed_local = self.config["drtools_allowed_subpackages"]
             if module_name.startswith("datarobot_genai."):
                 # Extract the subpackage
