@@ -19,18 +19,23 @@ creating any dependency on drmcp. The metadata can be discovered and used
 by drmcp to register the tools.
 """
 
+import inspect
+from collections.abc import Awaitable
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
+from typing import ParamSpec
 from typing import TypeVar
+from typing import cast
 
-T = TypeVar("T")
+P = ParamSpec("P")
+R = TypeVar("R")
 
 # Global registry to store tool metadata
 _TOOL_REGISTRY: list[tuple[Callable, dict[str, Any]]] = []
 
 
-def tool_metadata(**metadata: Any) -> Callable[[Callable[..., T]], Callable[..., T]]:
+def tool_metadata(**metadata: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Store tool metadata to a function without MCP registration.
 
     This decorator stores the function and its metadata in a registry that can be
@@ -44,19 +49,29 @@ def tool_metadata(**metadata: Any) -> Callable[[Callable[..., T]], Callable[...,
         Decorator function that preserves the original function while storing metadata.
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         # Store the function and metadata in the registry
         _TOOL_REGISTRY.append((func, metadata))
 
-        # Return the original function unchanged
+        if inspect.iscoroutinefunction(func):
+            async_func = cast(Callable[P, Awaitable[R]], func)
+
+            @wraps(func)
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                return await async_func(*args, **kwargs)
+
+            # Store metadata as an attribute for easy access
+            async_wrapper._tool_metadata = metadata  # type: ignore[attr-defined]
+            return cast(Callable[P, R], async_wrapper)
+
         @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> T:
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             return func(*args, **kwargs)
 
         # Store metadata as an attribute for easy access
-        wrapper._tool_metadata = metadata  # type: ignore
+        sync_wrapper._tool_metadata = metadata  # type: ignore[attr-defined]
 
-        return wrapper
+        return sync_wrapper
 
     return decorator
 
