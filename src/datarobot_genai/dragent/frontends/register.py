@@ -24,6 +24,9 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.dragent.frontends.console import DRAgentConsoleFrontEndConfig
+from datarobot_genai.dragent.frontends.console import DRAgentConsoleFrontEndPlugin
+
 from .converters import convert_chat_request_to_run_agent_input
 from .converters import convert_dragent_event_response_to_str
 from .converters import convert_dragent_run_agent_input_to_chat_request
@@ -64,6 +67,14 @@ async def dragent_fastapi_front_end(
     from .fastapi import DRAgentFastApiFrontEndPlugin
 
     yield DRAgentFastApiFrontEndPlugin(full_config=full_config)
+
+
+# Register console frontend for `nat dragent run`
+@register_front_end(config_type=DRAgentConsoleFrontEndConfig)
+async def dragent_console_front_end(
+    config: DRAgentConsoleFrontEndConfig, full_config: Config
+) -> AsyncGenerator[typing.Any, None]:
+    yield DRAgentConsoleFrontEndPlugin(full_config=full_config)
 
 
 # Register converters
