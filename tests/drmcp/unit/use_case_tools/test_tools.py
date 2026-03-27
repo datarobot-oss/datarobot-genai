@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.use_case import tools
 
 

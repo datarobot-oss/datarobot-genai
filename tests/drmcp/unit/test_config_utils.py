@@ -15,11 +15,11 @@
 import pytest
 from pydantic_core import PydanticUseDefault
 
-from datarobot_genai.drmcp.core.config_utils import (
+from datarobot_genai.drtools.core.config_utils import (
     extract_datarobot_credential_runtime_param_payload,
 )
-from datarobot_genai.drmcp.core.config_utils import extract_datarobot_dict_runtime_param_payload
-from datarobot_genai.drmcp.core.config_utils import extract_datarobot_runtime_param_payload
+from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
+from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
 
 
 class TestExtractDataRobotRuntimeParamPayload:

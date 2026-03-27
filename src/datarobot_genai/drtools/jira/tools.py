@@ -16,7 +16,7 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drtools.core.clients.jira import JiraClient
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -24,7 +24,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"jira", "search", "issues"})
+@tool_metadata(tags={"jira", "search", "issues"})
 async def jira_search_issues(
     *,
     jql_query: Annotated[
@@ -57,7 +57,7 @@ async def jira_search_issues(
     }
 
 
-@dr_mcp_integration_tool(tags={"jira", "read", "get", "issue"})
+@tool_metadata(tags={"jira", "read", "get", "issue"})
 async def jira_get_issue(
     *, issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."]
 ) -> dict[str, Any]:
@@ -75,7 +75,7 @@ async def jira_get_issue(
     return issue.as_flat_dict()
 
 
-@dr_mcp_integration_tool(tags={"jira", "create", "add", "issue"})
+@tool_metadata(tags={"jira", "create", "add", "issue"})
 async def jira_create_issue(
     *,
     project_key: Annotated[str, "The key of the project where the issue should be created."],
@@ -117,7 +117,7 @@ async def jira_create_issue(
     return {"newIssueKey": issue_key, "projectKey": project_key}
 
 
-@dr_mcp_integration_tool(tags={"jira", "update", "edit", "issue"})
+@tool_metadata(tags={"jira", "update", "edit", "issue"})
 async def jira_update_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."],
@@ -168,7 +168,7 @@ async def jira_update_issue(
     return {"updatedIssueKey": issue_key, "fields": updated_fields}
 
 
-@dr_mcp_integration_tool(tags={"jira", "update", "transition", "issue"})
+@tool_metadata(tags={"jira", "update", "transition", "issue"})
 async def jira_transition_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to transition, e.g. 'PROJ-123'."],

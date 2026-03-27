@@ -17,7 +17,7 @@ import os
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import MODEL_EXTENSIONS
 from datarobot_genai.drtools.core.clients.datarobot import REQUIRED_FILES
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
@@ -29,7 +29,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "management", "list", "daria"})
+@tool_metadata(tags={"predictive", "deployment", "read", "management", "list", "daria"})
 async def list_deployments() -> dict[str, Any]:
     """List all DataRobot deployments for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -41,7 +41,7 @@ async def list_deployments() -> dict[str, Any]:
     return {"deployments": deployments_dict}
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "model", "info", "daria"})
+@tool_metadata(tags={"predictive", "deployment", "read", "model", "info", "daria"})
 async def get_model_info_from_deployment(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
@@ -55,7 +55,7 @@ async def get_model_info_from_deployment(
     return deployment.model
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "model", "create", "daria"})
+@tool_metadata(tags={"predictive", "deployment", "write", "model", "create", "daria"})
 async def deploy_model(
     *,
     model_id: Annotated[str, "The ID of the DataRobot model to deploy"],
@@ -85,7 +85,7 @@ async def deploy_model(
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "custom", "create"})
+@tool_metadata(tags={"predictive", "deployment", "write", "custom", "create"})
 async def deploy_custom_model(
     *,
     model_folder: Annotated[
@@ -162,9 +162,7 @@ async def deploy_custom_model(
     return out
 
 
-@dr_mcp_integration_tool(
-    tags={"predictive", "deployment", "read", "predictions", "history", "daria"}
-)
+@tool_metadata(tags={"predictive", "deployment", "read", "predictions", "history", "daria"})
 async def get_prediction_history(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],

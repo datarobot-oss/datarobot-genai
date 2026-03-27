@@ -23,11 +23,11 @@ import datarobot as dr
 import pytest
 from datarobot.context import Context as DRContext
 
-from datarobot_genai.drmcp.core.constants import DEFAULT_DATAROBOT_ENDPOINT
-from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubDeployment
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubModel
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubProject
+from datarobot_genai.drtools.core.constants import DEFAULT_DATAROBOT_ENDPOINT
+from datarobot_genai.drtools.core.credentials import get_credentials
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 
 

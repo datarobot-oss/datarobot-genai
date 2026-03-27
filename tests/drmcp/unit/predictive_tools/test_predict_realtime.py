@@ -24,9 +24,8 @@ from unittest.mock import patch
 import pandas as pd
 import polars as pl
 import pytest
-from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.constants import MAX_INLINE_SIZE
+from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.predictive import predict_realtime
 from datarobot_genai.drtools.predictive.predict_realtime import make_output_settings
 from datarobot_genai.drtools.predictive.predict_realtime import predict_by_ai_catalog_rt
@@ -55,9 +54,9 @@ def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
         ),
         patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv") as mock_read_csv,
         patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict") as mock_dr_predict,
-        patch("datarobot_genai.drmcp.core.utils.boto3.client") as mock_boto3_client,
+        patch("datarobot_genai.drtools.core.clients.s3.boto3.client") as mock_boto3_client,
         patch(
-            "datarobot_genai.drmcp.core.utils.generate_presigned_url",
+            "datarobot_genai.drtools.core.clients.s3.generate_presigned_url",
             return_value="https://dummy-presigned-url",
         ),
     ):
@@ -124,10 +123,9 @@ async def test_predict_realtime_forecast_range_resource(
         timeout=5,
     )
     assert isinstance(result, dict)
-    content = result
-    assert content["type"] == "resource"
-    assert content.get("s3_url") is not None
-    mock_s3.upload_file.assert_called()
+    assert result["type"] == "resource"
+    assert result.get("s3_url") is not None
+    mock_s3.put_object.assert_called()
     # Verify dr_predict called with correct parameters
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
     assert kwargs["data_frame"].equals(df)
@@ -361,15 +359,10 @@ async def test_predict_timeseries_regression_large_dataset_resource(
         forecast_point="2024-06-01",
         timeout=900,
     )
-
-    # Verify large dataset triggers resource storage
     assert isinstance(result, dict)
-    content = result
-    assert content["type"] == "resource"
-    assert content.get("s3_url") is not None
-    assert content.get("resource_id") is not None
-    mock_s3.upload_file.assert_called()
-
+    assert result["type"] == "resource"
+    assert result.get("s3_url") is not None
+    mock_s3.put_object.assert_called()
     # Verify dr_predict called correctly for large regression dataset
     args, kwargs = patch_realtime_dependencies["mock_dr_predict"].call_args
     assert kwargs["data_frame"].equals(large_df)
@@ -393,17 +386,14 @@ async def test_predict_timeseries_regression_series_id_validation_error(
     patch_realtime_dependencies["mock_read_csv"].return_value = pl.from_pandas(df)
 
     # Test with non-existent series_id_column
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         await predict_realtime.predict_realtime(
             deployment_id="regression_dep",
             file_path="data.csv",
             forecast_point="2024-06-01",
             series_id_column="invalid_column",
         )
-    assert (
-        "Error in predict_realtime: ValueError: series_id_column 'invalid_column' not found "
-        "in input data." == str(exc_info.value)
-    )
+    assert "series_id_column 'invalid_column' not found in input data." == str(exc_info.value)
 
 
 @pytest.mark.asyncio

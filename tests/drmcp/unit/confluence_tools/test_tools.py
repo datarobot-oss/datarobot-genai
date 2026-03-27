@@ -15,7 +15,6 @@ from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drtools.confluence.tools import confluence_add_comment
 from datarobot_genai.drtools.confluence.tools import confluence_get_page
@@ -25,6 +24,7 @@ from datarobot_genai.drtools.core.clients.confluence import ConfluenceComment
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
 from datarobot_genai.drtools.core.clients.confluence import ConfluencePage
 from datarobot_genai.drtools.core.clients.confluence import ContentSearchResult
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 
 @pytest.fixture
@@ -93,8 +93,7 @@ class TestConfluenceGetPage:
 
         tool_result = await confluence_get_page(page_id_or_title=page_id)
 
-        content = tool_result
-        expected = {
+        assert tool_result == {
             "page_id": "12345",
             "title": "Test Page",
             "space_id": "67890",
@@ -102,8 +101,6 @@ class TestConfluenceGetPage:
             "body": "<p>Test content</p>",
             "version": 1,
         }
-        assert content == expected
-        assert content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_get_page_by_title_happy_path(
@@ -142,7 +139,7 @@ class TestConfluenceGetPage:
         """Confluence get page -- error in client."""
         page_id = "12345"
 
-        with pytest.raises(ToolError, match="Page not found"):
+        with pytest.raises(ConfluenceError, match="Page not found"):
             await confluence_get_page(page_id_or_title=page_id)
 
     @pytest.mark.asyncio
@@ -234,7 +231,7 @@ class TestConfluenceAddComment:
         page_id = "12345"
         comment_body = "<p>Test comment</p>"
 
-        with pytest.raises(ToolError, match="Page not found"):
+        with pytest.raises(ConfluenceError, match="Page not found"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
 
@@ -328,7 +325,7 @@ class TestConfluenceSearch:
         """Confluence search -- error in client."""
         cql_query = "type=page AND space=TEST"
 
-        with pytest.raises(ToolError, match="Search failed"):
+        with pytest.raises(ConfluenceError, match="Search failed"):
             await confluence_search(cql_query=cql_query)
 
     @pytest.mark.asyncio
@@ -532,7 +529,7 @@ class TestConfluenceUpdatePage:
         new_body_content = "<p>Updated content</p>"
         version_number = 5
 
-        with pytest.raises(ToolError, match="Page not found"):
+        with pytest.raises(ConfluenceError, match="Page not found"):
             await confluence_update_page(
                 page_id=page_id,
                 new_body_content=new_body_content,

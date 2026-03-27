@@ -94,9 +94,16 @@ dragent = nat + [
 
 # Eventually NAT will be merged into dragent
 
-# drtools: dependencies for src/datarobot_genai/drmcp/tools only (no core).
+# auth is standalone set of dependencies for auth utilities only
+auth = [
+  "datarobot[auth]>=3.10.0,<4.0.0",
+  "aiohttp>=3.9.0,<4.0.0",
+  "pydantic>=2.6.1,<3.0.0",
+]
+
+# drtools: no subpackages dependencies other than auth.
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
-drtools = [
+drtools = auth + [
     "beautifulsoup4>=4.12.0,<5.0.0",
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
@@ -110,9 +117,10 @@ drtools = [
     "datarobot>=3.10.0,<4.0.0",
     "datarobot-early-access==3.14.0.2026.3.18.162920",
     "aiohttp>=3.9.0,<4.0.0",
+    "boto3>=1.34.0,<2.0.0",
 ]
 
-# drmcp is standalone set of dependencies for MCP Server only (no core).
+# drmcp is standalone set of dependencies for MCP Server only (no core), only depends on drtools.
 drmcp = drtools + [
     "fastmcp>=2.13.0.2,<3.0.0",
     "requests>=2.32.4,<3.0.0",
@@ -132,14 +140,6 @@ drmcp = drtools + [
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
 ]
-
-# auth is standalone set of dependencies for auth utilities only
-auth = [
-  "datarobot[auth]>=3.10.0,<4.0.0",
-  "aiohttp>=3.9.0,<4.0.0",
-  "pydantic>=2.6.1,<3.0.0",
-]
-
 
 extras_require = {
     "core": core,

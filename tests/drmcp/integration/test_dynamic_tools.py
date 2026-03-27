@@ -17,13 +17,13 @@ from unittest.mock import MagicMock
 import pytest
 import responses
 
-from datarobot_genai.drmcp.core.credentials import get_credentials
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
     register_tools_of_datarobot_deployments,
 )
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
+from datarobot_genai.drtools.core.credentials import get_credentials
 
 
 @pytest.fixture

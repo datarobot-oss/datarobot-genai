@@ -29,7 +29,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 from pypdf import PdfReader
 
-from datarobot_genai.drmcp.core.auth import get_access_token
+from datarobot_genai.drtools.core.auth import get_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)

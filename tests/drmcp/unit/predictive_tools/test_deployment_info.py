@@ -21,10 +21,10 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
-from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive.deployment_info import generate_prediction_data_template
 from datarobot_genai.drtools.predictive.deployment_info import get_deployment_features
 from datarobot_genai.drtools.predictive.deployment_info import get_deployment_info
@@ -127,7 +127,10 @@ async def test_get_deployment_info_success(
     assert result_json["time_series_config"]["series_id_columns"] == ["store_id"]
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
 @patch(
     "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
@@ -209,7 +212,10 @@ async def test_generate_prediction_data_template(
     assert "time_series_config" in result_json
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
 @patch(
     "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
@@ -284,7 +290,10 @@ async def test_validate_prediction_data_valid(
     assert result_json["summary"]["columns"] == 3
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
 @patch(
     "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
@@ -332,7 +341,10 @@ async def test_validate_prediction_data_missing_important_feature(
 
 
 # Additional tests for coverage
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = {"error": "something went wrong"}
@@ -341,7 +353,10 @@ async def test_generate_prediction_data_template_error(mock_get_features: Any) -
     assert "Invalid feature information received" in str(exc_info.value)
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_empty_features(
     mock_get_features: Any,
@@ -358,7 +373,10 @@ async def test_generate_prediction_data_template_empty_features(
     assert result["template_data"] == []
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_unknown_type(
     mock_get_features: Any,
@@ -376,7 +394,10 @@ async def test_generate_prediction_data_template_unknown_type(
     assert '""' in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_none_min_max(
     mock_get_features: Any,
@@ -397,7 +418,10 @@ async def test_generate_prediction_data_template_none_min_max(
     assert "num" in result and "dt" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_key_summary(
     mock_get_features: Any,
@@ -421,7 +445,10 @@ async def test_generate_prediction_data_template_key_summary(
     assert "cat" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_multiseries(
     mock_get_features: Any,
@@ -445,7 +472,10 @@ async def test_generate_prediction_data_template_multiseries(
     assert "dt_col" in result and "series_id" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = {"error": "bad deployment"}
@@ -457,7 +487,10 @@ async def test_validate_prediction_data_error(mock_get_features: Any) -> None:
         assert "features" in str(exc_info.value)
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_missing_feature(
     mock_get_features: Any, tmp_path: Any
@@ -481,7 +514,10 @@ async def test_validate_prediction_data_missing_feature(
     assert "Missing important feature" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_extra_columns(
     mock_get_features: Any, tmp_path: Any
@@ -505,7 +541,10 @@ async def test_validate_prediction_data_extra_columns(
     assert "Extra columns found" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_type_mismatch(
     mock_get_features: Any, tmp_path: Any
@@ -529,7 +568,10 @@ async def test_validate_prediction_data_type_mismatch(
     assert "should be numeric" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_time_series_missing(
     mock_get_features: Any, tmp_path: Any
@@ -559,7 +601,10 @@ async def test_validate_prediction_data_time_series_missing(
     assert "Missing required datetime column" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_time_series_parse_error(
     mock_get_features: Any, tmp_path: Any
@@ -595,7 +640,9 @@ async def test_validate_prediction_data_time_series_parse_error(
     assert "cannot be parsed as dates" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_info")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_info", new_callable=AsyncMock
+)
 @pytest.mark.asyncio
 async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> None:
     mock_get_info.return_value = {}
@@ -633,7 +680,10 @@ async def test_get_deployment_info_custom_model() -> None:
         assert len(result["features"]) == 0
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_categorical_defaults(
     mock_get_features: Any,
@@ -658,29 +708,34 @@ async def test_generate_prediction_data_template_categorical_defaults(
     assert row["cat"] == "" and row["sumcat"] == "" and row["weird"] == ""
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_exception(
     mock_get_features: Any,
 ) -> None:
     mock_get_features.side_effect = Exception("fail")
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(Exception) as exc_info:
         await generate_prediction_data_template(deployment_id="id")
-    assert "Error in generate_prediction_data_template: Exception: fail" == str(exc_info.value)
+    assert "fail" == str(exc_info.value)
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_file_error(mock_get_features: Any) -> None:
     mock_get_features.return_value = {"features": [], "model_type": "Test"}
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(FileNotFoundError):
         await validate_prediction_data(deployment_id="id", file_path="/not/a/real/file.csv")
-    err_msg = str(exc_info.value)
-    assert "validate_prediction_data" in err_msg
-    assert "/not/a/real/file.csv" in err_msg
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_info")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_info", new_callable=AsyncMock
+)
 @pytest.mark.asyncio
 async def test_get_deployment_features_error_string(mock_get_info: Any) -> None:
     """When get_deployment_info returns error dict,
@@ -692,7 +747,9 @@ async def test_get_deployment_features_error_string(mock_get_info: Any) -> None:
     assert result["total_features"] == 0
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_info")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_info", new_callable=AsyncMock
+)
 @pytest.mark.asyncio
 async def test_get_deployment_features_optional_fields(mock_get_info: Any) -> None:
     base = {"features": [], "total_features": 0}
@@ -720,7 +777,10 @@ async def test_get_deployment_features_optional_fields(mock_get_info: Any) -> No
     assert "time_series_config" in result
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template_frequent_values(
     mock_get_features: Any,
@@ -746,7 +806,10 @@ async def test_generate_prediction_data_template_frequent_values(
     assert result["template_data"][0]["cat"] == "A"
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
 @patch(
     "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
@@ -792,7 +855,10 @@ async def test_validate_prediction_data_missing_values(
     assert "status" in result2 and "invalid" not in result2
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.get_deployment_features")
+@patch(
+    "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
+    new_callable=AsyncMock,
+)
 @patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
 @patch(
     "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
