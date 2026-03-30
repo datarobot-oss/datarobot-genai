@@ -319,7 +319,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 type=EventType.TEXT_MESSAGE_END, message_id=message_id
                             ),
                             None,
-                            zero_metrics,
+                            usage_metrics,
                         )
                     if step_started:
                         yield (
@@ -328,7 +328,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 step_name=current_task,
                             ),
                             None,
-                            zero_metrics,
+                            usage_metrics,
                         )
                 else:
                     response_text = str(crew_output.raw)
