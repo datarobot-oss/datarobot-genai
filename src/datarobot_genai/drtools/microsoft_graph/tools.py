@@ -19,7 +19,7 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphClient
 from datarobot_genai.drtools.core.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drtools.core.clients.microsoft_graph import validate_site_url
@@ -28,7 +28,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={
         "microsoft",
         "graph api",
@@ -177,9 +177,7 @@ async def microsoft_graph_search_content(
     }
 
 
-@dr_mcp_integration_tool(
-    tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False
-)
+@tool_metadata(tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False)
 async def microsoft_graph_share_item(
     *,
     file_id: Annotated[str, "The ID of the file or folder to share."],
@@ -233,7 +231,7 @@ async def microsoft_graph_share_item(
     }
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={
         "microsoft",
         "graph api",
@@ -310,7 +308,7 @@ async def microsoft_create_file(
     }
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={
         "microsoft",
         "graph api",

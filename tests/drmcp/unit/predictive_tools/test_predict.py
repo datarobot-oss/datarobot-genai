@@ -20,7 +20,6 @@ from unittest.mock import patch
 
 import datarobot as dr
 import pytest
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drtools.predictive import predict
 
@@ -145,12 +144,9 @@ async def test_predict_by_file_path_timeout(
     )
     patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
     patch_predict_dependencies["mock_cred"].return_value = MagicMock(credential_id="cid")
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(dr.errors.AsyncTimeoutError) as exc_info:
         await predict.predict_by_file_path("dep", "file.csv", 1)
-    assert (
-        "Error in predict_by_file_path: AsyncTimeoutError: Job did not complete within the "
-        "timeout period." == str(exc_info.value)
-    )
+    assert "Job did not complete within the timeout period." == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -165,11 +161,9 @@ async def test_predict_by_file_path_failure_error(
     )
     patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
     patch_predict_dependencies["mock_cred"].return_value = MagicMock(credential_id="cid")
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(dr.errors.AsyncFailureError) as exc_info:
         await predict.predict_by_file_path("dep", "file.csv", 1)
-    assert "Error in predict_by_file_path: AsyncFailureError: Job failed for some reason." == str(
-        exc_info.value
-    )
+    assert "Job failed for some reason." == str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -184,12 +178,9 @@ async def test_predict_by_file_path_unsuccessful_error(
     )
     patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
     patch_predict_dependencies["mock_cred"].return_value = MagicMock(credential_id="cid")
-    with pytest.raises(ToolError) as exc_info:
+    with pytest.raises(dr.errors.AsyncProcessUnsuccessfulError) as exc_info:
         await predict.predict_by_file_path("dep", "file.csv", 1)
-    assert (
-        "Error in predict_by_file_path: AsyncProcessUnsuccessfulError: Job was unsuccessful."
-        == str(exc_info.value)
-    )
+    assert "Job was unsuccessful." == str(exc_info.value)
 
 
 def test_get_or_create_s3_credential_create(monkeypatch: Any) -> None:

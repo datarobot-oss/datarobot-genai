@@ -16,7 +16,7 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -24,7 +24,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "project", "read", "management", "list"})
+@tool_metadata(tags={"predictive", "project", "read", "management", "list"})
 async def list_projects() -> dict[str, Any]:
     """List all DataRobot projects for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -35,7 +35,7 @@ async def list_projects() -> dict[str, Any]:
     return projects
 
 
-@dr_mcp_integration_tool(tags={"predictive", "project", "read", "data", "info"})
+@tool_metadata(tags={"predictive", "project", "read", "data", "info"})
 async def get_project_dataset_by_name(
     *,
     project_id: Annotated[str, "The ID of the DataRobot project."],

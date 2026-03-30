@@ -138,7 +138,7 @@ class TestModelE2E(ToolBaseE2E):
         [
             """
         I'm working on a machine learning project and I have a DataRobot project with ID
-        '{project_id}'. I need to find out which is the best performing model in this project.
+        '{project_id}'. I need to find out the best performing model in this project.
         Can you help me identify the top model and tell me about its performance metrics?
         """
         ],

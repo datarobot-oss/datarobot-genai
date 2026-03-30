@@ -22,7 +22,7 @@ from typing import Any
 import polars as pl
 from datarobot.models.model import Model
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -77,7 +77,7 @@ class ModelEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "info", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "management", "info", "daria"})
 async def get_best_model(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
@@ -134,7 +134,7 @@ async def get_best_model(
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "scoring", "dataset"})
+@tool_metadata(tags={"predictive", "model", "read", "scoring", "dataset"})
 async def score_dataset_with_model(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
@@ -163,7 +163,7 @@ async def score_dataset_with_model(
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "list", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "management", "list", "daria"})
 async def list_models(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
@@ -183,7 +183,7 @@ async def list_models(
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "details", "info", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "details", "info", "daria"})
 async def get_model_details(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
@@ -227,7 +227,7 @@ async def get_model_details(
     return {k: v for k, v in asdict(insights).items() if v is not None}
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "timeseries", "validation", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "timeseries", "validation", "daria"})
 async def is_eligible_for_timeseries_training(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset to validate"],

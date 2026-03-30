@@ -9,6 +9,7 @@ tasks:
       - task: check-ruff
       - task: no-common
       - task: mypy
+      - task: check-imports
     silent: true
 
   mypy:
@@ -72,4 +73,11 @@ tasks:
           echo "No common.py modules or 'common' directories found in the project"
           exit 0
         fi
+    silent: true
+
+  check-imports:
+    desc: "Check import restrictions"
+    cmds:
+      - echo "Checking import restrictions..."
+      - uv run python scripts/check_imports.py
     silent: true

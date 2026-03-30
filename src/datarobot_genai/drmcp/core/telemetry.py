@@ -56,8 +56,9 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
+from datarobot_genai.drtools.core.credentials import get_credentials
+
 from .config import get_config
-from .credentials import get_credentials
 
 
 def _serialize_tool_arguments(value: Any) -> str:

@@ -61,6 +61,10 @@ jobs:
       - name: Type check (mypy)
         run: |
           task mypy
+      
+      - name: Check import restrictions
+        run: |
+          task check-imports
 
   test-module:
     runs-on: ubuntu-latest

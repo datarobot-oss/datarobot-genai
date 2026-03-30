@@ -19,7 +19,7 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.perplexity import MAX_QUERIES
 from datarobot_genai.drtools.core.clients.perplexity import MAX_RESULTS
 from datarobot_genai.drtools.core.clients.perplexity import MAX_RESULTS_DEFAULT
@@ -33,7 +33,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"perplexity", "web", "search", "websearch", "daria"})
+@tool_metadata(tags={"perplexity", "web", "search", "websearch", "daria"})
 async def perplexity_search(
     *,
     query: Annotated[
@@ -122,7 +122,7 @@ async def perplexity_search(
     }
 
 
-@dr_mcp_integration_tool(tags={"perplexity", "think", "research", "answer", "daria"})
+@tool_metadata(tags={"perplexity", "think", "research", "answer", "daria"})
 async def perplexity_think(
     *,
     prompt: Annotated[str, "The research prompt or instruction."],

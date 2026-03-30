@@ -27,8 +27,8 @@ from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
-from datarobot_genai.drmcp.core.auth import OAuthMiddleWare
-from datarobot_genai.drmcp.core.auth import must_get_auth_context
+from datarobot_genai.drtools.core.auth import OAuthMiddleWare
+from datarobot_genai.drtools.core.auth import must_get_auth_context
 
 
 @pytest.fixture
@@ -113,7 +113,7 @@ class TestOAuthMiddleware:
         """Test that middleware successfully parses valid auth header and attaches context."""
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify call_next was called
@@ -138,7 +138,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles missing auth header gracefully."""
         headers = {}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify call_next was still called
@@ -159,7 +159,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles invalid auth token gracefully."""
         headers = {"X-DataRobot-Authorization-Context": "invalid.jwt.token"}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify call_next was still called (middleware doesn't block execution)
@@ -185,7 +185,7 @@ class TestOAuthMiddleware:
             "User-Agent": "test-client",
         }
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify successful processing
@@ -205,7 +205,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles exceptions during header parsing gracefully."""
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_headers:
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_headers:
             # Simulate an exception when getting headers
             mock_headers.side_effect = RuntimeError("Header parsing failed")
 
@@ -232,7 +232,7 @@ class TestOAuthMiddleware:
 
         mock_next = AsyncMock(return_value=expected_result)
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, mock_next)
 
             # Verify the exact result is returned
@@ -269,7 +269,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles lowercase header names (as returned by get_http_headers)."""
         headers = {"x-datarobot-authorization-context": auth_token}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             call_next.assert_awaited_once_with(middleware_context)
@@ -291,7 +291,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles mixed case header names."""
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             call_next.assert_awaited_once_with(middleware_context)
@@ -314,7 +314,7 @@ class TestOAuthMiddleware:
 
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware.on_call_tool(context, call_next)
 
             # Should still call next and return result
@@ -328,7 +328,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles ValueError exceptions gracefully."""
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_get_headers:
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_get_headers:
             mock_get_headers.side_effect = ValueError("Invalid header format")
 
             result = await middleware.on_call_tool(middleware_context, call_next)
@@ -346,7 +346,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles KeyError exceptions gracefully."""
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_get_headers:
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_get_headers:
             mock_get_headers.side_effect = KeyError("Missing key")
 
             result = await middleware.on_call_tool(middleware_context, call_next)
@@ -364,7 +364,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles TypeError exceptions gracefully."""
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers") as mock_get_headers:
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_get_headers:
             mock_get_headers.side_effect = TypeError("Invalid type")
 
             result = await middleware.on_call_tool(middleware_context, call_next)
@@ -406,8 +406,8 @@ class TestGetAuthContext:
         # Set the auth context in the context state
         context.set_state("authorization_context", auth_ctx)
 
-        # Patch get_context to return our context with the auth context in state
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+        # Patch _get_context (alias used by must_get_auth_context) to return our Context with state
+        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
             result = await must_get_auth_context()
 
             # Verify the auth context was retrieved correctly
@@ -428,7 +428,7 @@ class TestGetAuthContext:
         context = Context(mock_fastmcp)
 
         # Don't set any auth context - state will be empty
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
             with pytest.raises(
                 RuntimeError,
                 match="Could not retrieve authorization context from FastMCP context state.",
@@ -442,7 +442,7 @@ class TestGetAuthContext:
         This simulates the case where get_context() is called outside of a
         FastMCP request context.
         """
-        with patch("datarobot_genai.drmcp.core.auth.get_context") as mock_get_context:
+        with patch("datarobot_genai.drtools.core.auth._get_context") as mock_get_context:
             # Simulate no active context
             mock_get_context.side_effect = RuntimeError("No active context found.")
 
@@ -492,13 +492,13 @@ class TestGetAuthContext:
         context2.set_state("authorization_context", auth_ctx2)
 
         # Verify context1 returns the correct auth context
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context1):
+        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context1):
             result1 = await must_get_auth_context()
             assert result1.user.id == "user1"
             assert result1.user.name == "Alice"
 
         # Verify context2 returns its own auth context (state isolation)
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context2):
+        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context2):
             result2 = await must_get_auth_context()
             assert result2.user.id == "user2"
             assert result2.user.name == "Bob"
@@ -531,7 +531,7 @@ class TestGetAuthContext:
         )
         context.set_state("authorization_context", auth_ctx)
 
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
             result = await must_get_auth_context()
 
             # Verify we got the auth context, not other state values
@@ -579,7 +579,7 @@ class TestGetAuthContext:
 
         context.set_state("authorization_context", auth_ctx)
 
-        with patch("datarobot_genai.drmcp.core.auth.get_context", return_value=context):
+        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
             result = await must_get_auth_context()
 
             # Verify all fields are preserved

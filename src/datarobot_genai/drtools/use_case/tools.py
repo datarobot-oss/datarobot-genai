@@ -18,7 +18,7 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -26,7 +26,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"use_case", "read", "list", "daria"})
+@tool_metadata(tags={"use_case", "read", "list", "daria"})
 async def list_use_cases(
     *,
     search: Annotated[str | None, "Optional search filter for use case names"] = None,
@@ -52,7 +52,7 @@ async def list_use_cases(
     }
 
 
-@dr_mcp_integration_tool(tags={"use_case", "read", "assets", "daria"})
+@tool_metadata(tags={"use_case", "read", "assets", "daria"})
 async def list_use_case_assets(
     *,
     use_case_id: Annotated[str | None, "The ID of a single DataRobot use case"] = None,

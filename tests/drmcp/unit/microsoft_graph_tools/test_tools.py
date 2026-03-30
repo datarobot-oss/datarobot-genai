@@ -17,10 +17,10 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphItem
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_create_file
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_search_content
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_share_item
@@ -219,7 +219,7 @@ class TestMicrosoftGraphSearchContent:
             mock_client.search_content = AsyncMock(side_effect=MicrosoftGraphError("Client error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(MicrosoftGraphError) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "client error" in str(exc_info.value).lower()
 
@@ -238,7 +238,7 @@ class TestMicrosoftGraphSearchContent:
             mock_client.search_content = AsyncMock(side_effect=Exception("Unexpected error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "unexpected error" in str(exc_info.value).lower()
 
@@ -360,7 +360,7 @@ class TestMicrosoftGraphShareItem:
         ) as mock_fn:
             mock_fn.side_effect = MicrosoftGraphError("Client error")
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await microsoft_graph_share_item(
                     file_id="dummy_file_id",
                     document_library_id="dummy_document_library_id",
@@ -380,7 +380,7 @@ class TestMicrosoftGraphShareItem:
         ) as mock_fn:
             mock_fn.side_effect = Exception("Unexpected error")
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await microsoft_graph_share_item(
                     file_id="dummy_file_id",
                     document_library_id="dummy_document_library_id",
@@ -492,7 +492,7 @@ class TestMicrosoftCreateFile:
             )
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError, match="[Pp]ermission denied"):
+            with pytest.raises(MicrosoftGraphError, match="[Pp]ermission denied"):
                 await microsoft_create_file(
                     file_name="report.txt",
                     content_text="Content",

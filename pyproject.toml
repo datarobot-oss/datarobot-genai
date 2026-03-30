@@ -148,6 +148,14 @@ omit = [
     "*/nat/*",
 ]
 
+# Custom import restrictions (enforced by scripts/check_imports.py)
+[subpackages.import-restrictions]
+drtools_allowed_subpackages = ["drtools"]
+drtools_forbidden = [
+    "fastmcp",
+]
+drmcp_allowed_subpackages = ["drtools", "drmcp"]
+
 [tool.coverage.report]
 exclude_lines = [
     "raise NotImplementedError",

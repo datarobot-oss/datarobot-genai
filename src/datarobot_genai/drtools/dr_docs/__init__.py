@@ -29,11 +29,3 @@ Example use with LangGraph::
         "max_results": 5
     })
 """
-
-from datarobot_genai.drtools.dr_docs.local_tools import fetch_datarobot_doc_page
-from datarobot_genai.drtools.dr_docs.local_tools import search_datarobot_agentic_docs
-
-__all__ = [
-    "fetch_datarobot_doc_page",
-    "search_datarobot_agentic_docs",
-]

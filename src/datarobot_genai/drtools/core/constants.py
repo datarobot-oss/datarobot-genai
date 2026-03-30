@@ -12,9 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Core utilities and shared components for DataRobot tools."""
+DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
+RUNTIME_PARAM_ENV_VAR_NAME_PREFIX = "MLOPS_RUNTIME_PARAM_"
 
-from .tool_metadata import get_registered_tools
-from .tool_metadata import tool_metadata
+MAX_INLINE_SIZE = 1024 * 1024  # 1MB
 
-__all__ = ["tool_metadata", "get_registered_tools"]
+AUTH_CTX_KEY = "authorization_context"
+
+# Header names to check for authorization tokens (in order of preference)
+HEADER_TOKEN_CANDIDATE_NAMES = [
+    "x-datarobot-authorization",
+    "x-datarobot-api-key",
+    "x-datarobot-api-token",
+    "x-datarobot-identity-token",
+    "authorization",
+]

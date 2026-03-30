@@ -18,7 +18,7 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceClient
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
@@ -27,7 +27,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"confluence", "read", "get", "page"})
+@tool_metadata(tags={"confluence", "read", "get", "page"})
 async def confluence_get_page(
     *,
     page_id_or_title: Annotated[str, "The ID or the exact title of the Confluence page."],
@@ -68,7 +68,7 @@ async def confluence_get_page(
     return page_response.as_flat_dict()
 
 
-@dr_mcp_integration_tool(tags={"confluence", "write", "create", "page"})
+@tool_metadata(tags={"confluence", "write", "create", "page"})
 async def confluence_create_page(
     *,
     space_key: Annotated[str, "The key of the Confluence space where the new page should live."],
@@ -113,7 +113,7 @@ async def confluence_create_page(
     return {"new_page_id": page_response.page_id, "title": page_response.title}
 
 
-@dr_mcp_integration_tool(tags={"confluence", "write", "add", "comment"})
+@tool_metadata(tags={"confluence", "write", "add", "comment"})
 async def confluence_add_comment(
     *,
     page_id: Annotated[str, "The numeric ID of the page where the comment will be added."],
@@ -149,7 +149,7 @@ async def confluence_add_comment(
     }
 
 
-@dr_mcp_integration_tool(tags={"confluence", "search", "content"})
+@tool_metadata(tags={"confluence", "search", "content"})
 async def confluence_search(
     *,
     cql_query: Annotated[
@@ -204,7 +204,7 @@ async def confluence_search(
     return {"data": data, "count": n}
 
 
-@dr_mcp_integration_tool(tags={"confluence", "write", "update", "page"})
+@tool_metadata(tags={"confluence", "write", "update", "page"})
 async def confluence_update_page(
     *,
     page_id: Annotated[str, "The ID of the Confluence page to update."],

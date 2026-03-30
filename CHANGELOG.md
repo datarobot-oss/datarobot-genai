@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed side-effects in MCPConfig
 - Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
 
+## 0.8.16
+- **Security**: Upgraded `aiohttp>=3.13.3` to fix CVE-2025-69229 (DoS via chunked messages) and CVE-2025-69230 (cookie parser warning storm)
+- **Security**: Upgraded `pypdf>=6.9.2` to fix CVE-2026-33699 (infinite loop in DictionaryObject recovery) and CVE-2026-33123 (inefficient stream decoding)
+- **Security**: Upgraded `pyjwt>=2.12.0` to fix CVE-2026-32597 in core and drmcp dependencies
+- **Security**: Verified authlib CVE-2026-27962 is patched via fastmcp transitive dependency (1.6.9+)
+
+## 0.8.15
+- Did a major refactor to decouple `drtools` from `drmcp`
+- Added dependency lint check task to the ci
+- Moved auth/token extraction (`_extract_token_from_headers`, `_extract_token_from_auth_context`, `AuthContextHeaderHandler`) from `drmcp.core.clients` to `drtools.core.auth`; exposed a single `resolve_token_from_headers()` entrypoint consumed by `get_sdk_client`
+- Updated all `drmcp` tests to align with the `drtools` refactor: corrected import paths, exception types, async mock targets, and direct error propagation expectations
+- Fixed `MCPToolConfig` loading `.env` independently of `MCPServerConfig(_env_file=None)`; introduced `_MCPToolConfigNoEnvFile` subclass so config default assertions reflect true code defaults
+
+## 0.8.14
+- Isolated publish secrets to an environment
+
 ## 0.8.13
 - Added base agent for retrieving and storing memory
 
