@@ -37,7 +37,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.core.mcp.config import MCPConfig
 from datarobot_genai.nat.helpers import load_workflow
 
 if TYPE_CHECKING:
