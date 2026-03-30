@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed side-effects in MCPConfig
 - Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
 
+## 0.8.17
+- Fixed prompt for calculator to make output for LlamaIndex agents stable
+
 ## 0.8.16
 - **Security**: Upgraded `aiohttp>=3.13.3` to fix CVE-2025-69229 (DoS via chunked messages) and CVE-2025-69230 (cookie parser warning storm)
 - **Security**: Upgraded `pypdf>=6.9.2` to fix CVE-2026-33699 (infinite loop in DictionaryObject recovery) and CVE-2026-33123 (inefficient stream decoding)
