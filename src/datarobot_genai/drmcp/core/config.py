@@ -25,11 +25,12 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
-from .config_utils import extract_datarobot_dict_runtime_param_payload
-from .config_utils import extract_datarobot_runtime_param_payload
-from .constants import DEFAULT_DATAROBOT_ENDPOINT
+from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
+from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
+from datarobot_genai.drtools.core.constants import DEFAULT_DATAROBOT_ENDPOINT
+from datarobot_genai.drtools.core.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
+
 from .constants import MCP_CLI_OPTS
-from .constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
 
 class MCPToolConfig(BaseSettings):
@@ -99,7 +100,7 @@ class MCPToolConfig(BaseSettings):
     )
 
     enable_dr_docs_tools: bool = Field(
-        default=True,
+        default=False,
         validation_alias=AliasChoices(
             RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_DR_DOCS_TOOLS",
             "ENABLE_DR_DOCS_TOOLS",

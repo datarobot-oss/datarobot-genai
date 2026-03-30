@@ -1157,7 +1157,8 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.8.13"
+version = "0.8.17"
+
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1254,7 +1255,7 @@ drmcp = [
     { name = "aiohttp-retry" },
     { name = "beautifulsoup4" },
     { name = "boto3" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-asgi-middleware" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1294,7 +1295,8 @@ drmcp = [
 drtools = [
     { name = "aiohttp" },
     { name = "beautifulsoup4" },
-    { name = "datarobot" },
+    { name = "boto3" },
+    { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
     { name = "httpx" },
@@ -1422,9 +1424,9 @@ requires-dist = [
     { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.14,<0.2.0" },
     { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.14,<0.2.0" },
     { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.9.0,<4.0.0" },
-    { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.9.0,<4.0.0" },
-    { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.9.0,<4.0.0" },
+    { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.13.3,<4.0.0" },
+    { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.13.3,<4.0.0" },
+    { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
     { name = "anthropic", marker = "extra == 'crewai'", specifier = "~=0.71.0,<1.0.0" },
     { name = "anyio", marker = "extra == 'dragent'", specifier = "==4.11.0" },
@@ -1433,6 +1435,7 @@ requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
+    { name = "boto3", marker = "extra == 'drtools'", specifier = ">=1.34.0,<2.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.1.0,<2.0.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
     { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },
@@ -1444,6 +1447,8 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },
@@ -1557,16 +1562,16 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drtools'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic-settings", marker = "extra == 'drmcp'", specifier = ">=2.1.0,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'core'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'crewai'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'dragent'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'drmcp'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'langgraph'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'llamaindex'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'nat'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.1.3,<7.0.0" },
-    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.1.3,<7.0.0" },
-    { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.0.0,<7.0.0" },
+    { name = "pyjwt", marker = "extra == 'core'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'crewai'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'dragent'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'drmcp'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'langgraph'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'llamaindex'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'nat'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.9.2,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.9.2,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.9.2,<7.0.0" },
     { name = "python-dateutil", marker = "extra == 'drmcp'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dateutil", marker = "extra == 'drtools'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0,<2.0.0" },
@@ -6322,11 +6327,11 @@ wheels = [
 
 [[package]]
 name = "pypdf"
-version = "6.9.1"
+version = "6.9.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f9/fb/dc2e8cb006e80b0020ed20d8649106fe4274e82d8e756ad3e24ade19c0df/pypdf-6.9.1.tar.gz", hash = "sha256:ae052407d33d34de0c86c5c729be6d51010bf36e03035a8f23ab449bca52377d", size = 5311551, upload-time = "2026-03-17T10:46:07.876Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/83/691bdb309306232362503083cb15777491045dd54f45393a317dc7d8082f/pypdf-6.9.2.tar.gz", hash = "sha256:7f850faf2b0d4ab936582c05da32c52214c2b089d61a316627b5bfb5b0dab46c", size = 5311837, upload-time = "2026-03-23T14:53:27.983Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/f4/75543fa802b86e72f87e9395440fe1a89a6d149887e3e55745715c3352ac/pypdf-6.9.1-py3-none-any.whl", hash = "sha256:f35a6a022348fae47e092a908339a8f3dc993510c026bb39a96718fc7185e89f", size = 333661, upload-time = "2026-03-17T10:46:06.286Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/7e/c85f41243086a8fe5d1baeba527cb26a1918158a565932b41e0f7c0b32e9/pypdf-6.9.2-py3-none-any.whl", hash = "sha256:662cf29bcb419a36a1365232449624ab40b7c2d0cfc28e54f42eeecd1fd7e844", size = 333744, upload-time = "2026-03-23T14:53:26.573Z" },
 ]
 
 [[package]]

@@ -22,7 +22,7 @@ import pytest
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.auth import OAuthMiddleWare
+from datarobot_genai.drtools.core.auth import OAuthMiddleWare
 
 
 @pytest.fixture
@@ -116,7 +116,7 @@ class TestOAuthMiddlewareIntegration:
         """
         headers = {header_name: auth_token}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware_with_secret.on_call_tool(
                 mock_middleware_context, mock_call_next
             )
@@ -145,7 +145,7 @@ class TestOAuthMiddlewareIntegration:
         """Test that middleware gracefully handles missing auth throughout the full flow."""
         headers = {}  # No auth header
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware_with_secret.on_call_tool(
                 mock_middleware_context, mock_call_next
             )
@@ -171,7 +171,7 @@ class TestOAuthMiddlewareIntegration:
         """Test that middleware handles malformed tokens gracefully in the full flow."""
         headers = {"X-DataRobot-Authorization-Context": "this.is.not.a.valid.jwt.token"}
 
-        with patch("datarobot_genai.drmcp.core.auth.get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
             result = await middleware_with_secret.on_call_tool(
                 mock_middleware_context, mock_call_next
             )
