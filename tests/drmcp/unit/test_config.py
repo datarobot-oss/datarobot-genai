@@ -20,6 +20,7 @@ import pytest
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
+from datarobot_genai.drmcp.core.config import MCPToolConfig
 from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
@@ -32,7 +33,7 @@ def test_config_defaults() -> None:
         config_module._config = None
 
         # Create a new config instance without loading from .env file
-        config = MCPServerConfig(_env_file=None)
+        config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
 
         # Dynamic tools registration should be disabled by default
         # as it can cause startup delays and is not always desired.
@@ -116,7 +117,7 @@ class TestToolConfiguration:
         """Test that tool enablement defaults are correct."""
         with patch.dict(os.environ, clear=True):
             config_module._config = None
-            config = MCPServerConfig(_env_file=None)
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
 
             assert config.tool_config.enable_predictive_tools is True
             assert config.tool_config.enable_jira_tools is False
@@ -250,11 +251,21 @@ class TestToolConfiguration:
             assert config.tool_config.is_microsoft_oauth_configured is False
 
 
+class _MCPToolConfigNoEnvFile(MCPToolConfig):
+    """Subclass that forces _env_file=None so .env is never loaded (used in tests)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["_env_file"] = None
+        super().__init__(*args, **kwargs)
+
+
 class _MCPServerConfigNoEnvFile(MCPServerConfig):
     """Subclass that forces _env_file=None so .env is never loaded (used in tests)."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs["_env_file"] = None
+        if "tool_config" not in kwargs:
+            kwargs["tool_config"] = _MCPToolConfigNoEnvFile()
         super().__init__(*args, **kwargs)
 
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.8.15"
+version = "0.9.1"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -147,6 +147,14 @@ omit = [
     # nat requires Python >=3.11, can't be imported on 3.10 for coverage
     "*/nat/*",
 ]
+
+# Custom import restrictions (enforced by scripts/check_imports.py)
+[subpackages.import-restrictions]
+drtools_allowed_subpackages = ["drtools"]
+drtools_forbidden = [
+    "fastmcp",
+]
+drmcp_allowed_subpackages = ["drtools", "drmcp"]
 
 [tool.coverage.report]
 exclude_lines = [

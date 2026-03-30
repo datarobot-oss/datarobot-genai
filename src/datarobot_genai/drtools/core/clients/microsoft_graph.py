@@ -24,7 +24,7 @@ from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from pydantic import BaseModel
 from pydantic import Field
 
-from datarobot_genai.drmcp.core.auth import get_access_token
+from datarobot_genai.drtools.core.auth import get_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)

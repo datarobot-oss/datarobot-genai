@@ -17,11 +17,11 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityError
 from datarobot_genai.drtools.core.clients.perplexity import PerplexitySearchResult
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityThinkResult
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.perplexity.tools import perplexity_search
 from datarobot_genai.drtools.perplexity.tools import perplexity_think
 
@@ -236,7 +236,7 @@ class TestPerplexitySearch:
             mock_client.search = AsyncMock(side_effect=PerplexityError("Client error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(PerplexityError) as exc_info:
                 await perplexity_search(query="test")
             assert "client error" in str(exc_info.value).lower()
 
@@ -255,7 +255,7 @@ class TestPerplexitySearch:
             mock_client.search = AsyncMock(side_effect=Exception("Unexpected error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await perplexity_search(query="test")
             assert "unexpected error" in str(exc_info.value).lower()
 
@@ -322,7 +322,7 @@ class TestPerplexityThink:
             mock_client.think = AsyncMock(side_effect=PerplexityError("Client error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(PerplexityError) as exc_info:
                 await perplexity_think(prompt="test prompt")
             assert "client error" in str(exc_info.value).lower()
 
@@ -341,6 +341,6 @@ class TestPerplexityThink:
             mock_client.think = AsyncMock(side_effect=Exception("Unexpected error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await perplexity_think(prompt="test prompt")
             assert "unexpected error" in str(exc_info.value).lower()

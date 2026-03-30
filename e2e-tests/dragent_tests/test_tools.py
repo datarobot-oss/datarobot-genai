@@ -32,7 +32,7 @@ CALCULATOR_PROMPT = (
     "Do NOT compute it yourself. Call the calculator tool with this exact input: "
     "(1234 * 567890) + 91011. "
     "Report only the exact numeric result from the tool, no explanation, "
-    "no formatting, no other text."
+    "no formatting, no other text. Always return a final answer to the user"
 )
 
 EXPECTED_RESULT = str((1234 * 567890) + 91011)

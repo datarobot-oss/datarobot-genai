@@ -17,16 +17,30 @@ import os
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.core.utils import is_valid_url
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.utils import is_valid_url
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
+def _serialize_datastore_params(params: Any) -> dict[str, Any]:
+    """Return JSON-serializable params; DataRobot SDK uses DataStoreParameters, not a dict."""
+    if params is None:
+        return {}
+    if isinstance(params, dict):
+        return params
+    collect = getattr(params, "collect_payload", None)
+    if callable(collect):
+        payload = collect()
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+@tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
 async def upload_dataset_to_ai_catalog(
     *,
     file_path: Annotated[str, "The path to the dataset file to upload."] | None = None,
@@ -66,7 +80,7 @@ async def upload_dataset_to_ai_catalog(
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "read", "list", "catalog", "daria"})
+@tool_metadata(tags={"predictive", "data", "read", "list", "catalog", "daria"})
 async def list_ai_catalog_items() -> dict[str, Any]:
     """List all AI Catalog items (datasets) for the authenticated user."""
     token = await get_datarobot_access_token()
@@ -85,7 +99,7 @@ async def list_ai_catalog_items() -> dict[str, Any]:
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})
+@tool_metadata(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})
 async def get_dataset_details(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset"] | None = None,
@@ -117,7 +131,7 @@ async def get_dataset_details(
     return result
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "list", "daria"})
+@tool_metadata(tags={"predictive", "data", "read", "datastore", "list", "daria"})
 async def list_datastores() -> dict[str, Any]:
     """List available DataRobot data connections (datastores)."""
     token = await get_datarobot_access_token()
@@ -130,7 +144,7 @@ async def list_datastores() -> dict[str, Any]:
                 "id": ds.id,
                 "canonical_name": getattr(ds, "canonical_name", ""),
                 "creator_id": getattr(ds, "creator_id", ""),
-                "params": getattr(ds, "params", {}),
+                "params": _serialize_datastore_params(getattr(ds, "params", None)),
             }
             for ds in datastores
         ],
@@ -138,7 +152,7 @@ async def list_datastores() -> dict[str, Any]:
     }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
+@tool_metadata(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
 async def browse_datastore(
     *,
     datastore_id: Annotated[str, "The ID of the datastore to browse"] | None = None,
@@ -172,7 +186,7 @@ async def browse_datastore(
     }
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"}
 )
 async def query_datastore(
@@ -211,7 +225,7 @@ async def query_datastore(
 # from datarobot_genai.drmcp.core.memory_management import MemoryManager, get_memory_manager
 
 
-# @dr_mcp_integration_tool()
+# @tool_metadata()
 # async def list_ai_catalog_items(
 #     ctx: Context, agent_id: str = None, storage_id: str = None
 # ) -> str:

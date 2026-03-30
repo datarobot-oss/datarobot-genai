@@ -24,7 +24,7 @@ from typing import Any
 
 import polars as pl
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -32,7 +32,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "info", "metadata", "daria"})
+@tool_metadata(tags={"predictive", "deployment", "read", "info", "metadata", "daria"})
 async def get_deployment_info(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
@@ -97,7 +97,7 @@ async def get_deployment_info(
     return result
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "template", "data"})
+@tool_metadata(tags={"predictive", "deployment", "read", "template", "data"})
 async def generate_prediction_data_template(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
@@ -187,7 +187,7 @@ async def generate_prediction_data_template(
     return structured_content
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "validation", "data"})
+@tool_metadata(tags={"predictive", "deployment", "read", "validation", "data"})
 async def validate_prediction_data(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
@@ -320,7 +320,7 @@ async def validate_prediction_data(
     return validation_report
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "features", "info"})
+@tool_metadata(tags={"predictive", "deployment", "read", "features", "info"})
 async def get_deployment_features(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],

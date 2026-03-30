@@ -12,39 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DataRobot Agentic AI documentation search tools.
-
-Provides MCP tools for searching and fetching content from the DataRobot
-agentic-ai documentation at https://docs.datarobot.com/en/docs/agentic-ai/.
+"""Standalone DataRobot Agentic AI documentation search tools.
 
 No API keys or external services are required — the tool directly indexes
 the public documentation site using a TF-IDF search over page titles and
 body text.
 
-For use without an MCP server, import the tool functions directly from
-:mod:`datarobot_genai.drtools.dr_docs.local_tools` (or via the
-package ``__init__``).
+Provides standalone tool functions that can be wrapped as LangChain or other framework
+(e.g. LlamaIndex) or MCP tools.
+
+Example use with LangGraph::
+
+    from datarobot_genai.drtools.dr_docs import search_datarobot_agentic_docs
+    from langchain_core.tools import tool
+    search_tool = tool(search_datarobot_agentic_docs)
+    agent = create_agent(model, tools=[search_tool])
+
+    # To call directly:
+    result = await search_tool.ainvoke({
+        "query": "MCP server setup",
+        "max_results": 5
+    })
 """
 
 import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS
 from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.core.clients.dr_docs import fetch_page_content
+from datarobot_genai.drtools.core.clients.dr_docs import search_docs
 from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.dr_docs.local_tools import (
-    fetch_datarobot_doc_page as _fetch_datarobot_doc_page,
-)
-from datarobot_genai.drtools.dr_docs.local_tools import (
-    search_datarobot_agentic_docs as _search_datarobot_agentic_docs,
-)
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"datarobot", "docs", "documentation", "search"})
+@tool_metadata(tags={"datarobot", "docs", "documentation", "search"})
 async def search_datarobot_agentic_docs(
     *,
     query: Annotated[
@@ -79,11 +84,31 @@ async def search_datarobot_agentic_docs(
     if not query or not query.strip():
         raise ToolError("Argument validation error: 'query' cannot be empty.")
 
-    result = await _search_datarobot_agentic_docs(query=query, max_results=max_results)
-    return result
+    results = await search_docs(query=query, max_results=max_results)
+
+    if not results:
+        return {
+            "status": "no_results",
+            "query": query,
+            "message": "No documentation pages found matching your query. "
+            "Try rephrasing with different keywords.",
+        }
+
+    flat: dict[str, Any] = {
+        "status": "success",
+        "query": query,
+        "total_results": len(results),
+    }
+    for i, result in enumerate(results):
+        flat[f"result_{i}_title"] = result["title"]
+        flat[f"result_{i}_url"] = result["url"]
+        if result.get("description"):
+            flat[f"result_{i}_description"] = result["description"]
+
+    return flat
 
 
-@dr_mcp_integration_tool(tags={"datarobot", "docs", "documentation", "fetch", "read"})
+@tool_metadata(tags={"datarobot", "docs", "documentation", "fetch", "read"})
 async def fetch_datarobot_doc_page(
     *,
     url: Annotated[
@@ -109,5 +134,5 @@ async def fetch_datarobot_doc_page(
     if not url or not url.strip():
         raise ToolError("Argument validation error: 'url' cannot be empty.")
 
-    result = await _fetch_datarobot_doc_page(url=url)
+    result = await fetch_page_content(url=url)
     return result

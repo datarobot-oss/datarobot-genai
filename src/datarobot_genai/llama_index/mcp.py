@@ -25,7 +25,7 @@ from typing import Any
 from llama_index.tools.mcp import BasicMCPClient
 from llama_index.tools.mcp import aget_tools_from_mcp_url
 
-from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.core.mcp.config import MCPConfig
 
 
 async def load_mcp_tools(

@@ -26,12 +26,12 @@ from datarobot_predict.deployment import predict as dr_predict
 from dateutil import parser as dateutil_parser
 from pydantic import BaseModel
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.core.utils import predictions_result_response
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.clients.s3 import get_s3_bucket_info
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.utils import predictions_result_response
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _parse_datetime(value: str) -> datetime:
         return dateutil_parser.parse(str(value))
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
+@tool_metadata(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_by_ai_catalog_rt(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
     dataset_id: Annotated[str, "ID of an AI Catalog item to use as input data"],
@@ -122,7 +122,7 @@ async def predict_by_ai_catalog_rt(
     return content
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "realtime", "read", "scoring"})
+@tool_metadata(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_realtime(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
     file_path: Annotated[

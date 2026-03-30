@@ -24,7 +24,7 @@ from typing import Any
 
 from crewai_tools import MCPServerAdapter
 
-from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.core.mcp.config import MCPConfig
 
 
 @contextmanager
