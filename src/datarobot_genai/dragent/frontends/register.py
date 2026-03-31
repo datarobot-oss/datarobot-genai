@@ -47,7 +47,6 @@ _SUPPRESSED_NAT_MESSAGES = [
     "Dask is not available",
     "feature is experimental",
     "Using provided input_schema for multi-argument function",
-    "not found in outstanding start steps",
 ]
 _orig_handler_handle = logging.Handler.handle
 
