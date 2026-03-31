@@ -20,10 +20,12 @@ from crewai import Task
 from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import CrewAIAgent
+from datarobot_genai.drtools.calculator import calculator
 
 from dragent.tool import generate_objectid
 
 generate_objectid_tool = tool(generate_objectid)
+calculator_tool = tool(calculator)
 
 
 class MyAgent(CrewAIAgent):
@@ -46,10 +48,12 @@ class MyAgent(CrewAIAgent):
                 "You are a content planner. Given a topic, produce a short bullet-point "
                 "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
                 "Use the generate_objectid tool when asked to generate an object ID for a "
-                "deployment."
+                "deployment. Use the calculator tool when asked to compute a mathematical "
+                "expression."
             ),
             llm=self._llm,
-            tools=[generate_objectid_tool] + self.tools,
+            function_calling_llm=self._llm,
+            tools=[generate_objectid_tool, calculator_tool] + self.tools,
             verbose=self.verbose,
         )
         writer = Agent(
@@ -58,10 +62,12 @@ class MyAgent(CrewAIAgent):
             backstory=make_system_prompt(
                 "You are a concise writer. Using the planner's outline, write a short response "
                 "in 2-3 sentences. Use the generate_objectid tool when asked to "
-                "generate an object ID for a deployment."
+                "generate an object ID for a deployment. Use the calculator tool when asked to "
+                "compute a mathematical expression."
             ),
             llm=self._llm,
-            tools=[generate_objectid_tool] + self.tools,
+            function_calling_llm=self._llm,
+            tools=[generate_objectid_tool, calculator_tool] + self.tools,
             verbose=self.verbose,
         )
         return [planner, writer]
@@ -80,17 +86,21 @@ class MyAgent(CrewAIAgent):
             Task(
                 description=(
                     "Create a short outline about: {topic}. "
-                    "Prior conversation context (may be empty): {chat_history}"
+                    "Prior conversation context (may be empty): {chat_history}. "
+                    "Execute tool calls if requested instead of this task."
                 ),
-                expected_output="A bullet-point outline with 3-5 key points.",
+                expected_output=(
+                    "A bullet-point outline with 3-5 key points. Or the result of a tool call."
+                ),
                 agent=planner,
             ),
             Task(
                 description=(
                     "Using the planner's outline, write a short response about: {topic}. "
-                    "Prior conversation context (may be empty): {chat_history}"
+                    "Prior conversation context (may be empty): {chat_history}. "
+                    "Execute tool calls if requested instead of this task."
                 ),
-                expected_output="A concise 2-3 sentence response.",
+                expected_output="A concise 2-3 sentence response. Or the result of a tool call.",
                 agent=writer,
             ),
         ]
