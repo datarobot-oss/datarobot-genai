@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reworked `mcp_tools_context`arguments to use `MCPConfig` explicitly.
 - Fixed issue with `RuntimeError: generator didn't stop after athrow()` in MCP context.
 
+## 0.9.1
+- Suppressed known-harmless NAT warnings
+
 ## 0.9.0
 - Removed side-effects in MCPConfig
 - Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
