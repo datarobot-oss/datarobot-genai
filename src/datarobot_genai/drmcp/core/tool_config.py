@@ -35,9 +35,9 @@ class ToolType(StrEnum):
     TAVILY = "tavily"
     DR_DOCS = "dr_docs"
     USE_CASE = "use_case"
-    VDB = "vdb"
     CODE_EXECUTION = "code_execution"
     OPTIMIZATION = "optimization"
+    VDB = "vdb"
 
 
 class ToolConfig(TypedDict):
@@ -115,13 +115,6 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         package_prefix="datarobot_genai.drtools.use_case",
         config_field_name="enable_use_case_tools",
     ),
-    ToolType.VDB: ToolConfig(
-        name="vdb",
-        oauth_check=None,
-        directory="vdb",
-        package_prefix="datarobot_genai.drtools.vdb",
-        config_field_name="enable_vdb_tools",
-    ),
     ToolType.CODE_EXECUTION: ToolConfig(
         name="code_execution",
         oauth_check=None,
@@ -135,6 +128,13 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="optimization",
         package_prefix="datarobot_genai.drtools.optimization",
         config_field_name="enable_optimization_tools",
+    ),
+    ToolType.VDB: ToolConfig(
+        name="vdb",
+        oauth_check=None,
+        directory="vdb",
+        package_prefix="datarobot_genai.drtools.vdb",
+        config_field_name="enable_vdb_tools",
     ),
 }
 
