@@ -67,23 +67,6 @@ class DataRobotLiteLLM(LiteLLM):
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._mcp_tools: list[Any] = []
-
-    def set_mcp_tools(self, tools: list[Any]) -> None:
-        """Set MCP tools for this agent."""
-        self._mcp_tools = tools
-
-    @property
-    def mcp_tools(self) -> list[Any]:
-        """Return the list of MCP tools available to this agent.
-
-        Subclasses can use this to wire tools into LlamaIndex agents during
-        workflow construction inside ``build_workflow``.
-        """
-        return self._mcp_tools
-
     @abc.abstractmethod
     async def build_workflow(self) -> Any:
         """Return an AgentWorkflow instance ready to run."""
