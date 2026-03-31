@@ -18,36 +18,30 @@ MCP integration for CrewAI using MCPServerAdapter.
 This module provides MCP server connection management for CrewAI agents.
 """
 
-from collections.abc import Generator
-from contextlib import contextmanager
-from typing import Any
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
+from crewai.tools import BaseTool
 from crewai_tools import MCPServerAdapter
 
 from datarobot_genai.core.mcp.config import MCPConfig
 
 
-@contextmanager
-def mcp_tools_context(
-    authorization_context: dict[str, Any] | None = None,
-    forwarded_headers: dict[str, str] | None = None,
-) -> Generator[list[Any], None, None]:
+# here it is async to conform with other MCP adapters
+@asynccontextmanager
+async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTool], None]:
     """Context manager for MCP tools that handles connection lifecycle."""
-    config = MCPConfig(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
     # If no MCP server configured, return empty tools list
-    if not config.server_config:
+    if not mcp_config.server_config:
         print("No MCP server configured, using empty tools list", flush=True)
         yield []
         return
 
-    print(f"Connecting to MCP server: {config.server_config['url']}", flush=True)
+    print(f"Connecting to MCP server: {mcp_config.server_config['url']}", flush=True)
 
     # Use MCPServerAdapter as context manager with the server config
     try:
-        with MCPServerAdapter(config.server_config) as tools:
+        with MCPServerAdapter(mcp_config.server_config) as tools:
             print(
                 f"Successfully connected to MCP server, got {len(tools)} tools",
                 flush=True,

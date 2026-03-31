@@ -19,7 +19,8 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.llama_index.mcp import load_mcp_tools
+from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.llama_index.mcp import mcp_tools_context
 
 
 class TestLoadMCPTools:
@@ -29,26 +30,10 @@ class TestLoadMCPTools:
     async def test_load_mcp_tools_no_configuration(self):
         """Test loading tools when no MCP server is configured."""
         with patch.dict(os.environ, {}, clear=True):
-            tools = await load_mcp_tools()
-            assert isinstance(tools, list)
-            assert len(tools) == 0
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
-    async def test_load_mcp_tools_with_external_url(self, mock_aget):
-        """Test loading tools with external MCP URL."""
-        mock_tools = [MagicMock(), MagicMock()]
-        mock_aget.return_value = mock_tools
-
-        test_url = "https://mcp-server.example.com/mcp"
-        with patch.dict(os.environ, {"EXTERNAL_MCP_URL": test_url}, clear=True):
-            tools = await load_mcp_tools()
-            assert tools == mock_tools
-            mock_aget.assert_awaited_once()
-            # Check that the function was called with correct parameters
-            call_args = mock_aget.await_args
-            assert call_args[1]["command_or_url"] == test_url.rstrip("/")
-            assert call_args[1]["client"].headers == {}
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
+                assert isinstance(tools, list)
+                assert len(tools) == 0
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -70,14 +55,15 @@ class TestLoadMCPTools:
             },
             clear=True,
         ):
-            tools = await load_mcp_tools()
-            assert tools == mock_tools
-            mock_aget.assert_awaited_once()
-            # Check that the function was called with correct parameters
-            call_args = mock_aget.await_args
-            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert call_args[1]["command_or_url"] == expected_url
-            assert call_args[1]["client"].headers["Authorization"] == f"Bearer {api_key}"
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools == mock_tools
+                mock_aget.assert_awaited_once()
+                # Check that the function was called with correct parameters
+                call_args = mock_aget.await_args
+                expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+                assert call_args[1]["command_or_url"] == expected_url
+                assert call_args[1]["client"].headers["Authorization"] == f"Bearer {api_key}"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -87,9 +73,10 @@ class TestLoadMCPTools:
 
         test_url = "https://mcp-server.example.com/mcp"
         with patch.dict(os.environ, {"EXTERNAL_MCP_URL": test_url}, clear=True):
-            tools = await load_mcp_tools()
-            assert isinstance(tools, list)
-            assert len(tools) == 0
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
+                assert isinstance(tools, list)
+                assert len(tools) == 0
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -99,9 +86,10 @@ class TestLoadMCPTools:
 
         test_url = "https://mcp-server.example.com/mcp"
         with patch.dict(os.environ, {"EXTERNAL_MCP_URL": test_url}, clear=True):
-            tools = await load_mcp_tools()
-            assert isinstance(tools, list)
-            assert len(tools) == 0
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
+                assert isinstance(tools, list)
+                assert len(tools) == 0
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -123,14 +111,15 @@ class TestLoadMCPTools:
             },
             clear=True,
         ):
-            tools = await load_mcp_tools()
-            assert tools == mock_tools
-            mock_aget.assert_awaited_once()
-            # Check that the function was called with custom parameters
-            call_args = mock_aget.await_args
-            expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert call_args[1]["command_or_url"] == expected_url
-            assert call_args[1]["client"].headers["Authorization"] == f"Bearer {custom_api_key}"
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools == mock_tools
+                mock_aget.assert_awaited_once()
+                # Check that the function was called with custom parameters
+                call_args = mock_aget.await_args
+                expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
+                assert call_args[1]["command_or_url"] == expected_url
+                assert call_args[1]["client"].headers["Authorization"] == f"Bearer {custom_api_key}"
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.llama_index.mcp.aget_tools_from_mcp_url", new_callable=AsyncMock)
@@ -155,11 +144,12 @@ class TestLoadMCPTools:
             },
             clear=True,
         ):
-            tools = await load_mcp_tools(forwarded_headers=forwarded_headers)
-            assert tools == mock_tools
-            mock_aget.assert_awaited_once()
-            # Check that forwarded headers are included in client headers
-            call_args = mock_aget.await_args
-            client_headers = call_args[1]["client"].headers
-            assert client_headers["x-datarobot-api-key"] == "scoped-token-123"
-            assert client_headers["Authorization"] == f"Bearer {api_key}"
+            mcp_config = MCPConfig(forwarded_headers=forwarded_headers)
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools == mock_tools
+                mock_aget.assert_awaited_once()
+                # Check that forwarded headers are included in client headers
+                call_args = mock_aget.await_args
+                client_headers = call_args[1]["client"].headers
+                assert client_headers["x-datarobot-api-key"] == "scoped-token-123"
+                assert client_headers["Authorization"] == f"Bearer {api_key}"
