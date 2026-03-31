@@ -45,14 +45,18 @@ _SUPPRESSED_NAT_MESSAGES = [
     "StepAdaptor is disabled",
     "Dask is not installed",
     "Dask is not available",
-    "feature is experimental",
+    "feature is experimental and the API may change",
     "Using provided input_schema for multi-argument function",
 ]
 _orig_handler_handle = logging.Handler.handle
 
 
 def _filtered_handle(self: logging.Handler, record: logging.LogRecord) -> bool | None:
-    if any(s in record.getMessage() for s in _SUPPRESSED_NAT_MESSAGES):
+    try:
+        msg = record.getMessage()
+    except Exception:
+        return _orig_handler_handle(self, record)
+    if any(s in msg for s in _SUPPRESSED_NAT_MESSAGES):
         return None
     return _orig_handler_handle(self, record)
 
