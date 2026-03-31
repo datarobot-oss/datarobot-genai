@@ -28,6 +28,9 @@ datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.frontends.register"
 
+[project.entry-points.'nat.cli']
+dragent = "datarobot_genai.dragent.cli.commands:dragent_command"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

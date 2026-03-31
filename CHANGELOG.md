@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.9.2
+- Added `nat dragent` shell frontend for NAT — provides `nat dragent serve` and `nat dragent run` commands as a replacement for `cli.py`
+
 ## 0.9.0
 - Removed side-effects in MCPConfig
 - Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
