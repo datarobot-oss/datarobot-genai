@@ -255,6 +255,15 @@ class TestMCPToolsContext:
                 session=setup_session_and_tools["session_instance"]
             )
 
+    @pytest.mark.usefixtures("setup_session_and_tools")
+    async def test_mcp_tools_context_exception_is_propagated(self):
+        external_url = "https://mcp-server.example.com/mcp"
+
+        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
+        with pytest.raises(RuntimeError):
+            async with mcp_tools_context(mcp_config):
+                raise RuntimeError("Connection failed")
+
     async def test_mcp_tools_context_unsupported_transport(self):
         external_url = "https://mcp-server.example.com/mcp"
 

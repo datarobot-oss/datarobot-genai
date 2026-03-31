@@ -40,14 +40,9 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
     print(f"Connecting to MCP server: {mcp_config.server_config['url']}", flush=True)
 
     # Use MCPServerAdapter as context manager with the server config
-    try:
-        with MCPServerAdapter(mcp_config.server_config) as tools:
-            print(
-                f"Successfully connected to MCP server, got {len(tools)} tools",
-                flush=True,
-            )
-            yield tools
-    except Exception as exc:
-        # Gracefully degrade when connection fails or adapter initialization raises
-        print(f"Failed to connect to MCP server: {exc}", flush=True)
-        yield []
+    with MCPServerAdapter(mcp_config.server_config) as tools:
+        print(
+            f"Successfully connected to MCP server, got {len(tools)} tools",
+            flush=True,
+        )
+        yield tools
