@@ -15,56 +15,23 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
-import click
-from nat.data_models.front_end import FrontEndBaseConfig
-from nat.front_ends.simple_base.simple_front_end_plugin_base import SimpleFrontEndPluginBase
-from nat.runtime.session import SessionManager
-from pydantic import Field
+from nat.front_ends.console.console_front_end_config import ConsoleFrontEndConfig
+from nat.front_ends.console.console_front_end_plugin import ConsoleFrontEndPlugin
 
 logger = logging.getLogger(__name__)
 
 
-class DRAgentConsoleFrontEndConfig(FrontEndBaseConfig, name="dragent_console"):  # type: ignore
+# Extends NAT's ConsoleFrontEndConfig with a distinct name so it can be registered
+# as a separate frontend type for `nat dragent run`.
+# Base: https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/release/1.4/src/nat/front_ends/console/console_front_end_config.py
+class DRAgentConsoleFrontEndConfig(ConsoleFrontEndConfig, name="dragent_console"):  # type: ignore
     """Frontend config for running a dragent workflow from the console."""
 
-    input_query: list[str] | None = Field(
-        default=None,
-        alias="input",
-        description="Input prompt(s) to submit to the workflow.",
-    )
-    input_file: Path | None = Field(
-        default=None,
-        description="Path to a text file containing the input prompt.",
-    )
 
-
-class DRAgentConsoleFrontEndPlugin(SimpleFrontEndPluginBase[DRAgentConsoleFrontEndConfig]):
+# Extends NAT's ConsoleFrontEndPlugin. Currently identical to the base — the dragent-specific
+# overrides (DRAgentAGUISessionManager, DRAgentNestedReasoningStepAdaptor, auth context injection)
+# will be added in follow-up work.
+# Base: https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/release/1.4/src/nat/front_ends/console/console_front_end_plugin.py
+class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
     """Console frontend for dragent workflows with AG-UI support."""
-
-    async def pre_run(self) -> None:
-        if (
-            self.front_end_config.input_query is not None
-            and self.front_end_config.input_file is not None
-        ):
-            raise click.UsageError("Must specify either --input or --input-file, not both")
-        if self.front_end_config.input_query is None and self.front_end_config.input_file is None:
-            raise click.UsageError("Must specify either --input or --input-file")
-
-    async def run_workflow(self, session_manager: SessionManager) -> None:
-        if self.front_end_config.input_query:
-            input_text = self.front_end_config.input_query[0]
-        elif self.front_end_config.input_file:
-            with open(self.front_end_config.input_file, encoding="utf-8") as f:
-                input_text = f.read()
-        else:
-            raise click.UsageError("No input provided.")
-
-        user_id = "cli-user"
-
-        async with session_manager.session(user_id=user_id) as session:
-            async with session.run(input_text) as runner:
-                result = await runner.result(to_type=str)
-
-        click.echo(result)

@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_FILE = "agent/workflow.yaml"
 
 
+# Config loading and frontend invocation adapted from NAT's StartCommandGroup.invoke_subcommand().
+# Source: https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/release/1.4/src/nat/cli/commands/start.py
+# NAT doesn't expose a programmatic API for this — replace if one becomes available.
 def _run_nat_frontend(
     config_file: Path,
     frontend_name: str,
@@ -156,6 +159,6 @@ def run_command(
         config_file=config_file,
         frontend_name="dragent_console",
         override=override,
-        input_query=[input_query] if input_query else None,
+        input_query=[input_query] if input_query is not None else None,
         input_file=input_file,
     )
