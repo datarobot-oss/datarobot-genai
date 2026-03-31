@@ -61,7 +61,7 @@ def _default_auth_provider() -> str | AuthenticationRef | None:
 
 class DataRobotMCPServerConfig(MCPServerConfig):
     transport: Literal["streamable-http", "sse"] = Field(
-        default_factor=_default_transport,
+        default_factory=_default_transport,
         description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
     url: HttpUrl = Field(
