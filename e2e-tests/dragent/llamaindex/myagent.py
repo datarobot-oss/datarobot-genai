@@ -15,13 +15,14 @@
 from typing import Any
 
 from datarobot_genai.core.agents import make_system_prompt
-from datarobot_genai.drtools.calculator import calculator as _calculator_fn
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.tools import FunctionTool
 
-calculator = FunctionTool.from_defaults(fn=_calculator_fn, name="calculator")
+from dragent.tool import generate_objectid
+
+generate_objectid_tool = FunctionTool.from_defaults(fn=generate_objectid, name="generate_objectid")
 
 
 class MyAgent(LlamaIndexAgent):
@@ -42,10 +43,11 @@ class MyAgent(LlamaIndexAgent):
             system_prompt=make_system_prompt(
                 "You are a content planner. Given a topic, produce a short bullet-point "
                 "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
-                "When done, hand off to the writer agent."
+                "Use the generate_objectid tool when asked to generate an object ID for a "
+                "deployment."
             ),
             llm=self._llm,
-            tools=[calculator] + self.tools,
+            tools=[generate_objectid_tool] + self.tools,
             can_handoff_to=["writer"],
         )
         writer = FunctionAgent(
@@ -53,10 +55,11 @@ class MyAgent(LlamaIndexAgent):
             description="Writes concise responses based on outlines",
             system_prompt=make_system_prompt(
                 "You are a concise writer. Using the planner's outline, write a short response "
-                "in 2-3 sentences. Use the calculator tool when asked to compute math."
+                "in 2-3 sentences. Use the generate_objectid tool when asked to "
+                "generate an object ID for a deployment."
             ),
             llm=self._llm,
-            tools=[calculator] + self.tools,
+            tools=[generate_objectid_tool] + self.tools,
         )
         return AgentWorkflow(agents=[planner, writer], root_agent="planner")
 

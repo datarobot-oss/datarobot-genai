@@ -15,7 +15,6 @@
 from typing import Any
 
 from datarobot_genai.core.agents import make_system_prompt
-from datarobot_genai.drtools.calculator import calculator
 from datarobot_genai.langgraph.agent import LangGraphAgent
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
@@ -26,7 +25,9 @@ from langgraph.graph import START
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 
-calculator_tool = tool(calculator)
+from dragent.tool import generate_objectid
+
+generate_objectid_tool = tool(generate_objectid)
 
 
 class MyAgent(LangGraphAgent):
@@ -63,10 +64,12 @@ class MyAgent(LangGraphAgent):
     def agent_planner(self) -> Any:
         return create_agent(
             self._llm,
-            tools=[calculator_tool] + self.tools,
+            tools=[generate_objectid_tool] + self.tools,
             system_prompt=make_system_prompt(
                 "You are a content planner. Given a topic, produce a short bullet-point "
-                "outline with 3-5 key points. No paragraphs, no explanations — just the list."
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
+                "Use the generate_objectid tool when asked to generate an object ID for a "
+                "deployment."
             ),
             name="planner",
         )
@@ -75,10 +78,11 @@ class MyAgent(LangGraphAgent):
     def agent_writer(self) -> Any:
         return create_agent(
             self._llm,
-            tools=[calculator_tool] + self.tools,
+            tools=[generate_objectid_tool] + self.tools,
             system_prompt=make_system_prompt(
                 "You are a concise writer. Using the planner's outline, write a short response "
-                "in 2-3 sentences. Use the calculator tool when asked to compute math."
+                "in 2-3 sentences. Use the generate_objectid tool when asked to "
+                "generate an object ID for a deployment."
             ),
             name="writer",
         )

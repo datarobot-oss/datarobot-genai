@@ -20,9 +20,10 @@ from crewai import Task
 from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import CrewAIAgent
-from datarobot_genai.drtools.calculator import calculator
 
-calculator_tool = tool(calculator)
+from dragent.tool import generate_objectid
+
+generate_objectid_tool = tool(generate_objectid)
 
 
 class MyAgent(CrewAIAgent):
@@ -43,10 +44,12 @@ class MyAgent(CrewAIAgent):
             goal="Create a short bullet-point outline with 3-5 key points about: {topic}.",
             backstory=make_system_prompt(
                 "You are a content planner. Given a topic, produce a short bullet-point "
-                "outline with 3-5 key points. No paragraphs, no explanations — just the list."
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
+                "Use the generate_objectid tool when asked to generate an object ID for a "
+                "deployment."
             ),
             llm=self._llm,
-            tools=[calculator_tool] + self.tools,
+            tools=[generate_objectid_tool] + self.tools,
             verbose=self.verbose,
         )
         writer = Agent(
@@ -54,10 +57,11 @@ class MyAgent(CrewAIAgent):
             goal="Write a 2-3 sentence response based on the planner's outline about: {topic}.",
             backstory=make_system_prompt(
                 "You are a concise writer. Using the planner's outline, write a short response "
-                "in 2-3 sentences. Use the calculator tool when asked to compute math."
+                "in 2-3 sentences. Use the generate_objectid tool when asked to "
+                "generate an object ID for a deployment."
             ),
             llm=self._llm,
-            tools=[calculator_tool] + self.tools,
+            tools=[generate_objectid_tool] + self.tools,
             verbose=self.verbose,
         )
         return [planner, writer]
