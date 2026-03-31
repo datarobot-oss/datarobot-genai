@@ -27,6 +27,8 @@ jobs:
               - 'src/datarobot_genai/langgraph/**'
             llamaindex:
               - 'src/datarobot_genai/llama_index/**'
+            crewai:
+              - 'src/datarobot_genai/crewai/**'
             nat:
               - 'src/datarobot_genai/nat/**'
             base:
