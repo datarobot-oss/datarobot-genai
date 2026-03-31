@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -91,6 +92,9 @@ async def mcp_tools_context(
         print("No MCP server configured, using empty tools list", flush=True)
         yield []
         return
+
+    # Prevent mutation of the original server_config
+    server_config = copy.deepcopy(server_config)
 
     url = server_config["url"]
     print(f"Connecting to MCP server: {url}", flush=True)
