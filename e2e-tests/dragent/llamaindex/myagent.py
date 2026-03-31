@@ -45,7 +45,7 @@ class MyAgent(LlamaIndexAgent):
                 "When done, hand off to the writer agent."
             ),
             llm=self._llm,
-            tools=[calculator] + self.mcp_tools,
+            tools=[calculator] + self.tools,
             can_handoff_to=["writer"],
         )
         writer = FunctionAgent(
@@ -56,7 +56,7 @@ class MyAgent(LlamaIndexAgent):
                 "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
             llm=self._llm,
-            tools=[calculator] + self.mcp_tools,
+            tools=[calculator] + self.tools,
         )
         return AgentWorkflow(agents=[planner, writer], root_agent="planner")
 
