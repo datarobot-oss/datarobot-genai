@@ -43,8 +43,8 @@ jobs:
         run: |
           frameworks='[]'
           core="${{ steps.filter.outputs.core }}"
-          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" [base]="${{ steps.filter.outputs.base }}" )
-          for fw in langgraph llamaindex nat base; do
+          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" [base]="${{ steps.filter.outputs.base }}" [crewai]="${{ steps.filter.outputs.crewai }}" )
+          for fw in langgraph llamaindex nat base crewai; do
             if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
               frameworks=$(echo "$frameworks" | jq -c ". + [\"$fw\"]")
             fi
