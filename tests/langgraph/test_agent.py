@@ -13,10 +13,7 @@
 # limitations under the License.
 from functools import cached_property
 from typing import Any
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
 from unittest.mock import Mock
-from unittest.mock import patch
 
 import pytest
 from ag_ui.core import AssistantMessage
@@ -433,58 +430,6 @@ async def test_langgraph_non_streaming(run_agent_input):
     assert usage_metrics["total_tokens"] == 200
     assert usage_metrics["prompt_tokens"] == 100
     assert usage_metrics["completion_tokens"] == 100
-
-
-async def test_invoke_calls_mcp_tools_context_and_sets_tools_and_cleans_up(
-    authorization_context, run_agent_input
-):
-    """Test that invoke method calls mcp_tools_context and sets tools correctly."""
-    # GIVEN a simple langgraph agent with forwarded headers
-    forwarded_headers = {
-        "x-datarobot-api-key": "scoped-token-123",
-    }
-    agent = SimpleLangGraphAgent(
-        authorization_context=authorization_context, forwarded_headers=forwarded_headers
-    )
-
-    # Mock the mcp_tools_context to return mock tools
-    mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-
-    with patch("datarobot_genai.langgraph.agent.mcp_tools_context") as mock_mcp_context:
-        # Configure the mock context manager
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_tools
-        mock_context_manager.__aexit__.return_value = None
-        mock_mcp_context.return_value = mock_context_manager
-
-        with patch.object(agent, "set_mcp_tools") as mock_set_mcp_tools:
-            # WHEN invoking the agent
-            streaming_response_iterator = agent.invoke(run_agent_input)
-
-            # THEN context is not entered yet (it's entered inside the generator)
-            mock_context_manager.__aenter__.assert_not_called()
-            mock_mcp_context.assert_not_called()
-
-            # WHEN consuming the streaming generator
-            items_consumed = 0
-            async for _ in streaming_response_iterator:
-                items_consumed += 1
-                # THEN mcp_tools_context is called and context is entered when generator starts
-                if items_consumed == 1:
-                    # Verify mcp_tools_context is called with correct parameters
-                    mock_mcp_context.assert_called_once_with(
-                        authorization_context=authorization_context,
-                        forwarded_headers=forwarded_headers,
-                    )
-                    # Verify context is entered and tools are set
-                    mock_context_manager.__aenter__.assert_called_once()
-                    mock_set_mcp_tools.assert_called_once_with(mock_tools)
-                    # Context should still be open during streaming
-                    mock_context_manager.__aexit__.assert_not_called()
-
-            # THEN context is properly exited after generator is exhausted
-            # Verify __aexit__ was called with None, None, None (no exception)
-            mock_context_manager.__aexit__.assert_called_once_with(None, None, None)
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:

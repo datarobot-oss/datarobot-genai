@@ -104,13 +104,6 @@ def test_create_pipeline_interactions_from_messages_returns_sample() -> None:
 
 
 @pytest.fixture
-def patch_mcp_tools_context() -> None:
-    with patch("datarobot_genai.crewai.agent.mcp_tools_context") as mock_mcp_tools_context:
-        mock_mcp_tools_context.return_value.__enter__.return_value = ["tool1"]
-        yield mock_mcp_tools_context
-
-
-@pytest.fixture
 def run_agent_input() -> RunAgentInput:
     return RunAgentInput(
         messages=[UserMessage(content="{}", id="message_id")],
@@ -123,21 +116,19 @@ def run_agent_input() -> RunAgentInput:
     )
 
 
-async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event_listener) -> None:
+async def test_invoke(run_agent_input, mock_ragas_event_listener) -> None:
     # GIVEN agent with predefined crew output and forwarded headers
     out = CrewOutput(
         raw="agent result",
         token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
     )
     forwarded_headers = {"header-name": "header-value"}
-    authorization_context = {"x-datarobot-api-key": "scoped-token-123"}
     agent = AgentForTest(
         out,
         api_base="https://x/",
         api_key="k",
         verbose=True,
         forwarded_headers=forwarded_headers,
-        authorization_context=authorization_context,
     )
 
     # WHEN invoke agent is called
@@ -146,15 +137,6 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
     # THEN response is an async generator
     assert isinstance(gen, AsyncGenerator)
     events = [event async for event in gen]
-
-    # THEN MCP context was called with forwarded headers and authorization context
-    patch_mcp_tools_context.assert_called_once_with(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
-
-    # THEN MCP tools are set
-    assert agent.mcp_tools == ["tool1"]
 
     # THEN ragas event listener was setup
     assert mock_ragas_event_listener.called_setup
@@ -189,7 +171,7 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
 
 
 async def test_invoke_does_not_include_chat_history_by_default(
-    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -209,7 +191,7 @@ async def test_invoke_does_not_include_chat_history_by_default(
 
 
 async def test_invoke_overwrites_blank_chat_history_placeholder(
-    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -239,7 +221,7 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
 
 
 async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
-    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
