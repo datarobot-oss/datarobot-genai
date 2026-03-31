@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.core.mcp.config import MCPConfig
 
 
 def make_run_agent_input_with_history() -> Any:

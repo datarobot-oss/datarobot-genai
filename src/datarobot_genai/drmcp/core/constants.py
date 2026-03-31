@@ -13,10 +13,6 @@
 # limitations under the License.
 
 
-MAX_INLINE_SIZE = 1024 * 1024  # 1MB
-DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
-RUNTIME_PARAM_ENV_VAR_NAME_PREFIX = "MLOPS_RUNTIME_PARAM_"
-
 # Streamable-HTTP MCP endpoint path (used with prefix_mount_path for full path).
 MCP_PATH_ENDPOINT = "/mcp"
 

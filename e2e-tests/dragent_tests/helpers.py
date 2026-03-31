@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import uuid
-
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -22,7 +21,7 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
 FRAMEWORK = os.environ.get("FRAMEWORK")
-FRAMEWORK_SUPPORTS_TOOL_CALLS = FRAMEWORK in ["langgraph", "nat", "llamaindex"]
+FRAMEWORK_SUPPORTS_TOOL_CALLS = FRAMEWORK in ["crewai", "langgraph", "nat", "llamaindex"]
 
 
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
@@ -44,7 +43,7 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
     for line in response.iter_lines():
         line = line.strip()  # noqa: PLW2901
         if line.startswith("data: "):
-            data = line[len("data: "):]
+            data = line[len("data: ") :]
             if data == "[DONE]":
                 break
             responses.append(DRAgentEventResponse.model_validate_json(data))

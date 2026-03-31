@@ -350,7 +350,8 @@ def test_create_dr_client() -> StubDRClient:
             model_target_type = (params or {}).get("modelTargetType")
             if model_target_type:
                 all_deployments = [
-                    d for d in all_deployments
+                    d
+                    for d in all_deployments
                     if d.get("model", {}).get("targetType") == model_target_type
                 ]
             return StubRestResponse({"data": all_deployments, "next": None})

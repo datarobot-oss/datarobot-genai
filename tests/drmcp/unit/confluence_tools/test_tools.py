@@ -11,21 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drtools.clients.confluence import ConfluenceComment
-from datarobot_genai.drtools.clients.confluence import ConfluenceError
-from datarobot_genai.drtools.clients.confluence import ConfluencePage
-from datarobot_genai.drtools.clients.confluence import ContentSearchResult
 from datarobot_genai.drtools.confluence.tools import confluence_add_comment
 from datarobot_genai.drtools.confluence.tools import confluence_get_page
 from datarobot_genai.drtools.confluence.tools import confluence_search
 from datarobot_genai.drtools.confluence.tools import confluence_update_page
+from datarobot_genai.drtools.core.clients.confluence import ConfluenceComment
+from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
+from datarobot_genai.drtools.core.clients.confluence import ConfluencePage
+from datarobot_genai.drtools.core.clients.confluence import ContentSearchResult
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 
 @pytest.fixture
@@ -40,7 +39,7 @@ def get_atlassian_access_token_mock() -> Iterator[None]:
 @pytest.fixture
 def confluence_client_get_page_by_id_mock() -> Iterator[ConfluencePage]:
     with patch(
-        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_id"
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
         page = ConfluencePage(
             page_id="12345",
@@ -57,7 +56,7 @@ def confluence_client_get_page_by_id_mock() -> Iterator[ConfluencePage]:
 @pytest.fixture
 def confluence_client_get_page_by_title_mock() -> Iterator[ConfluencePage]:
     with patch(
-        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_title"
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.get_page_by_title"
     ) as mock:
         page = ConfluencePage(
             page_id="12345",
@@ -74,7 +73,7 @@ def confluence_client_get_page_by_title_mock() -> Iterator[ConfluencePage]:
 @pytest.fixture
 def confluence_client_get_page_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_id"
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
         mock.side_effect = ConfluenceError("Page not found", status_code=404)
         yield
@@ -94,8 +93,7 @@ class TestConfluenceGetPage:
 
         tool_result = await confluence_get_page(page_id_or_title=page_id)
 
-        content, structured_content = tool_result.to_mcp_result()
-        expected = {
+        assert tool_result == {
             "page_id": "12345",
             "title": "Test Page",
             "space_id": "67890",
@@ -103,8 +101,6 @@ class TestConfluenceGetPage:
             "body": "<p>Test content</p>",
             "version": 1,
         }
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_get_page_by_title_happy_path(
@@ -118,10 +114,10 @@ class TestConfluenceGetPage:
 
         tool_result = await confluence_get_page(page_id_or_title=page_title, space_key=space_key)
 
-        content, structured_content = tool_result.to_mcp_result()
-        assert json.loads(content[0].text)["title"] == "Test Page"
-        assert structured_content["title"] == "Test Page"
-        assert structured_content["space_key"] == "TEST"
+        content = tool_result
+        assert content["title"] == "Test Page"
+        assert content["title"] == "Test Page"
+        assert content["space_key"] == "TEST"
 
     @pytest.mark.asyncio
     async def test_confluence_get_page_by_title_without_space_key(
@@ -143,7 +139,7 @@ class TestConfluenceGetPage:
         """Confluence get page -- error in client."""
         page_id = "12345"
 
-        with pytest.raises(ToolError, match="Page not found"):
+        with pytest.raises(ConfluenceError, match="Page not found"):
             await confluence_get_page(page_id_or_title=page_id)
 
     @pytest.mark.asyncio
@@ -160,7 +156,9 @@ class TestConfluenceGetPage:
 
 @pytest.fixture
 def confluence_client_add_comment_mock() -> Iterator[ConfluenceComment]:
-    with patch("datarobot_genai.drtools.clients.confluence.ConfluenceClient.add_comment") as mock:
+    with patch(
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.add_comment"
+    ) as mock:
         comment = ConfluenceComment(
             comment_id="98765",
             page_id="12345",
@@ -172,7 +170,9 @@ def confluence_client_add_comment_mock() -> Iterator[ConfluenceComment]:
 
 @pytest.fixture
 def confluence_client_add_comment_error_mock() -> Iterator[None]:
-    with patch("datarobot_genai.drtools.clients.confluence.ConfluenceClient.add_comment") as mock:
+    with patch(
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.add_comment"
+    ) as mock:
         mock.side_effect = ConfluenceError("Page not found", status_code=404)
         yield
 
@@ -192,10 +192,10 @@ class TestConfluenceAddComment:
 
         tool_result = await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
-        content, structured_content = tool_result.to_mcp_result()
+        content = tool_result
         expected = {"comment_id": "98765", "page_id": "12345"}
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert content == expected
+        assert content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_add_comment_empty_page_id(
@@ -231,14 +231,14 @@ class TestConfluenceAddComment:
         page_id = "12345"
         comment_body = "<p>Test comment</p>"
 
-        with pytest.raises(ToolError, match="Page not found"):
+        with pytest.raises(ConfluenceError, match="Page not found"):
             await confluence_add_comment(page_id=page_id, comment_body=comment_body)
 
 
 @pytest.fixture
 def confluence_client_search_mock() -> Iterator[list[ContentSearchResult]]:
     with patch(
-        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.search_confluence_content"
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.search_confluence_content"
     ) as confluence_client_search:
         results = [
             ContentSearchResult(
@@ -269,7 +269,7 @@ def confluence_client_search_mock() -> Iterator[list[ContentSearchResult]]:
 @pytest.fixture
 def confluence_client_search_error_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.search_confluence_content"
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.search_confluence_content"
     ) as confluence_client_search:
         confluence_client_search.side_effect = ConfluenceError("Search failed", status_code=500)
         yield
@@ -289,7 +289,7 @@ class TestConfluenceSearch:
 
         tool_result = await confluence_search(cql_query=cql_query)
 
-        content, structured_content = tool_result.to_mcp_result()
+        content = tool_result
         expected = {
             "data": [
                 {
@@ -315,8 +315,8 @@ class TestConfluenceSearch:
             ],
             "count": 2,
         }
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert content == expected
+        assert content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_search_when_error_in_client(
@@ -325,7 +325,7 @@ class TestConfluenceSearch:
         """Confluence search -- error in client."""
         cql_query = "type=page AND space=TEST"
 
-        with pytest.raises(ToolError, match="Search failed"):
+        with pytest.raises(ConfluenceError, match="Search failed"):
             await confluence_search(cql_query=cql_query)
 
     @pytest.mark.asyncio
@@ -356,7 +356,7 @@ class TestConfluenceSearch:
 @pytest.fixture
 def confluence_client_get_page_mock() -> Iterator[ConfluencePage]:
     with patch(
-        "datarobot_genai.drtools.clients.confluence.ConfluenceClient.get_page_by_id"
+        "datarobot_genai.drtools.core.clients.confluence.ConfluenceClient.get_page_by_id"
     ) as mock:
         page = ConfluencePage(
             page_id="12345",
@@ -385,12 +385,12 @@ class TestConfluenceSearchIncludeBody:
 
         tool_result = await confluence_search(cql_query=cql_query, include_body=True)
 
-        content, structured_content = tool_result.to_mcp_result()
-        assert json.loads(content[0].text)["count"] == 2
+        content = tool_result
+        assert content["count"] == 2
         # Verify body field is added with full content
-        assert structured_content["data"][0]["body"] == "<p>Full body content from page fetch</p>"
+        assert content["data"][0]["body"] == "<p>Full body content from page fetch</p>"
         # excerpt should still be there
-        assert structured_content["data"][0]["excerpt"] == "<p>Content</p>"
+        assert content["data"][0]["excerpt"] == "<p>Content</p>"
 
     @pytest.mark.asyncio
     async def test_confluence_search_without_include_body(
@@ -403,11 +403,11 @@ class TestConfluenceSearchIncludeBody:
 
         tool_result = await confluence_search(cql_query=cql_query, include_body=False)
 
-        content, structured_content = tool_result.to_mcp_result()
+        content = tool_result
         # body field should NOT be present when include_body=False
-        assert "body" not in structured_content["data"][0]
+        assert "body" not in content["data"][0]
         # excerpt should be there
-        assert structured_content["data"][0]["excerpt"] == "<p>Content</p>"
+        assert content["data"][0]["excerpt"] == "<p>Content</p>"
 
 
 @pytest.fixture
@@ -462,10 +462,10 @@ class TestConfluenceUpdatePage:
             version_number=version_number,
         )
 
-        content, structured_content = tool_result.to_mcp_result()
+        content = tool_result
         expected = {"updated_page_id": "12345", "new_version": 6}
-        assert json.loads(content[0].text) == expected
-        assert structured_content == expected
+        assert content == expected
+        assert content == expected
 
     @pytest.mark.asyncio
     async def test_confluence_update_page_empty_page_id(
@@ -529,7 +529,7 @@ class TestConfluenceUpdatePage:
         new_body_content = "<p>Updated content</p>"
         version_number = 5
 
-        with pytest.raises(ToolError, match="Page not found"):
+        with pytest.raises(ConfluenceError, match="Page not found"):
             await confluence_update_page(
                 page_id=page_id,
                 new_body_content=new_body_content,

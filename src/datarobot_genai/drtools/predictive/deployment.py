@@ -15,61 +15,53 @@
 import logging
 import os
 from typing import Annotated
+from typing import Any
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.datarobot import MODEL_EXTENSIONS
-from datarobot_genai.drtools.clients.datarobot import REQUIRED_FILES
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import deploy_custom_model_impl
-from datarobot_genai.drtools.clients.datarobot import find_model_file_in_folder
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.datarobot import MODEL_EXTENSIONS
+from datarobot_genai.drtools.core.clients.datarobot import REQUIRED_FILES
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import deploy_custom_model_impl
+from datarobot_genai.drtools.core.clients.datarobot import find_model_file_in_folder
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "management", "list", "daria"})
-async def list_deployments() -> ToolResult:
+@tool_metadata(tags={"predictive", "deployment", "read", "management", "list", "daria"})
+async def list_deployments() -> dict[str, Any]:
     """List all DataRobot deployments for the authenticated user."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     deployments = client.Deployment.list()
     if not deployments:
-        return ToolResult(
-            structured_content={"deployments": []},
-        )
+        return {"deployments": []}
     deployments_dict = {d.id: d.label for d in deployments}
-    return ToolResult(
-        structured_content={"deployments": deployments_dict},
-    )
+    return {"deployments": deployments_dict}
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "read", "model", "info", "daria"})
+@tool_metadata(tags={"predictive", "deployment", "read", "model", "info", "daria"})
 async def get_model_info_from_deployment(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
-) -> ToolResult:
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
+) -> dict[str, Any]:
     """Retrieve model info associated with a given deployment ID."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
-
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     deployment = client.Deployment.get(deployment_id)
-    return ToolResult(
-        structured_content=deployment.model,
-    )
+    return deployment.model
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "model", "create", "daria"})
+@tool_metadata(tags={"predictive", "deployment", "write", "model", "create", "daria"})
 async def deploy_model(
     *,
-    model_id: Annotated[str, "The ID of the DataRobot model to deploy"] | None = None,
-    label: Annotated[str, "The label/name for the deployment"] | None = None,
+    model_id: Annotated[str, "The ID of the DataRobot model to deploy"],
+    label: Annotated[str, "The label/name for the deployment"],
     description: Annotated[str, "Optional description for the deployment"] | None = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """Deploy a model by creating a new DataRobot deployment."""
     if not model_id:
         raise ToolError("Model ID must be provided")
@@ -87,24 +79,21 @@ async def deploy_model(
         description=description,
         default_prediction_server_id=prediction_servers[0].id,
     )
-    return ToolResult(
-        structured_content={
-            "deployment_id": deployment.id,
-            "label": label,
-        },
-    )
+    return {
+        "deployment_id": deployment.id,
+        "label": label,
+    }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "deployment", "write", "custom", "create"})
+@tool_metadata(tags={"predictive", "deployment", "write", "custom", "create"})
 async def deploy_custom_model(
     *,
     model_folder: Annotated[
         str, "Path to directory with custom.py, requirements.txt, and optionally a model file"
-    ]
-    | None = None,
-    name: Annotated[str, "Single name used for both custom model and deployment"] | None = None,
-    target_type: Annotated[str, "Target type: binary, regression, or multiclass"] | None = None,
-    target_name: Annotated[str, "Target column name"] | None = None,
+    ],
+    name: Annotated[str, "Single name used for both custom model and deployment"],
+    target_type: Annotated[str, "Target type: binary, regression, or multiclass"],
+    target_name: Annotated[str, "Target column name"],
     model_file_path: Annotated[
         str,
         "Optional path to model file. If not set and folder contains none, ToolError is raised.",
@@ -116,7 +105,7 @@ async def deploy_custom_model(
     deployment_label: Annotated[str, "Deployment label; defaults to name"] | None = None,
     execution_environment_id: Annotated[str, "Optional execution environment ID"] | None = None,
     description: Annotated[str, "Optional description"] | None = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """Deploy a custom inference model (e.g., .pkl) to DataRobot MLOps.
 
     Requires a model file in the folder or model_file_path.
@@ -129,6 +118,7 @@ async def deploy_custom_model(
         raise ToolError("target_type must be provided")
     if not target_name:
         raise ToolError("target_name must be provided")
+
     model_folder = os.path.abspath(model_folder)
     if not os.path.isdir(model_folder):
         raise ToolError(f"model_folder is not a directory: {model_folder}")
@@ -169,20 +159,18 @@ async def deploy_custom_model(
         execution_environment_id=execution_environment_id,
         description=description,
     )
-    return ToolResult(structured_content=out)
+    return out
 
 
-@dr_mcp_integration_tool(
-    tags={"predictive", "deployment", "read", "predictions", "history", "daria"}
-)
+@tool_metadata(tags={"predictive", "deployment", "read", "predictions", "history", "daria"})
 async def get_prediction_history(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"] | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
     limit: Annotated[int, "Maximum number of prediction rows to return"] = 100,
     offset: Annotated[int, "Number of rows to skip for pagination"] = 0,
     start_time: Annotated[str, "ISO 8601 start time filter"] | None = None,
     end_time: Annotated[str, "ISO 8601 end time filter"] | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Retrieve recent prediction results from a DataRobot deployment."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
@@ -202,11 +190,9 @@ async def get_prediction_history(
     rows = data.get("data", [])
     next_page = data.get("next")
 
-    return ToolResult(
-        structured_content={
-            "deployment_id": deployment_id,
-            "row_count": len(rows),
-            "rows": rows,
-            "has_more": next_page is not None,
-        },
-    )
+    return {
+        "deployment_id": deployment_id,
+        "row_count": len(rows),
+        "rows": rows,
+        "has_more": next_page is not None,
+    }

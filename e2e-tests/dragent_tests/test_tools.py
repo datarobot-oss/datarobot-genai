@@ -32,7 +32,7 @@ CALCULATOR_PROMPT = (
     "Do NOT compute it yourself. Call the calculator tool with this exact input: "
     "(1234 * 567890) + 91011. "
     "Report only the exact numeric result from the tool, no explanation, "
-    "no formatting, no other text."
+    "no formatting, no other text. Always return a final answer to the user"
 )
 
 EXPECTED_RESULT = str((1234 * 567890) + 91011)
@@ -41,10 +41,7 @@ EXPECTED_RESULT = str((1234 * 567890) + 91011)
     FRAMEWORK == "base",
     reason="Base framework does not implement anything, skipping tool call tests",
 )
-@pytest.mark.xfail(
-    condition=FRAMEWORK == "llamaindex",
-    reason="BUZZOK-29956: Not returning text message in the end of the response"
-)
+
 def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
     """Agent uses calculator tool when asked to compute."""
     # GIVEN: a payload that requests the calculator tool to compute the expression

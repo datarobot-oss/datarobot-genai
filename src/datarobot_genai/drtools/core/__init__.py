@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc.
+# Copyright 2026 DataRobot, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+"""Core utilities and shared components for DataRobot tools."""
 
-from datarobot_genai.drmcp.core.credentials import get_credentials
+from .tool_metadata import get_registered_tools
+from .tool_metadata import tool_metadata
 
-logger = logging.getLogger(__name__)
-
-
-def get_s3_bucket_info() -> dict[str, str]:
-    """Get S3 bucket configuration."""
-    credentials = get_credentials()
-    return {
-        "bucket": credentials.aws_predictions_s3_bucket,
-        "prefix": credentials.aws_predictions_s3_prefix,
-    }
+__all__ = ["tool_metadata", "get_registered_tools"]

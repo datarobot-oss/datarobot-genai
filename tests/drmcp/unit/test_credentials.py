@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 from pydantic_settings import SettingsConfigDict
 
-from datarobot_genai.drmcp.core import credentials
+from datarobot_genai.drtools.core import credentials
 
 
 @pytest.fixture(autouse=True)

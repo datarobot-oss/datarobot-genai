@@ -12,48 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import logging
 import uuid
 from typing import Annotated
 from typing import Any
 
 import datarobot as dr
-from fastmcp.exceptions import ToolError
-from fastmcp.resources import HttpResource
-from fastmcp.resources import ResourceManager
-from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drmcp.core.clients import get_credentials
-from datarobot_genai.drmcp.core.utils import generate_presigned_url
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drtools.clients.s3 import get_s3_bucket_info
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.s3 import generate_presigned_url
+from datarobot_genai.drtools.core.clients.s3 import get_s3_bucket_info
+from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
 def _handle_prediction_resource(
     job: Any, bucket: str, key: str, deployment_id: str, input_desc: str
-) -> ToolResult:
+) -> dict[str, Any]:
+    """Handle prediction results and return a structured response."""
     s3_url = generate_presigned_url(bucket, key)
-    resource_manager = ResourceManager()
-    resource = HttpResource(
-        uri=s3_url,  # type: ignore[arg-type]
-        url=s3_url,
-        name=f"Predictions for {deployment_id}",
-        mime_type="text/csv",
-    )
-    resource_manager.add_resource(resource)
-    return ToolResult(
-        structured_content={
-            "job_id": job.id,
-            "deployment_id": deployment_id,
-            "input_desc": input_desc,
-            "s3_url": s3_url,
-        },
-    )
+    return {
+        "job_id": job.id,
+        "deployment_id": deployment_id,
+        "input_desc": input_desc,
+        "uri": s3_url,
+        "url": s3_url,
+        "name": f"Predictions for {deployment_id}",
+        "mime_type": "text/csv",
+    }
 
 
 def get_or_create_s3_credential() -> Any:
@@ -97,7 +87,7 @@ def make_output_settings(cred: Any) -> tuple[dict[str, Any], str, str]:
 
 def wait_for_preds_and_cache_results(
     job: Any, bucket: str, key: str, deployment_id: str, input_desc: str, timeout: int
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     job.wait_for_completion(timeout)
     if job.status in ["ERROR", "FAILED", "ABORTED"]:
         logger.error(f"Job failed with status {job.status}")
@@ -105,22 +95,23 @@ def wait_for_preds_and_cache_results(
     return _handle_prediction_resource(job, bucket, key, deployment_id, input_desc)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@tool_metadata(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_file_path(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
-    | None = None,
-    file_path: Annotated[str, "Path to a CSV file to use as input data."] | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
+    file_path: Annotated[str, "Path to a CSV file to use as input data."],
     timeout: Annotated[int, "Timeout in seconds for the batch prediction job"] | None = 600,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """
     Make predictions using a DataRobot deployment and a local CSV file using the DataRobot Python
     SDK. Use this tool to score large amounts of data, for small amounts of data use the
     predict_realtime tool.
+
+    Returns prediction job details including job ID, deployment ID, and S3 URL of results.
     """
-    if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
-    if not file_path:
-        raise ToolError("File path must be provided")
+    if not deployment_id or not deployment_id.strip():
+        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+    if not file_path or not file_path.strip():
+        raise ToolError("Argument validation error: 'file_path' cannot be empty.")
 
     output_settings, bucket, key = make_output_settings(get_or_create_s3_credential())
     job = dr.BatchPredictionJob.score(
@@ -136,23 +127,23 @@ async def predict_by_file_path(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@tool_metadata(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_by_ai_catalog(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
-    | None = None,
-    dataset_id: Annotated[str, "The ID of the AI Catalog dataset to use for prediction"]
-    | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
+    dataset_id: Annotated[str, "The ID of the AI Catalog dataset to use for prediction"],
     timeout: Annotated[int, "Timeout in seconds for the batch prediction job"] | None = 600,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """
     Make predictions using a DataRobot deployment and an AI Catalog dataset using the DataRobot
     Python SDK.
     Use this tool when asked to score data stored in AI Catalog by dataset id.
+
+    Returns prediction job details including job ID, deployment ID, and S3 URL of results.
     """
-    if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
-    if not dataset_id:
-        raise ToolError("Dataset ID must be provided")
+    if not deployment_id or not deployment_id.strip():
+        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+    if not dataset_id or not dataset_id.strip():
+        raise ToolError("Argument validation error: 'dataset_id' cannot be empty.")
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -171,12 +162,10 @@ async def predict_by_ai_catalog(
     )
 
 
-@dr_mcp_integration_tool(tags={"predictive", "prediction", "read", "scoring", "batch"})
+@tool_metadata(tags={"predictive", "prediction", "read", "scoring", "batch"})
 async def predict_from_project_data(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"]
-    | None = None,
-    project_id: Annotated[str, "The ID of the DataRobot project to use for prediction"]
-    | None = None,
+    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
+    project_id: Annotated[str, "The ID of the DataRobot project to use for prediction"],
     dataset_id: Annotated[
         str, "The ID of the external dataset, usually stored in AI Catalog, to use for prediction"
     ]
@@ -187,18 +176,24 @@ async def predict_from_project_data(
     ]
     | None = None,
     timeout: Annotated[int, "Timeout in seconds for the batch prediction job"] | None = 600,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """
     Make predictions using a DataRobot deployment using the training data associated with the
     project that created the deployment.
     Use this tool to score holdout, validation, or allBacktest partitions of the training data.
     Can request a specific partition of the data, or use an external dataset (with dataset_id)
     stored in AI Catalog.
+
+    Returns prediction job details including job ID, deployment ID, and S3 URL of results.
     """
-    if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
-    if not project_id:
-        raise ToolError("Project ID must be provided")
+    if not deployment_id or not deployment_id.strip():
+        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+    if not project_id or not project_id.strip():
+        raise ToolError("Argument validation error: 'project_id' cannot be empty.")
+    if dataset_id is not None and (not dataset_id or not dataset_id.strip()):
+        raise ToolError("Argument validation error: 'dataset_id' cannot be empty.")
+    if partition is not None and (not partition or not partition.strip()):
+        raise ToolError("Argument validation error: 'partition' cannot be empty.")
 
     token = await get_datarobot_access_token()
     DataRobotClient(token).get_client()
@@ -219,43 +214,3 @@ async def predict_from_project_data(
     return wait_for_preds_and_cache_results(
         job, bucket, key, deployment_id, f"Scoring project {project_id}.", timeout or 600
     )
-
-
-# FIXME
-# @dr_mcp_integration_tool(tags={"prediction", "explanations", "shap"})
-async def get_prediction_explanations(
-    project_id: str,
-    model_id: str,
-    dataset_id: str,
-    max_explanations: int = 100,
-) -> str:
-    """
-    Calculate prediction explanations (SHAP values) for a given model and dataset.
-
-    Args:
-        project_id: The ID of the DataRobot project.
-        model_id: The ID of the model to use for explanations.
-        dataset_id: The ID of the dataset to explain predictions for.
-        max_explanations: Maximum number of explanations per row (default 100).
-
-    Returns
-    -------
-        JSON string containing the prediction explanations for each row.
-    """
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
-    model = client.Model.get(project=project, model_id=model_id)
-    try:
-        explanations = model.get_or_request_prediction_explanations(
-            dataset_id=dataset_id, max_explanations=max_explanations
-        )
-        return json.dumps(
-            {"explanations": explanations, "ui_panel": ["prediction-distribution"]},
-            indent=2,
-        ).replace("'", "'")
-    except Exception as e:
-        logger.error(f"Error in get_prediction_explanations: {type(e).__name__}: {e}")
-        return json.dumps(
-            {"error": f"Error in get_prediction_explanations: {type(e).__name__}: {e}"}
-        )

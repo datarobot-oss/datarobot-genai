@@ -33,14 +33,7 @@ async def test_list_vector_databases_success() -> None:
                 "label": "VDB 1",
                 "status": "active",
                 "capabilities": {"supportsVectorDatabaseQuerying": True},
-                "model": {},
-            },
-            {
-                "id": "dep2",
-                "label": "Non-VDB",
-                "status": "active",
-                "capabilities": {},
-                "model": {},
+                "model": {"targetType": "VectorDatabase"},
             },
         ]
     }
@@ -62,6 +55,10 @@ async def test_list_vector_databases_success() -> None:
         assert isinstance(result, ToolResult)
         assert result.structured_content["count"] == 1
         assert result.structured_content["vector_databases"][0]["deployment_id"] == "dep1"
+        mock_rest_client.get.assert_called_once_with(
+            "deployments/",
+            params={"limit": 100, "modelTargetType": "VectorDatabase"},
+        )
 
 
 @pytest.mark.asyncio

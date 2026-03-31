@@ -16,22 +16,22 @@
 
 import logging
 from typing import Annotated
+from typing import Any
 from typing import Literal
 
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
-from datarobot_genai.drtools.clients.tavily import MAX_CHUNKS_PER_SOURCE
-from datarobot_genai.drtools.clients.tavily import MAX_RESULTS
-from datarobot_genai.drtools.clients.tavily import MAX_RESULTS_DEFAULT
-from datarobot_genai.drtools.clients.tavily import TavilyClient
-from datarobot_genai.drtools.clients.tavily import get_tavily_access_token
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
+from datarobot_genai.drtools.core.clients.tavily import MAX_CHUNKS_PER_SOURCE
+from datarobot_genai.drtools.core.clients.tavily import MAX_RESULTS
+from datarobot_genai.drtools.core.clients.tavily import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.core.clients.tavily import TavilyClient
+from datarobot_genai.drtools.core.clients.tavily import get_tavily_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"tavily", "search", "web", "websearch"})
+@tool_metadata(tags={"tavily", "search", "web", "websearch"})
 async def tavily_search(
     *,
     query: Annotated[str, "The search query to execute."],
@@ -71,7 +71,7 @@ async def tavily_search(
         bool,
         "Whether to include an AI-generated answer summarizing the search results.",
     ] = False,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Perform a real-time web search using Tavily API.
 
@@ -94,6 +94,9 @@ async def tavily_search(
         - Advanced search depth consumes more API credits but provides better results
         - Time range filtering is useful for finding recent information
     """
+    if not query or not query.strip():
+        raise ToolError("Argument validation error: 'query' cannot be empty.")
+
     api_key = await get_tavily_access_token()
 
     async with TavilyClient(api_key) as client:
@@ -109,14 +112,10 @@ async def tavily_search(
             include_answer=include_answer,
         )
 
-    return ToolResult(
-        structured_content=response.as_flat_dict(
-            include_images=include_images, include_answer=include_answer
-        )
-    )
+    return response.as_flat_dict(include_images=include_images, include_answer=include_answer)
 
 
-@dr_mcp_integration_tool(tags={"extract", "tavily", "web", "content"})
+@tool_metadata(tags={"extract", "tavily", "web", "content"})
 async def tavily_extract(
     *,
     urls: Annotated[
@@ -139,7 +138,7 @@ async def tavily_extract(
         Literal["basic", "advanced"],
         "Depth of extraction; 'advanced' handles complex tables and embedded content.",
     ] = "basic",
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Extract content from web pages using Tavily Extract API.
 
@@ -160,6 +159,19 @@ async def tavily_extract(
     Note:
         - Advanced depth handles complex content but may be slower
     """
+    if isinstance(urls, str):
+        if not urls or not urls.strip():
+            raise ToolError("Argument validation error: 'urls' cannot be empty.")
+    elif isinstance(urls, list):
+        if not urls:
+            raise ToolError("Argument validation error: 'urls' list cannot be empty.")
+        for url in urls:
+            if not url or not url.strip():
+                raise ToolError("Argument validation error: URLs in list cannot be empty.")
+
+    if query is not None and (not query or not query.strip()):
+        raise ToolError("Argument validation error: 'query' cannot be empty.")
+
     api_key = await get_tavily_access_token()
 
     async with TavilyClient(api_key) as client:
@@ -171,10 +183,10 @@ async def tavily_extract(
             format=format,
         )
 
-    return ToolResult(structured_content=response.as_flat_dict())
+    return response.as_flat_dict()
 
 
-@dr_mcp_integration_tool(tags={"map", "tavily", "discovery"})
+@tool_metadata(tags={"map", "tavily", "discovery"})
 async def tavily_map(
     *,
     url: Annotated[str, "The root URL to begin mapping."],
@@ -185,11 +197,17 @@ async def tavily_map(
     include_usage: Annotated[
         bool, "Whether to include credit usage information in the response."
     ] = False,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Generate a structured map of a website to discover relevant sub-pages.
     API documentation: https://docs.tavily.com/documentation/api-reference/endpoint/map .
     """
+    if not url or not url.strip():
+        raise ToolError("Argument validation error: 'url' cannot be empty.")
+
+    if instructions is not None and (not instructions or not instructions.strip()):
+        raise ToolError("Argument validation error: 'instructions' cannot be empty.")
+
     api_key = await get_tavily_access_token()
 
     async with TavilyClient(api_key) as client:
@@ -197,10 +215,10 @@ async def tavily_map(
             url=url, instructions=instructions, limit=limit, include_usage=include_usage
         )
 
-    return ToolResult(structured_content=response.as_flat_dict())
+    return response.as_flat_dict()
 
 
-@dr_mcp_integration_tool(tags={"crawl", "tavily", "web", "rag"})
+@tool_metadata(tags={"crawl", "tavily", "web", "rag"})
 async def tavily_crawl(
     *,
     url: Annotated[str, "The root URL to begin the traversal."],
@@ -215,7 +233,7 @@ async def tavily_crawl(
         "Regex patterns to exclude URL paths (e.g., ['/blog/.*', '/archive/.*']).",
     ] = None,
     include_images: Annotated[bool, "Include images found during crawl."] = False,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Crawl a website using Tavily Crawl API for Crawl-to-RAG workflows.
 
@@ -243,6 +261,12 @@ async def tavily_crawl(
         - Higher limits and depths consume more API credits
         - Use instructions to filter for relevant content and reduce noise
     """
+    if not url or not url.strip():
+        raise ToolError("Argument validation error: 'url' cannot be empty.")
+
+    if instructions is not None and (not instructions or not instructions.strip()):
+        raise ToolError("Argument validation error: 'instructions' cannot be empty.")
+
     api_key = await get_tavily_access_token()
 
     async with TavilyClient(api_key) as client:
@@ -255,4 +279,4 @@ async def tavily_crawl(
             include_images=include_images,
         )
 
-    return ToolResult(structured_content=response.as_flat_dict())
+    return response.as_flat_dict()
