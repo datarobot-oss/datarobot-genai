@@ -14,6 +14,7 @@
 
 import logging
 import typing
+import warnings
 from collections.abc import AsyncGenerator
 
 from a2a.types import AgentSkill
@@ -37,17 +38,30 @@ from .patches import patch_crewai_callback_handler
 # Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
 patch_crewai_callback_handler()
 
-# Suppress known-harmless NAT warnings that alarm users but can't be acted on.
-# Runs at plugin-discovery time so it takes effect regardless of entry point
-# (nat start, dragent serve, etc.).
-_NOISY_NAT_LOGGERS = [
-    "nat.data_models.step_adaptor",  # "StepAdaptor is disabled" (expected when mode=OFF)
-    "nat.front_ends.fastapi.fastapi_front_end_plugin",  # "Dask is not installed"
-    "nat.front_ends.fastapi.fastapi_front_end_plugin_worker",  # "Dask is not available"
-    "nat.experimental.decorators.experimental_warning_decorator",  # "feature is experimental"
+# Suppress specific non-actionable NAT warning messages by content.
+# Patch Handler.handle (inherited by all subclasses — they only override emit)
+# because root-logger filters are skipped during log propagation.
+_SUPPRESSED_NAT_MESSAGES = [
+    "StepAdaptor is disabled",
+    "Dask is not installed",
+    "Dask is not available",
+    "feature is experimental",
+    "Using provided input_schema for multi-argument function",
+    "not found in outstanding start steps",
 ]
-for _logger_name in _NOISY_NAT_LOGGERS:
-    logging.getLogger(_logger_name).setLevel(logging.ERROR)
+_orig_handler_handle = logging.Handler.handle
+
+
+def _filtered_handle(self: logging.Handler, record: logging.LogRecord) -> bool | None:
+    if any(s in record.getMessage() for s in _SUPPRESSED_NAT_MESSAGES):
+        return None
+    return _orig_handler_handle(self, record)
+
+
+logging.Handler.handle = _filtered_handle  # type: ignore[assignment]
+
+# Suppress UserWarning from langchain about non-default parameters (uses warnings.warn, not logging)
+warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
 
 
 class DRAgentA2AConfig(BaseModel):

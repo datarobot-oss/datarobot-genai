@@ -49,7 +49,7 @@ def _default_url() -> HttpUrl:
     from datarobot_genai.core.mcp.config import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
-    return server_config["url"] if server_config else HttpUrl("http://localhost:8080/mcp")
+    return HttpUrl(server_config["url"]) if server_config else HttpUrl("http://localhost:8080/mcp")
 
 
 def _default_auth_provider() -> str | AuthenticationRef | None:
@@ -61,7 +61,7 @@ def _default_auth_provider() -> str | AuthenticationRef | None:
 
 class DataRobotMCPServerConfig(MCPServerConfig):
     transport: Literal["streamable-http", "sse"] = Field(
-        default_factory=_default_transport,
+        default_factor=_default_transport,
         description="Transport type to connect to the MCP server (sse or streamable-http)",
     )
     url: HttpUrl = Field(
@@ -253,7 +253,7 @@ async def datarobot_mcp_client_function_group(
                     input_schema = None
 
                 # Add to group
-                logger.info("Adding tool %s to group", function_name)
+                logger.debug("Adding tool %s to group", function_name)
                 group.add_function(
                     name=function_name,
                     description=description,
