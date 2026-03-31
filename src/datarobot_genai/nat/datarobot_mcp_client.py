@@ -39,21 +39,21 @@ logger = logging.getLogger(__name__)
 
 
 def _default_transport() -> Literal["streamable-http", "sse"]:
-    from datarobot_genai.core.mcp.config import MCPConfig  # noqa: PLC0415
+    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
     return server_config["transport"] if server_config else "streamable-http"
 
 
 def _default_url() -> HttpUrl:
-    from datarobot_genai.core.mcp.config import MCPConfig  # noqa: PLC0415
+    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
     return server_config["url"] if server_config else HttpUrl("http://localhost:8080/mcp")
 
 
 def _default_auth_provider() -> str | AuthenticationRef | None:
-    from datarobot_genai.core.mcp.config import MCPConfig  # noqa: PLC0415
+    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
 
     server_config = MCPConfig().server_config
     return "datarobot_mcp_auth" if server_config else None

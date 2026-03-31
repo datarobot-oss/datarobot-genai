@@ -20,7 +20,7 @@ import pytest
 from datarobot.models.genai.agent.auth import set_authorization_context
 from pydantic import ValidationError
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 

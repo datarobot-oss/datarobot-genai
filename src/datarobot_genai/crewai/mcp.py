@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 from crewai.tools import BaseTool
 from crewai_tools import MCPServerAdapter
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 
 
 # here it is async to conform with other MCP adapters

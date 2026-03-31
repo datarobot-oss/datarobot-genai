@@ -24,7 +24,7 @@ from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import PrivateAttr
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 
 
 def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:

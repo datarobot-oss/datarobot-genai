@@ -27,7 +27,7 @@ from nat.data_models.common import SerializableSecretStr
 from pydantic import Field
 from pydantic import SecretStr
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.nat.helpers import extract_authorization_from_context
 from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 

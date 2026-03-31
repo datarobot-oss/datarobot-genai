@@ -27,6 +27,7 @@ from datarobot_genai.core.chat.responses import async_gen_to_sync_thread
 from datarobot_genai.core.chat.responses import (
     streaming_iterator_to_custom_model_streaming_response,
 )
+from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.nat.agent import NatAgent
 
 
@@ -67,10 +68,14 @@ def workflow_with_mcp_path():
 
 @pytest.fixture
 def agent_with_mcp(workflow_with_mcp_path, config):
+    mcp_config = MCPConfig()
+    server_config = mcp_config.server_config
+    headers = server_config["headers"] if server_config else None
     return NatAgent(
         workflow_path=workflow_with_mcp_path,
         api_key=config.datarobot_api_token,
         api_base=config.datarobot_endpoint,
+        forwarded_headers=headers,
     )
 
 
