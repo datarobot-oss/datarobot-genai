@@ -18,18 +18,16 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
+from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"vdb", "read", "list", "daria"})
-async def list_vector_databases() -> ToolResult:
+@tool_metadata(tags={"vdb", "read", "list", "daria"})
+async def list_vector_databases() -> dict[str, Any]:
     """List all deployed Vector Databases (VDBs) in DataRobot."""
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -43,23 +41,21 @@ async def list_vector_databases() -> ToolResult:
     vdbs = data.get("data", [])
     next_page = data.get("next")
 
-    return ToolResult(
-        structured_content={
-            "vector_databases": [
-                {
-                    "deployment_id": d["id"],
-                    "label": d.get("label", ""),
-                    "status": d.get("status", ""),
-                }
-                for d in vdbs
-            ],
-            "count": len(vdbs),
-            "has_more": next_page is not None,
-        },
-    )
+    return {
+        "vector_databases": [
+            {
+                "deployment_id": d["id"],
+                "label": d.get("label", ""),
+                "status": d.get("status", ""),
+            }
+            for d in vdbs
+        ],
+        "count": len(vdbs),
+        "has_more": next_page is not None,
+    }
 
 
-@dr_mcp_integration_tool(tags={"vdb", "read", "query", "search", "daria"})
+@tool_metadata(tags={"vdb", "read", "query", "search", "daria"})
 async def query_vector_database(
     *,
     deployment_id: Annotated[str, "The deployment ID of the Vector Database"] | None = None,
@@ -68,7 +64,7 @@ async def query_vector_database(
     retrieval_mode: Annotated[
         str, "Retrieval mode: 'similarity' or 'maximal_marginal_relevance'"
     ] = "similarity",
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Query a DataRobot Vector Database with semantic search."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
@@ -91,10 +87,8 @@ async def query_vector_database(
     data = response.json()
     documents = data if isinstance(data, list) else data.get("data", [])
 
-    return ToolResult(
-        structured_content={
-            "deployment_id": deployment_id,
-            "documents": documents,
-            "count": len(documents),
-        },
-    )
+    return {
+        "deployment_id": deployment_id,
+        "documents": documents,
+        "count": len(documents),
+    }

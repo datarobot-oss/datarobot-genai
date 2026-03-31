@@ -17,9 +17,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.vdb import tools
 
 
@@ -52,9 +51,9 @@ async def test_list_vector_databases_success() -> None:
         mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_vector_databases()
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["count"] == 1
-        assert result.structured_content["vector_databases"][0]["deployment_id"] == "dep1"
+        assert isinstance(result, dict)
+        assert result["count"] == 1
+        assert result["vector_databases"][0]["deployment_id"] == "dep1"
         mock_rest_client.get.assert_called_once_with(
             "deployments/",
             params={"limit": 100, "modelTargetType": "VectorDatabase"},
@@ -80,8 +79,8 @@ async def test_list_vector_databases_empty() -> None:
         mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_vector_databases()
-        assert result.structured_content["count"] == 0
-        assert result.structured_content["vector_databases"] == []
+        assert result["count"] == 0
+        assert result["vector_databases"] == []
 
 
 @pytest.mark.asyncio
@@ -105,9 +104,9 @@ async def test_query_vector_database_success() -> None:
         mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.query_vector_database(deployment_id="dep1", query="test query")
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["count"] == 1
-        assert result.structured_content["deployment_id"] == "dep1"
+        assert isinstance(result, dict)
+        assert result["count"] == 1
+        assert result["deployment_id"] == "dep1"
 
 
 @pytest.mark.asyncio
