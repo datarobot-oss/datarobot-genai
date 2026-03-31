@@ -92,6 +92,8 @@ extend-ignore = [
     "PLR0915",
     # Too many branches
     "PLR0912",
+    # inline imports
+    "PLC0415",
 ]
 fixable = [
     "I",    # isort

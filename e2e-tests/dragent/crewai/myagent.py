@@ -46,7 +46,7 @@ class MyAgent(CrewAIAgent):
                 "outline with 3-5 key points. No paragraphs, no explanations — just the list."
             ),
             llm=self._llm,
-            tools=[calculator_tool] + self.mcp_tools,
+            tools=[calculator_tool] + self.tools,
             verbose=self.verbose,
         )
         writer = Agent(
@@ -57,7 +57,7 @@ class MyAgent(CrewAIAgent):
                 "in 2-3 sentences. Use the calculator tool when asked to compute math."
             ),
             llm=self._llm,
-            tools=[calculator_tool] + self.mcp_tools,
+            tools=[calculator_tool] + self.tools,
             verbose=self.verbose,
         )
         return [planner, writer]
