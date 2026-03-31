@@ -39,7 +39,7 @@ from .patches import patch_crewai_callback_handler
 patch_crewai_callback_handler()
 
 # Suppress specific non-actionable NAT warning messages by content.
-# Patch Handler.handle (inherited by all subclasses — they only override emit)
+# Patch Handler.handle (inherited by all subclasses - they only override emit)
 # because root-logger filters are skipped during log propagation.
 _SUPPRESSED_NAT_MESSAGES = [
     "StepAdaptor is disabled",
