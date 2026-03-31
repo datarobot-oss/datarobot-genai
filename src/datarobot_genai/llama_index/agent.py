@@ -45,8 +45,6 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 
-from .mcp import load_mcp_tools
-
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
 
@@ -112,13 +110,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
             )
             input_message = input_message.replace("{chat_history}", formatted_history)
-
-        # Load MCP tools (if configured) asynchronously before building workflow
-        mcp_tools = await load_mcp_tools(
-            authorization_context=self.authorization_context,
-            forwarded_headers=self.forwarded_headers,
-        )
-        self.set_mcp_tools(mcp_tools)
 
         # Preserve prior template startup print for CLI parity
         try:

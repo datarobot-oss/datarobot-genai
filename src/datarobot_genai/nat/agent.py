@@ -37,7 +37,6 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.mcp.config import MCPConfig
 from datarobot_genai.nat.helpers import load_workflow
 
 if TYPE_CHECKING:
@@ -122,16 +121,13 @@ def pull_intermediate_structured() -> asyncio.Future[list[IntermediateStep]]:
 class NatAgent(BaseAgent[None]):
     def __init__(
         self,
-        *,
         workflow_path: StrPath,
         api_key: str | None = None,
         api_base: str | None = None,
         model: str | None = None,
-        verbose: bool | str | None = True,
+        verbose: bool = True,
         timeout: int | None = 90,
-        authorization_context: dict[str, Any] | None = None,
         forwarded_headers: dict[str, str] | None = None,
-        **kwargs: Any,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -139,9 +135,7 @@ class NatAgent(BaseAgent[None]):
             model=model,
             verbose=verbose,
             timeout=timeout,
-            authorization_context=authorization_context,
             forwarded_headers=forwarded_headers,
-            **kwargs,
         )
         self.workflow_path = workflow_path
 
@@ -185,13 +179,6 @@ class NatAgent(BaseAgent[None]):
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)
 
-        mcp_config = MCPConfig(
-            authorization_context=self.authorization_context,
-            forwarded_headers=self.forwarded_headers,
-        )
-        server_config = mcp_config.server_config
-        headers = server_config["headers"] if server_config else None
-
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
         zero_metrics: UsageMetrics = {
@@ -210,7 +197,7 @@ class NatAgent(BaseAgent[None]):
         message_id = str(uuid.uuid4())
         text_started = False
 
-        async with load_workflow(self.workflow_path, headers=headers) as workflow:
+        async with load_workflow(self.workflow_path, headers=self.forwarded_headers) as workflow:
             async with workflow.session(user_id=thread_id) as session:
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()

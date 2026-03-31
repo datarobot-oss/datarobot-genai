@@ -45,8 +45,6 @@ from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.events import CrewAIRagasEventListener
 
-from .mcp import mcp_tools_context
-
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
     from ragas.messages import AIMessage
@@ -172,56 +170,44 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         pipeline_interactions: MultiTurnSample | None = None
         usage_metrics = default_usage_metrics()
 
-        # Use MCP context manager to handle connection lifecycle
-        with mcp_tools_context(
-            authorization_context=self.authorization_context,
-            forwarded_headers=self.forwarded_headers,
-        ) as mcp_tools:
-            # Set MCP tools for all agents if MCP is not configured this is effectively a no-op
-            self.set_mcp_tools(mcp_tools)
+        with crewai_event_bus.scoped_handlers():
+            ragas_event_listener = CrewAIRagasEventListener()
+            ragas_event_listener.setup_listeners(crewai_event_bus)
 
-            with crewai_event_bus.scoped_handlers():
-                ragas_event_listener = CrewAIRagasEventListener()
-                ragas_event_listener.setup_listeners(crewai_event_bus)
+            crew = self.crew()
 
-                crew = self.crew()
+            kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
+            # Chat history is opt-in: only populate it if the agent/template
+            # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
+            # in prompts).
+            if "chat_history" in kickoff_inputs:
+                history_summary = self.build_history_summary(run_agent_input)
+                existing_history_text = str(kickoff_inputs.get("chat_history") or "")
 
-                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
-                # Chat history is opt-in: only populate it if the agent/template
-                # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
-                # in prompts).
-                if "chat_history" in kickoff_inputs:
-                    history_summary = self.build_history_summary(run_agent_input)
-                    existing_history_text = str(kickoff_inputs.get("chat_history") or "")
+                if history_summary and not existing_history_text.strip():
+                    kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
 
-                    if history_summary and not existing_history_text.strip():
-                        kickoff_inputs["chat_history"] = (
-                            f"\n\nPrior conversation:\n{history_summary}"
-                        )
+            crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
 
-                crew_output = await asyncio.to_thread(crew.kickoff, inputs=kickoff_inputs)
+            response_text = str(crew_output.raw)
+            pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                ragas_event_listener.messages
+            )
+            usage_metrics = self._extract_usage_metrics(crew_output)
 
-                response_text = str(crew_output.raw)
-                pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                    ragas_event_listener.messages
-                )
-                usage_metrics = self._extract_usage_metrics(crew_output)
-
-                if response_text:
-                    yield (
-                        TextMessageChunkEvent(
-                            type=EventType.TEXT_MESSAGE_CHUNK,
-                            message_id=str(uuid.uuid4()),
-                            delta=response_text,
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-
+            if response_text:
                 yield (
-                    RunFinishedEvent(
-                        type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
+                    TextMessageChunkEvent(
+                        type=EventType.TEXT_MESSAGE_CHUNK,
+                        message_id=str(uuid.uuid4()),
+                        delta=response_text,
                     ),
-                    pipeline_interactions,
+                    None,
                     usage_metrics,
                 )
+
+            yield (
+                RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
+                pipeline_interactions,
+                usage_metrics,
+            )
