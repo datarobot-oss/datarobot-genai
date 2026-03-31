@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.10.0
+- **Breaking**: Decoupled agents and MCP tools. Now mcp_tools_context has to be called explicitly outside of an agent invoke.
+- Reworked `mcp_tools_context`arguments to use `MCPConfig` explicitly.
+- Fixed issue with `RuntimeError: generator didn't stop after athrow()` in MCP context.
+
 ## 0.9.0
 - Removed side-effects in MCPConfig
 - Renamed datarobot_genai.core.mcp.common to datarobot_genai.core.mcp.config
