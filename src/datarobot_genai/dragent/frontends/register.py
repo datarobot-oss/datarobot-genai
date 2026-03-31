@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import typing
 from collections.abc import AsyncGenerator
 
@@ -35,6 +36,18 @@ from .patches import patch_crewai_callback_handler
 # Patch nvidia-nat-crewai callback handler for crewai >= 1.1.0 compatibility.
 # Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
 patch_crewai_callback_handler()
+
+# Suppress known-harmless NAT warnings that alarm users but can't be acted on.
+# Runs at plugin-discovery time so it takes effect regardless of entry point
+# (nat start, dragent serve, etc.).
+_NOISY_NAT_LOGGERS = [
+    "nat.data_models.step_adaptor",  # "StepAdaptor is disabled" (expected when mode=OFF)
+    "nat.front_ends.fastapi.fastapi_front_end_plugin",  # "Dask is not installed"
+    "nat.front_ends.fastapi.fastapi_front_end_plugin_worker",  # "Dask is not available"
+    "nat.experimental.decorators.experimental_warning_decorator",  # "feature is experimental"
+]
+for _logger_name in _NOISY_NAT_LOGGERS:
+    logging.getLogger(_logger_name).setLevel(logging.ERROR)
 
 
 class DRAgentA2AConfig(BaseModel):
