@@ -312,7 +312,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     pipeline_interactions = self.create_pipeline_interactions_from_messages(
                         ragas_event_listener.messages
                     )
-                    usage_metrics = self._extract_usage_metrics(crew_output)
+                    usage_metrics = self._extract_usage_metrics(crew_output.result)
                     if text_started:
                         yield (
                             TextMessageEndEvent(
