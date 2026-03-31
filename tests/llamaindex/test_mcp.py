@@ -71,16 +71,6 @@ class TestLoadMCPTools:
             assert call_args[1]["command_or_url"] == expected_url
             assert call_args[1]["client"].headers["Authorization"] == f"Bearer {api_key}"
 
-    async def test_mcp_tools_context_connection_error(self, mock_aget):
-        """Test loading tools handles connection errors gracefully."""
-        mock_aget.side_effect = Exception("Connection failed")
-
-        test_url = "https://mcp-server.example.com/mcp"
-        mcp_config = MCPConfig(external_mcp_url=test_url)
-        async with mcp_tools_context(mcp_config) as tools:
-            assert isinstance(tools, list)
-            assert len(tools) == 0
-
     async def test_load_mcp_tools_returns_none(self, mock_aget):
         """Test loading tools when aget_tools_from_mcp_url returns None."""
         mock_aget.return_value = None
