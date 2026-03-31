@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added vector database tools: list_vector_databases and query_vector_database (MODEL-22811)
 - Fixed `test_list_vector_databases_success` mock to return only deployments matching API `modelTargetType=VectorDatabase` filtering
 - Refactored VDB tools to use `tool_metadata` and plain dict returns (no fastmcp/drmcp imports in drtools)
+- Fixed mypy in `dr_client_stubs` deployment list filter (`model` dict narrowing)
 
 ## 0.9.2
 - Added AG-UI Events for CrewAI
