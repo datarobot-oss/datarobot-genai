@@ -38,12 +38,12 @@ from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 
+from datarobot_genai.core.agents import extract_user_prompt_content
+from datarobot_genai.core.agents import to_langchain_messages
+from datarobot_genai.core.agents import truncate_messages
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.agents.message_converters import to_langchain_messages
-from datarobot_genai.core.agents.message_converters import truncate_messages
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -96,23 +96,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Multi-turn: convert to native LangChain types (truncated to max_history_messages)
         if len(messages) > 1 and self.max_history_messages > 0:
-            from langchain_core.messages import SystemMessage
-
             truncated = truncate_messages(messages, self.max_history_messages)
             lc_messages = to_langchain_messages(truncated)
-
-            # Preserve system prompt from the template when not already in messages
-            if not any(isinstance(m, SystemMessage) for m in lc_messages):
-                input_vars = getattr(self.prompt_template, "input_variables", [])
-                try:
-                    empty_vars = {name: "" for name in list(input_vars)}
-                except TypeError:
-                    empty_vars = {}
-                template_msgs = self.prompt_template.invoke(empty_vars).to_messages()
-                sys_msgs = [m for m in template_msgs if isinstance(m, SystemMessage)]
-                if sys_msgs:
-                    lc_messages = sys_msgs + lc_messages
-
             return Command(update={"messages": lc_messages})
 
         # Single-turn: use prompt template for formatting

@@ -23,8 +23,8 @@ from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 
 from datarobot_genai.core.agents import default_usage_metrics
-from datarobot_genai.core.agents.message_converters import to_nat_messages
-from datarobot_genai.core.agents.message_converters import truncate_messages
+from datarobot_genai.core.agents import to_nat_messages
+from datarobot_genai.core.agents import truncate_messages
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.config import get_max_history_messages_default
 

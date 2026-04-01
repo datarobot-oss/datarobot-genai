@@ -33,12 +33,12 @@ from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepType
 from nat.utils.type_utils import StrPath
 
+from datarobot_genai.core.agents import extract_user_prompt_content
+from datarobot_genai.core.agents import to_nat_messages
+from datarobot_genai.core.agents import truncate_messages
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.agents.message_converters import to_nat_messages
-from datarobot_genai.core.agents.message_converters import truncate_messages
 from datarobot_genai.nat.helpers import load_workflow
 
 if TYPE_CHECKING:

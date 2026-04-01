@@ -29,6 +29,11 @@ from .base import UsageMetrics
 from .base import default_usage_metrics
 from .base import extract_user_prompt_content
 from .base import make_system_prompt
+from .message_converters import to_crewai_chat_messages
+from .message_converters import to_langchain_messages
+from .message_converters import to_llama_index_messages
+from .message_converters import to_nat_messages
+from .message_converters import truncate_messages
 
 __all__ = [
     "BaseAgent",
@@ -38,4 +43,9 @@ __all__ = [
     "InvokeReturn",
     "UsageMetrics",
     "MCPConfig",
+    "to_crewai_chat_messages",
+    "to_langchain_messages",
+    "to_llama_index_messages",
+    "to_nat_messages",
+    "truncate_messages",
 ]
