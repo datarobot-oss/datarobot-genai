@@ -44,6 +44,8 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.message_converters import to_llama_index_messages
+from datarobot_genai.core.agents.message_converters import truncate_messages
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -84,38 +86,49 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
-        input_message = self.make_input_message(run_agent_input)
+        messages = list(run_agent_input.messages)
 
-        # Handle {chat_history} placeholder replacement for subclass templates
-        if "{chat_history}" in input_message:
-            history_summary = self.build_history_summary(run_agent_input)
-            formatted_history = (
-                f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
-            )
-            input_message = input_message.replace("{chat_history}", formatted_history)
+        # Multi-turn: truncate, split history from current, convert to LlamaIndex types
+        if len(messages) > 1:
+            truncated = truncate_messages(messages, self.max_history_messages)
+            user_messages = [m for m in truncated if m.role == "user"]
+            user_msg = str(user_messages[-1].content) if user_messages else ""
+            if user_messages:
+                last_user = user_messages[-1]
+                last_idx = len(truncated) - 1 - truncated[::-1].index(last_user)
+                chat_history = (
+                    to_llama_index_messages(truncated[:last_idx]) if last_idx > 0 else None
+                )
+            else:
+                chat_history = None
+        else:
+            # Single-turn: use make_input_message (existing behavior)
+            user_msg = self.make_input_message(run_agent_input)
+            chat_history = None
 
         # Preserve prior template startup print for CLI parity
         try:
-            print("Running agent with user prompt:", input_message, flush=True)
+            print("Running agent with user prompt:", user_msg, flush=True)
         except Exception:
-            # Printing is best-effort; proceed regardless
             pass
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
         usage_metrics: UsageMetrics = default_usage_metrics()
 
-        # Partial AG-UI: lifecycle + text + tool calls + steps
         yield (
             RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id),
             None,
             usage_metrics,
         )
 
-        # Subclasses may implement build_workflow as async or sync; support both.
         built: Any = self.build_workflow()
         workflow = await built if inspect.isawaitable(built) else built
-        handler = workflow.run(user_msg=input_message)
+
+        run_kwargs: dict[str, Any] = {"user_msg": user_msg}
+        if chat_history:
+            run_kwargs["chat_history"] = chat_history
+        handler = workflow.run(**run_kwargs)
 
         events: list[Any] = []
         current_agent_name: str | None = None

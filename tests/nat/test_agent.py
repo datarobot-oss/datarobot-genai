@@ -29,6 +29,9 @@ from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
+from ag_ui.core.types import FunctionCall as AgFunctionCall
+from ag_ui.core.types import ToolCall as AgToolCall
+from ag_ui.core.types import ToolMessage as AgToolMessage
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
 from nat.data_models.intermediate_step import IntermediateStepType
@@ -173,8 +176,8 @@ def patch_environment_variables():
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
-async def test_invoke_includes_chat_history(workflow_path):
-    """NatAgent.invoke() appends prior turns to the user prompt."""
+async def test_invoke_includes_chat_history(workflow_path, mock_load_workflow):
+    """NatAgent.invoke() passes structured messages for multi-turn conversations."""
     agent = NatAgent(workflow_path=workflow_path)
 
     run_agent_input = RunAgentInput(
@@ -192,24 +195,23 @@ async def test_invoke_includes_chat_history(workflow_path):
         context=[],
     )
 
-    captured_prompts: list[str] = []
-    original = agent.make_chat_request
-
-    def capturing(user_prompt: str):  # type: ignore[no-untyped-def]
-        captured_prompts.append(user_prompt)
-        return original(user_prompt)
-
-    agent.make_chat_request = capturing  # type: ignore[assignment]
-
     _ = [event async for event in agent.invoke(run_agent_input)]
 
-    assert len(captured_prompts) == 1
-    text = captured_prompts[0]
-    assert "Prior conversation:" in text
-    assert "system: You are a helper." in text
-    assert "user: First question" in text
-    assert "assistant: First answer" in text
-    assert text.startswith("Follow-up")
+    # Get the ChatRequest passed to session.run()
+    mock_workflow = mock_load_workflow.return_value.__aenter__.return_value
+    mock_session = mock_workflow.session.return_value.__aenter__.return_value
+    chat_request = mock_session.run.call_args[0][0]
+
+    # Multi-turn path: structured messages, not a single concatenated string
+    assert len(chat_request.messages) == 4
+    assert chat_request.messages[0].role.value == "system"
+    assert chat_request.messages[0].content == "You are a helper."
+    assert chat_request.messages[1].role.value == "user"
+    assert chat_request.messages[1].content == "First question"
+    assert chat_request.messages[2].role.value == "assistant"
+    assert chat_request.messages[2].content == "First answer"
+    assert chat_request.messages[3].role.value == "user"
+    assert chat_request.messages[3].content == "Follow-up"
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
@@ -293,3 +295,48 @@ async def test_streaming_mcp_headers(
         workflow_path,
         headers=expected_headers,
     )
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_multi_turn_passes_structured_messages(workflow_path, mock_load_workflow):
+    """Multi-turn conversations pass structured NAT messages, not a single string."""
+    agent = NatAgent(workflow_path=workflow_path)
+
+    run_agent_input = RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are helpful."),
+            UserMessage(id="user_1", content="search cats"),
+            AssistantMessage(
+                id="asst_1",
+                content=None,
+                tool_calls=[
+                    AgToolCall(
+                        id="call_1",
+                        function=AgFunctionCall(name="search", arguments='{"q": "cats"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="tool_1", content="found cats", tool_call_id="call_1"),
+            UserMessage(id="user_2", content="tell me more"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # Get the ChatRequest that was passed to session.run()
+    mock_workflow = mock_load_workflow.return_value.__aenter__.return_value
+    mock_session = mock_workflow.session.return_value.__aenter__.return_value
+    mock_run = mock_session.run
+    assert mock_run.called
+    chat_request = mock_run.call_args[0][0]
+
+    # Should have multiple messages, not a single user message
+    assert len(chat_request.messages) > 1
+    # First should be system
+    assert chat_request.messages[0].role.value == "system"

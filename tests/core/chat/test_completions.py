@@ -210,6 +210,91 @@ async def test_agent_chat_completion_wrapper_streaming() -> None:
     assert all_events[7][2]["completion_tokens"] == 100
 
 
+def test_convert_preserves_assistant_tool_calls() -> None:
+    """tool_calls on assistant messages are preserved through conversion."""
+    params = {
+        "messages": [
+            {"role": "user", "content": "Search for Python tutorials"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_abc123",
+                        "type": "function",
+                        "function": {
+                            "name": "web_search",
+                            "arguments": '{"query": "Python tutorials"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Found 10 results for Python tutorials",
+                "tool_call_id": "call_abc123",
+            },
+            {"role": "user", "content": "Tell me more about the first result"},
+        ],
+    }
+
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+
+    assert len(run_agent_input.messages) == 4
+
+    # Assistant message should have tool_calls preserved
+    assistant_msg = run_agent_input.messages[1]
+    assert assistant_msg.role == "assistant"
+    assert assistant_msg.content is None
+    assert assistant_msg.tool_calls is not None
+    assert len(assistant_msg.tool_calls) == 1
+
+    tc = assistant_msg.tool_calls[0]
+    assert tc.id == "call_abc123"
+    assert tc.type == "function"
+    assert tc.function.name == "web_search"
+    assert tc.function.arguments == '{"query": "Python tutorials"}'
+
+
+def test_convert_preserves_assistant_with_content_and_tool_calls() -> None:
+    """Assistant messages with both content and tool_calls preserve both."""
+    params = {
+        "messages": [
+            {
+                "role": "assistant",
+                "content": "Let me search for that.",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "search", "arguments": "{}"},
+                    }
+                ],
+            },
+        ],
+    }
+
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+    msg = run_agent_input.messages[0]
+    assert msg.content == "Let me search for that."
+    assert msg.tool_calls is not None
+    assert len(msg.tool_calls) == 1
+
+
+def test_convert_assistant_without_tool_calls_unchanged() -> None:
+    """Assistant messages without tool_calls still work (backward compat)."""
+    params = {
+        "messages": [
+            {"role": "assistant", "content": "Hello!"},
+        ],
+    }
+
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+    msg = run_agent_input.messages[0]
+    assert msg.content == "Hello!"
+    assert msg.tool_calls is None
+
+
 async def test_agent_chat_completion_wrapper_non_streaming() -> None:
     # GIVEN a chat completion parameters
     params = {

@@ -19,6 +19,7 @@ from typing import cast
 from uuid import uuid4
 
 from ag_ui.core import AssistantMessage
+from ag_ui.core import FunctionCall
 from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
@@ -27,6 +28,7 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import Tool
+from ag_ui.core import ToolCall
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
 from openai.types.chat import CompletionCreateParams
@@ -72,7 +74,23 @@ def convert_chat_completion_params_to_run_agent_input(
         if message.get("role") == "user":
             messages.append(UserMessage(id=id, content=message.get("content")))
         elif message.get("role") == "assistant":
-            messages.append(AssistantMessage(id=id, content=message.get("content")))
+            tool_calls_raw = message.get("tool_calls")
+            tool_calls = None
+            if tool_calls_raw:
+                tool_calls = [
+                    ToolCall(
+                        id=tc["id"],
+                        type=tc.get("type", "function"),
+                        function=FunctionCall(
+                            name=tc["function"]["name"],
+                            arguments=tc["function"]["arguments"],
+                        ),
+                    )
+                    for tc in tool_calls_raw
+                ]
+            messages.append(
+                AssistantMessage(id=id, content=message.get("content"), tool_calls=tool_calls)
+            )
         elif message.get("role") == "tool":
             messages.append(
                 ToolMessage(

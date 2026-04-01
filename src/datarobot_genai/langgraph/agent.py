@@ -14,7 +14,6 @@
 import abc
 import logging
 from collections.abc import AsyncGenerator
-from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Optional
@@ -43,6 +42,8 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.message_converters import to_langchain_messages
+from datarobot_genai.core.agents.message_converters import truncate_messages
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -57,9 +58,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     and provides a default implementation for turning OpenAI-style chat inputs
     into a LangGraph `Command`.
 
-    History is opt-in: prior turns are only injected when the prompt template
-    declares and uses a `{chat_history}` input variable. If the template does
-    not use `{chat_history}`, no chat history is passed to the model.
+    For multi-turn conversations (more than one message), all messages are
+    converted to native LangChain types preserving tool_call structure.
+    For single-message input, the prompt template is used for formatting.
     """
 
     @property
@@ -81,50 +82,40 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
-        By default this:
-        - Extracts the last user message content via `extract_user_prompt_content`
-          and feeds it through `prompt_template` to build the current turn.
-        - Includes prior turns only when the prompt template opts in via a
-          `{chat_history}` variable.
+        When multi-turn history is present (more than one message), converts
+        all messages to native LangChain types preserving tool_call structure.
+        For single-message input, falls back to the template-based approach.
         """
+        from collections.abc import Mapping
+
+        messages = list(run_agent_input.messages)
+
+        # Multi-turn: convert to native LangChain types (truncated to max_history_messages)
+        if len(messages) > 1:
+            truncated = truncate_messages(messages, self.max_history_messages)
+            lc_messages = to_langchain_messages(truncated)
+            return Command(update={"messages": lc_messages})
+
+        # Single-turn: use prompt template for formatting
         user_prompt = extract_user_prompt_content(run_agent_input)
 
-        # Chat history is opt-in: the model only sees history when the prompt
-        # template declares/uses the `{chat_history}` variable.
         input_vars = getattr(self.prompt_template, "input_variables", [])
         try:
             vars_list = list(input_vars)
         except TypeError:
             vars_list = []
-        uses_chat_history = "chat_history" in vars_list
-        history_summary = self.build_history_summary(run_agent_input) if uses_chat_history else ""
 
-        # Prefer structured dict input when available so templates can access both
-        # the original fields (e.g. {topic}) and a plain-text {chat_history}.
         if isinstance(user_prompt, Mapping):
             template_input: Any = dict(user_prompt)
-            template_input.setdefault("chat_history", history_summary)
-        elif vars_list:
-            # When the prompt is a bare value, best-effort map it into the declared
-            # input variables. Known variable "chat_history" always receives the
-            # history summary; all other variables receive the raw user prompt.
-            template_input = {}
             for name in vars_list:
-                if name == "chat_history":
-                    template_input[name] = history_summary
-                else:
-                    template_input[name] = user_prompt
+                template_input.setdefault(name, "")
+        elif vars_list:
+            template_input = {name: user_prompt for name in vars_list}
         else:
-            # No declared variables: preserve pre-history behaviour.
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
-        command = Command(  # type: ignore[var-annotated]
-            update={
-                "messages": current_messages,
-            },
-        )
-        return command
+        return Command(update={"messages": current_messages})
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.

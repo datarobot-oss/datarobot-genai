@@ -14,6 +14,7 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from ag_ui.core import AssistantMessage
@@ -27,6 +28,11 @@ from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
+from ag_ui.core.types import FunctionCall as AgFunctionCall
+from ag_ui.core.types import ToolCall as AgToolCall
+from ag_ui.core.types import ToolMessage as AgToolMessage
+
+import datarobot_genai.llama_index.agent as agent_mod
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
 from llama_index.core.agent.workflow import AgentStream
@@ -302,22 +308,17 @@ async def test_invoke_agent_stream_multiple_agents(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
-async def test_invoke_replaces_chat_history_placeholder() -> None:
-    """invoke() replaces {chat_history} placeholder with actual history."""
-    captured_msgs: list[str] = []
+async def test_invoke_passes_chat_history_for_multi_turn() -> None:
+    """invoke() passes structured chat_history kwarg to workflow.run() for multi-turn."""
+    captured_kwargs: dict[str, Any] = {}
 
     class CapturingWorkflow(Workflow):
-        def run(self, *, user_msg: str) -> Handler:
-            captured_msgs.append(user_msg)
-            return super().run(user_msg=user_msg)
-
-    class AgentWithPlaceholder(MyLlamaAgent):
-        def make_input_message(self, run_agent_input: Any) -> str:
-            user_prompt = super().make_input_message(run_agent_input)
-            return f"History:\n{{chat_history}}\n\nLatest: {user_prompt}"
+        def run(self, **kwargs: Any) -> Handler:  # type: ignore[override]
+            captured_kwargs.update(kwargs)
+            return Handler([], "S")
 
     workflow = CapturingWorkflow(events=[], state="S")
-    agent = AgentWithPlaceholder(workflow)
+    agent = MyLlamaAgent(workflow)
 
     run_agent_input = RunAgentInput(
         messages=[
@@ -336,9 +337,62 @@ async def test_invoke_replaces_chat_history_placeholder() -> None:
 
     _ = [event async for event in agent.invoke(run_agent_input)]
 
-    assert len(captured_msgs) == 1
-    text = captured_msgs[0]
-    assert "system: You are a helper." in text
-    assert "user: First question" in text
-    assert "assistant: First answer" in text
-    assert "{chat_history}" not in text
+    assert "chat_history" in captured_kwargs
+    chat_history = captured_kwargs["chat_history"]
+    assert len(chat_history) > 0
+    assert hasattr(chat_history[0], "role")
+
+
+@pytest.fixture
+def run_agent_input_multi_turn() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are helpful."),
+            UserMessage(id="user_1", content="search cats"),
+            AssistantMessage(
+                id="asst_1",
+                content=None,
+                tool_calls=[
+                    AgToolCall(
+                        id="call_1",
+                        function=AgFunctionCall(name="search", arguments='{"q": "cats"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="tool_1", content="found cats", tool_call_id="call_1"),
+            AssistantMessage(id="asst_2", content="Here are cats."),
+            UserMessage(id="user_2", content="tell me more"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+async def test_invoke_multi_turn_passes_chat_history_param(run_agent_input_multi_turn) -> None:
+    """Multi-turn conversations pass chat_history to workflow.run()."""
+    workflow_run_kwargs: dict[str, Any] = {}
+
+    class CapturingWorkflow:
+        def run(self, **kwargs: Any) -> "Handler":
+            workflow_run_kwargs.update(kwargs)
+            return Handler([], None)
+
+    class MultiTurnAgent(LlamaIndexAgent):
+        async def build_workflow(self) -> Any:
+            return CapturingWorkflow()
+
+        def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+            return ""
+
+    agent = MultiTurnAgent()
+
+    _ = [event async for event in agent.invoke(run_agent_input_multi_turn)]
+
+    assert "chat_history" in workflow_run_kwargs
+    chat_history = workflow_run_kwargs["chat_history"]
+    assert len(chat_history) > 0
+    assert hasattr(chat_history[0], "role")

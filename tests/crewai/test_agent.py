@@ -13,9 +13,16 @@
 # limitations under the License.
 
 # ruff: noqa: I001
+import json
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import patch
+
+from ag_ui.core import AssistantMessage
+from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core.types import FunctionCall as AgFunctionCall
+from ag_ui.core.types import ToolCall as AgToolCall
+from ag_ui.core.types import ToolMessage as AgToolMessage
 
 from crewai.types.streaming import CrewStreamingOutput
 import pytest
@@ -191,34 +198,29 @@ async def test_invoke_does_not_include_chat_history_by_default(
     assert "chat_history" not in captured_inputs
 
 
-async def test_invoke_overwrites_blank_chat_history_placeholder(
+async def test_invoke_injects_crew_chat_messages_for_multi_turn(
     mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
+    """Multi-turn history is injected as crew_chat_messages JSON, not as a chat_history string."""
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+        async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:
             captured_inputs.update(inputs)
-            return super().kickoff_async(inputs=inputs)
-
-    class AgentWithPlaceholder(AgentForTest):
-        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-            return {"topic": user_prompt_content, "chat_history": ""}
+            return await super().kickoff_async(inputs=inputs)
 
     out = CrewOutput(raw="agent result")
-    agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
+    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
     agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
-    history = captured_inputs["chat_history"]
-    assert isinstance(history, str)
-    assert history.strip() != ""
-    assert "Prior conversation:" in history
-    assert "system: You are a helper." in history
-    assert "user: First question" in history
-    assert "assistant: First answer" in history
-    assert "user: Follow-up" not in history
+    assert "crew_chat_messages" in captured_inputs
+    chat_msgs_raw = captured_inputs["crew_chat_messages"]
+    assert isinstance(chat_msgs_raw, str)
+    chat_msgs = json.loads(chat_msgs_raw)
+    assert len(chat_msgs) > 0
+    assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)
 
 
 async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
@@ -242,3 +244,57 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
+
+
+@pytest.fixture
+def run_agent_input_multi_turn() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[
+            AgSystemMessage(id="sys_1", content="You are helpful."),
+            UserMessage(id="user_1", content="search cats"),
+            AssistantMessage(
+                id="asst_1",
+                content=None,
+                tool_calls=[
+                    AgToolCall(
+                        id="call_1",
+                        function=AgFunctionCall(name="search", arguments='{"q": "cats"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="tool_1", content="found cats", tool_call_id="call_1"),
+            UserMessage(id="user_2", content="tell me more"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+async def test_invoke_multi_turn_injects_crew_chat_messages(
+    mock_ragas_event_listener, run_agent_input_multi_turn
+) -> None:
+    """Multi-turn conversations inject crew_chat_messages into kickoff inputs."""
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    out = CrewOutput(raw="agent result")
+    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input_multi_turn)]
+
+    # crew_chat_messages should be injected as a JSON string
+    assert "crew_chat_messages" in captured_inputs
+    chat_msgs_raw = captured_inputs["crew_chat_messages"]
+    assert isinstance(chat_msgs_raw, str)
+    chat_msgs = json.loads(chat_msgs_raw)
+    assert len(chat_msgs) > 0
+    assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)

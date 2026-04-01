@@ -22,6 +22,9 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import UserMessage
+from ag_ui.core.types import FunctionCall as AgFunctionCall
+from ag_ui.core.types import ToolCall as AgToolCall
+from ag_ui.core.types import ToolMessage as AgToolMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import HumanMessage
@@ -208,8 +211,8 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
         return {}
 
 
-def test_convert_input_message_includes_history() -> None:
-    """convert_input_message should include history when template uses {chat_history}."""
+def test_convert_input_message_multi_turn_passes_all_messages() -> None:
+    """Multi-turn messages are passed as structured LangChain types."""
     agent = HistoryAwareLangGraphAgent()
     run_agent_input = RunAgentInput(
         messages=[
@@ -229,67 +232,34 @@ def test_convert_input_message_includes_history() -> None:
     command = agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
-    # History is embedded as string in the template, so we expect 2 messages:
-    # - System message with history transcript + user message
-    assert len(all_messages) == 2
-    assert isinstance(all_messages[0], SystemMessage)
-    assert isinstance(all_messages[1], HumanMessage)
-
-    # Verify history is embedded in the system message
-    system_content = str(all_messages[0].content)
-    assert "History transcript:" in system_content
-    assert "system: You are a helper." in system_content
-    assert "First question" in system_content
-    assert "First answer" in system_content
+    # All 4 messages converted to native LangChain types
+    assert len(all_messages) == 4
+    assert all_messages[0].type == "system"
+    assert all_messages[1].type == "human"
+    assert all_messages[2].type == "ai"
+    assert all_messages[3].type == "human"
 
 
-def test_convert_input_message_truncates_history() -> None:
-    """History is truncated to max_history_messages prior turns."""
-    agent = HistoryAwareLangGraphAgent()
-    max_history = agent.max_history_messages
-
-    # Create more messages than max_history_messages, all user role so that
-    # everything before the final one is treated as history.
-    messages = [
-        UserMessage(id=f"user_{i}", content=f'{{"topic": "Topic {i}"}}')
-        for i in range(max_history + 10)
-    ]
-    run_agent_input = RunAgentInput(
-        messages=messages,
-        tools=[],
-        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
-        thread_id="thread_id",
-        run_id="run_id",
-        state={},
-        context=[],
-    )
-
-    command = agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
-
-    # We expect 2 templated messages (system + user)
-    assert len(all_messages) == 2
-
-    # Verify history in system message is truncated
-    system_content = str(all_messages[0].content)
-    # The earliest messages should not appear (truncated)
-    # Use exact match with closing brace to avoid substring matches (e.g., "Topic 1" in "Topic 10")
-    assert '"topic": "Topic 0"' not in system_content
-    # The last message (Topic 29) should be excluded from history
-    assert '"topic": "Topic 29"' not in system_content
-    # Messages within the history window should appear
-    assert '"topic": "Topic 9"' in system_content
-
-
-def test_convert_input_message_injects_chat_history_variable() -> None:
-    """convert_input_message should provide {chat_history} to the prompt template."""
-    agent = HistoryAwareLangGraphAgent()
+def test_convert_input_message_uses_structured_messages_for_multi_turn() -> None:
+    """When multi-turn history includes tool calls, structured LangChain messages are used."""
+    agent = SimpleLangGraphAgent()
     run_agent_input = RunAgentInput(
         messages=[
-            AgSystemMessage(id="sys_1", content="You are a helper."),
-            UserMessage(id="user_1", content='{"topic": "First question"}'),
-            AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
+            AgSystemMessage(id="sys_1", content="You are helpful."),
+            UserMessage(id="user_1", content='{"topic": "search cats"}'),
+            AssistantMessage(
+                id="asst_1",
+                content=None,
+                tool_calls=[
+                    AgToolCall(
+                        id="call_1",
+                        function=AgFunctionCall(name="search", arguments='{"q": "cats"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="tool_1", content="found cats", tool_call_id="call_1"),
+            AssistantMessage(id="asst_2", content="Here are cats."),
+            UserMessage(id="user_2", content='{"topic": "tell me more"}'),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -300,51 +270,18 @@ def test_convert_input_message_injects_chat_history_variable() -> None:
     )
 
     command = agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
+    lc_messages = command.update["messages"]
 
-    # Find the system message generated from the prompt template and assert that
-    # it contains a rendered history transcript (prior turns only).
-    history_msgs = [
-        m
-        for m in all_messages
-        if isinstance(m, SystemMessage) and "History transcript:" in str(m.content)
-    ]
-    assert len(history_msgs) == 1
-    history_text = str(history_msgs[0].content)
-
-    assert "system: You are a helper." in history_text
-    assert 'user: {"topic": "First question"}' in history_text
-    assert "assistant: First answer" in history_text
-    # The latest user turn should not appear inside the history transcript.
-    assert "Follow-up" not in history_text
-
-
-def test_convert_input_message_zero_history_disables_history() -> None:
-    """When max_history_messages is 0, no prior turns are included."""
-    agent = SimpleLangGraphAgent(max_history_messages=0)
-
-    run_agent_input = RunAgentInput(
-        messages=[
-            AgSystemMessage(id="sys_1", content="You are a helper."),
-            UserMessage(id="user_1", content='{"topic": "First question"}'),
-            AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
-        ],
-        tools=[],
-        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
-        thread_id="thread_id",
-        run_id="run_id",
-        state={},
-        context=[],
-    )
-
-    command = agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
-
-    # Only the templated messages for the final user turn should remain.
-    assert len(all_messages) == 2
-    assert isinstance(all_messages[0], SystemMessage)
-    assert isinstance(all_messages[1], HumanMessage)
+    assert len(lc_messages) == 6
+    assert lc_messages[0].type == "system"
+    assert lc_messages[1].type == "human"
+    assert lc_messages[2].type == "ai"
+    assert lc_messages[2].tool_calls is not None
+    assert lc_messages[2].tool_calls[0]["name"] == "search"
+    assert lc_messages[3].type == "tool"
+    assert lc_messages[3].tool_call_id == "call_1"
+    assert lc_messages[4].type == "ai"
+    assert lc_messages[5].type == "human"
 
 
 async def test_langgraph_non_streaming(run_agent_input):

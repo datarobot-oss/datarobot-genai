@@ -21,9 +21,9 @@ from ag_ui.core import TextMessageContentEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
-from nat.data_models.api_server import Message
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.agents.message_converters import to_nat_messages
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 
 from .request import DRAgentRunAgentInput
@@ -37,9 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 def convert_dragent_run_agent_input_to_chat_request(input: DRAgentRunAgentInput) -> ChatRequest:
-    messages = []
-    for message in input.messages:
-        messages.append(Message(role=message.role, content=message.content))
+    messages = to_nat_messages(input.messages)
 
     tools = []
     for tool in input.tools:

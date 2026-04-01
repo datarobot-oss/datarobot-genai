@@ -37,6 +37,8 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.message_converters import to_nat_messages
+from datarobot_genai.core.agents.message_converters import truncate_messages
 from datarobot_genai.nat.helpers import load_workflow
 
 if TYPE_CHECKING:
@@ -165,16 +167,17 @@ class NatAgent(BaseAgent[None]):
             Returns a generator yielding tuples of (event, pipeline_interactions, usage_metrics).
 
         """
-        # Build the user prompt from the template
-        user_prompt = self.make_user_prompt(run_agent_input)
+        messages = list(run_agent_input.messages)
 
-        # Automatically inject chat history when enabled (max_history_messages > 0)
-        history_summary = self.build_history_summary(run_agent_input)
-        if history_summary:
-            user_prompt = f"{user_prompt}\n\nPrior conversation:\n{history_summary}"
-
-        # Create the chat request from the processed prompt
-        chat_request = self.make_chat_request(user_prompt)
+        # Multi-turn: convert to native NAT format (truncated to max_history_messages)
+        if len(messages) > 1:
+            truncated = truncate_messages(messages, self.max_history_messages)
+            nat_messages = to_nat_messages(truncated)
+            chat_request = ChatRequest(messages=nat_messages)
+        else:
+            # Single-turn: use make_user_prompt + make_chat_request (existing behavior)
+            user_prompt = self.make_user_prompt(run_agent_input)
+            chat_request = self.make_chat_request(user_prompt)
 
         # Print commands may need flush=True to ensure they are displayed in real-time.
         print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)

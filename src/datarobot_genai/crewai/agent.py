@@ -24,6 +24,7 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import json
 import logging
 import uuid
 from typing import TYPE_CHECKING
@@ -55,6 +56,8 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.message_converters import to_crewai_chat_messages
+from datarobot_genai.core.agents.message_converters import truncate_messages
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
@@ -99,17 +102,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         Subclasses must implement this to provide the exact inputs required
         by their CrewAI tasks.
 
-        Expected inputs:
-
-        - ``topic`` (or similar): The user's prompt content. This is required
-          and should be passed through to CrewAI tasks that use placeholders
-          like ``{topic}`` in their descriptions.
-
-        - ``chat_history`` (optional): Include this key with an empty string
-          value (``""``) to opt into automatic chat history injection. When
-          present, the base class will populate it with a plain-text summary
-          of prior conversation turns. Use ``{chat_history}`` in agent
-          goals/backstories or task descriptions to reference it.
+        For multi-turn conversations, the base class automatically injects
+        ``crew_chat_messages`` (a JSON string of structured message history)
+        into the kickoff inputs.
 
         Returns
         -------
@@ -120,22 +115,10 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         Examples
         --------
-        Basic implementation (no history):
-
         .. code-block:: python
 
             def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
                 return {"topic": user_prompt_content}
-
-        With chat history opt-in:
-
-        .. code-block:: python
-
-            def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-                return {
-                    "topic": user_prompt_content,
-                    "chat_history": "",  # Will be auto-populated with prior turns
-                }
         """
         raise NotImplementedError
 
@@ -196,15 +179,14 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             crew = self.crew()
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
-            # Chat history is opt-in: only populate it if the agent/template
-            # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
-            # in prompts).
-            if "chat_history" in kickoff_inputs:
-                history_summary = self.build_history_summary(run_agent_input)
-                existing_history_text = str(kickoff_inputs.get("chat_history") or "")
 
-                if history_summary and not existing_history_text.strip():
-                    kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
+            # Multi-turn: inject structured conversation history (truncated)
+            if len(run_agent_input.messages) > 1:
+                truncated = truncate_messages(
+                    list(run_agent_input.messages), self.max_history_messages
+                )
+                crew_chat_msgs = to_crewai_chat_messages(truncated)
+                kickoff_inputs["crew_chat_messages"] = json.dumps(crew_chat_msgs)
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""
