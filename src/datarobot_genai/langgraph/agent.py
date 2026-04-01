@@ -60,9 +60,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     For multi-turn conversations (more than one message), all messages are
     converted to native LangChain types preserving tool_call structure.
-    The system prompt from ``prompt_template`` is prepended when no system
-    message is present in the request.  For single-message input, the
-    prompt template is used for formatting.
+    For single-message input, the ``prompt_template`` is used for formatting.
     """
 
     @property
