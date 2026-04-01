@@ -102,9 +102,10 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         Subclasses must implement this to provide the exact inputs required
         by their CrewAI tasks.
 
-        For multi-turn conversations, the base class automatically appends
-        prior conversation context to the first task description.  Subclasses
-        do not need to handle history injection.
+        For multi-turn conversations, the base class automatically provides
+        ``crew_chat_messages`` in the kickoff inputs.  Task descriptions can
+        include ``{crew_chat_messages}`` to receive conversation history.
+        The value defaults to an empty string when there is no history.
 
         Returns
         -------
@@ -180,18 +181,19 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
 
-            # Multi-turn: auto-inject conversation history into task descriptions
-            # so subclasses don't need to know about crew_chat_messages.
+            # Multi-turn: inject conversation history via kickoff inputs so
+            # CrewAI's interpolation can fill {crew_chat_messages} in task descriptions.
             if len(run_agent_input.messages) > 1 and self.max_history_messages > 0:
                 history = truncate_messages(
                     list(run_agent_input.messages),
                     self.max_history_messages,
                     exclude_current=True,
                 )
-                if history and crew.tasks:
+                if history:
                     crew_chat_msgs = to_crewai_chat_messages(history)
-                    context_str = json.dumps(crew_chat_msgs)
-                    crew.tasks[0].description += f"\n\nPrior conversation context: {context_str}"
+                    kickoff_inputs["crew_chat_messages"] = json.dumps(crew_chat_msgs)
+
+            kickoff_inputs.setdefault("crew_chat_messages", "")
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""
