@@ -103,7 +103,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         by their CrewAI tasks.
 
         For multi-turn conversations, the base class automatically appends
-        prior conversation context to each task description.  Subclasses
+        prior conversation context to the first task description.  Subclasses
         do not need to handle history injection.
 
         Returns

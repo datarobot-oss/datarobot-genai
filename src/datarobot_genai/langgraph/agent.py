@@ -129,10 +129,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             for name in vars_list:
                 template_input.setdefault(name, "")
         elif vars_list:
-            # Map the first declared variable to user_prompt, default the rest to ""
-            template_input = {}
-            for i, name in enumerate(vars_list):
-                template_input[name] = user_prompt if i == 0 else ""
+            template_input = {name: user_prompt for name in vars_list}
         else:
             template_input = user_prompt
 
