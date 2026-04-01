@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reworked `mcp_tools_context`arguments to use `MCPConfig` explicitly.
 - Fixed issue with `RuntimeError: generator didn't stop after athrow()` in MCP context.
 
+## 0.9.2
+- Added AG-UI Events for CrewAI
+
 ## 0.9.1
 - Suppressed known-harmless NAT warnings
 
