@@ -32,6 +32,7 @@ def truncate_messages(messages: list[Message], max_history: int) -> list[Message
     """Truncate messages to keep the last user message + at most max_history prior messages.
 
     If max_history <= 0, returns only the last user message (no history).
+    Ensures truncation does not orphan tool messages from their assistant tool_call.
     """
     if not messages:
         return []
@@ -44,17 +45,20 @@ def truncate_messages(messages: list[Message], max_history: int) -> list[Message
             break
 
     if last_user_idx is None:
-        # No user message — return all (or truncated)
         return messages[-max_history:] if max_history > 0 else []
 
     history = messages[:last_user_idx]
-    current = messages[last_user_idx:]  # last user message + anything after
+    current = messages[last_user_idx:]
 
     if max_history <= 0:
         return list(current)
 
     if len(history) > max_history:
         history = history[-max_history:]
+
+    # Drop orphan tool messages at the start of history (no preceding assistant tool_call)
+    while history and getattr(history[0], "role", None) == "tool":
+        history = history[1:]
 
     return history + list(current)
 

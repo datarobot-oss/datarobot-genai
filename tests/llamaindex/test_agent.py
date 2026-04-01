@@ -14,7 +14,6 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from ag_ui.core import AssistantMessage
@@ -31,8 +30,6 @@ from ag_ui.core import UserMessage
 from ag_ui.core.types import FunctionCall as AgFunctionCall
 from ag_ui.core.types import ToolCall as AgToolCall
 from ag_ui.core.types import ToolMessage as AgToolMessage
-
-import datarobot_genai.llama_index.agent as agent_mod
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
 from llama_index.core.agent.workflow import AgentStream

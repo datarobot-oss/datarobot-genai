@@ -205,7 +205,9 @@ async def test_invoke_injects_crew_chat_messages_for_multi_turn(
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:
             captured_inputs.update(inputs)
             return await super().kickoff_async(inputs=inputs)
 
@@ -281,7 +283,9 @@ async def test_invoke_multi_turn_injects_crew_chat_messages(
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:
             captured_inputs.update(inputs)
             return await super().kickoff_async(inputs=inputs)
 
