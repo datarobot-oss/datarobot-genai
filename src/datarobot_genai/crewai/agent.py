@@ -180,15 +180,17 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
 
-            # Multi-turn: inject structured conversation history (truncated).
-            # Tasks should reference {crew_chat_messages} in their description
-            # to make this history visible to the LLM.
-            if len(run_agent_input.messages) > 1:
-                truncated = truncate_messages(
-                    list(run_agent_input.messages), self.max_history_messages
+            # Multi-turn: inject structured conversation history (truncated,
+            # excluding the current user turn which is already in kickoff_inputs).
+            if len(run_agent_input.messages) > 1 and self.max_history_messages > 0:
+                history = truncate_messages(
+                    list(run_agent_input.messages),
+                    self.max_history_messages,
+                    exclude_current=True,
                 )
-                crew_chat_msgs = to_crewai_chat_messages(truncated)
-                kickoff_inputs["crew_chat_messages"] = json.dumps(crew_chat_msgs)
+                if history:
+                    crew_chat_msgs = to_crewai_chat_messages(history)
+                    kickoff_inputs["crew_chat_messages"] = json.dumps(crew_chat_msgs)
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""

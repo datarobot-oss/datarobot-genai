@@ -28,11 +28,21 @@ from ag_ui.core import Message
 logger = logging.getLogger(__name__)
 
 
-def truncate_messages(messages: list[Message], max_history: int) -> list[Message]:
+def truncate_messages(
+    messages: list[Message],
+    max_history: int,
+    *,
+    exclude_current: bool = False,
+) -> list[Message]:
     """Truncate messages to keep the last user message + at most max_history prior messages.
 
     If max_history <= 0, returns only the last user message (no history).
     Ensures truncation does not orphan tool messages from their assistant tool_call.
+
+    When *exclude_current* is ``True`` only the history portion is returned
+    (everything before the last user message).  This is useful for frameworks
+    that pass the current turn separately (e.g. CrewAI kickoff inputs,
+    LlamaIndex ``user_msg`` parameter).
     """
     if not messages:
         return []
@@ -45,13 +55,15 @@ def truncate_messages(messages: list[Message], max_history: int) -> list[Message
             break
 
     if last_user_idx is None:
+        if exclude_current:
+            return messages[-max_history:] if max_history > 0 else []
         return messages[-max_history:] if max_history > 0 else []
 
     history = messages[:last_user_idx]
     current = messages[last_user_idx:]
 
     if max_history <= 0:
-        return list(current)
+        return [] if exclude_current else list(current)
 
     if len(history) > max_history:
         history = history[-max_history:]
@@ -60,6 +72,21 @@ def truncate_messages(messages: list[Message], max_history: int) -> list[Message
     while history and getattr(history[0], "role", None) == "tool":
         history = history[1:]
 
+    # Drop leading assistant whose tool_calls have no matching tool results
+    if history and getattr(history[0], "role", None) == "assistant":
+        tc = getattr(history[0], "tool_calls", None)
+        if tc:
+            tool_ids = {t.id for t in tc}
+            result_ids = {
+                getattr(m, "tool_call_id", None)
+                for m in history[1:]
+                if getattr(m, "role", None) == "tool"
+            }
+            if not tool_ids.issubset(result_ids):
+                history = history[1:]
+
+    if exclude_current:
+        return history
     return history + list(current)
 
 
@@ -261,6 +288,10 @@ def to_crewai_chat_messages(
                 content = _summarize_tool_calls_with_args(tool_calls_raw)
             elif tool_calls_raw and content:
                 content = f"{content}\n{_summarize_tool_calls_with_args(tool_calls_raw)}"
+
+        if role == "tool":
+            tool_call_id = getattr(msg, "tool_call_id", "unknown")
+            content = f"[Tool result for {tool_call_id}]: {content}"
 
         result.append({"role": role, "content": content})
 

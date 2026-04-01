@@ -211,6 +211,32 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
         return {}
 
 
+def test_convert_input_message_zero_max_history_uses_template() -> None:
+    """max_history_messages=0 falls back to single-turn template path."""
+    agent = HistoryAwareLangGraphAgent(max_history_messages=0)
+    run_agent_input = RunAgentInput(
+        messages=[
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content='{"topic": "Follow-up", "chat_history": ""}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Template-based path: system + user from prompt_template
+    assert len(all_messages) == 2
+    assert all_messages[0].type == "system"
+    assert all_messages[1].type == "human"
+
+
 def test_convert_input_message_multi_turn_passes_all_messages() -> None:
     """Multi-turn messages are passed as structured LangChain types."""
     agent = HistoryAwareLangGraphAgent()

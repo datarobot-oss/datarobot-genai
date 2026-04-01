@@ -88,24 +88,12 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Run the LlamaIndex workflow with the provided completion parameters."""
         messages = list(run_agent_input.messages)
 
-        # Multi-turn: truncate, then split into user_msg (last user text) and
-        # chat_history (everything else converted to LlamaIndex types).
-        if len(messages) > 1:
-            truncated = truncate_messages(messages, self.max_history_messages)
-            # Find the last user message index
-            last_user_idx = None
-            for i in range(len(truncated) - 1, -1, -1):
-                if truncated[i].role == "user":
-                    last_user_idx = i
-                    break
-
-            if last_user_idx is not None:
-                user_msg = str(truncated[last_user_idx].content)
-                history_msgs = truncated[:last_user_idx] + truncated[last_user_idx + 1 :]
-                chat_history = to_llama_index_messages(history_msgs) if history_msgs else None
-            else:
-                user_msg = ""
-                chat_history = None
+        # Multi-turn: split into user_msg (last user text) and chat_history
+        # (everything before, converted to LlamaIndex types).
+        if len(messages) > 1 and self.max_history_messages > 0:
+            user_msg = str(extract_user_prompt_content(run_agent_input))
+            history = truncate_messages(messages, self.max_history_messages, exclude_current=True)
+            chat_history = to_llama_index_messages(history) if history else None
         else:
             # Single-turn: use make_input_message (existing behavior)
             user_msg = self.make_input_message(run_agent_input)

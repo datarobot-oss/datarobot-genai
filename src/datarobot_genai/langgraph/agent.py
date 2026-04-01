@@ -82,16 +82,18 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
-        When multi-turn history is present (more than one message), converts
-        all messages to native LangChain types preserving tool_call structure.
-        For single-message input, falls back to the template-based approach.
+        When multi-turn history is present (more than one message) and
+        ``max_history_messages > 0``, converts all messages to native LangChain
+        types preserving tool_call structure.  If ``max_history_messages == 0``
+        or only a single message is present, falls back to the template-based
+        approach.
         """
         from collections.abc import Mapping
 
         messages = list(run_agent_input.messages)
 
         # Multi-turn: convert to native LangChain types (truncated to max_history_messages)
-        if len(messages) > 1:
+        if len(messages) > 1 and self.max_history_messages > 0:
             truncated = truncate_messages(messages, self.max_history_messages)
             lc_messages = to_langchain_messages(truncated)
             return Command(update={"messages": lc_messages})

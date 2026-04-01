@@ -150,6 +150,47 @@ class TestTruncateMessages:
         result = truncate_messages(msgs, max_history=0)
         assert result == []
 
+    def test_drops_leading_assistant_with_dangling_tool_calls(self) -> None:
+        msgs = [
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="f", arguments="{}"),
+                    )
+                ],
+            ),
+            # tool result for call_1 is missing — truncated away
+            UserMessage(id="u1", content="question"),
+            AssistantMessage(id="a2", content="answer"),
+            UserMessage(id="u2", content="latest"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        # Leading assistant with dangling tool_calls should be dropped
+        assert result[0].role == "user"
+        assert result[0].content == "question"
+
+    def test_keeps_leading_assistant_with_resolved_tool_calls(self) -> None:
+        msgs = [
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="f", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="result", tool_call_id="call_1"),
+            UserMessage(id="u1", content="latest"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        assert len(result) == 3
+        assert result[0].role == "assistant"
+
     def test_messages_after_last_user_are_included(self) -> None:
         msgs = [
             UserMessage(id="u1", content="search"),
@@ -299,7 +340,7 @@ class TestToCrewaiChatMessages:
         result = to_crewai_chat_messages(msgs)
         assert len(result) == 1
         assert result[0]["role"] == "tool"
-        assert "result" in result[0]["content"]
+        assert result[0]["content"] == "[Tool result for call_1]: result"
 
     def test_system_message(self) -> None:
         msgs = [SystemMessage(id="s1", content="system")]

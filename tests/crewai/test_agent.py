@@ -256,7 +256,11 @@ def run_agent_input_multi_turn() -> RunAgentInput:
 async def test_invoke_multi_turn_injects_crew_chat_messages(
     mock_ragas_event_listener, run_agent_input_multi_turn
 ) -> None:
-    """Multi-turn conversations inject crew_chat_messages into kickoff inputs."""
+    """Multi-turn conversations inject crew_chat_messages into kickoff inputs.
+
+    The last user message (current turn) should be excluded from crew_chat_messages
+    since it is already passed via make_kickoff_inputs.
+    """
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
@@ -279,3 +283,7 @@ async def test_invoke_multi_turn_injects_crew_chat_messages(
     chat_msgs = json.loads(chat_msgs_raw)
     assert len(chat_msgs) > 0
     assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)
+
+    # The current user turn ("tell me more") should NOT appear in crew_chat_messages
+    user_contents = [m["content"] for m in chat_msgs if m["role"] == "user"]
+    assert "tell me more" not in user_contents

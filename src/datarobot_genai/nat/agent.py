@@ -144,8 +144,10 @@ class NatAgent(BaseAgent[None]):
     def make_user_prompt(self, run_agent_input: RunAgentInput) -> str:
         """Create the user prompt text. Override to customize formatting.
 
-        Chat history is automatically appended by `invoke` when
-        max_history_messages > 0 (controlled via DATAROBOT_GENAI_MAX_HISTORY_MESSAGES env var).
+        This method is called for single-turn inputs (one message) or when
+        ``max_history_messages == 0``.  For multi-turn inputs with history
+        enabled, ``invoke`` converts messages to native NAT format directly
+        and this method is not called.
 
         Default implementation returns the raw user message content.
         """
@@ -168,9 +170,10 @@ class NatAgent(BaseAgent[None]):
 
         """
         messages = list(run_agent_input.messages)
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
 
         # Multi-turn: convert to native NAT format (truncated to max_history_messages)
-        if len(messages) > 1:
+        if len(messages) > 1 and self.max_history_messages > 0:
             truncated = truncate_messages(messages, self.max_history_messages)
             nat_messages = to_nat_messages(truncated)
             chat_request = ChatRequest(messages=nat_messages)
@@ -180,7 +183,7 @@ class NatAgent(BaseAgent[None]):
             chat_request = self.make_chat_request(user_prompt)
 
         # Print commands may need flush=True to ensure they are displayed in real-time.
-        print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)
+        print("Running agent with user prompt:", user_prompt_content, flush=True)
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
