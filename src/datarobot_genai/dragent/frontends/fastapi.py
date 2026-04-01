@@ -34,6 +34,8 @@ from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.core.utils.logging import setup_logging
+
 from .session import DRAgentAGUISessionManager
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -215,6 +217,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 logger.info("A2A worker resources cleaned up")
 
         app.router.lifespan_context = lifespan
+
+        setup_logging()
         return app
 
     async def add_health_route(self, app: FastAPI) -> None:

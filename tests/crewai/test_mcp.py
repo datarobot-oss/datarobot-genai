@@ -18,111 +18,110 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 
 @pytest.fixture
-def mock_adapter():
+def mock_tools():
+    return [MagicMock(), MagicMock()]
+
+
+@pytest.fixture
+def mock_adapter(mock_tools):
     """Fixture for mocking MCPServerAdapter."""
     with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
+        mock_adapter_instance = MagicMock()
+        mock_adapter_instance.__enter__.return_value = mock_tools
+        mock_adapter_instance.__exit__.return_value = None
+        mock.return_value = mock_adapter_instance
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def clear_environment_variables():
+    with patch.dict(os.environ, {}, clear=True):
+        yield
 
 
 class TestMCPToolsContext:
     """Test MCP tools context manager."""
 
-    def test_mcp_tools_context_no_configuration(self):
+    async def test_mcp_tools_context_no_configuration(self):
         """Test context manager when no MCP server is configured."""
         with patch.dict(os.environ, {}, clear=True):
-            with mcp_tools_context() as tools:
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
                 assert tools == []
 
-    def test_mcp_tools_context_with_external_url(self, mock_adapter):
+    async def test_mcp_tools_context_with_external_url(self, mock_adapter, mock_tools):
         """Test context manager with external MCP URL."""
-        mock_tools = [MagicMock(), MagicMock()]
-        mock_adapter_instance = MagicMock()
-        mock_adapter_instance.__enter__.return_value = mock_tools
-        mock_adapter_instance.__exit__.return_value = None
-        mock_adapter.return_value = mock_adapter_instance
-
         test_url = "https://mcp-server.example.com/mcp"
-        with patch.dict(os.environ, {"EXTERNAL_MCP_URL": test_url}, clear=True):
-            with mcp_tools_context() as tools:
-                assert tools == mock_tools
-                mock_adapter.assert_called_once()
-                # Check that the server config was passed correctly
-                call_args = mock_adapter.call_args[0][0]
-                assert call_args["url"] == test_url
-                assert call_args["transport"] == "streamable-http"
+        mcp_config = MCPConfig(external_mcp_url=test_url)
+        async with mcp_tools_context(mcp_config) as tools:
+            assert tools == mock_tools
+            mock_adapter.assert_called_once()
+            # Check that the server config was passed correctly
+            call_args = mock_adapter.call_args[0][0]
+            assert call_args["url"] == test_url
+            assert call_args["transport"] == "streamable-http"
 
-    def test_mcp_tools_context_with_datarobot_deployment(
-        self, mock_adapter, agent_auth_context_data
+    async def test_mcp_tools_context_with_datarobot_deployment(
+        self, mock_adapter, agent_auth_context_data, mock_tools
     ):
         """Test context manager with DataRobot deployment ID."""
-        mock_tools = [MagicMock()]
-        mock_adapter_instance = MagicMock()
-        mock_adapter_instance.__enter__.return_value = mock_tools
-        mock_adapter_instance.__exit__.return_value = None
-        mock_adapter.return_value = mock_adapter_instance
-
         deployment_id = "abc123def456789012345678"
         api_base = "https://app.datarobot.com/api/v2"
         api_key = "test-api-key"
-        secret_key = "my-secret-key"
 
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_ENDPOINT": api_base,
-                "DATAROBOT_API_TOKEN": api_key,
-                "SESSION_SECRET_KEY": secret_key,
-            },
-            clear=True,
-        ):
-            with mcp_tools_context(authorization_context=agent_auth_context_data) as tools:
-                assert tools == mock_tools
-                mock_adapter.assert_called_once()
-                # Check that the server config was passed correctly
-                call_args = mock_adapter.call_args[0][0]
-                expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-                assert call_args["url"] == expected_url
-                assert call_args["transport"] == "streamable-http"
-                assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
-                assert call_args["headers"]["X-DataRobot-Authorization-Context"] is not None
+        mcp_config = MCPConfig(
+            mcp_deployment_id=deployment_id,
+            datarobot_endpoint=api_base,
+            datarobot_api_token=api_key,
+            authorization_context=agent_auth_context_data,
+        )
+        async with mcp_tools_context(mcp_config) as tools:
+            assert tools == mock_tools
+            mock_adapter.assert_called_once()
+            # Check that the server config was passed correctly
+            call_args = mock_adapter.call_args[0][0]
+            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            assert call_args["url"] == expected_url
+            assert call_args["transport"] == "streamable-http"
+            assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
+            assert call_args["headers"]["X-DataRobot-Authorization-Context"] is not None
 
-    def test_mcp_tools_context_with_forwarded_headers(self, mock_adapter, agent_auth_context_data):
+    async def test_mcp_tools_context_with_forwarded_headers(
+        self, mock_adapter, agent_auth_context_data, mock_tools
+    ):
         """Test context manager with forwarded headers including scoped token."""
-        mock_tools = [MagicMock()]
-        mock_adapter_instance = MagicMock()
-        mock_adapter_instance.__enter__.return_value = mock_tools
-        mock_adapter_instance.__exit__.return_value = None
-        mock_adapter.return_value = mock_adapter_instance
-
         deployment_id = "abc123def456789012345678"
         api_base = "https://app.datarobot.com/api/v2"
         api_key = "test-api-key"
-        secret_key = "my-secret-key"
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-123",
         }
 
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_ENDPOINT": api_base,
-                "DATAROBOT_API_TOKEN": api_key,
-                "SESSION_SECRET_KEY": secret_key,
-            },
-            clear=True,
-        ):
-            with mcp_tools_context(
-                authorization_context=agent_auth_context_data, forwarded_headers=forwarded_headers
-            ) as tools:
-                assert tools == mock_tools
-                mock_adapter.assert_called_once()
-                # Check that forwarded headers are included in the server config
-                call_args = mock_adapter.call_args[0][0]
-                assert call_args["headers"]["x-datarobot-api-key"] == "scoped-token-123"
-                assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
+        mcp_config = MCPConfig(
+            mcp_deployment_id=deployment_id,
+            datarobot_endpoint=api_base,
+            datarobot_api_token=api_key,
+            authorization_context=agent_auth_context_data,
+            forwarded_headers=forwarded_headers,
+        )
+        async with mcp_tools_context(mcp_config) as tools:
+            assert tools == mock_tools
+            mock_adapter.assert_called_once()
+            # Check that forwarded headers are included in the server config
+            call_args = mock_adapter.call_args[0][0]
+            assert call_args["headers"]["x-datarobot-api-key"] == "scoped-token-123"
+            assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
+
+    @pytest.mark.usefixtures("mock_adapter")
+    async def test_mcp_tools_context_propagates_exceptions(self):
+        """Test context manager propagates exceptions."""
+        test_url = "https://mcp-server.example.com/mcp"
+        mcp_config = MCPConfig(external_mcp_url=test_url)
+        with pytest.raises(RuntimeError):
+            async with mcp_tools_context(mcp_config):
+                raise RuntimeError("Connection failed")

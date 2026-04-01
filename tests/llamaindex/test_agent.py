@@ -14,7 +14,6 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from ag_ui.core import AssistantMessage
@@ -40,11 +39,8 @@ from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
 
-from datarobot_genai.llama_index import agent as agent_mod
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
-
-# --- Test helpers ---
 
 
 class Handler:
@@ -187,15 +183,6 @@ def agent(workflow: Workflow) -> MyLlamaAgent:
     return MyLlamaAgent(workflow, forwarded_headers=forwarded_headers)
 
 
-@pytest.fixture
-def mock_load_mcp_tools(monkeypatch: Any) -> None:
-    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
-        return []
-
-    monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
-
-
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_llama_index_agent_invoke(
     agent: MyLlamaAgent, run_agent_input: RunAgentInput
 ) -> None:
@@ -231,36 +218,6 @@ async def test_llama_index_agent_invoke(
     assert usage[-1] == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
 
-async def test_llama_index_agent_invoke_with_mcp_tools(
-    monkeypatch: Any, agent: MyLlamaAgent, run_agent_input: RunAgentInput
-) -> None:
-    """Test that MCP tools are loaded and available via mcp_tools property."""
-    # GIVEN: fake mcp tools
-    mock_tools = [MagicMock(), MagicMock()]
-
-    mcp_calls = []
-
-    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
-        mcp_calls.append(kwargs)
-        return mock_tools
-
-    monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
-
-    # WHEN: invoke the agent with a run agent input and get the events
-    gen = agent.invoke(run_agent_input)
-    [event async for event in gen]
-
-    # THEN: MCP tools were loaded and are accessible
-    assert agent.mcp_tools == mock_tools
-    assert len(agent.mcp_tools) == 2
-
-    # THEN: load_mcp_tools was called with forwarded headers
-    assert len(mcp_calls) == 1
-    assert mcp_calls[0]["forwarded_headers"] == {
-        "x-datarobot-api-key": "scoped-token-123",
-    }
-
-
 def test_make_input_message_includes_history_summary(run_agent_input_with_history) -> None:
     """By default, LlamaIndexAgent.make_input_message should NOT include history."""
     workflow = Workflow(events=[], state="S")
@@ -282,7 +239,6 @@ def test_make_input_message_zero_history_disables_summary(
     assert text == "Follow-up"
 
 
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_agent_output_with_dict_tool_calls(
     run_agent_input: RunAgentInput,
 ) -> None:
@@ -314,7 +270,6 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     assert pipeline[-1] is not None
 
 
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_agent_stream_multiple_agents(
     run_agent_input: RunAgentInput,
 ) -> None:
@@ -347,7 +302,6 @@ async def test_invoke_agent_stream_multiple_agents(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_replaces_chat_history_placeholder() -> None:
     """invoke() replaces {chat_history} placeholder with actual history."""
     captured_msgs: list[str] = []

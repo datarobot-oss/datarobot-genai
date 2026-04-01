@@ -12,8 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datarobot_genai.nat.tool import nat_tool
+import logging
 
-from dragent.tool import generate_objectid
+logger = logging.getLogger(__name__)
 
-nat_tool(generate_objectid, "generate_objectid")
+
+def setup_logging() -> None:
+    """Setup uniform logging for the application."""  # noqa: D401
+    current_log_level = logging.getLogger().getEffectiveLevel()
+    logger.info(f"Setting up logging, log level: {logging._levelToName[current_log_level]}")
+
+    for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
+        lg = logging.getLogger(name)
+        if lg:
+            logger.debug(f"Resetting logger {name}")
+            lg.handlers.clear()
+            lg.propagate = True

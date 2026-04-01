@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -24,7 +25,7 @@ from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import PrivateAttr
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 
 
 def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
@@ -72,8 +73,7 @@ def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
 
 @asynccontextmanager
 async def mcp_tools_context(
-    authorization_context: dict[str, Any] | None = None,
-    forwarded_headers: dict[str, str] | None = None,
+    mcp_config: MCPConfig,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """Yield a list of LangChain BaseTool instances loaded via MCP.
 
@@ -86,16 +86,15 @@ async def mcp_tools_context(
     forwarded_headers : dict[str, str] | None
         Forwarded headers, e.g. x-datarobot-api-key to use for MCP authentication
     """
-    mcp_config = MCPConfig(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
     server_config = mcp_config.server_config
 
     if not server_config:
         print("No MCP server configured, using empty tools list", flush=True)
         yield []
         return
+
+    # Prevent mutation of the original server_config
+    server_config = copy.deepcopy(server_config)
 
     url = server_config["url"]
     print(f"Connecting to MCP server: {url}", flush=True)

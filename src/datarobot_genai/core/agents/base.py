@@ -53,11 +53,35 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - model: Preferred model name
       - timeout: Request timeout
       - verbose: Verbosity flag
-      - authorization_context: Authorization context for downstream agents/tools
+      - forwarded_headers: Forwarded headers for the agent
       - max_history_messages: Maximum number of prior messages to include in chat history
+      - memory_client: Memory client for the agent
     """
 
-    _max_history_messages: int | None = None
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        model: str | None = None,
+        tools: list[TTool] | None = None,
+        verbose: bool = True,
+        timeout: int | None = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+    ) -> None:
+        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
+        self.api_base = (
+            api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
+        )
+        self.model = model
+        self.timeout = timeout if timeout is not None else 90
+        self.verbose = verbose
+        self._tools: list[TTool] = tools or []
+        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
+        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
+        self._max_history_messages = max_history_messages
+        self._memory_client: BaseMemoryClient | None = memory_client
 
     @property
     def max_history_messages(self) -> int:
@@ -71,55 +95,16 @@ class BaseAgent(Generic[TTool], abc.ABC):
             return self._max_history_messages
         return get_max_history_messages_default()
 
-    def __init__(
-        self,
-        *,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        model: str | None = None,
-        verbose: bool | str | None = True,
-        timeout: int | None = 90,
-        authorization_context: dict[str, Any] | None = None,
-        forwarded_headers: dict[str, str] | None = None,
-        max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
-        **_: Any,
-    ) -> None:
-        self._max_history_messages = max_history_messages
-        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
-        self.api_base = (
-            api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
-        )
-        self.model = model
-        self.timeout = timeout if timeout is not None else 90
-        if isinstance(verbose, str):
-            self.verbose = verbose.lower() == "true"
-        elif verbose is None:
-            self.verbose = True
-        else:
-            self.verbose = bool(verbose)
-        self._mcp_tools: list[TTool] = []
-        self._authorization_context = authorization_context or {}
-        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
-        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
-        self._memory_client: BaseMemoryClient | None = memory_client
-
-    def set_mcp_tools(self, tools: list[TTool]) -> None:
-        self._mcp_tools = tools
+    def set_tools(self, tools: list[TTool]) -> None:
+        self._tools = tools
 
     @property
-    def mcp_tools(self) -> list[TTool]:
-        """Return the list of MCP tools available to this agent.
+    def tools(self) -> list[TTool]:
+        """Return the list of tools available to this agent.
 
-        Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``crew``.
+        Subclasses can use this to wire tools into the agent.
         """
-        return self._mcp_tools
-
-    @property
-    def authorization_context(self) -> dict[str, Any]:
-        """Return the authorization context for this agent."""
-        return self._authorization_context
+        return self._tools
 
     @property
     def forwarded_headers(self) -> dict[str, str]:

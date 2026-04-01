@@ -59,8 +59,10 @@ def agent(workflow_path):
 def agent_with_headers(workflow_path):
     return NatAgent(
         workflow_path=workflow_path,
-        forwarded_headers={"h1": "v1"},
-        authorization_context={"c1": "v2"},
+        forwarded_headers={
+            "h1": "v1",
+            "Authorization": "Bearer test-api-key",
+        },
     )
 
 
@@ -168,20 +170,6 @@ def patch_environment_variables():
         clear=True,
     ):
         yield
-
-
-@patch.dict(os.environ, {}, clear=True)
-def test_init_with_additional_kwargs(workflow_path):
-    """Test initialization with additional keyword arguments."""
-    # Setup
-    additional_kwargs = {"extra_param1": "value1", "extra_param2": 42}
-
-    # Execute
-    agent = NatAgent(workflow_path=workflow_path, **additional_kwargs)
-
-    # Verify that the extra parameters don't create attributes
-    with pytest.raises(AttributeError):
-        _ = agent.extra_param1
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
@@ -300,10 +288,6 @@ async def test_streaming_mcp_headers(
     expected_headers = {
         "h1": "v1",
         "Authorization": "Bearer test-api-key",
-        "X-DataRobot-Authorization-Context": (
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjMSI6InYyIn0"
-            ".5Elh7RxbEZV1JdUZi9duxJwXUkFRdzKhtyXyfTIj4Ms"
-        ),
     }
     mock_load_workflow.assert_called_once_with(
         workflow_path,

@@ -34,6 +34,9 @@ lint = [
     "mypy>=1.19.1",
     "ruff>=0.15.2",
 ]
+dev = [
+    "ipdb>=0.13.13",
+]
 
 [project.entry-points.'nat.plugins']
 nat_agent = "dragent.nat.register"
@@ -92,6 +95,8 @@ extend-ignore = [
     "PLR0915",
     # Too many branches
     "PLR0912",
+    # inline imports
+    "PLC0415",
 ]
 fixable = [
     "I",    # isort

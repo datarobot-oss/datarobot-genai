@@ -1,14 +1,11 @@
 """LlamaIndex utilities and helpers."""
 
-from datarobot_genai.core.mcp.config import MCPConfig
-
 from .agent import DataRobotLiteLLM
 from .agent import LlamaIndexAgent
-from .mcp import load_mcp_tools
+from .mcp import mcp_tools_context
 
 __all__ = [
     "DataRobotLiteLLM",
     "LlamaIndexAgent",
-    "load_mcp_tools",
-    "MCPConfig",
+    "mcp_tools_context",
 ]

@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from crewai.events.event_bus import CrewAIEventsBus
@@ -22,6 +23,8 @@ from crewai.events.event_types import AgentReasoningStartedEvent
 from crewai.events.event_types import TaskCompletedEvent
 from crewai.events.event_types import TaskFailedEvent
 from crewai.events.event_types import TaskStartedEvent
+
+logger = logging.getLogger(__name__)
 
 
 class CrewAIStreamingEventListener:
@@ -35,24 +38,30 @@ class CrewAIStreamingEventListener:
 
         @crewai_event_bus.on(AgentReasoningStartedEvent)
         def on_agent_reasoning_started(_: Any, event: Any) -> None:
+            logger.debug("Reasoning started")
             self.reasoning_event = True
 
         @crewai_event_bus.on(AgentReasoningCompletedEvent)
         def on_agent_reasoning_completed(_: Any, event: Any) -> None:
+            logger.debug("Reasoning completed")
             self.reasoning_event = False
 
         @crewai_event_bus.on(AgentReasoningFailedEvent)
         def on_agent_reasoning_failed(_: Any, event: Any) -> None:
+            logger.debug("Reasoning failed")
             self.reasoning_event = False
 
         @crewai_event_bus.on(TaskCompletedEvent)
         def on_agent_task_completed(_: Any, event: Any) -> None:
+            logger.debug("Task completed")
             self.step_event = False
 
         @crewai_event_bus.on(TaskFailedEvent)
         def on_agent_task_failed(_: Any, event: Any) -> None:
+            logger.debug("Task failed")
             self.step_event = False
 
         @crewai_event_bus.on(TaskStartedEvent)
         def on_agent_task_started(_: Any, event: Any) -> None:
+            logger.debug("Task started")
             self.step_event = True

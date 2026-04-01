@@ -20,18 +20,20 @@ Unlike CrewAI which uses a context manager, LlamaIndex uses async calls to
 fetch tools from MCP servers.
 """
 
-from typing import Any
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
+from llama_index.core.tools import BaseTool
 from llama_index.tools.mcp import BasicMCPClient
 from llama_index.tools.mcp import aget_tools_from_mcp_url
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 
 
-async def load_mcp_tools(
-    authorization_context: dict[str, Any] | None = None,
-    forwarded_headers: dict[str, str] | None = None,
-) -> list[Any]:
+@asynccontextmanager
+async def mcp_tools_context(
+    mcp_config: MCPConfig,
+) -> AsyncGenerator[list[BaseTool], None]:
     """
     Asynchronously load MCP tools for LlamaIndex.
 
@@ -43,37 +45,28 @@ async def load_mcp_tools(
     -------
         List of MCP tools, or empty list if no MCP configuration is present.
     """
-    config = MCPConfig(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
-    server_params = config.server_config
+    server_params = mcp_config.server_config
 
     if not server_params:
         print("No MCP server configured, using empty tools list", flush=True)
-        return []
+        yield []
+        return
 
     url = server_params["url"]
     headers = server_params.get("headers", {})
 
-    try:
-        print(f"Connecting to MCP server: {url}", flush=True)
-        # Create BasicMCPClient with headers to pass authentication
-        client = BasicMCPClient(command_or_url=url, headers=headers)
-        tools = await aget_tools_from_mcp_url(
-            command_or_url=url,
-            client=client,
-        )
-        # Ensure list
-        tools_list = list(tools) if tools is not None else []
-        print(
-            f"Successfully connected to MCP server, got {len(tools_list)} tools",
-            flush=True,
-        )
-        return tools_list
-    except Exception as e:
-        print(
-            f"Warning: Failed to connect to MCP server {url}: {e}",
-            flush=True,
-        )
-        return []
+    print(f"Connecting to MCP server: {url}", flush=True)
+    # Create BasicMCPClient with headers to pass authentication
+    client = BasicMCPClient(command_or_url=url, headers=headers)
+    tools = await aget_tools_from_mcp_url(
+        command_or_url=url,
+        client=client,
+    )
+    # Ensure list
+    tools = list(tools) if tools is not None else []
+    print(
+        f"Successfully connected to MCP server, got {len(tools)} tools",
+        flush=True,
+    )
+
+    yield tools
