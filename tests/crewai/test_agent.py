@@ -225,29 +225,6 @@ async def test_invoke_injects_crew_chat_messages_for_multi_turn(
     assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)
 
 
-async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
-    mock_ragas_event_listener, run_agent_input_with_history
-) -> None:
-    captured_inputs: dict[str, Any] = {}
-
-    class CapturingCrew(CrewForTest):
-        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
-            captured_inputs.update(inputs)
-            return super().kickoff_async(inputs=inputs)
-
-    class AgentWithOverride(AgentForTest):
-        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
-            return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
-
-    out = CrewOutput(raw="agent result")
-    agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
-
-    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
-
-    assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
-
-
 @pytest.fixture
 def run_agent_input_multi_turn() -> RunAgentInput:
     return RunAgentInput(

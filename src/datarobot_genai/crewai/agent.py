@@ -180,7 +180,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
 
-            # Multi-turn: inject structured conversation history (truncated)
+            # Multi-turn: inject structured conversation history (truncated).
+            # Tasks should reference {crew_chat_messages} in their description
+            # to make this history visible to the LLM.
             if len(run_agent_input.messages) > 1:
                 truncated = truncate_messages(
                     list(run_agent_input.messages), self.max_history_messages

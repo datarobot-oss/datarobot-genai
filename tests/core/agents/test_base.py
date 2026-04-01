@@ -28,7 +28,6 @@ from ragas.messages import HumanMessage
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import make_system_prompt
-from datarobot_genai.core.agents.history import extract_history_messages
 
 
 def _make_run_agent_input_from_dicts(messages: list[dict[str, Any]]) -> RunAgentInput:
@@ -168,92 +167,6 @@ def test_extract_user_prompt_content_the_last_user_message_is_a_json_string(
     user_prompt = extract_user_prompt_content(run_agent_input)
     # THEN the user prompt is the last user message
     assert user_prompt == {"foo": "bar"}
-
-
-def test_extract_history_messages_excludes_final_user_turn_only_when_last_message_is_user() -> None:
-    # GIVEN a RunAgentInput with multiple messages ending with user
-    run_agent_input = _make_run_agent_input_from_dicts(
-        [
-            {"role": "user", "content": "u1"},
-            {"role": "assistant", "content": "a1"},
-            {"role": "user", "content": "u2"},
-        ]
-    )
-    # WHEN extracting history
-    history = extract_history_messages(run_agent_input, max_history=20)
-    # THEN the final user message is excluded from history
-    assert [(m["role"], m["content"]) for m in history] == [("user", "u1"), ("assistant", "a1")]
-
-
-def test_extract_history_messages_keeps_trailing_assistant_or_tool_messages() -> None:
-    # GIVEN a RunAgentInput that ends with assistant output
-    run_agent_input = _make_run_agent_input_from_dicts(
-        [
-            {"role": "user", "content": "u1"},
-            {"role": "assistant", "content": "a1"},
-        ]
-    )
-    # WHEN extracting history
-    history = extract_history_messages(run_agent_input, max_history=20)
-    # THEN all messages are included since last message is not user
-    assert [(m["role"], m["content"]) for m in history] == [("user", "u1"), ("assistant", "a1")]
-
-
-def test_extract_history_messages_preserves_tool_call_only_assistant_messages() -> None:
-    # GIVEN a RunAgentInput with tool calls
-    run_agent_input = _make_run_agent_input_from_dicts(
-        [
-            {"role": "user", "content": "u1"},
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{"function": {"name": "search"}}],
-            },
-            {"role": "user", "content": "u2"},
-        ]
-    )
-    # WHEN extracting history
-    history = extract_history_messages(run_agent_input, max_history=20)
-    # THEN tool call info is preserved
-    assert len(history) == 2
-    assert history[0]["role"] == "user"
-    assert history[0]["content"] == "u1"
-    assert history[1]["role"] == "assistant"
-    assert "search" in history[1]["content"]
-
-
-def test_extract_history_messages_preserves_tool_messages_even_with_empty_content() -> None:
-    # GIVEN a RunAgentInput with a tool message
-    run_agent_input = _make_run_agent_input_from_dicts(
-        [
-            {"role": "user", "content": "u1"},
-            {"role": "tool", "tool_call_id": "call_1", "content": None},
-            {"role": "user", "content": "u2"},
-        ]
-    )
-    # WHEN extracting history
-    history = extract_history_messages(run_agent_input, max_history=20)
-    # THEN tool message is preserved
-    assert len(history) == 2
-    assert history[1]["role"] == "tool"
-
-
-def test_build_history_summary_includes_tool_call_summaries() -> None:
-    # GIVEN a RunAgentInput with tool calls
-    run_agent_input = _make_run_agent_input_from_dicts(
-        [
-            {"role": "user", "content": "u1"},
-            {"role": "assistant", "content": None, "tool_calls": [{"function": {"name": "t"}}]},
-            {"role": "user", "content": "u2"},
-        ]
-    )
-    # WHEN building history summary via the public API
-    agent = SimpleAgent()
-    summary = agent.build_history_summary(run_agent_input)
-    # THEN tool call is included in summary
-    assert "user: u1" in summary
-    assert "assistant:" in summary
-    assert "t" in summary
 
 
 def test_make_system_prompt() -> None:

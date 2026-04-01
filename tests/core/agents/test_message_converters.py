@@ -21,6 +21,153 @@ from ag_ui.core.types import ToolMessage
 
 from datarobot_genai.core.agents.message_converters import to_crewai_chat_messages
 from datarobot_genai.core.agents.message_converters import to_langchain_messages
+from datarobot_genai.core.agents.message_converters import truncate_messages
+
+
+class TestTruncateMessages:
+    def test_empty_messages(self) -> None:
+        assert truncate_messages([], max_history=10) == []
+
+    def test_single_user_message_no_history(self) -> None:
+        msgs = [UserMessage(id="u1", content="hello")]
+        result = truncate_messages(msgs, max_history=10)
+        assert len(result) == 1
+        assert result[0].content == "hello"
+
+    def test_zero_max_history_returns_only_last_user(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="first"),
+            AssistantMessage(id="a1", content="reply"),
+            UserMessage(id="u2", content="second"),
+        ]
+        result = truncate_messages(msgs, max_history=0)
+        assert len(result) == 1
+        assert result[0].content == "second"
+
+    def test_negative_max_history_returns_only_last_user(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="first"),
+            UserMessage(id="u2", content="second"),
+        ]
+        result = truncate_messages(msgs, max_history=-5)
+        assert len(result) == 1
+        assert result[0].content == "second"
+
+    def test_truncates_to_max_history(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="msg1"),
+            AssistantMessage(id="a1", content="msg2"),
+            UserMessage(id="u2", content="msg3"),
+            AssistantMessage(id="a2", content="msg4"),
+            UserMessage(id="u3", content="msg5"),
+        ]
+        result = truncate_messages(msgs, max_history=2)
+        # 2 history messages + current (last user + anything after)
+        assert len(result) == 3
+        assert result[0].content == "msg3"
+        assert result[1].content == "msg4"
+        assert result[2].content == "msg5"
+
+    def test_keeps_all_when_under_max(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="first"),
+            AssistantMessage(id="a1", content="reply"),
+            UserMessage(id="u2", content="second"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        assert len(result) == 3
+
+    def test_drops_orphan_tool_messages_at_start(self) -> None:
+        msgs = [
+            ToolMessage(id="t1", content="orphan result", tool_call_id="call_1"),
+            UserMessage(id="u1", content="question"),
+            AssistantMessage(id="a1", content="answer"),
+            UserMessage(id="u2", content="follow-up"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        # Orphan tool message at start should be dropped
+        assert result[0].role == "user"
+        assert result[0].content == "question"
+
+    def test_does_not_drop_tool_after_assistant(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="search"),
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="search", arguments='{"q": "test"}'),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="results", tool_call_id="call_1"),
+            UserMessage(id="u2", content="tell me more"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        assert len(result) == 4
+        roles = [getattr(m, "role", None) for m in result]
+        assert roles == ["user", "assistant", "tool", "user"]
+
+    def test_truncation_creates_orphan_then_drops_it(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="old"),
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="f", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="result", tool_call_id="call_1"),
+            UserMessage(id="u2", content="recent"),
+            AssistantMessage(id="a2", content="reply"),
+            UserMessage(id="u3", content="latest"),
+        ]
+        # max_history=2 truncates history to last 2 before last user,
+        # which would be [tool, user] — tool is orphaned, gets dropped
+        result = truncate_messages(msgs, max_history=2)
+        assert result[0].role == "user"
+        assert result[0].content == "recent"
+
+    def test_no_user_messages(self) -> None:
+        msgs = [
+            SystemMessage(id="s1", content="system"),
+            AssistantMessage(id="a1", content="hello"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        assert len(result) == 2
+
+    def test_no_user_messages_zero_max(self) -> None:
+        msgs = [
+            SystemMessage(id="s1", content="system"),
+            AssistantMessage(id="a1", content="hello"),
+        ]
+        result = truncate_messages(msgs, max_history=0)
+        assert result == []
+
+    def test_messages_after_last_user_are_included(self) -> None:
+        msgs = [
+            UserMessage(id="u1", content="search"),
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="search", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="results", tool_call_id="call_1"),
+        ]
+        # Last user is u1; assistant+tool after it are "current"
+        result = truncate_messages(msgs, max_history=0)
+        assert len(result) == 3
 
 
 class TestToLangchainMessages:

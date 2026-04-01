@@ -30,7 +30,6 @@ from typing import TypeVar
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 
-from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.core.utils.auth import prepare_identity_header
@@ -117,18 +116,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @abc.abstractmethod
     def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
-
-    def build_history_summary(
-        self,
-        run_agent_input: RunAgentInput,
-    ) -> str:
-        """Instance helper to summarize prior turns as plain-text transcript.
-
-        Subclasses can override ``max_history_messages`` to control how many
-        prior messages are included. This is primarily intended for exposing a
-        ``chat_history`` variable in prompts across different agent types.
-        """
-        return build_history_summary_from_messages(run_agent_input, self.max_history_messages)
 
     def _get_memory_client(self) -> BaseMemoryClient | None:
         if self._memory_client is not None:
