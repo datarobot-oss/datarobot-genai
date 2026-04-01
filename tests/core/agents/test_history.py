@@ -53,6 +53,19 @@ class TestSummarizeToolCalls:
         tool_calls = [{"function": {"name": "search"}}]
         assert _summarize_tool_calls(tool_calls) == "[tool_calls] search"
 
+    def test_single_dict_includes_function_arguments(self) -> None:
+        # GIVEN a tool call with a function name and arguments
+        tool_calls = [
+            {"function": {"name": "get_weather", "arguments": '{"location": "Boston, MA"}'}}
+        ]
+
+        # WHEN summarizing tool calls
+        # THEN the summary includes both the tool name and arguments
+        assert (
+            _summarize_tool_calls(tool_calls)
+            == '[tool_calls] get_weather({"location": "Boston, MA"})'
+        )
+
     def test_multiple_dicts_with_function_names(self) -> None:
         tool_calls = [
             {"function": {"name": "search"}},

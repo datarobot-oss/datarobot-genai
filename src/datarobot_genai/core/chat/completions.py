@@ -29,6 +29,8 @@ from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import Tool
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from ag_ui.core.types import FunctionCall
+from ag_ui.core.types import ToolCall
 from openai.types.chat import CompletionCreateParams
 from ragas import MultiTurnSample
 
@@ -72,7 +74,26 @@ def convert_chat_completion_params_to_run_agent_input(
         if message.get("role") == "user":
             messages.append(UserMessage(id=id, content=message.get("content")))
         elif message.get("role") == "assistant":
-            messages.append(AssistantMessage(id=id, content=message.get("content")))
+            tool_calls = []
+            for tool_call in message.get("tool_calls", []) or []:
+                function = tool_call.get("function") or {}
+                tool_calls.append(
+                    ToolCall(
+                        id=tool_call.get("id"),
+                        type=tool_call.get("type", "function"),
+                        function=FunctionCall(
+                            name=function.get("name"),
+                            arguments=function.get("arguments", "{}"),
+                        ),
+                    )
+                )
+            messages.append(
+                AssistantMessage(
+                    id=id,
+                    content=message.get("content"),
+                    tool_calls=tool_calls or None,
+                )
+            )
         elif message.get("role") == "tool":
             messages.append(
                 ToolMessage(
