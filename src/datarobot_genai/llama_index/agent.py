@@ -93,12 +93,12 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             truncated = truncate_messages(messages, self.max_history_messages)
             user_messages = [m for m in truncated if m.role == "user"]
             user_msg = str(user_messages[-1].content) if user_messages else ""
+            # Everything except the last user message is history
             if user_messages:
                 last_user = user_messages[-1]
                 last_idx = len(truncated) - 1 - truncated[::-1].index(last_user)
-                chat_history = (
-                    to_llama_index_messages(truncated[:last_idx]) if last_idx > 0 else None
-                )
+                history_msgs = truncated[:last_idx] + truncated[last_idx + 1 :]
+                chat_history = to_llama_index_messages(history_msgs) if history_msgs else None
             else:
                 chat_history = None
         else:
