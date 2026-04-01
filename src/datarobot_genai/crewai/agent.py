@@ -24,6 +24,7 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import logging
 import uuid
 from typing import TYPE_CHECKING
 from typing import Any
@@ -31,6 +32,8 @@ from typing import Any
 from ag_ui.core import EventType
 from ag_ui.core import ReasoningEndEvent
 from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
@@ -61,6 +64,8 @@ if TYPE_CHECKING:
     from ragas.messages import HumanMessage
     from ragas.messages import ToolMessage
 
+logger = logging.getLogger(__name__)
+
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for CrewAI workflows.
@@ -85,7 +90,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         Default implementation constructs a Crew with provided agents and tasks.
         Subclasses can override to customize Crew options.
         """
-        return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose)
+        return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True)
 
     @abc.abstractmethod
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -160,12 +165,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
-        # Preserve prior template startup print for CLI parity
-        try:
-            print("Running agent with user prompt:", user_prompt_content, flush=True)
-        except Exception:
-            # Printing is best-effort; proceed regardless
-            pass
+        logger.info(
+            f"Running agent with user prompt: {user_prompt_content}",
+        )
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
@@ -207,16 +209,32 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
 
             if isinstance(crew_output, CrewStreamingOutput):
-                current_task = ""
+                current_agent_role = ""
                 reasoning_started = False
-                step_started = False
                 text_started = False
                 async for chunk in crew_output:
                     # Show task transitions
-                    if chunk.task_name != current_task:
-                        current_task = chunk.task_name
-                        print(f"\n[{chunk.agent_role}] Working on: {chunk.task_name}")
-                        print("-" * 60)
+                    logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
+                    if chunk.agent_role != current_agent_role:
+                        logger.info(f"[{chunk.agent_role}] Working on task: {chunk.task_name}")
+                        if current_agent_role:
+                            yield (
+                                StepFinishedEvent(
+                                    type=EventType.STEP_FINISHED,
+                                    step_name=current_agent_role,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
+                        yield (
+                            StepStartedEvent(
+                                type=EventType.STEP_STARTED,
+                                step_name=chunk.agent_role,
+                            ),
+                            None,
+                            zero_metrics,
+                        )
+                        current_agent_role = chunk.agent_role
 
                     if streaming_event_listener.reasoning_event:
                         if not reasoning_started:
@@ -228,8 +246,24 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 None,
                                 zero_metrics,
                             )
+                            yield (
+                                ReasoningMessageStartEvent(
+                                    type=EventType.REASONING_MESSAGE_START,
+                                    message_id=message_id,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
                             reasoning_started = True
                     elif reasoning_started:
+                        yield (
+                            ReasoningMessageEndEvent(
+                                type=EventType.REASONING_MESSAGE_END,
+                                message_id=message_id,
+                            ),
+                            None,
+                            zero_metrics,
+                        )
                         yield (
                             ReasoningEndEvent(
                                 type=EventType.REASONING_END,
@@ -239,28 +273,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             zero_metrics,
                         )
                         reasoning_started = False
-
-                    if streaming_event_listener.step_event:
-                        if not step_started:
-                            yield (
-                                StepStartedEvent(
-                                    type=EventType.STEP_STARTED,
-                                    step_name=current_task,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                            step_started = True
-                    elif step_started:
-                        yield (
-                            StepFinishedEvent(
-                                type=EventType.STEP_FINISHED,
-                                step_name=current_task,
-                            ),
-                            None,
-                            zero_metrics,
-                        )
-                        step_started = False
 
                     # Display text chunks
                     if chunk.chunk_type == StreamChunkType.TEXT:
@@ -296,7 +308,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             )
                     # Display tool calls
                     elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
-                        print(f"\nUsing tool: {chunk.tool_call.tool_name}")
+                        logger.info(f"Using tool: {chunk.tool_call.tool_name}")
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
                     ragas_event_listener.messages
                 )
@@ -304,15 +316,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 if text_started:
                     yield (
                         TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
-                        None,
-                        usage_metrics,
-                    )
-                if step_started:
-                    yield (
-                        StepFinishedEvent(
-                            type=EventType.STEP_FINISHED,
-                            step_name=current_task,
-                        ),
                         None,
                         usage_metrics,
                     )
@@ -334,6 +337,15 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
 
+            if current_agent_role:
+                yield (
+                    StepFinishedEvent(
+                        type=EventType.STEP_FINISHED,
+                        step_name=current_agent_role,
+                    ),
+                    None,
+                    usage_metrics,
+                )
             yield (
                 RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
                 pipeline_interactions,

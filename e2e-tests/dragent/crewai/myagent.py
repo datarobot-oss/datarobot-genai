@@ -15,7 +15,6 @@
 from typing import Any
 
 from crewai import Agent
-from crewai import Crew
 from crewai import Task
 from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
@@ -75,10 +74,6 @@ class MyAgent(CrewAIAgent):
     @property
     def tasks(self) -> list[Any]:
         return self._tasks_for(self.agents)
-
-    def crew(self) -> Crew:
-        agents = self.agents
-        return Crew(agents=agents, tasks=self._tasks_for(agents), verbose=self.verbose)
 
     def _tasks_for(self, agents: list[Any]) -> list[Any]:
         planner, writer = agents

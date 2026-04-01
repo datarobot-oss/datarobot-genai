@@ -59,7 +59,6 @@ def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  #
 
     # THEN: the events are a valid AG-UI sequence
     validate_sequence(ag_ui_events)
-
     # THEN: there are events with tool call
     event_types = {e.type for e in ag_ui_events}
     tool_types = {

@@ -22,7 +22,7 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
 FRAMEWORK = os.environ.get("FRAMEWORK")
-FRAMEWORK_SUPPORTS_TOOL_CALLS = FRAMEWORK in ["crewai", "langgraph", "nat", "llamaindex"]
+FRAMEWORK_SUPPORTS_TOOL_CALLS = FRAMEWORK in ["langgraph", "nat", "llamaindex"]
 
 
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
