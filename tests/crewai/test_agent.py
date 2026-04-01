@@ -196,8 +196,8 @@ async def test_invoke_does_not_include_chat_history_by_default(
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["topic"] == "Follow-up"
-    assert "chat_history" not in captured_inputs
-    assert "crew_chat_messages" not in captured_inputs
+    # crew_chat_messages is always injected (defaults to "" when no history)
+    assert "crew_chat_messages" in captured_inputs
 
 
 @pytest.fixture
@@ -228,46 +228,32 @@ def run_agent_input_multi_turn() -> RunAgentInput:
     )
 
 
-async def test_invoke_multi_turn_appends_context_to_task_descriptions(
+async def test_invoke_multi_turn_injects_crew_chat_messages(
     mock_ragas_event_listener, run_agent_input_multi_turn
 ) -> None:
-    """Multi-turn conversations append conversation context to task descriptions.
+    """Multi-turn conversations inject history via kickoff_inputs['crew_chat_messages'].
 
     The last user message (current turn) should be excluded from the context
     since it is already passed via make_kickoff_inputs.
     """
-    from unittest.mock import MagicMock
+    captured_inputs: dict[str, Any] = {}
 
-    task1 = MagicMock()
-    task1.description = "Do something about: {topic}"
-    task2 = MagicMock()
-    task2.description = "Write about: {topic}"
+    class CapturingCrew(CrewForTest):
+        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff_async(inputs=inputs)
 
-    class TaskCapturingAgent(AgentForTest):
-        @property
-        def tasks(self) -> list[Any]:
-            return [task1, task2]
-
-        def crew(self) -> Any:
-            crew = CrewForTest(CrewOutput(raw="result"))
-            crew.tasks = [task1, task2]  # type: ignore[attr-defined]
-            return crew
-
-    agent = TaskCapturingAgent(
-        CrewOutput(raw="result"), api_base="https://x/", api_key="k", verbose=False
-    )
+    out = CrewOutput(raw="result")
+    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     _ = [event async for event in agent.invoke(run_agent_input_multi_turn)]
 
-    # Only the first task should have conversation context appended
-    assert "Prior conversation context:" in task1.description
-    assert "Prior conversation context:" not in task2.description
-
-    # The context should be valid JSON containing history messages
-    context_part = task1.description.split("Prior conversation context: ")[1]
-    chat_msgs = json.loads(context_part)
+    # crew_chat_messages should contain the conversation history as JSON
+    assert "crew_chat_messages" in captured_inputs
+    chat_msgs = json.loads(captured_inputs["crew_chat_messages"])
     assert len(chat_msgs) > 0
     assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)
-    # The current user turn should NOT appear
+    # The current user turn should NOT appear in history
     user_contents = [m["content"] for m in chat_msgs if m["role"] == "user"]
     assert "tell me more" not in user_contents

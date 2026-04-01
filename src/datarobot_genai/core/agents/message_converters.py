@@ -81,11 +81,11 @@ def truncate_messages(
             tc = getattr(history[0], "tool_calls", None)
             if tc:
                 tool_ids = {t.id for t in tc}
-                result_ids = {
-                    getattr(m, "tool_call_id", None)
-                    for m in history[1:]
-                    if getattr(m, "role", None) == "tool"
-                }
+                # Only check immediately following tool messages, not all of history
+                j = 1
+                while j < len(history) and getattr(history[j], "role", None) == "tool":
+                    j += 1
+                result_ids = {getattr(history[k], "tool_call_id", None) for k in range(1, j)}
                 if not tool_ids.issubset(result_ids):
                     history = history[1:]
                     changed = True
