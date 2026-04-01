@@ -21,8 +21,6 @@ from ag_ui.core.types import ToolMessage
 
 from datarobot_genai.core.agents.message_converters import to_crewai_chat_messages
 from datarobot_genai.core.agents.message_converters import to_langchain_messages
-from datarobot_genai.core.agents.message_converters import to_llama_index_messages
-from datarobot_genai.core.agents.message_converters import to_nat_messages
 
 
 class TestToLangchainMessages:
@@ -118,106 +116,6 @@ class TestToLangchainMessages:
         ]
         result = to_langchain_messages(msgs)
         assert result[0].tool_calls[0]["args"] == {"_raw": "not json"}
-
-
-class TestToNatMessages:
-    def test_user_message(self) -> None:
-        msgs = [UserMessage(id="u1", content="hello")]
-        result = to_nat_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "user"
-        assert result[0].content == "hello"
-
-    def test_assistant_message(self) -> None:
-        msgs = [AssistantMessage(id="a1", content="response")]
-        result = to_nat_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "assistant"
-        assert result[0].content == "response"
-
-    def test_assistant_with_tool_calls_serialized_as_text(self) -> None:
-        msgs = [
-            AssistantMessage(
-                id="a1",
-                content=None,
-                tool_calls=[
-                    ToolCall(
-                        id="call_1",
-                        function=FunctionCall(name="search", arguments='{"q": "test"}'),
-                    )
-                ],
-            )
-        ]
-        result = to_nat_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "assistant"
-        assert "search" in result[0].content
-
-    def test_system_message(self) -> None:
-        msgs = [SystemMessage(id="s1", content="system prompt")]
-        result = to_nat_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "system"
-
-    def test_tool_message_mapped_as_user(self) -> None:
-        """NAT has no tool role — tool results become user messages."""
-        msgs = [ToolMessage(id="t1", content="search results", tool_call_id="call_1")]
-        result = to_nat_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "user"
-        assert "call_1" in result[0].content
-        assert "search results" in result[0].content
-
-    def test_empty_messages(self) -> None:
-        assert to_nat_messages([]) == []
-
-
-class TestToLlamaIndexMessages:
-    def test_user_message(self) -> None:
-        msgs = [UserMessage(id="u1", content="hello")]
-        result = to_llama_index_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "user"
-
-    def test_assistant_message(self) -> None:
-        msgs = [AssistantMessage(id="a1", content="response")]
-        result = to_llama_index_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "assistant"
-
-    def test_assistant_with_tool_calls(self) -> None:
-        msgs = [
-            AssistantMessage(
-                id="a1",
-                content=None,
-                tool_calls=[
-                    ToolCall(
-                        id="call_1",
-                        function=FunctionCall(name="search", arguments='{"q": "test"}'),
-                    )
-                ],
-            )
-        ]
-        result = to_llama_index_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "assistant"
-        assert "tool_calls" in result[0].additional_kwargs
-
-    def test_tool_message(self) -> None:
-        msgs = [ToolMessage(id="t1", content="result", tool_call_id="call_1")]
-        result = to_llama_index_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "tool"
-        assert result[0].additional_kwargs.get("tool_call_id") == "call_1"
-
-    def test_system_message(self) -> None:
-        msgs = [SystemMessage(id="s1", content="system")]
-        result = to_llama_index_messages(msgs)
-        assert len(result) == 1
-        assert result[0].role.value == "system"
-
-    def test_empty_messages(self) -> None:
-        assert to_llama_index_messages([]) == []
 
 
 class TestToCrewaiChatMessages:
