@@ -61,12 +61,12 @@ class TestToNatMessages:
         assert len(result) == 1
         assert result[0].role.value == "system"
 
-    def test_tool_message_mapped_as_user(self) -> None:
-        """NAT has no tool role — tool results become user messages."""
+    def test_tool_message_mapped_as_system(self) -> None:
+        """NAT has no tool role — tool results become system messages."""
         msgs = [ToolMessage(id="t1", content="search results", tool_call_id="call_1")]
         result = to_nat_messages(msgs)
         assert len(result) == 1
-        assert result[0].role.value == "user"
+        assert result[0].role.value == "system"
         assert "call_1" in result[0].content
         assert "search results" in result[0].content
 

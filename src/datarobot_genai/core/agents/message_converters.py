@@ -140,8 +140,8 @@ def to_nat_messages(
     """Convert ag_ui messages to NAT Message types.
 
     NAT's Message model only supports user/assistant/system roles.
-    Tool messages are mapped as user messages with structured content.
-    Assistant tool_calls are serialized as text (NAT has no tool_calls field).
+    Tool messages are mapped as system messages (injected context) since NAT
+    has no tool role. Assistant tool_calls are serialized as text.
     """
     from nat.data_models.api_server import Message as NatMessage
     from nat.data_models.api_server import UserMessageContentRoleType
@@ -167,7 +167,7 @@ def to_nat_messages(
             result.append(
                 NatMessage(
                     content=f"[Tool result for {tool_call_id}]: {content}",
-                    role=UserMessageContentRoleType.USER,
+                    role=UserMessageContentRoleType.SYSTEM,
                 )
             )
         else:
