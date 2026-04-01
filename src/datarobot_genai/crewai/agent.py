@@ -319,6 +319,23 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         None,
                         usage_metrics,
                     )
+                if reasoning_started:
+                    yield (
+                        ReasoningMessageEndEvent(
+                            type=EventType.REASONING_MESSAGE_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    yield (
+                        ReasoningEndEvent(
+                            type=EventType.REASONING_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
             else:
                 response_text = str(crew_output.raw)
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
