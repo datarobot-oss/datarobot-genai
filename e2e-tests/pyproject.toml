@@ -12,7 +12,6 @@ dependencies = [
     "pytest-timeout",
     "python-dotenv",
     "ag-ui-protocol @ git+https://github.com/cavitcakir/ag-ui@feat/python-validate-sequence#egg=ag-ui&subdirectory=sdks/python",
-    "ipdb>=0.13.13",
 ]
 
 [dependency-groups]

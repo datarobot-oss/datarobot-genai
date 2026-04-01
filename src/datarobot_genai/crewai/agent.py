@@ -207,9 +207,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
+            current_agent_role = ""
 
             if isinstance(crew_output, CrewStreamingOutput):
-                current_agent_role = ""
                 reasoning_started = False
                 text_started = False
                 async for chunk in crew_output:

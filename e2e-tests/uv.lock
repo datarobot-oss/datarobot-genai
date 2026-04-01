@@ -1186,7 +1186,6 @@ source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },
     { name = "httpx" },
-    { name = "ipdb" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
@@ -1221,7 +1220,6 @@ lint = [
 requires-dist = [
     { name = "ag-ui-protocol", git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
-    { name = "ipdb", specifier = ">=0.13.13" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
