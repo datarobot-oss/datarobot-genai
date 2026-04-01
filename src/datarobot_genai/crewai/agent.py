@@ -202,9 +202,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 existing_history_text = str(kickoff_inputs.get("chat_history") or "")
 
                 if history_summary and not existing_history_text.strip():
-                    kickoff_inputs["chat_history"] = (
-                        f"\n\nPrior conversation:\n{history_summary}"
-                    )
+                    kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
 
@@ -305,9 +303,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 usage_metrics = self._extract_usage_metrics(crew_output.result)
                 if text_started:
                     yield (
-                        TextMessageEndEvent(
-                            type=EventType.TEXT_MESSAGE_END, message_id=message_id
-                        ),
+                        TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
                         None,
                         usage_metrics,
                     )
@@ -339,9 +335,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     )
 
             yield (
-                RunFinishedEvent(
-                    type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
-                ),
+                RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
                 pipeline_interactions,
                 usage_metrics,
             )
