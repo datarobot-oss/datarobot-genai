@@ -48,6 +48,7 @@ class CrewForTest:
         self.args = args
         self.kwargs = kwargs
         self.output = output
+        self.tasks: list[Any] = []
 
     async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[name-defined]
         return self.output or CrewOutput(raw="final-output")
@@ -196,33 +197,7 @@ async def test_invoke_does_not_include_chat_history_by_default(
 
     assert captured_inputs["topic"] == "Follow-up"
     assert "chat_history" not in captured_inputs
-
-
-async def test_invoke_injects_crew_chat_messages_for_multi_turn(
-    mock_ragas_event_listener, run_agent_input_with_history
-) -> None:
-    """Multi-turn history is injected as crew_chat_messages JSON, not as a chat_history string."""
-    captured_inputs: dict[str, Any] = {}
-
-    class CapturingCrew(CrewForTest):
-        async def kickoff_async(
-            self, *, inputs: dict[str, Any]
-        ) -> CrewOutput | CrewStreamingOutput:
-            captured_inputs.update(inputs)
-            return await super().kickoff_async(inputs=inputs)
-
-    out = CrewOutput(raw="agent result")
-    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
-
-    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
-
-    assert "crew_chat_messages" in captured_inputs
-    chat_msgs_raw = captured_inputs["crew_chat_messages"]
-    assert isinstance(chat_msgs_raw, str)
-    chat_msgs = json.loads(chat_msgs_raw)
-    assert len(chat_msgs) > 0
-    assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)
+    assert "crew_chat_messages" not in captured_inputs
 
 
 @pytest.fixture
@@ -253,37 +228,46 @@ def run_agent_input_multi_turn() -> RunAgentInput:
     )
 
 
-async def test_invoke_multi_turn_injects_crew_chat_messages(
+async def test_invoke_multi_turn_appends_context_to_task_descriptions(
     mock_ragas_event_listener, run_agent_input_multi_turn
 ) -> None:
-    """Multi-turn conversations inject crew_chat_messages into kickoff inputs.
+    """Multi-turn conversations append conversation context to task descriptions.
 
-    The last user message (current turn) should be excluded from crew_chat_messages
+    The last user message (current turn) should be excluded from the context
     since it is already passed via make_kickoff_inputs.
     """
-    captured_inputs: dict[str, Any] = {}
+    from unittest.mock import MagicMock
 
-    class CapturingCrew(CrewForTest):
-        async def kickoff_async(
-            self, *, inputs: dict[str, Any]
-        ) -> CrewOutput | CrewStreamingOutput:
-            captured_inputs.update(inputs)
-            return await super().kickoff_async(inputs=inputs)
+    task1 = MagicMock()
+    task1.description = "Do something about: {topic}"
+    task2 = MagicMock()
+    task2.description = "Write about: {topic}"
 
-    out = CrewOutput(raw="agent result")
-    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    class TaskCapturingAgent(AgentForTest):
+        @property
+        def tasks(self) -> list[Any]:
+            return [task1, task2]
+
+        def crew(self) -> Any:
+            crew = CrewForTest(CrewOutput(raw="result"))
+            crew.tasks = [task1, task2]  # type: ignore[attr-defined]
+            return crew
+
+    agent = TaskCapturingAgent(
+        CrewOutput(raw="result"), api_base="https://x/", api_key="k", verbose=False
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_multi_turn)]
 
-    # crew_chat_messages should be injected as a JSON string
-    assert "crew_chat_messages" in captured_inputs
-    chat_msgs_raw = captured_inputs["crew_chat_messages"]
-    assert isinstance(chat_msgs_raw, str)
-    chat_msgs = json.loads(chat_msgs_raw)
+    # Only the first task should have conversation context appended
+    assert "Prior conversation context:" in task1.description
+    assert "Prior conversation context:" not in task2.description
+
+    # The context should be valid JSON containing history messages
+    context_part = task1.description.split("Prior conversation context: ")[1]
+    chat_msgs = json.loads(context_part)
     assert len(chat_msgs) > 0
     assert all(isinstance(m, dict) and "role" in m for m in chat_msgs)
-
-    # The current user turn ("tell me more") should NOT appear in crew_chat_messages
+    # The current user turn should NOT appear
     user_contents = [m["content"] for m in chat_msgs if m["role"] == "user"]
     assert "tell me more" not in user_contents

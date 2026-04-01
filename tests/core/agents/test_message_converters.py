@@ -191,6 +191,29 @@ class TestTruncateMessages:
         assert len(result) == 3
         assert result[0].role == "assistant"
 
+    def test_iterative_orphan_cleanup_after_dangling_assistant(self) -> None:
+        """Dropping a dangling assistant should re-check for orphan tool messages."""
+        msgs = [
+            ToolMessage(id="t0", content="orphan 1", tool_call_id="call_missing_1"),
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_missing_2",
+                        function=FunctionCall(name="f", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="orphan 2", tool_call_id="call_missing_3"),
+            UserMessage(id="u1", content="question"),
+        ]
+        result = truncate_messages(msgs, max_history=10)
+        # All orphans should be cleaned up iteratively
+        assert len(result) == 1
+        assert result[0].role == "user"
+        assert result[0].content == "question"
+
     def test_messages_after_last_user_are_included(self) -> None:
         msgs = [
             UserMessage(id="u1", content="search"),

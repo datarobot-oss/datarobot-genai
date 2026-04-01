@@ -60,7 +60,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     For multi-turn conversations (more than one message), all messages are
     converted to native LangChain types preserving tool_call structure.
-    For single-message input, the prompt template is used for formatting.
+    The system prompt from ``prompt_template`` is prepended when no system
+    message is present in the request.  For single-message input, the
+    prompt template is used for formatting.
     """
 
     @property
@@ -94,8 +96,23 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Multi-turn: convert to native LangChain types (truncated to max_history_messages)
         if len(messages) > 1 and self.max_history_messages > 0:
+            from langchain_core.messages import SystemMessage
+
             truncated = truncate_messages(messages, self.max_history_messages)
             lc_messages = to_langchain_messages(truncated)
+
+            # Preserve system prompt from the template when not already in messages
+            if not any(isinstance(m, SystemMessage) for m in lc_messages):
+                input_vars = getattr(self.prompt_template, "input_variables", [])
+                try:
+                    empty_vars = {name: "" for name in list(input_vars)}
+                except TypeError:
+                    empty_vars = {}
+                template_msgs = self.prompt_template.invoke(empty_vars).to_messages()
+                sys_msgs = [m for m in template_msgs if isinstance(m, SystemMessage)]
+                if sys_msgs:
+                    lc_messages = sys_msgs + lc_messages
+
             return Command(update={"messages": lc_messages})
 
         # Single-turn: use prompt template for formatting
@@ -112,7 +129,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             for name in vars_list:
                 template_input.setdefault(name, "")
         elif vars_list:
-            template_input = {name: user_prompt for name in vars_list}
+            # Map the first declared variable to user_prompt, default the rest to ""
+            template_input = {}
+            for i, name in enumerate(vars_list):
+                template_input[name] = user_prompt if i == 0 else ""
         else:
             template_input = user_prompt
 

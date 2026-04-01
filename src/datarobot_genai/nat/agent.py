@@ -154,8 +154,17 @@ class NatAgent(BaseAgent[None]):
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         return str(user_prompt_content)
 
-    def make_chat_request(self, user_prompt: str) -> ChatRequest:
-        """Create a NAT ChatRequest from the processed user prompt."""
+    def make_chat_request(
+        self, user_prompt: str = "", *, messages: list[Any] | None = None
+    ) -> ChatRequest:
+        """Create a NAT ChatRequest from a user prompt or pre-built messages.
+
+        For multi-turn inputs with history enabled, ``invoke`` passes
+        ``messages`` (native NAT format) directly.  Subclasses can override
+        to customise the request for both paths.
+        """
+        if messages is not None:
+            return ChatRequest(messages=messages)
         return ChatRequest.from_string(user_prompt)
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
@@ -176,7 +185,7 @@ class NatAgent(BaseAgent[None]):
         if len(messages) > 1 and self.max_history_messages > 0:
             truncated = truncate_messages(messages, self.max_history_messages)
             nat_messages = to_nat_messages(truncated)
-            chat_request = ChatRequest(messages=nat_messages)
+            chat_request = self.make_chat_request(messages=nat_messages)
         else:
             # Single-turn: use make_user_prompt + make_chat_request (existing behavior)
             user_prompt = self.make_user_prompt(run_agent_input)

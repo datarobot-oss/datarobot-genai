@@ -102,9 +102,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         Subclasses must implement this to provide the exact inputs required
         by their CrewAI tasks.
 
-        For multi-turn conversations, the base class automatically injects
-        ``crew_chat_messages`` (a JSON string of structured message history)
-        into the kickoff inputs.
+        For multi-turn conversations, the base class automatically appends
+        prior conversation context to each task description.  Subclasses
+        do not need to handle history injection.
 
         Returns
         -------
@@ -180,17 +180,18 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
 
-            # Multi-turn: inject structured conversation history (truncated,
-            # excluding the current user turn which is already in kickoff_inputs).
+            # Multi-turn: auto-inject conversation history into task descriptions
+            # so subclasses don't need to know about crew_chat_messages.
             if len(run_agent_input.messages) > 1 and self.max_history_messages > 0:
                 history = truncate_messages(
                     list(run_agent_input.messages),
                     self.max_history_messages,
                     exclude_current=True,
                 )
-                if history:
+                if history and crew.tasks:
                     crew_chat_msgs = to_crewai_chat_messages(history)
-                    kickoff_inputs["crew_chat_messages"] = json.dumps(crew_chat_msgs)
+                    context_str = json.dumps(crew_chat_msgs)
+                    crew.tasks[0].description += f"\n\nPrior conversation context: {context_str}"
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""

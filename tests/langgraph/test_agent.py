@@ -183,7 +183,7 @@ class SimpleLangGraphAgent(LangGraphAgent):
 
 
 class HistoryAwareLangGraphAgent(LangGraphAgent):
-    """LangGraph agent whose prompt template exposes {chat_history}."""
+    """LangGraph agent with a system prompt in its template."""
 
     @cached_property
     def workflow(self) -> StateGraph[MessagesState]:
@@ -197,7 +197,7 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
             [
                 {
                     "role": "system",
-                    "content": "History transcript:\n{chat_history}",
+                    "content": "You are a history-aware assistant.",
                 },
                 {
                     "role": "user",
@@ -218,7 +218,7 @@ def test_convert_input_message_zero_max_history_uses_template() -> None:
         messages=[
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content='{"topic": "Follow-up", "chat_history": ""}'),
+            UserMessage(id="user_2", content='{"topic": "Follow-up"}'),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -261,6 +261,35 @@ def test_convert_input_message_multi_turn_passes_all_messages() -> None:
     # All 4 messages converted to native LangChain types
     assert len(all_messages) == 4
     assert all_messages[0].type == "system"
+    assert all_messages[1].type == "human"
+    assert all_messages[2].type == "ai"
+    assert all_messages[3].type == "human"
+
+
+def test_convert_input_message_multi_turn_injects_template_system_prompt() -> None:
+    """Multi-turn without system message gets the template system prompt prepended."""
+    agent = HistoryAwareLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[
+            UserMessage(id="user_1", content="First question"),
+            AssistantMessage(id="asst_1", content="First answer"),
+            UserMessage(id="user_2", content="Follow-up"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    # Template system prompt should be prepended
+    assert all_messages[0].type == "system"
+    assert all_messages[0].content == "You are a history-aware assistant."
+    # Followed by the converted messages
     assert all_messages[1].type == "human"
     assert all_messages[2].type == "ai"
     assert all_messages[3].type == "human"

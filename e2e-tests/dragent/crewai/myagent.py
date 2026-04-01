@@ -81,7 +81,6 @@ class MyAgent(CrewAIAgent):
             Task(
                 description=(
                     "Create a short outline about: {topic}. "
-                    "Prior conversation context (may be empty): {chat_history}. "
                     "Execute tool calls if requested instead of this task."
                 ),
                 expected_output=(
@@ -92,7 +91,6 @@ class MyAgent(CrewAIAgent):
             Task(
                 description=(
                     "Using the planner's outline, write a short response about: {topic}. "
-                    "Prior conversation context (may be empty): {chat_history}. "
                     "Execute tool calls if requested instead of this task."
                 ),
                 expected_output="A concise 2-3 sentence response. Or the result of a tool call.",
@@ -103,5 +101,4 @@ class MyAgent(CrewAIAgent):
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
         return {
             "topic": user_prompt_content,
-            "chat_history": "",
         }

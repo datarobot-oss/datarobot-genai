@@ -45,7 +45,7 @@ class MyAgent(LangGraphAgent):
     def prompt_template(self) -> ChatPromptTemplate:
         return ChatPromptTemplate.from_messages(
             [
-                ("system", "You are a helpful assistant. {chat_history}"),
+                ("system", "You are a helpful assistant."),
                 ("user", "{topic}"),
             ]
         )

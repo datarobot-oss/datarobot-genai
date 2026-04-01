@@ -55,8 +55,7 @@ def truncate_messages(
             break
 
     if last_user_idx is None:
-        if exclude_current:
-            return messages[-max_history:] if max_history > 0 else []
+        # No user message: no distinction between history and current
         return messages[-max_history:] if max_history > 0 else []
 
     history = messages[:last_user_idx]
@@ -68,22 +67,28 @@ def truncate_messages(
     if len(history) > max_history:
         history = history[-max_history:]
 
-    # Drop orphan tool messages at the start of history (no preceding assistant tool_call)
-    while history and getattr(history[0], "role", None) == "tool":
-        history = history[1:]
-
-    # Drop leading assistant whose tool_calls have no matching tool results
-    if history and getattr(history[0], "role", None) == "assistant":
-        tc = getattr(history[0], "tool_calls", None)
-        if tc:
-            tool_ids = {t.id for t in tc}
-            result_ids = {
-                getattr(m, "tool_call_id", None)
-                for m in history[1:]
-                if getattr(m, "role", None) == "tool"
-            }
-            if not tool_ids.issubset(result_ids):
-                history = history[1:]
+    # Iteratively drop orphan messages at the start of history until stable.
+    # Dropping a dangling assistant may reveal another orphan tool message.
+    changed = True
+    while changed:
+        changed = False
+        # Drop orphan tool messages at the start (no preceding assistant tool_call)
+        while history and getattr(history[0], "role", None) == "tool":
+            history = history[1:]
+            changed = True
+        # Drop leading assistant whose tool_calls have no matching tool results
+        if history and getattr(history[0], "role", None) == "assistant":
+            tc = getattr(history[0], "tool_calls", None)
+            if tc:
+                tool_ids = {t.id for t in tc}
+                result_ids = {
+                    getattr(m, "tool_call_id", None)
+                    for m in history[1:]
+                    if getattr(m, "role", None) == "tool"
+                }
+                if not tool_ids.issubset(result_ids):
+                    history = history[1:]
+                    changed = True
 
     if exclude_current:
         return history
