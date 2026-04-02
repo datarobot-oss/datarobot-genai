@@ -97,7 +97,7 @@ class OAuthMiddleWare(Middleware):
             logger.debug("No valid authorization context extracted from request headers.")
 
         if context.fastmcp_context is not None:
-            context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
+            await context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
             logger.debug("Authorization context attached to state.")
 
         return await call_next(context)
@@ -136,7 +136,7 @@ async def must_get_auth_context() -> AuthCtx:
     """
     context = _get_context()
 
-    auth_ctx = context.get_state(AUTH_CTX_KEY)
+    auth_ctx = await context.get_state(AUTH_CTX_KEY)
     if not auth_ctx:
         raise RuntimeError("Could not retrieve authorization context from FastMCP context state.")
 

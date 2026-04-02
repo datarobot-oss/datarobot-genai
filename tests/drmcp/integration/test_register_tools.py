@@ -86,9 +86,9 @@ class TestMCPRegisterToolsIntegration:
 
         # Verify tool tags
         registered_tool = next(tool for tool in tools if tool.name == "tagged_tool")
-        # Tags are stored in meta._fastmcp.tags by FastMCP
+        # Tags are stored in meta.fastmcp.tags by FastMCP 3.x
         assert registered_tool.meta is not None
-        fastmcp_meta = registered_tool.meta.get("_fastmcp", {})
+        fastmcp_meta = registered_tool.meta.get("fastmcp", {})
         meta_tags = fastmcp_meta.get("tags", [])
         # Convert to set for comparison since order may differ
         assert set(meta_tags) == test_tags

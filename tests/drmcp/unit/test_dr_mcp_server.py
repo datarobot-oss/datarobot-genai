@@ -169,7 +169,7 @@ class TestDataRobotMCPServer:
         server = DataRobotMCPServer(mock_mcp, transport="stdio")
         server.run()
 
-        registered_tools = list(mcp._tool_manager._tools)
+        registered_tools = asyncio.run(mcp.get_tools())
 
         assert "tool3" in registered_tools, f"tool3 missing in tools: {registered_tools}"
         assert "tool4" in registered_tools, f"tool4 missing in tools: {registered_tools}"

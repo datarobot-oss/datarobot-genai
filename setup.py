@@ -123,7 +123,7 @@ drtools = auth + [
 
 # drmcp is standalone set of dependencies for MCP Server only (no core), only depends on drtools.
 drmcp = drtools + [
-    "fastmcp>=2.13.0.2,<3.0.0",
+    "fastmcp>=3.2.0,<4.0.0",
     "requests>=2.32.4,<3.0.0",
     "openai>=1.76.2,<2.0.0",
     "pyjwt>=2.12.0,<3.0.0",

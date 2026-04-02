@@ -29,5 +29,8 @@ async def get_prompt_name_no_duplicate(mcp: FastMCP, prompt_name: str) -> str:
     except NotFoundError:
         return prompt_name
 
+    if prompt is None:
+        return prompt_name
+
     prompt_name_suffix = str(uuid4())[:_SUFFIX_LENGTH]
     return f"{prompt.name} ({prompt_name_suffix})"
