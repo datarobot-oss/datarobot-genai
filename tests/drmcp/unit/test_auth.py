@@ -22,7 +22,6 @@ import pytest
 from datarobot.auth.identity import Identity
 from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
-
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
@@ -398,11 +397,21 @@ class TestOAuthMiddleware:
 
 
 def _make_mock_context() -> MagicMock:
-    """Create a mock Context with async dict-based state (Context requires a session in fastmcp 3.x)."""
+    """Create a mock Context with async dict-based state.
+
+    Context requires a session in fastmcp 3.x, so we mock it.
+    """
     state: dict[str, Any] = {}
+
+    async def set_state(key: str, value: Any) -> None:
+        state[key] = value
+
+    async def get_state(key: str) -> Any:
+        return state.get(key)
+
     ctx = MagicMock()
-    ctx.set_state = AsyncMock(side_effect=lambda k, v: state.__setitem__(k, v))
-    ctx.get_state = AsyncMock(side_effect=lambda k: state.get(k))
+    ctx.set_state = set_state
+    ctx.get_state = get_state
     return ctx
 
 
