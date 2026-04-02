@@ -73,6 +73,8 @@ def mock_middleware_context() -> MiddlewareContext:
     """Create a mocked MiddlewareContext for testing."""
     mock_message = MagicMock()
     mock_fastmcp_context = MagicMock()
+    mock_fastmcp_context.set_state = AsyncMock()
+    mock_fastmcp_context.get_state = AsyncMock()
     return MiddlewareContext(message=mock_message, fastmcp_context=mock_fastmcp_context)
 
 

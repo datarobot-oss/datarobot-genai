@@ -42,7 +42,7 @@ async def test_tagged_tool_decorator() -> None:
     tool = list(tools)[0]
     assert hasattr(tool, "meta")
     assert tool.meta is not None
-    assert tool.meta.get("_fastmcp", {}).get("tags") == ["example", "test"]
+    assert tool.meta.get("fastmcp", {}).get("tags") == ["example", "test"]
 
 
 @pytest.mark.asyncio
@@ -54,7 +54,7 @@ async def test_tagged_tool_with_additional_annotations() -> None:
     def test_function() -> str:
         return "test"
 
-    tools = await mcp._tool_manager.get_tools()
+    tools = await mcp.get_tools()
     assert len(tools) == 1
 
     tool = list(tools.values())[0]
@@ -75,7 +75,7 @@ async def test_tool_without_tags() -> None:
     def test_function() -> str:
         return "test"
 
-    tools = await mcp._tool_manager.get_tools()
+    tools = await mcp.get_tools()
     assert len(tools) == 1
 
     tool = list(tools.values())[0]

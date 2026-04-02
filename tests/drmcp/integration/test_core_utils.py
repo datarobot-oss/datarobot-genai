@@ -47,7 +47,7 @@ class TestCoreUtilsIntegration:
 
                 # If tool has meta with _fastmcp.tags, verify extraction
                 if tool.meta and isinstance(tool.meta, dict):
-                    fastmcp_meta = tool.meta.get("_fastmcp")
+                    fastmcp_meta = tool.meta.get("fastmcp")
                     if fastmcp_meta and isinstance(fastmcp_meta, dict):
                         meta_tags = fastmcp_meta.get("tags")
                         if meta_tags:
@@ -81,7 +81,7 @@ class TestCoreUtilsIntegration:
 
                 # Verify tags match what's in meta if present
                 if tool.meta and isinstance(tool.meta, dict):
-                    fastmcp_meta = tool.meta.get("_fastmcp")
+                    fastmcp_meta = tool.meta.get("fastmcp")
                     if fastmcp_meta and isinstance(fastmcp_meta, dict):
                         meta_tags = fastmcp_meta.get("tags")
                         if meta_tags:

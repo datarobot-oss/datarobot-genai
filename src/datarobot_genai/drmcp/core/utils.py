@@ -64,11 +64,11 @@ def get_prompt_tags(prompt: MCPPrompt) -> set[str]:
     -------
         Set of tag strings, empty set if no tags found
     """
-    # MCPPrompt has tags in meta._fastmcp.tags (as a list)
+    # MCPPrompt has tags in meta.fastmcp.tags (fastmcp 3.x)
     if not (prompt.meta and isinstance(prompt.meta, dict)):
         return set()
 
-    fastmcp_meta = prompt.meta.get("_fastmcp")
+    fastmcp_meta = prompt.meta.get("fastmcp")
     if not (fastmcp_meta and isinstance(fastmcp_meta, dict)):
         return set()
 
@@ -87,11 +87,11 @@ def get_resource_tags(resource: MCPResource) -> set[str]:
     -------
         Set of tag strings, empty set if no tags found
     """
-    # MCPResource has tags in meta._fastmcp.tags (as a list)
+    # MCPResource has tags in meta.fastmcp.tags (fastmcp 3.x)
     if not (resource.meta and isinstance(resource.meta, dict)):
         return set()
 
-    fastmcp_meta = resource.meta.get("_fastmcp")
+    fastmcp_meta = resource.meta.get("fastmcp")
     if not (fastmcp_meta and isinstance(fastmcp_meta, dict)):
         return set()
 
@@ -114,11 +114,11 @@ def get_tool_tags(tool: Tool | MCPTool) -> set[str]:
         # FastMCP Tool has tags directly as a set
         return getattr(tool, "tags", None) or set()
 
-    # MCPTool has tags in meta._fastmcp.tags (as a list)
+    # MCPTool has tags in meta.fastmcp.tags (fastmcp 3.x)
     if not (tool.meta and isinstance(tool.meta, dict)):
         return set()
 
-    fastmcp_meta = tool.meta.get("_fastmcp")
+    fastmcp_meta = tool.meta.get("fastmcp")
     if not (fastmcp_meta and isinstance(fastmcp_meta, dict)):
         return set()
 

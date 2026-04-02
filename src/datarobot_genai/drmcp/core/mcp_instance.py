@@ -31,6 +31,12 @@ from fastmcp.tools import Tool
 from mcp.types import Annotations as MCPAnnotationsType
 from mcp.types import AnyFunction
 from mcp.types import Icon as MCPIconType
+from mcp.types import ListPromptsRequest
+from mcp.types import ListResourcesRequest
+from mcp.types import ListToolsRequest
+from mcp.types import Prompt as MCPPrompt
+from mcp.types import Resource as MCPResource
+from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
@@ -96,6 +102,39 @@ class DataRobotMCP(FastMCP):
         super().__init__(*args, **kwargs)
         self._deployments_map: dict[str, str] = {}
         self._prompts_map: dict[str, tuple[str, str]] = {}
+
+    async def get_tools(self) -> dict[str, Tool]:
+        """Compat wrapper: fastmcp 3.x renamed get_tools→list_tools and returns a list."""
+        return {t.name: t for t in await self.list_tools()}
+
+    async def get_prompts(self) -> dict[str, Prompt]:
+        """Compat wrapper: fastmcp 3.x renamed get_prompts→list_prompts and returns a list."""
+        return {p.name: p for p in await self.list_prompts()}
+
+    async def get_resources(self) -> dict[str, Any]:
+        """Compat wrapper: fastmcp 3.x renamed get_resources→list_resources and returns a list."""
+        return {r.name: r for r in await self.list_resources()}
+
+    async def _list_tools_mcp(self, request: ListToolsRequest | None = None) -> list[MCPTool]:
+        """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
+        result = await super()._list_tools_mcp(request or ListToolsRequest(method="tools/list"))
+        return list(result.tools)
+
+    async def _list_prompts_mcp(self, request: ListPromptsRequest | None = None) -> list[MCPPrompt]:
+        """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
+        result = await super()._list_prompts_mcp(
+            request or ListPromptsRequest(method="prompts/list")
+        )
+        return list(result.prompts)
+
+    async def _list_resources_mcp(
+        self, request: ListResourcesRequest | None = None
+    ) -> list[MCPResource]:
+        """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
+        result = await super()._list_resources_mcp(
+            request or ListResourcesRequest(method="resources/list")
+        )
+        return list(result.resources)
 
     async def notify_prompts_changed(self) -> None:
         """
@@ -250,10 +289,21 @@ class DataRobotMCP(FastMCP):
 # Create the DataRobot MCP instance
 mcp_server_configs: MCPServerConfig = get_config()
 
+if (
+    mcp_server_configs.tool_registration_duplicate_behavior
+    != mcp_server_configs.prompt_registration_duplicate_behavior
+):
+    logger.warning(
+        "FastMCP 3.x uses a single on_duplicate setting for all component types. "
+        "tool_registration_duplicate_behavior=%s will be used; "
+        "prompt_registration_duplicate_behavior=%s will be ignored for FastMCP.",
+        mcp_server_configs.tool_registration_duplicate_behavior,
+        mcp_server_configs.prompt_registration_duplicate_behavior,
+    )
+
 mcp = DataRobotMCP(
     name=mcp_server_configs.mcp_server_name,
-    on_duplicate_tools=mcp_server_configs.tool_registration_duplicate_behavior,
-    on_duplicate_prompts=mcp_server_configs.prompt_registration_duplicate_behavior,
+    on_duplicate=mcp_server_configs.tool_registration_duplicate_behavior,
 )
 
 
@@ -273,7 +323,6 @@ class ToolKwargs(TypedDict, total=False):
     annotations: Any | None
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
-    enabled: bool | None
 
 
 @dataclass
@@ -296,7 +345,9 @@ class PromptInitArguments:
     def to_dict(
         self,
     ) -> dict[str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | None]:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("enabled", None)  # fastmcp 3.x removed 'enabled' from prompt()
+        return d
 
     def set_prompt_category(self, prompt_category: DataRobotMCPPromptCategory) -> None:
         self.meta = self.meta or {}
@@ -328,7 +379,9 @@ class ResourceInitArguments:
     ) -> dict[
         str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | MCPAnnotationsType | None
     ]:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("enabled", None)  # fastmcp 3.x removed 'enabled' from resource()
+        return d
 
     def set_resource_category(self, resource_category: DataRobotMCPResourceCategory) -> None:
         self.meta = self.meta or {}
@@ -411,9 +464,14 @@ def dr_mcp_tool(
         updated_kwargs = update_mcp_tool_init_args_with_tool_category(
             tool_category, **mcp_tool_init_args
         )
+        # fastmcp 3.x removed 'enabled' from tool(); handle it separately
+        enabled = updated_kwargs.pop("enabled", None)  # type: ignore[typeddict-item]
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
         mcp.tool(**updated_kwargs)(instrumented)
+        if enabled is False:
+            tool_name = updated_kwargs.get("name") or func.__name__
+            mcp.disable(names={tool_name}, components={"tool"})
         return instrumented
 
     return decorator
