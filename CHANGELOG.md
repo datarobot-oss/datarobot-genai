@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.10.2
+- Fixed multi-turn tool-calling by preserving assistant `tool_calls` on `AssistantMessage` and retaining tool-call metadata in chat history summaries.
+
 ## 0.10.1
 - Fixed multi-turn tool-calling: preserving tool_calls on AssistantMessage and passing structured native messages to all agent frameworks when conversation history is present.
 
