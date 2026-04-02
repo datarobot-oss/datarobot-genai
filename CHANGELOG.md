@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.10.1
+- Fixed multi-turn tool-calling: preserving tool_calls on AssistantMessage and passing structured native messages to all agent frameworks when conversation history is present.
+
 ## 0.10.0
 - **Breaking**: Decoupled agents and MCP tools. Now mcp_tools_context has to be called explicitly outside of an agent invoke.
 - Reworked `mcp_tools_context`arguments to use `MCPConfig` explicitly.

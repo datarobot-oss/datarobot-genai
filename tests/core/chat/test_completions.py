@@ -128,6 +128,42 @@ def test_convert_chat_completion_params_to_run_agent_input() -> None:
     }
 
 
+def test_convert_chat_completion_params_to_run_agent_input_preserves_assistant_tool_calls() -> None:
+    # GIVEN a chat completion assistant message with tool calls
+    params = {
+        "messages": [
+            {"role": "user", "content": "Choose a location and check the weather"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_abc123",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"location": "Boston, MA"}',
+                        },
+                    }
+                ],
+            },
+        ]
+    }
+
+    # WHEN converting to run agent input
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+
+    # THEN the assistant tool call metadata is preserved
+    assistant_message = run_agent_input.messages[1]
+    assert isinstance(assistant_message, AssistantMessage)
+    assert assistant_message.content is None
+    assert assistant_message.tool_calls is not None
+    assert len(assistant_message.tool_calls) == 1
+    assert assistant_message.tool_calls[0].id == "call_abc123"
+    assert assistant_message.tool_calls[0].function.name == "get_weather"
+    assert assistant_message.tool_calls[0].function.arguments == '{"location": "Boston, MA"}'
+
+
 class AGUIAgent(BaseAgent):
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         events = [
