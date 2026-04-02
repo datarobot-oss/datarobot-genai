@@ -123,7 +123,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was attached to fastmcp_context
-            auth_context = await middleware_context.fastmcp_context.get_state("authorization_context")
+            auth_context = await middleware_context.fastmcp_context.get_state(
+                "authorization_context"
+            )
             assert auth_context is not None
             assert isinstance(auth_context, AuthCtx)
             assert auth_context.user.id == "user123"
@@ -148,7 +150,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            )
 
     async def test_on_call_tool_with_invalid_auth_header(
         self,
@@ -169,7 +173,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to invalid token
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            )
 
     async def test_on_call_tool_with_multiple_headers(
         self,
@@ -193,7 +199,10 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was properly extracted
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is not None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context")
+                is not None
+            )
             assert isinstance(
                 await middleware_context.fastmcp_context.get_state("authorization_context"), AuthCtx
             )
@@ -218,7 +227,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            )
 
     async def test_on_call_tool_propagates_tool_result(
         self,
@@ -276,7 +287,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was attached despite lowercase header name
-            auth_context = await middleware_context.fastmcp_context.get_state("authorization_context")
+            auth_context = await middleware_context.fastmcp_context.get_state(
+                "authorization_context"
+            )
             assert auth_context is not None
             assert isinstance(auth_context, AuthCtx)
             assert auth_context.user.id == "user123"
@@ -298,7 +311,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context was attached
-            auth_context = await middleware_context.fastmcp_context.get_state("authorization_context")
+            auth_context = await middleware_context.fastmcp_context.get_state(
+                "authorization_context"
+            )
             assert auth_context is not None
             assert isinstance(auth_context, AuthCtx)
 
@@ -337,7 +352,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            )
 
     async def test_middleware_handles_key_error_exception(
         self,
@@ -355,7 +372,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            )
 
     async def test_middleware_handles_type_error_exception(
         self,
@@ -373,7 +392,9 @@ class TestOAuthMiddleware:
             assert isinstance(result, ToolResult)
 
             # Verify auth_context is None due to exception
-            assert await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            assert (
+                await middleware_context.fastmcp_context.get_state("authorization_context") is None
+            )
 
 
 def _make_mock_context() -> MagicMock:

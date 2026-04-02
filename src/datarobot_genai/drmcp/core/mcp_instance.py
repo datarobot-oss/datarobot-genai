@@ -120,9 +120,7 @@ class DataRobotMCP(FastMCP):
         result = await super()._list_tools_mcp(request or ListToolsRequest(method="tools/list"))
         return list(result.tools)
 
-    async def _list_prompts_mcp(
-        self, request: ListPromptsRequest | None = None
-    ) -> list[MCPPrompt]:
+    async def _list_prompts_mcp(self, request: ListPromptsRequest | None = None) -> list[MCPPrompt]:
         """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
         result = await super()._list_prompts_mcp(
             request or ListPromptsRequest(method="prompts/list")
