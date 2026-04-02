@@ -465,7 +465,7 @@ def dr_mcp_tool(
             tool_category, **mcp_tool_init_args
         )
         # fastmcp 3.x removed 'enabled' from tool(); handle it separately
-        enabled = updated_kwargs.pop("enabled", None)
+        enabled = updated_kwargs.pop("enabled", None)  # type: ignore[typeddict-item]
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
         mcp.tool(**updated_kwargs)(instrumented)
