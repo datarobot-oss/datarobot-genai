@@ -19,10 +19,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-import requests
 from datarobot.models.genai.agent.auth import set_authorization_context
 
-from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 
 
 class TestMCPConfig:
@@ -1074,13 +1073,11 @@ class TestMCPConfig:
             # Verify auth headers are also present
             assert headers["Authorization"] == f"Bearer {api_key}"
 
-    @patch("datarobot_genai.core.mcp.common.requests.get")
-    def test_mcp_config_localhost_server_running(self, mock_get):
+    def test_mcp_config_localhost_server_running(self):
         """Test MCP config with localhost server port when server is running."""
         mock_response = MagicMock()
         mock_response.status_code = HTTPStatus.OK
         mock_response.json.return_value = {"message": "DataRobot MCP Server is running"}
-        mock_get.return_value = mock_response
 
         with patch.dict(
             os.environ,
@@ -1095,43 +1092,6 @@ class TestMCPConfig:
             assert config.server_config["transport"] == "streamable-http"
             assert "Authorization" in config.server_config["headers"]
             assert config.server_config["headers"]["Authorization"] == "Bearer test-api-key"
-            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
-
-    @patch("datarobot_genai.core.mcp.common.requests.get")
-    def test_mcp_config_localhost_server_not_running(self, mock_get):
-        """Test MCP config with localhost server port when server is not running."""
-        mock_response = MagicMock()
-        mock_response.status_code = HTTPStatus.NOT_FOUND
-        mock_response.json.return_value = {"message": "Not found"}
-        mock_get.return_value = mock_response
-
-        with patch.dict(os.environ, {}, clear=True):
-            config = MCPConfig(mcp_server_port=8080)
-            assert config.server_config is None
-            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
-
-    @patch("datarobot_genai.core.mcp.common.requests.get")
-    def test_mcp_config_localhost_server_connection_error(self, mock_get):
-        """Test MCP config with localhost server port when connection fails."""
-        mock_get.side_effect = requests.ConnectionError("Connection refused")
-
-        with patch.dict(os.environ, {}, clear=True):
-            config = MCPConfig(mcp_server_port=8080)
-            assert config.server_config is None
-            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
-
-    @patch("datarobot_genai.core.mcp.common.requests.get")
-    def test_mcp_config_localhost_server_wrong_message(self, mock_get):
-        """Test MCP config with localhost server port when server returns wrong message."""
-        mock_response = MagicMock()
-        mock_response.status_code = HTTPStatus.OK
-        mock_response.json.return_value = {"message": "Wrong message"}
-        mock_get.return_value = mock_response
-
-        with patch.dict(os.environ, {}, clear=True):
-            config = MCPConfig(mcp_server_port=8080)
-            assert config.server_config is None
-            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
 
     def test_mcp_config_build_authenticated_headers(self):
         """Test _build_authenticated_headers method."""
@@ -1155,31 +1115,6 @@ class TestMCPConfig:
                 "X-DataRobot-Authorization-Context" in headers
                 or "X-DataRobot-Authorization-Context" not in headers
             )
-
-    def test_mcp_config_check_localhost_server_success(self):
-        """Test _check_localhost_server returns True for running server."""
-        with patch("datarobot_genai.core.mcp.common.requests.get") as mock_get:
-            mock_response = MagicMock()
-            mock_response.status_code = HTTPStatus.OK
-            mock_response.json.return_value = {"message": "DataRobot MCP Server is running"}
-            mock_get.return_value = mock_response
-
-            config = MCPConfig()
-            result = config._check_localhost_server("http://localhost:8080")
-
-            assert result is True
-            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
-
-    def test_mcp_config_check_localhost_server_failure(self):
-        """Test _check_localhost_server returns False for non-running server."""
-        with patch("datarobot_genai.core.mcp.common.requests.get") as mock_get:
-            mock_get.side_effect = requests.ConnectionError("Connection refused")
-
-            config = MCPConfig()
-            result = config._check_localhost_server("http://localhost:8080")
-
-            assert result is False
-            mock_get.assert_called_once_with("http://localhost:8080", timeout=2.0)
 
     def test_mcp_config_priority_deployment_external_localhost(self):
         """Test priority: deployment > external > localhost."""

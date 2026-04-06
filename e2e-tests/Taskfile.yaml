@@ -43,3 +43,8 @@ tasks:
     cmds:
       - echo "🧪 Running tests for drmcp"
       - uv run pytest drmcp_tests -vv -s
+  test-target:
+    desc: "🧪 Run tests for a specific target"
+    cmds:
+      - echo "🧪 Running tests for {{.TARGET}}"
+      - uv run pytest {{.CLI_ARGS}} -vv -s

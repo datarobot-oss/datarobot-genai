@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import typing
+import warnings
 from collections.abc import AsyncGenerator
 
 from a2a.types import AgentSkill
@@ -35,6 +37,34 @@ from .patches import patch_crewai_callback_handler
 # Patch nvidia-nat-crewai callback handler for crewai >= 1.1.0 compatibility.
 # Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
 patch_crewai_callback_handler()
+
+# Suppress specific non-actionable NAT warning messages by content.
+# Patch Handler.handle (inherited by all subclasses - they only override emit)
+# because root-logger filters are skipped during log propagation.
+_SUPPRESSED_NAT_MESSAGES = [
+    "StepAdaptor is disabled",
+    "Dask is not installed",
+    "Dask is not available",
+    "feature is experimental and the API may change",
+    "Using provided input_schema for multi-argument function",
+]
+_orig_handler_handle = logging.Handler.handle
+
+
+def _filtered_handle(self: logging.Handler, record: logging.LogRecord) -> bool | None:
+    try:
+        msg = record.getMessage()
+    except Exception:
+        return _orig_handler_handle(self, record)
+    if any(s in msg for s in _SUPPRESSED_NAT_MESSAGES):
+        return None
+    return _orig_handler_handle(self, record)
+
+
+logging.Handler.handle = _filtered_handle  # type: ignore[assignment]
+
+# Suppress UserWarning from langchain about non-default parameters (uses warnings.warn, not logging)
+warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
 
 
 class DRAgentA2AConfig(BaseModel):

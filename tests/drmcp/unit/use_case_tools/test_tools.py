@@ -17,9 +17,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.use_case import tools
 
 
@@ -47,9 +46,9 @@ async def test_list_use_cases_success() -> None:
         mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_use_cases()
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["count"] == 2
-        assert result.structured_content["use_cases"][0]["id"] == "uc1"
+        assert isinstance(result, dict)
+        assert result["count"] == 2
+        assert result["use_cases"][0]["id"] == "uc1"
 
 
 @pytest.mark.asyncio
@@ -74,7 +73,7 @@ async def test_list_use_cases_with_search() -> None:
         mock_rest_client.get.assert_called_once_with(
             "useCases/", params={"limit": 100, "search": "Matching"}
         )
-        assert result.structured_content["count"] == 1
+        assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -96,8 +95,8 @@ async def test_list_use_cases_empty() -> None:
         mock_drc.return_value.get_client.return_value = mock_dr_module
 
         result = await tools.list_use_cases()
-        assert result.structured_content["count"] == 0
-        assert result.structured_content["use_cases"] == []
+        assert result["count"] == 0
+        assert result["use_cases"] == []
 
 
 @pytest.mark.asyncio
@@ -127,11 +126,13 @@ async def test_list_use_case_assets_success() -> None:
         mock_drc.return_value.get_client.return_value = mock_client
 
         result = await tools.list_use_case_assets(use_case_id="uc1")
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["name"] == "Test UC"
-        assert len(result.structured_content["datasets"]) == 1
-        assert len(result.structured_content["deployments"]) == 1
-        assert len(result.structured_content["experiments"]) == 1
+        assert isinstance(result, dict)
+        assert result["count"] == 1
+        use_case_data = result["use_cases"][0]
+        assert use_case_data["name"] == "Test UC"
+        assert len(use_case_data["datasets"]) == 1
+        assert len(use_case_data["deployments"]) == 1
+        assert len(use_case_data["experiments"]) == 1
 
 
 @pytest.mark.asyncio
@@ -162,10 +163,10 @@ async def test_list_use_case_assets_multiple_ids() -> None:
         mock_drc.return_value.get_client.return_value = mock_client
 
         result = await tools.list_use_case_assets(use_case_ids=["uc1", "uc2"])
-        assert isinstance(result, ToolResult)
-        assert result.structured_content["count"] == 2
-        assert result.structured_content["use_cases"][0]["name"] == "UC 1"
-        assert result.structured_content["use_cases"][1]["name"] == "UC 2"
+        assert isinstance(result, dict)
+        assert result["count"] == 2
+        assert result["use_cases"][0]["name"] == "UC 1"
+        assert result["use_cases"][1]["name"] == "UC 2"
 
 
 @pytest.mark.asyncio
@@ -196,5 +197,6 @@ async def test_list_use_case_assets_partial_error() -> None:
         mock_drc.return_value.get_client.return_value = mock_client
 
         result = await tools.list_use_case_assets(use_case_id="uc1")
-        assert "datasets_error" in result.structured_content
-        assert result.structured_content["deployments"] == []
+        use_case_data = result["use_cases"][0]
+        assert "datasets_error" in use_case_data
+        assert use_case_data["deployments"] == []

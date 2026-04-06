@@ -15,12 +15,12 @@
 import httpx
 import pytest
 
-from datarobot_genai.drtools.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
-from datarobot_genai.drtools.clients.gdrive import GOOGLE_WORKSPACE_EXPORT_MIMES
-from datarobot_genai.drtools.clients.gdrive import GoogleDriveClient
-from datarobot_genai.drtools.clients.gdrive import GoogleDriveError
-from datarobot_genai.drtools.clients.gdrive import GoogleDriveFile
-from datarobot_genai.drtools.clients.gdrive import GoogleDriveFileContent
+from datarobot_genai.drtools.core.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
+from datarobot_genai.drtools.core.clients.gdrive import GOOGLE_WORKSPACE_EXPORT_MIMES
+from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveClient
+from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveError
+from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveFile
+from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveFileContent
 
 
 def make_response(

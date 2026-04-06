@@ -44,7 +44,7 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
     for line in response.iter_lines():
         line = line.strip()  # noqa: PLW2901
         if line.startswith("data: "):
-            data = line[len("data: "):]
+            data = line[len("data: ") :]
             if data == "[DONE]":
                 break
             responses.append(DRAgentEventResponse.model_validate_json(data))

@@ -20,6 +20,7 @@ import pytest
 from datarobot.models.genai.agent.auth import set_authorization_context
 from pydantic import ValidationError
 
+from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 
@@ -115,10 +116,17 @@ def setup_session_and_tools(mock_session, mock_load_mcp_tools, mock_session_inst
     }
 
 
+@pytest.fixture(autouse=True)
+def clear_environment_variables():
+    with patch.dict(os.environ, {}, clear=True):
+        yield
+
+
 class TestMCPToolsContext:
     async def test_mcp_tools_context_no_configuration(self):
         with patch.dict(os.environ, {}, clear=True):
-            async with mcp_tools_context() as tools:
+            mcp_config = MCPConfig()
+            async with mcp_tools_context(mcp_config) as tools:
                 assert tools == []
 
     async def test_mcp_tools_context_with_external_url(
@@ -128,55 +136,51 @@ class TestMCPToolsContext:
         test_transport = "sse"
         external_url = "https://mcp-server.example.com/mcp"
 
-        with patch.dict(
-            os.environ,
-            {
-                "EXTERNAL_MCP_URL": external_url,
-                "EXTERNAL_MCP_HEADERS": test_headers,
-                "EXTERNAL_MCP_TRANSPORT": test_transport,
-            },
-            clear=True,
-        ):
-            async with mcp_tools_context() as tools:
-                assert_mock_tools_expected(tools)
+        mcp_config = MCPConfig(
+            external_mcp_url=external_url,
+            external_mcp_headers=test_headers,
+            external_mcp_transport=test_transport,
+        )
+        async with mcp_tools_context(mcp_config) as tools:
+            assert_mock_tools_expected(tools)
 
-                # Verify create_session was called with correct connection config
-                setup_session_and_tools["session"].assert_called_once()
-                call_args = setup_session_and_tools["session"].call_args
-                connection_config = call_args[1]["connection"]
-                assert connection_config["url"] == external_url.rstrip("/")
-                expected_headers = {"X-API-Key": "test-key", "Content-Type": "application/json"}
-                assert connection_config["headers"] == expected_headers
-                # SSEConnection uses transport="sse"
-                assert connection_config["transport"] == "sse"
+            # Verify create_session was called with correct connection config
+            setup_session_and_tools["session"].assert_called_once()
+            call_args = setup_session_and_tools["session"].call_args
+            connection_config = call_args[1]["connection"]
+            assert connection_config["url"] == external_url.rstrip("/")
+            expected_headers = {"X-API-Key": "test-key", "Content-Type": "application/json"}
+            assert connection_config["headers"] == expected_headers
+            # SSEConnection uses transport="sse"
+            assert connection_config["transport"] == "sse"
 
-                # Verify tools were loaded
-                setup_session_and_tools["load_tools"].assert_called_once_with(
-                    session=setup_session_and_tools["session_instance"]
-                )
+            # Verify tools were loaded
+            setup_session_and_tools["load_tools"].assert_called_once_with(
+                session=setup_session_and_tools["session_instance"]
+            )
 
     async def test_mcp_tools_context_with_external_url_default_transport(
         self, setup_session_and_tools, assert_mock_tools_expected
     ):
         external_url = "https://mcp-server.example.com/mcp"
 
-        with patch.dict(os.environ, {"EXTERNAL_MCP_URL": external_url}, clear=True):
-            async with mcp_tools_context() as tools:
-                assert_mock_tools_expected(tools)
+        mcp_config = MCPConfig(external_mcp_url=external_url)
+        async with mcp_tools_context(mcp_config) as tools:
+            assert_mock_tools_expected(tools)
 
-                # Verify create_session was called with correct connection config
-                # (default transport)
-                setup_session_and_tools["session"].assert_called_once()
-                call_args = setup_session_and_tools["session"].call_args
-                connection_config = call_args[1]["connection"]
-                assert connection_config["url"] == external_url.rstrip("/")
-                assert connection_config["headers"] == {}  # No custom headers
-                # StreamableHttpConnection uses transport="streamable_http" (underscore)
-                assert connection_config["transport"] == "streamable_http"
+            # Verify create_session was called with correct connection config
+            # (default transport)
+            setup_session_and_tools["session"].assert_called_once()
+            call_args = setup_session_and_tools["session"].call_args
+            connection_config = call_args[1]["connection"]
+            assert connection_config["url"] == external_url.rstrip("/")
+            assert connection_config["headers"] == {}  # No custom headers
+            # StreamableHttpConnection uses transport="streamable_http" (underscore)
+            assert connection_config["transport"] == "streamable_http"
 
-                setup_session_and_tools["load_tools"].assert_called_once_with(
-                    session=setup_session_and_tools["session_instance"]
-                )
+            setup_session_and_tools["load_tools"].assert_called_once_with(
+                session=setup_session_and_tools["session_instance"]
+            )
 
     async def test_mcp_tools_context_with_datarobot_deployment(
         self, setup_session_and_tools, agent_auth_context_data, assert_mock_tools_expected
@@ -189,27 +193,23 @@ class TestMCPToolsContext:
         # process, so subsequent tools and MCP calls receive it via a dedicated header.
         set_authorization_context(agent_auth_context_data)
 
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_ENDPOINT": api_base,
-                "DATAROBOT_API_TOKEN": api_key,
-            },
-            clear=True,
-        ):
-            async with mcp_tools_context() as tools:
-                assert_mock_tools_expected(tools)
-                # Check that create_session was called with correct connection config
-                setup_session_and_tools["session"].assert_called_once()
-                call_args = setup_session_and_tools["session"].call_args
-                connection_config = call_args[1]["connection"]
-                expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-                assert connection_config["url"] == expected_url
-                assert connection_config["headers"]["Authorization"] == f"Bearer {api_key}"
-                setup_session_and_tools["load_tools"].assert_called_once_with(
-                    session=setup_session_and_tools["session_instance"]
-                )
+        mcp_config = MCPConfig(
+            mcp_deployment_id=deployment_id,
+            datarobot_endpoint=api_base,
+            datarobot_api_token=api_key,
+        )
+        async with mcp_tools_context(mcp_config) as tools:
+            assert_mock_tools_expected(tools)
+            # Check that create_session was called with correct connection config
+            setup_session_and_tools["session"].assert_called_once()
+            call_args = setup_session_and_tools["session"].call_args
+            connection_config = call_args[1]["connection"]
+            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
+            assert connection_config["url"] == expected_url
+            assert connection_config["headers"]["Authorization"] == f"Bearer {api_key}"
+            setup_session_and_tools["load_tools"].assert_called_once_with(
+                session=setup_session_and_tools["session_instance"]
+            )
 
     async def test_mcp_tools_context_with_parameters(
         self, setup_session_and_tools, agent_auth_context_data, assert_mock_tools_expected
@@ -222,56 +222,55 @@ class TestMCPToolsContext:
         # process, so subsequent tools and MCP calls receive it via a dedicated header.
         set_authorization_context(agent_auth_context_data)
 
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_DEPLOYMENT_ID": deployment_id,
-                "DATAROBOT_API_TOKEN": custom_api_key,
-                "DATAROBOT_ENDPOINT": custom_api_base,
-            },
-            clear=True,
-        ):
-            async with mcp_tools_context() as tools:
-                assert_mock_tools_expected(tools)
-                # Check that create_session was called with custom parameters
-                setup_session_and_tools["session"].assert_called_once()
-                call_args = setup_session_and_tools["session"].call_args
-                connection_config = call_args[1]["connection"]
-                expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
-                assert connection_config["url"] == expected_url
-                assert connection_config["headers"]["Authorization"] == f"Bearer {custom_api_key}"
+        mcp_config = MCPConfig(
+            mcp_deployment_id=deployment_id,
+            datarobot_endpoint=custom_api_base,
+            datarobot_api_token=custom_api_key,
+        )
+        async with mcp_tools_context(mcp_config) as tools:
+            assert_mock_tools_expected(tools)
+            # Check that create_session was called with custom parameters
+            setup_session_and_tools["session"].assert_called_once()
+            call_args = setup_session_and_tools["session"].call_args
+            connection_config = call_args[1]["connection"]
+            expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
+            assert connection_config["url"] == expected_url
+            assert connection_config["headers"]["Authorization"] == f"Bearer {custom_api_key}"
 
     async def test_mcp_tools_context_with_sse_transport(
         self, setup_session_and_tools, assert_mock_tools_expected
     ):
         external_url = "https://mcp-server.example.com/mcp"
 
-        with patch.dict(
-            os.environ,
-            {"EXTERNAL_MCP_URL": external_url, "EXTERNAL_MCP_TRANSPORT": "sse"},
-            clear=True,
-        ):
-            async with mcp_tools_context() as tools:
-                assert_mock_tools_expected(tools)
-                # Verify create_session was called with SSE transport
-                setup_session_and_tools["session"].assert_called_once()
-                call_args = setup_session_and_tools["session"].call_args
-                connection_config = call_args[1]["connection"]
-                # SSEConnection uses transport="sse"
-                assert connection_config["transport"] == "sse"
-                setup_session_and_tools["load_tools"].assert_called_once_with(
-                    session=setup_session_and_tools["session_instance"]
-                )
+        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
+        async with mcp_tools_context(mcp_config) as tools:
+            assert_mock_tools_expected(tools)
+            # Verify create_session was called with SSE transport
+            setup_session_and_tools["session"].assert_called_once()
+            call_args = setup_session_and_tools["session"].call_args
+            connection_config = call_args[1]["connection"]
+            # SSEConnection uses transport="sse"
+            assert connection_config["transport"] == "sse"
+            setup_session_and_tools["load_tools"].assert_called_once_with(
+                session=setup_session_and_tools["session_instance"]
+            )
+
+    @pytest.mark.usefixtures("setup_session_and_tools")
+    async def test_mcp_tools_context_exception_is_propagated(self):
+        external_url = "https://mcp-server.example.com/mcp"
+
+        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
+        with pytest.raises(RuntimeError):
+            async with mcp_tools_context(mcp_config):
+                raise RuntimeError("Connection failed")
 
     async def test_mcp_tools_context_unsupported_transport(self):
         external_url = "https://mcp-server.example.com/mcp"
 
-        with patch.dict(
-            os.environ,
-            {"EXTERNAL_MCP_URL": external_url, "EXTERNAL_MCP_TRANSPORT": "invalid-transport"},
-            clear=True,
-        ):
-            # mcp_tools_context will raise ValidationError for unsupported transport
-            with pytest.raises(ValidationError):
-                async with mcp_tools_context():
-                    pass
+        # mcp_tools_context will raise ValidationError for unsupported transport
+        with pytest.raises(ValidationError):
+            mcp_config = MCPConfig(
+                external_mcp_url=external_url, external_mcp_transport="invalid-transport"
+            )
+            async with mcp_tools_context(mcp_config):
+                pass

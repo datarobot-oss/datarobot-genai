@@ -17,7 +17,6 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
-from fastmcp.exceptions import ToolError
 from perplexity import AsyncPerplexity
 from perplexity.types import ChatMessageInput
 from perplexity.types import StreamChunk
@@ -28,7 +27,8 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 
-from datarobot_genai.drtools.clients.helpers import get_api_key_from_headers
+from datarobot_genai.drtools.core.auth import get_api_key_from_headers
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 

@@ -43,7 +43,6 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -139,18 +138,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             pipeline_interactions, usage_metrics).
         """
         try:
-            async with mcp_tools_context(
-                authorization_context=self._authorization_context,
-                forwarded_headers=self.forwarded_headers,
-            ) as mcp_tools:
-                self.set_mcp_tools(mcp_tools)
-                result = await self._invoke(run_agent_input)
+            result = await self._invoke(run_agent_input)
 
-                # Yield all items from the result generator
-                # The context will be closed when this generator is exhausted
-                # Cast to async generator since we know stream=True means it's a generator
-                async for item in result:
-                    yield item
+            # Yield all items from the result generator
+            # The context will be closed when this generator is exhausted
+            # Cast to async generator since we know stream=True means it's a generator
+            async for item in result:
+                yield item
         except RuntimeError as e:
             error_message = str(e).lower()
             if "different task" in error_message and "cancel scope" in error_message:

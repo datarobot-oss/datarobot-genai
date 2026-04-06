@@ -21,12 +21,11 @@ from typing import Any
 
 import polars as pl
 from datarobot.models.model import Model
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +77,13 @@ class ModelEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "info", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "management", "info", "daria"})
 async def get_best_model(
     *,
-    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
+    project_id: Annotated[str, "The DataRobot project ID"],
     metric: Annotated[str, "The metric to use for best model selection (e.g., 'AUC', 'LogLoss')"]
     | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Get the best model for a DataRobot project, optionally by a specific metric."""
     if not project_id:
         raise ToolError("Project ID must be provided")
@@ -129,21 +128,19 @@ async def get_best_model(
     best_model_dict["metric"] = metric
     best_model_dict["metric_value"] = metric_value
 
-    return ToolResult(
-        structured_content={
-            "project_id": project_id,
-            "best_model": best_model_dict,
-        },
-    )
+    return {
+        "project_id": project_id,
+        "best_model": best_model_dict,
+    }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "scoring", "dataset"})
+@tool_metadata(tags={"predictive", "model", "read", "scoring", "dataset"})
 async def score_dataset_with_model(
     *,
-    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
-    model_id: Annotated[str, "The DataRobot model ID"] | None = None,
-    dataset_url: Annotated[str, "The dataset URL"] | None = None,
-) -> ToolError | ToolResult:
+    project_id: Annotated[str, "The DataRobot project ID"],
+    model_id: Annotated[str, "The DataRobot model ID"],
+    dataset_url: Annotated[str, "The dataset URL"],
+) -> dict[str, Any]:
     """Score a dataset using a specific DataRobot model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
@@ -158,21 +155,19 @@ async def score_dataset_with_model(
     model = client.Model.get(project, model_id)
     job = model.score(dataset_url)
 
-    return ToolResult(
-        structured_content={
-            "scoring_job_id": job.id,
-            "project_id": project_id,
-            "model_id": model_id,
-            "dataset_url": dataset_url,
-        },
-    )
+    return {
+        "scoring_job_id": job.id,
+        "project_id": project_id,
+        "model_id": model_id,
+        "dataset_url": dataset_url,
+    }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "management", "list", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "management", "list", "daria"})
 async def list_models(
     *,
-    project_id: Annotated[str, "The DataRobot project ID"] | None = None,
-) -> ToolError | ToolResult:
+    project_id: Annotated[str, "The DataRobot project ID"],
+) -> dict[str, Any]:
     """List all models in a project."""
     if not project_id:
         raise ToolError("Project ID must be provided")
@@ -182,22 +177,20 @@ async def list_models(
     project = client.Project.get(project_id)
     models = project.get_models()
 
-    return ToolResult(
-        structured_content={
-            "project_id": project_id,
-            "models": [model_to_dict(model) for model in models],
-        },
-    )
+    return {
+        "project_id": project_id,
+        "models": [model_to_dict(model) for model in models],
+    }
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "details", "info", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "details", "info", "daria"})
 async def get_model_details(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
     model_id: Annotated[str, "The DataRobot model ID"],
     include_feature_impact: Annotated[bool, "Whether to include feature impact data"] = True,
     include_roc_curve: Annotated[bool, "Whether to include ROC curve data"] = False,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Get detailed information about a DataRobot model, optionally with feature impact and ROC."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -231,19 +224,17 @@ async def get_model_details(
         except Exception as exc:
             insights.roc_curve_error = str(exc)
 
-    return ToolResult(
-        structured_content={k: v for k, v in asdict(insights).items() if v is not None}
-    )
+    return {k: v for k, v in asdict(insights).items() if v is not None}
 
 
-@dr_mcp_integration_tool(tags={"predictive", "model", "read", "timeseries", "validation", "daria"})
+@tool_metadata(tags={"predictive", "model", "read", "timeseries", "validation", "daria"})
 async def is_eligible_for_timeseries_training(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to validate"] | None = None,
-    datetime_column: Annotated[str, "The name of the datetime column"] | None = None,
-    target_column: Annotated[str, "The name of the target column"] | None = None,
+    dataset_id: Annotated[str, "The ID of the DataRobot dataset to validate"],
+    datetime_column: Annotated[str, "The name of the datetime column"],
+    target_column: Annotated[str, "The name of the target column"],
     series_id_column: Annotated[str, "The name of the series ID column"] | None = None,
-) -> ToolError | ToolResult:
+) -> dict[str, Any]:
     """Check if a dataset is eligible for DataRobot time series training."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
@@ -298,10 +289,8 @@ async def is_eligible_for_timeseries_training(
 
     status = "ELIGIBLE" if not errors else "NOT_ELIGIBLE"
 
-    return ToolResult(
-        structured_content={
-            "status": status,
-            "errors": errors,
-            "info": infos,
-        },
-    )
+    return {
+        "status": status,
+        "errors": errors,
+        "info": infos,
+    }

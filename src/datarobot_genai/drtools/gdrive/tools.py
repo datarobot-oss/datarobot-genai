@@ -16,23 +16,22 @@
 
 import logging
 from typing import Annotated
+from typing import Any
 from typing import Literal
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.gdrive import LIMIT
-from datarobot_genai.drtools.clients.gdrive import MAX_PAGE_SIZE
-from datarobot_genai.drtools.clients.gdrive import SUPPORTED_FIELDS
-from datarobot_genai.drtools.clients.gdrive import SUPPORTED_FIELDS_STR
-from datarobot_genai.drtools.clients.gdrive import GoogleDriveClient
-from datarobot_genai.drtools.clients.gdrive import get_gdrive_access_token
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.gdrive import LIMIT
+from datarobot_genai.drtools.core.clients.gdrive import MAX_PAGE_SIZE
+from datarobot_genai.drtools.core.clients.gdrive import SUPPORTED_FIELDS
+from datarobot_genai.drtools.core.clients.gdrive import SUPPORTED_FIELDS_STR
+from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveClient
+from datarobot_genai.drtools.core.clients.gdrive import get_gdrive_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
+@tool_metadata(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
 async def gdrive_find_contents(
     *,
     page_size: Annotated[
@@ -60,7 +59,7 @@ async def gdrive_find_contents(
         "Optional list of metadata fields to include. Ex. id, name, mimeType. "
         f"Default = {SUPPORTED_FIELDS_STR}",
     ] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Search or list files in the user's Google Drive with pagination and filtering support.
     Use this tool to discover GDrive file names and IDs for use with other tools.
@@ -90,18 +89,14 @@ async def gdrive_find_contents(
     filtered_fields = set(fields).intersection(SUPPORTED_FIELDS) if fields else SUPPORTED_FIELDS
     number_of_files = len(data.files)
 
-    return ToolResult(
-        structured_content={
-            "files": [
-                file.model_dump(by_alias=True, include=filtered_fields) for file in data.files
-            ],
-            "count": number_of_files,
-            "nextPageToken": data.next_page_token,
-        },
-    )
+    return {
+        "files": [file.model_dump(by_alias=True, include=filtered_fields) for file in data.files],
+        "count": number_of_files,
+        "nextPageToken": data.next_page_token,
+    }
 
 
-@dr_mcp_integration_tool(tags={"google", "gdrive", "read", "content", "file", "download"})
+@tool_metadata(tags={"google", "gdrive", "read", "content", "file", "download"})
 async def gdrive_read_content(
     *,
     file_id: Annotated[str, "The ID of the file to read."],
@@ -111,7 +106,7 @@ async def gdrive_read_content(
         "(e.g., 'text/markdown' for Docs, 'text/csv' for Sheets). "
         "If not specified, uses sensible defaults. Has no effect on regular files.",
     ] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Retrieve the content of a specific Google drive file by its ID.
 
@@ -143,14 +138,10 @@ async def gdrive_read_content(
     async with GoogleDriveClient(access_token) as client:
         file_content = await client.read_file_content(file_id, target_format)
 
-    return ToolResult(
-        structured_content=file_content.as_flat_dict(),
-    )
+    return file_content.as_flat_dict()
 
 
-@dr_mcp_integration_tool(
-    tags={"google", "gdrive", "create", "write", "file", "folder"}, enabled=False
-)
+@tool_metadata(tags={"google", "gdrive", "create", "write", "file", "folder"}, enabled=False)
 async def gdrive_create_file(
     *,
     name: Annotated[str, "The name for the new file or folder."],
@@ -165,7 +156,7 @@ async def gdrive_create_file(
     initial_content: Annotated[
         str | None, "Text content to populate the new file, if applicable."
     ] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Create a new file or folder in Google Drive.
 
@@ -217,12 +208,10 @@ async def gdrive_create_file(
             initial_content=initial_content,
         )
 
-    return ToolResult(
-        structured_content=created_file.as_flat_dict(),
-    )
+    return created_file.as_flat_dict()
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={"google", "gdrive", "update", "metadata", "rename", "star", "trash"}, enabled=False
 )
 async def gdrive_update_metadata(
@@ -231,7 +220,7 @@ async def gdrive_update_metadata(
     new_name: Annotated[str | None, "A new name to rename the file."] = None,
     starred: Annotated[bool | None, "Set to True to star the file or False to unstar it."] = None,
     trash: Annotated[bool | None, "Set to True to trash the file or False to restore it."] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Update non-content metadata fields of a Google Drive file or folder.
 
@@ -278,12 +267,10 @@ async def gdrive_update_metadata(
             trashed=trash,
         )
 
-    return ToolResult(
-        structured_content=updated_file.as_flat_dict(),
-    )
+    return updated_file.as_flat_dict()
 
 
-@dr_mcp_integration_tool(tags={"google", "gdrive", "manage", "access", "acl"}, enabled=False)
+@tool_metadata(tags={"google", "gdrive", "manage", "access", "acl"}, enabled=False)
 async def gdrive_manage_access(
     *,
     file_id: Annotated[str, "The ID of the file or folder."],
@@ -301,7 +288,7 @@ async def gdrive_manage_access(
     transfer_ownership: Annotated[
         bool, "Whether to transfer ownership (only for 'update' to 'owner' role)."
     ] = False,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Consolidated tool for sharing files and managing permissions.
     Pushes all logic to the Google Drive API permissions resource (create, update, delete).
@@ -356,4 +343,4 @@ async def gdrive_manage_access(
     if action == "add":
         structured_content["newPermissionId"] = permission_id
 
-    return ToolResult(structured_content=structured_content)
+    return structured_content

@@ -38,15 +38,15 @@ class TestSearchDatarobotAgenticDocs:
         ]
 
         with patch(
-            "datarobot_genai.drtools.dr_docs.local_tools.search_docs",
+            "datarobot_genai.drtools.dr_docs.tools.search_docs",
             new_callable=AsyncMock,
         ) as mock_search:
             mock_search.return_value = mock_results
 
             result = await search_datarobot_agentic_docs(query="agentic", max_results=5)
 
-            assert result.structured_content is not None
-            content = result.structured_content
+            assert result is not None
+            content = result
             assert content["status"] == "success"
             assert content["query"] == "agentic"
             assert content["total_results"] == 2
@@ -66,15 +66,15 @@ class TestSearchDatarobotAgenticDocs:
     async def test_search_no_results(self) -> None:
         """Test that search returns no_results status when no matches found."""
         with patch(
-            "datarobot_genai.drtools.dr_docs.local_tools.search_docs",
+            "datarobot_genai.drtools.dr_docs.tools.search_docs",
             new_callable=AsyncMock,
         ) as mock_search:
             mock_search.return_value = []
 
             result = await search_datarobot_agentic_docs(query="nonexistent", max_results=5)
 
-            assert result.structured_content is not None
-            content = result.structured_content
+            assert result is not None
+            content = result
             assert content["status"] == "no_results"
             assert content["query"] == "nonexistent"
             assert "No documentation pages found" in content["message"]
@@ -92,7 +92,7 @@ class TestFetchDatarobotDocPage:
         }
 
         with patch(
-            "datarobot_genai.drtools.dr_docs.local_tools.fetch_page_content",
+            "datarobot_genai.drtools.dr_docs.tools.fetch_page_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_content
@@ -101,8 +101,8 @@ class TestFetchDatarobotDocPage:
                 url="https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
             )
 
-            assert result.structured_content is not None
-            content = result.structured_content
+            assert result is not None
+            content = result
             assert (
                 content["url"]
                 == "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
@@ -119,14 +119,14 @@ class TestFetchDatarobotDocPage:
         }
 
         with patch(
-            "datarobot_genai.drtools.dr_docs.local_tools.fetch_page_content",
+            "datarobot_genai.drtools.dr_docs.tools.fetch_page_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_error
 
             result = await fetch_datarobot_doc_page(url="https://example.com/not-docs/")
 
-            content = result.structured_content
+            content = result
             assert content["title"] == "Error"
             assert "must be a DataRobot documentation page" in content["content"]
 
@@ -140,13 +140,13 @@ class TestFetchDatarobotDocPage:
         }
 
         with patch(
-            "datarobot_genai.drtools.dr_docs.local_tools.fetch_page_content",
+            "datarobot_genai.drtools.dr_docs.tools.fetch_page_content",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = mock_error
 
             result = await fetch_datarobot_doc_page(url=_url)
 
-            content = result.structured_content
+            content = result
             assert content["title"] == "Error"
             assert "Failed to fetch content" in content["content"]

@@ -34,6 +34,8 @@ from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.core.utils.logging import setup_logging
+
 from .session import DRAgentAGUISessionManager
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -145,9 +147,18 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         """
         mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
         if mlops_deployment_id:
-            datarobot_endpoint = os.getenv("DATAROBOT_ENDPOINT", "")
+            # Prefer DATAROBOT_PUBLIC_API_ENDPOINT over DATAROBOT_ENDPOINT because on-prem
+            # deployments often set DATAROBOT_ENDPOINT to an internal k8s URL, while
+            # DATAROBOT_PUBLIC_API_ENDPOINT holds the externally reachable URL needed here
+            # to construct a publicly accessible agent-card URL.
+            datarobot_endpoint = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv(
+                "DATAROBOT_ENDPOINT", ""
+            )
             if not datarobot_endpoint:
-                raise ValueError("DATAROBOT_ENDPOINT must be set when MLOPS_DEPLOYMENT_ID is set")
+                raise ValueError(
+                    "DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set "
+                    "when MLOPS_DEPLOYMENT_ID is set"
+                )
             base = datarobot_endpoint.rstrip("/")
             return f"{base}/deployments/{mlops_deployment_id}/directAccess/{A2A_MOUNT_PATH}/"
         return f"http://{frontend_config.host}:{frontend_config.port}/{A2A_MOUNT_PATH}/"
@@ -206,6 +217,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 logger.info("A2A worker resources cleaned up")
 
         app.router.lifespan_context = lifespan
+
+        setup_logging()
         return app
 
     async def add_health_route(self, app: FastAPI) -> None:

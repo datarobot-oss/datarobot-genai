@@ -16,24 +16,22 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.atlassian import get_atlassian_access_token
-from datarobot_genai.drtools.clients.jira import JiraClient
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
+from datarobot_genai.drtools.core.clients.jira import JiraClient
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"jira", "search", "issues"})
+@tool_metadata(tags={"jira", "search", "issues"})
 async def jira_search_issues(
     *,
     jql_query: Annotated[
         str, "The JQL (Jira Query Language) string used to filter and search for issues."
     ],
     max_results: Annotated[int, "Maximum number of issues to return. Default is 50."] = 50,
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Search for Jira issues using a powerful JQL query string.
 
@@ -53,18 +51,16 @@ async def jira_search_issues(
     async with JiraClient(access_token) as client:
         issues = await client.search_jira_issues(jql_query=jql_query, max_results=max_results)
 
-    return ToolResult(
-        structured_content={
-            "data": [issue.as_flat_dict() for issue in issues],
-            "count": len(issues),
-        },
-    )
+    return {
+        "data": [issue.as_flat_dict() for issue in issues],
+        "count": len(issues),
+    }
 
 
-@dr_mcp_integration_tool(tags={"jira", "read", "get", "issue"})
+@tool_metadata(tags={"jira", "read", "get", "issue"})
 async def jira_get_issue(
     *, issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."]
-) -> ToolResult:
+) -> dict[str, Any]:
     """Retrieve all fields and details for a single Jira issue by its key."""
     if not issue_key:
         raise ToolError("Argument validation error: 'issue_key' cannot be empty.")
@@ -76,19 +72,17 @@ async def jira_get_issue(
     async with JiraClient(access_token) as client:
         issue = await client.get_jira_issue(issue_key)
 
-    return ToolResult(
-        structured_content=issue.as_flat_dict(),
-    )
+    return issue.as_flat_dict()
 
 
-@dr_mcp_integration_tool(tags={"jira", "create", "add", "issue"})
+@tool_metadata(tags={"jira", "create", "add", "issue"})
 async def jira_create_issue(
     *,
     project_key: Annotated[str, "The key of the project where the issue should be created."],
     summary: Annotated[str, "A brief summary or title for the new issue."],
     issue_type: Annotated[str, "The type of issue to create (e.g., 'Task', 'Bug', 'Story')."],
     description: Annotated[str | None, "Detailed description of the issue."] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """Create a new Jira issue with mandatory project, summary, and type information."""
     if not all([project_key, summary, issue_type]):
         raise ToolError(
@@ -120,12 +114,10 @@ async def jira_create_issue(
             description=description,
         )
 
-    return ToolResult(
-        structured_content={"newIssueKey": issue_key, "projectKey": project_key},
-    )
+    return {"newIssueKey": issue_key, "projectKey": project_key}
 
 
-@dr_mcp_integration_tool(tags={"jira", "update", "edit", "issue"})
+@tool_metadata(tags={"jira", "update", "edit", "issue"})
 async def jira_update_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."],
@@ -133,7 +125,7 @@ async def jira_update_issue(
         dict[str, Any],
         "A dictionary of field names and their new values (e.g., {'summary': 'New content'}).",
     ],
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Modify descriptive fields or custom fields on an existing Jira issue using its key.
     If you want to update issue status you should use `jira_transition_issue` tool instead.
@@ -173,19 +165,17 @@ async def jira_update_issue(
             issue_key=issue_key, fields=fields_to_update
         )
 
-    return ToolResult(
-        structured_content={"updatedIssueKey": issue_key, "fields": updated_fields},
-    )
+    return {"updatedIssueKey": issue_key, "fields": updated_fields}
 
 
-@dr_mcp_integration_tool(tags={"jira", "update", "transition", "issue"})
+@tool_metadata(tags={"jira", "update", "transition", "issue"})
 async def jira_transition_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to transition, e.g. 'PROJ-123'."],
     transition_name: Annotated[
         str, "The exact name of the target status/transition (e.g., 'In Progress')."
     ],
-) -> ToolResult:
+) -> dict[str, Any]:
     """
     Move a Jira issue through its defined workflow to a new status.
     This leverages Jira's workflow engine directly.
@@ -212,10 +202,8 @@ async def jira_transition_issue(
     async with JiraClient(access_token) as client:
         await client.transition_jira_issue(issue_key=issue_key, transition_id=transition_id)
 
-    return ToolResult(
-        structured_content={
-            "transitionedIssueKey": issue_key,
-            "newStatusName": transition_name,
-            "newStatusId": transition_id,
-        },
-    )
+    return {
+        "transitionedIssueKey": issue_key,
+        "newStatusName": transition_name,
+        "newStatusId": transition_id,
+    }

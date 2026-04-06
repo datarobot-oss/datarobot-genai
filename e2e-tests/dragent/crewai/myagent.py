@@ -15,13 +15,15 @@
 from typing import Any
 
 from crewai import Agent
-from crewai import Crew
 from crewai import Task
 from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import CrewAIAgent
 from datarobot_genai.drtools.calculator import calculator
 
+from dragent.tool import generate_objectid
+
+generate_objectid_tool = tool(generate_objectid)
 calculator_tool = tool(calculator)
 
 
@@ -43,10 +45,14 @@ class MyAgent(CrewAIAgent):
             goal="Create a short bullet-point outline with 3-5 key points about: {topic}.",
             backstory=make_system_prompt(
                 "You are a content planner. Given a topic, produce a short bullet-point "
-                "outline with 3-5 key points. No paragraphs, no explanations — just the list."
+                "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
+                "Use the generate_objectid tool when asked to generate an object ID for a "
+                "deployment. Use the calculator tool when asked to compute a mathematical "
+                "expression."
             ),
             llm=self._llm,
-            tools=[calculator_tool] + self.mcp_tools,
+            function_calling_llm=self._llm,
+            tools=[generate_objectid_tool, calculator_tool] + self.tools,
             verbose=self.verbose,
         )
         writer = Agent(
@@ -54,10 +60,13 @@ class MyAgent(CrewAIAgent):
             goal="Write a 2-3 sentence response based on the planner's outline about: {topic}.",
             backstory=make_system_prompt(
                 "You are a concise writer. Using the planner's outline, write a short response "
-                "in 2-3 sentences. Use the calculator tool when asked to compute math."
+                "in 2-3 sentences. Use the generate_objectid tool when asked to "
+                "generate an object ID for a deployment. Use the calculator tool when asked to "
+                "compute a mathematical expression."
             ),
             llm=self._llm,
-            tools=[calculator_tool] + self.mcp_tools,
+            function_calling_llm=self._llm,
+            tools=[generate_objectid_tool, calculator_tool] + self.tools,
             verbose=self.verbose,
         )
         return [planner, writer]
@@ -66,27 +75,27 @@ class MyAgent(CrewAIAgent):
     def tasks(self) -> list[Any]:
         return self._tasks_for(self.agents)
 
-    def crew(self) -> Crew:
-        agents = self.agents
-        return Crew(agents=agents, tasks=self._tasks_for(agents), verbose=self.verbose)
-
     def _tasks_for(self, agents: list[Any]) -> list[Any]:
         planner, writer = agents
         return [
             Task(
                 description=(
                     "Create a short outline about: {topic}. "
-                    "Prior conversation context (may be empty): {chat_history}"
+                    "Prior conversation context (may be empty): {chat_history}. "
+                    "Execute tool calls if requested instead of this task."
                 ),
-                expected_output="A bullet-point outline with 3-5 key points.",
+                expected_output=(
+                    "A bullet-point outline with 3-5 key points. Or the result of a tool call."
+                ),
                 agent=planner,
             ),
             Task(
                 description=(
                     "Using the planner's outline, write a short response about: {topic}. "
-                    "Prior conversation context (may be empty): {chat_history}"
+                    "Prior conversation context (may be empty): {chat_history}. "
+                    "Execute tool calls if requested instead of this task."
                 ),
-                expected_output="A concise 2-3 sentence response.",
+                expected_output="A concise 2-3 sentence response. Or the result of a tool call.",
                 agent=writer,
             ),
         ]

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import abc
 import json
+import logging
 import os
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
@@ -31,6 +32,7 @@ from ag_ui.core import RunAgentInput
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.config import get_max_history_messages_default
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
@@ -38,6 +40,8 @@ if TYPE_CHECKING:
     from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
+
+logger = logging.getLogger(__name__)
 
 
 class BaseAgent(Generic[TTool], abc.ABC):
@@ -49,11 +53,35 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - model: Preferred model name
       - timeout: Request timeout
       - verbose: Verbosity flag
-      - authorization_context: Authorization context for downstream agents/tools
+      - forwarded_headers: Forwarded headers for the agent
       - max_history_messages: Maximum number of prior messages to include in chat history
+      - memory_client: Memory client for the agent
     """
 
-    _max_history_messages: int | None = None
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        model: str | None = None,
+        tools: list[TTool] | None = None,
+        verbose: bool = True,
+        timeout: int | None = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+    ) -> None:
+        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
+        self.api_base = (
+            api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
+        )
+        self.model = model
+        self.timeout = timeout if timeout is not None else 90
+        self.verbose = verbose
+        self._tools: list[TTool] = tools or []
+        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
+        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
+        self._max_history_messages = max_history_messages
+        self._memory_client: BaseMemoryClient | None = memory_client
 
     @property
     def max_history_messages(self) -> int:
@@ -67,53 +95,16 @@ class BaseAgent(Generic[TTool], abc.ABC):
             return self._max_history_messages
         return get_max_history_messages_default()
 
-    def __init__(
-        self,
-        *,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        model: str | None = None,
-        verbose: bool | str | None = True,
-        timeout: int | None = 90,
-        authorization_context: dict[str, Any] | None = None,
-        forwarded_headers: dict[str, str] | None = None,
-        max_history_messages: int | None = None,
-        **_: Any,
-    ) -> None:
-        self._max_history_messages = max_history_messages
-        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
-        self.api_base = (
-            api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
-        )
-        self.model = model
-        self.timeout = timeout if timeout is not None else 90
-        if isinstance(verbose, str):
-            self.verbose = verbose.lower() == "true"
-        elif verbose is None:
-            self.verbose = True
-        else:
-            self.verbose = bool(verbose)
-        self._mcp_tools: list[TTool] = []
-        self._authorization_context = authorization_context or {}
-        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
-        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
-
-    def set_mcp_tools(self, tools: list[TTool]) -> None:
-        self._mcp_tools = tools
+    def set_tools(self, tools: list[TTool]) -> None:
+        self._tools = tools
 
     @property
-    def mcp_tools(self) -> list[TTool]:
-        """Return the list of MCP tools available to this agent.
+    def tools(self) -> list[TTool]:
+        """Return the list of tools available to this agent.
 
-        Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``crew``.
+        Subclasses can use this to wire tools into the agent.
         """
-        return self._mcp_tools
-
-    @property
-    def authorization_context(self) -> dict[str, Any]:
-        """Return the authorization context for this agent."""
-        return self._authorization_context
+        return self._tools
 
     @property
     def forwarded_headers(self) -> dict[str, str]:
@@ -138,6 +129,59 @@ class BaseAgent(Generic[TTool], abc.ABC):
         ``chat_history`` variable in prompts across different agent types.
         """
         return build_history_summary_from_messages(run_agent_input, self.max_history_messages)
+
+    def _get_memory_client(self) -> BaseMemoryClient | None:
+        if self._memory_client is not None:
+            return self._memory_client
+        try:
+            from datarobot_genai.core.memory.mem0client import Mem0Client
+        except ImportError as exc:
+            logger.warning("Mem0Client import failed: %s", exc)
+            return None
+        try:
+            self._memory_client = Mem0Client()
+        except Exception as exc:
+            logger.warning("Mem0Client initialization failed: %s", exc)
+            return None
+        return self._memory_client
+
+    async def retrieve_memory(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        client = self._get_memory_client()
+        if not client:
+            return ""
+        return await client.retrieve(
+            prompt=prompt,
+            run_id=run_id,
+            agent_id=agent_id,
+            app_id=app_id,
+            attributes=attributes,
+        )
+
+    async def store_memory(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        client = self._get_memory_client()
+        if not client:
+            return
+        await client.store(
+            user_message=user_message,
+            run_id=run_id,
+            agent_id=agent_id,
+            app_id=app_id,
+            attributes=attributes,
+        )
 
     @classmethod
     def create_pipeline_interactions_from_events(

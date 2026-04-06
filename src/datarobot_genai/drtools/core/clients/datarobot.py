@@ -20,10 +20,10 @@ from typing import Any
 
 import datarobot as dr
 from datarobot.context import Context as DRContext
-from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drmcp.core.clients import resolve_token_from_headers
-from datarobot_genai.drmcp.core.credentials import get_credentials
+from datarobot_genai.drtools.core.auth import resolve_token_from_headers
+from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 

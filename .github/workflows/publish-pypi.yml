@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    environment:
+      name: Release
+      deployment: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,6 +61,6 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_TOKEN }}
+          password: ${{ secrets.DATAROBOT_GENAI_PYPI_TOKEN }}
           packages-dir: dist
           skip-existing: false

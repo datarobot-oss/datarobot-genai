@@ -17,10 +17,10 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import ToolError
 
-from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphError
-from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphItem
+from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphError
+from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphItem
+from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_create_file
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_search_content
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_share_item
@@ -97,13 +97,13 @@ class TestMicrosoftGraphSearchContent:
         """Test successful content search."""
         result = await microsoft_graph_search_content(search_query="test query")
 
-        assert result.structured_content["query"] == "test query"
-        assert result.structured_content["count"] == 2
-        assert len(result.structured_content["results"]) == 2
-        assert result.structured_content["results"][0]["id"] == "item1"
-        assert result.structured_content["results"][0]["name"] == "document.docx"
-        assert result.structured_content["results"][1]["id"] == "item2"
-        assert result.structured_content["results"][1]["isFolder"] is True
+        assert result["query"] == "test query"
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+        assert result["results"][0]["id"] == "item1"
+        assert result["results"][0]["name"] == "document.docx"
+        assert result["results"][1]["id"] == "item2"
+        assert result["results"][1]["isFolder"] is True
 
     @pytest.mark.asyncio
     async def test_search_content_with_site_url(
@@ -115,7 +115,7 @@ class TestMicrosoftGraphSearchContent:
         site_url = "https://tenant.sharepoint.com/sites/sitename"
         result = await microsoft_graph_search_content(search_query="test", site_url=site_url)
 
-        assert result.structured_content["siteUrl"] == site_url
+        assert result["siteUrl"] == site_url
         mock_client_search_success.search_content.assert_called_once()
 
     @pytest.mark.asyncio
@@ -128,7 +128,7 @@ class TestMicrosoftGraphSearchContent:
         site_id = "site123"
         result = await microsoft_graph_search_content(search_query="test", site_id=site_id)
 
-        assert result.structured_content["siteId"] == site_id
+        assert result["siteId"] == site_id
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["site_id"] == site_id
 
@@ -141,8 +141,8 @@ class TestMicrosoftGraphSearchContent:
         """Test search with pagination parameters."""
         result = await microsoft_graph_search_content(search_query="test", from_offset=50, size=100)
 
-        assert result.structured_content["from"] == 50
-        assert result.structured_content["size"] == 100
+        assert result["from"] == 50
+        assert result["size"] == 100
         call_kwargs = mock_client_search_success.search_content.call_args[1]
         assert call_kwargs["from_offset"] == 50
         assert call_kwargs["size"] == 100
@@ -219,7 +219,7 @@ class TestMicrosoftGraphSearchContent:
             mock_client.search_content = AsyncMock(side_effect=MicrosoftGraphError("Client error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(MicrosoftGraphError) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "client error" in str(exc_info.value).lower()
 
@@ -238,7 +238,7 @@ class TestMicrosoftGraphSearchContent:
             mock_client.search_content = AsyncMock(side_effect=Exception("Unexpected error"))
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await microsoft_graph_search_content(search_query="test")
             assert "unexpected error" in str(exc_info.value).lower()
 
@@ -284,11 +284,11 @@ class TestMicrosoftGraphShareItem:
             role="read",
         )
 
-        assert result.structured_content["fileId"] == "dummy_file_id"
-        assert result.structured_content["documentLibraryId"] == "dummy_document_library_id"
-        assert result.structured_content["recipientEmails"] == ["dummy@user.com", "dummy2@user.com"]
-        assert result.structured_content["role"] == "read"
-        assert result.structured_content["n"] == 2
+        assert result["fileId"] == "dummy_file_id"
+        assert result["documentLibraryId"] == "dummy_document_library_id"
+        assert result["recipientEmails"] == ["dummy@user.com", "dummy2@user.com"]
+        assert result["role"] == "read"
+        assert result["n"] == 2
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -360,7 +360,7 @@ class TestMicrosoftGraphShareItem:
         ) as mock_fn:
             mock_fn.side_effect = MicrosoftGraphError("Client error")
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await microsoft_graph_share_item(
                     file_id="dummy_file_id",
                     document_library_id="dummy_document_library_id",
@@ -380,7 +380,7 @@ class TestMicrosoftGraphShareItem:
         ) as mock_fn:
             mock_fn.side_effect = Exception("Unexpected error")
 
-            with pytest.raises(ToolError) as exc_info:
+            with pytest.raises(Exception) as exc_info:
                 await microsoft_graph_share_item(
                     file_id="dummy_file_id",
                     document_library_id="dummy_document_library_id",
@@ -438,8 +438,8 @@ class TestMicrosoftCreateFile:
             document_library_id="drive123",
         )
 
-        assert result.structured_content["destination"] == "sharepoint"
-        assert result.structured_content["driveId"] == "drive123"
+        assert result["destination"] == "sharepoint"
+        assert result["driveId"] == "drive123"
 
         call_kwargs = mock_client_create_success.create_file.call_args[1]
         assert call_kwargs["drive_id"] == "drive123"
@@ -456,8 +456,8 @@ class TestMicrosoftCreateFile:
             content_text="My notes",
         )
 
-        assert result.structured_content["destination"] == "onedrive"
-        assert result.structured_content["driveId"] == "personal_drive_123"
+        assert result["destination"] == "onedrive"
+        assert result["driveId"] == "personal_drive_123"
 
         mock_client_create_success.get_personal_drive_id.assert_called_once()
         call_kwargs = mock_client_create_success.create_file.call_args[1]
@@ -492,7 +492,7 @@ class TestMicrosoftCreateFile:
             )
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(ToolError, match="[Pp]ermission denied"):
+            with pytest.raises(MicrosoftGraphError, match="[Pp]ermission denied"):
                 await microsoft_create_file(
                     file_name="report.txt",
                     content_text="Content",

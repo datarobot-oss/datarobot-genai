@@ -16,25 +16,24 @@
 
 import logging
 from typing import Annotated
+from typing import Any
 from typing import Literal
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.perplexity import MAX_QUERIES
-from datarobot_genai.drtools.clients.perplexity import MAX_RESULTS
-from datarobot_genai.drtools.clients.perplexity import MAX_RESULTS_DEFAULT
-from datarobot_genai.drtools.clients.perplexity import MAX_SEARCH_DOMAIN_FILTER
-from datarobot_genai.drtools.clients.perplexity import MAX_TOKENS_PER_PAGE
-from datarobot_genai.drtools.clients.perplexity import MAX_TOKENS_PER_PAGE_DEFAULT
-from datarobot_genai.drtools.clients.perplexity import PerplexityClient
-from datarobot_genai.drtools.clients.perplexity import get_perplexity_access_token
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.perplexity import MAX_QUERIES
+from datarobot_genai.drtools.core.clients.perplexity import MAX_RESULTS
+from datarobot_genai.drtools.core.clients.perplexity import MAX_RESULTS_DEFAULT
+from datarobot_genai.drtools.core.clients.perplexity import MAX_SEARCH_DOMAIN_FILTER
+from datarobot_genai.drtools.core.clients.perplexity import MAX_TOKENS_PER_PAGE
+from datarobot_genai.drtools.core.clients.perplexity import MAX_TOKENS_PER_PAGE_DEFAULT
+from datarobot_genai.drtools.core.clients.perplexity import PerplexityClient
+from datarobot_genai.drtools.core.clients.perplexity import get_perplexity_access_token
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(tags={"perplexity", "web", "search", "websearch", "daria"})
+@tool_metadata(tags={"perplexity", "web", "search", "websearch", "daria"})
 async def perplexity_search(
     *,
     query: Annotated[
@@ -59,18 +58,26 @@ async def perplexity_search(
         f"Content extraction cap per page (1-{MAX_TOKENS_PER_PAGE}) "
         f"(default {MAX_TOKENS_PER_PAGE_DEFAULT}).",
     ] = MAX_TOKENS_PER_PAGE_DEFAULT,
-) -> ToolResult:
+) -> dict[str, Any]:
     """Perplexity web search tool combining multi-query research and content extraction control."""
+    # Check if query is empty or None
     if not query:
         raise ToolError("Argument validation error: query cannot be empty.")
-    if query and isinstance(query, str) and not query.strip():
-        raise ToolError("Argument validation error: query cannot be empty.")
-    if query and isinstance(query, list) and len(query) > MAX_QUERIES:
-        raise ToolError(
-            f"Argument validation error: query list cannot be bigger than {MAX_QUERIES}."
-        )
-    if query and isinstance(query, list) and not all(q.strip() for q in query):
-        raise ToolError("Argument validation error: query cannot contain empty str.")
+
+    # Handle string queries
+    if isinstance(query, str):
+        if not query.strip():
+            raise ToolError("Argument validation error: query cannot be empty or whitespace only.")
+    # Handle list queries
+    elif isinstance(query, list):
+        if not query:  # Empty list
+            raise ToolError("Argument validation error: query list cannot be empty.")
+        if len(query) > MAX_QUERIES:
+            raise ToolError(
+                f"Argument validation error: query list cannot be bigger than {MAX_QUERIES}."
+            )
+        if not all(q.strip() for q in query):
+            raise ToolError("Argument validation error: query cannot contain empty strings.")
     if search_domain_filter and len(search_domain_filter) > MAX_SEARCH_DOMAIN_FILTER:
         raise ToolError(
             f"Argument validation error: "
@@ -104,20 +111,18 @@ async def perplexity_search(
             max_tokens_per_page=max_tokens_per_page,
         )
 
-    return ToolResult(
-        structured_content={
-            "results": results,
-            "count": len(results),
-            "metadata": {
-                "queriesExecuted": len(query) if isinstance(query, list) else 1,
-                "filtersApplied": {"domains": search_domain_filter, "recency": recency},
-                "extractionLimit": max_tokens_per_page,
-            },
+    return {
+        "results": results,
+        "count": len(results),
+        "metadata": {
+            "queriesExecuted": len(query) if isinstance(query, list) else 1,
+            "filtersApplied": {"domains": search_domain_filter, "recency": recency},
+            "extractionLimit": max_tokens_per_page,
         },
-    )
+    }
 
 
-@dr_mcp_integration_tool(tags={"perplexity", "think", "research", "answer", "daria"})
+@tool_metadata(tags={"perplexity", "think", "research", "answer", "daria"})
 async def perplexity_think(
     *,
     prompt: Annotated[str, "The research prompt or instruction."],
@@ -131,7 +136,7 @@ async def perplexity_think(
     json_schema: Annotated[
         dict | None, "Optional JSON Schema to enforce structured output for data extraction."
     ] = None,
-) -> ToolResult:
+) -> dict[str, Any]:
     """Conversational AI for reasoning, research, and structured data extraction.
     Deep Research: Use the sonar-deep-research model for thorough reports
         and multi-step investigation.
@@ -150,11 +155,9 @@ async def perplexity_think(
     async with PerplexityClient(access_token=access_token) as perplexity_client:
         result = await perplexity_client.think(prompt=prompt, model=model, json_schema=json_schema)
 
-    return ToolResult(
-        structured_content={
-            "model": model,
-            "citations": result.citations,
-            "usage": result.usage.as_flat_dict() if result.usage else None,
-            "content": result.answer,
-        },
-    )
+    return {
+        "model": model,
+        "citations": result.citations,
+        "usage": result.usage.as_flat_dict() if result.usage else None,
+        "content": result.answer,
+    }

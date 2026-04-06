@@ -15,11 +15,9 @@
 import json
 import logging
 import re
-from http import HTTPStatus
 from typing import Any
 from typing import Literal
 
-import requests
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
 
@@ -125,31 +123,6 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         headers.update(self._authorization_context_header())
         return headers
 
-    def _check_localhost_server(self, url: str, timeout: float = 2.0) -> bool:
-        """Check if MCP server is running on localhost.
-
-        Parameters
-        ----------
-        url : str
-            The URL to check.
-        timeout : float, optional
-            Request timeout in seconds (default: 2.0).
-
-        Returns
-        -------
-        bool
-            True if server is running and responding with OK status, False otherwise.
-        """
-        try:
-            response = requests.get(url, timeout=timeout)
-            return (
-                response.status_code == HTTPStatus.OK
-                and response.json().get("message") == "DataRobot MCP Server is running"
-            )
-        except requests.RequestException as e:
-            logger.debug(f"Failed to connect to MCP server at {url}: {e}")
-            return False
-
     def _build_server_config(self) -> dict[str, Any] | None:
         """
         Get MCP server configuration.
@@ -205,14 +178,12 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         # No MCP configuration found, setup localhost if running locally
         if self.mcp_server_port:
             url = f"http://localhost:{self.mcp_server_port}"
-            if self._check_localhost_server(url):
-                headers = self._build_authenticated_headers()
-                logger.info(f"Using localhost MCP server: {url}")
-                return {
-                    "url": f"{url}/mcp",
-                    "transport": "streamable-http",
-                    "headers": headers,
-                }
-            logger.warning(f"MCP server is not running or not responding at {url}")
+            headers = self._build_authenticated_headers()
+            logger.info(f"Using localhost MCP server: {url}")
+            return {
+                "url": f"{url}/mcp",
+                "transport": "streamable-http",
+                "headers": headers,
+            }
 
         return None

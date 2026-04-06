@@ -19,6 +19,11 @@ nvidia-nat-crewai 1.4.1 expects crewai < 1.0.0 response format where
 ``message`` is a proper attribute on the choice object. This module patches
 the callback handler to support both formats.
 
+When ``stream=True``, LiteLLM returns a stream object (e.g. ``CustomStreamWrapper``)
+without ``.choices``. NAT's ``wrapped_llm_call`` only handles non-streaming
+``ModelResponse`` objects, so streaming calls must bypass that wrapper and call
+``litellm.completion`` directly.
+
 TODO(BUZZOK-29844): Remove once nvidia-nat-crewai ships a fix upstream.
 Upstream issue: https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1802
 """
@@ -44,12 +49,15 @@ def patch_crewai_callback_handler() -> None:
 
     def _patched_llm_call_monkey_patch(self: Any) -> Callable[..., Any]:
         """Wrap the original monkey patch to inject message into model_extra before it runs."""
-        original_func = self._original_llm_call
+        original_litellm = self._original_llm_call
 
         def fixed_wrapped(*args: Any, **kwargs: Any) -> Any:
             def compat_completion(*a: Any, **kw: Any) -> Any:
-                output = original_func(*a, **kw)
-                for choice in output.choices:
+                output = original_litellm(*a, **kw)
+                choices = getattr(output, "choices", None)
+                if not choices:
+                    return output
+                for choice in choices:
                     if (
                         choice.model_extra is not None
                         and "message" not in choice.model_extra
@@ -62,9 +70,16 @@ def patch_crewai_callback_handler() -> None:
             self._original_llm_call = compat_completion
             try:
                 patched_wrapped = _original_method(self)
-                return patched_wrapped(*args, **kwargs)
+
+                def dispatch(*a: Any, **kw: Any) -> Any:
+                    # NAT's wrapped_llm_call reads output.choices; streaming returns an iterator.
+                    if kw.get("stream"):
+                        return original_litellm(*a, **kw)
+                    return patched_wrapped(*a, **kw)
+
+                return dispatch(*args, **kwargs)
             finally:
-                self._original_llm_call = original_func
+                self._original_llm_call = original_litellm
 
         return fixed_wrapped
 

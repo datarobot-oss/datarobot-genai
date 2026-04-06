@@ -27,12 +27,14 @@ from fastmcp.resources import Resource
 from fastmcp.tools import Tool
 from starlette.middleware import Middleware
 
-from .auth import initialize_oauth_middleware
+from datarobot_genai.drtools.core.auth import initialize_oauth_middleware
+from datarobot_genai.drtools.core.credentials import get_credentials
+
 from .clients import RequestHeadersMiddleware
 from .config import get_config
 from .constants import MCP_PATH_ENDPOINT
-from .credentials import get_credentials
 from .dr_mcp_server_logo import log_server_custom_banner
+from .drtools_registry import load_drtools_registry
 from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
@@ -52,11 +54,21 @@ def _import_modules_from_dir(
 ) -> None:
     """Dynamically import all modules from a directory."""
     if not os.path.exists(directory):
+        logging.debug(f"Directory does not exist: {directory}")
         return
+
+    # Check if this is a drtools package
+    is_drtools = package_prefix.startswith("datarobot_genai.drtools.")
+    logging.debug(f"Loading modules from {directory} (drtools: {is_drtools})")
+
     if module_name:
         module_name = f"{package_prefix}.{module_name}"
         try:
-            importlib.import_module(module_name)
+            if is_drtools:
+                # Use registry loader for drtools modules
+                load_drtools_registry(module_name)
+            else:
+                importlib.import_module(module_name)
         except ImportError as e:
             logging.warning(f"Failed to import module {module_name}: {e}")
     else:
@@ -64,7 +76,10 @@ def _import_modules_from_dir(
             if os.path.basename(file) != "__init__.py":
                 module_name = f"{package_prefix}.{os.path.splitext(os.path.basename(file))[0]}"
                 try:
-                    importlib.import_module(module_name)
+                    if is_drtools:
+                        load_drtools_registry(module_name)
+                    else:
+                        importlib.import_module(module_name)
                 except ImportError as e:
                     logging.warning(f"Failed to import module {module_name}: {e}")
 
@@ -150,12 +165,16 @@ class DataRobotMCPServer:
         # Load native MCP tools modules (only when load_native_mcp_tools is True)
         base_dir = Path(__file__).parent.parent
         if load_native_mcp_tools:
+            self._logger.info("Loading native MCP tools")
             for tool_type, tool_config in TOOL_CONFIGS.items():
                 if is_tool_enabled(tool_type, self._config):
+                    self._logger.debug(f"Loading {tool_type} tools from {tool_config['directory']}")
                     _import_modules_from_dir(
                         os.path.join(base_dir.parent, "drtools", tool_config["directory"]),
                         tool_config["package_prefix"],
                     )
+                else:
+                    self._logger.debug(f"Skipping {tool_type} tools - not enabled")
 
         # Load memory management tools if available
         if self._memory_manager:

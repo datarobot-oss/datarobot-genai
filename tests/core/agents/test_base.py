@@ -104,7 +104,7 @@ def test_base_agent_env_defaults_and_verbose(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "env-token")
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")
 
-    agent = SimpleAgent(verbose="false")
+    agent = SimpleAgent(verbose=False)
 
     assert agent.api_key == "env-token"
     # Stored as provided; normalization happens in litellm_api_base

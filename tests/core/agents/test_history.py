@@ -18,7 +18,9 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import UserMessage
 
 from datarobot_genai.core.agents.history import _summarize_tool_calls
+from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.agents.history import extract_history_messages
+from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 
 
 def _make_run_agent_input(messages: list) -> RunAgentInput:
@@ -52,6 +54,19 @@ class TestSummarizeToolCalls:
     def test_single_dict_with_function_name(self) -> None:
         tool_calls = [{"function": {"name": "search"}}]
         assert _summarize_tool_calls(tool_calls) == "[tool_calls] search"
+
+    def test_single_dict_includes_function_arguments(self) -> None:
+        # GIVEN a tool call with a function name and arguments
+        tool_calls = [
+            {"function": {"name": "get_weather", "arguments": '{"location": "Boston, MA"}'}}
+        ]
+
+        # WHEN summarizing tool calls
+        # THEN the summary includes both the tool name and arguments
+        assert (
+            _summarize_tool_calls(tool_calls)
+            == '[tool_calls] get_weather({"location": "Boston, MA"})'
+        )
 
     def test_multiple_dicts_with_function_names(self) -> None:
         tool_calls = [
@@ -238,3 +253,47 @@ class TestExtractHistoryMessagesSingleUserMessage:
     def test_empty_messages_returns_empty_history(self) -> None:
         rai = _make_run_agent_input([])
         assert extract_history_messages(rai, max_history=20) == []
+
+
+class TestBuildHistorySummaryFromChatCompletions:
+    def test_preserves_tool_call_only_assistant_turns_in_history_summary(self) -> None:
+        # GIVEN a multi-turn chat completion payload with an assistant tool-call-only turn
+        params = {
+            "messages": [
+                {"role": "user", "content": "Choose a location and check the weather"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_abc123",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"location": "Boston, MA"}',
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_abc123",
+                    "content": '{"temperature": 72, "condition": "sunny"}',
+                },
+                {
+                    "role": "user",
+                    "content": "What was the temperature? And what location was I asking about?",
+                },
+            ]
+        }
+
+        # WHEN converting to RunAgentInput and building the history summary
+        run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+        summary = build_history_summary_from_messages(run_agent_input, max_history=20)
+
+        # THEN the summary retains the tool-call metadata and tool result
+        assert summary == (
+            "user: Choose a location and check the weather\n"
+            'assistant: [tool_calls] get_weather({"location": "Boston, MA"})\n'
+            'tool: {"temperature": 72, "condition": "sunny"}'
+        )

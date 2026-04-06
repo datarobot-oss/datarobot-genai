@@ -18,42 +18,31 @@ MCP integration for CrewAI using MCPServerAdapter.
 This module provides MCP server connection management for CrewAI agents.
 """
 
-from collections.abc import Generator
-from contextlib import contextmanager
-from typing import Any
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
+from crewai.tools import BaseTool
 from crewai_tools import MCPServerAdapter
 
-from datarobot_genai.core.mcp.common import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
+
+logger = logging.getLogger(__name__)
 
 
-@contextmanager
-def mcp_tools_context(
-    authorization_context: dict[str, Any] | None = None,
-    forwarded_headers: dict[str, str] | None = None,
-) -> Generator[list[Any], None, None]:
+# here it is async to conform with other MCP adapters
+@asynccontextmanager
+async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTool], None]:
     """Context manager for MCP tools that handles connection lifecycle."""
-    config = MCPConfig(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
     # If no MCP server configured, return empty tools list
-    if not config.server_config:
-        print("No MCP server configured, using empty tools list", flush=True)
+    if not mcp_config.server_config:
+        logger.info("No MCP server configured, using empty tools list")
         yield []
         return
 
-    print(f"Connecting to MCP server: {config.server_config['url']}", flush=True)
+    logger.info(f"Connecting to MCP server: {mcp_config.server_config['url']}")
 
     # Use MCPServerAdapter as context manager with the server config
-    try:
-        with MCPServerAdapter(config.server_config) as tools:
-            print(
-                f"Successfully connected to MCP server, got {len(tools)} tools",
-                flush=True,
-            )
-            yield tools
-    except Exception as exc:
-        # Gracefully degrade when connection fails or adapter initialization raises
-        print(f"Failed to connect to MCP server: {exc}", flush=True)
-        yield []
+    with MCPServerAdapter(mcp_config.server_config) as tools:
+        logger.info(f"Successfully connected to MCP server, got {len(tools)} tools")
+        yield tools

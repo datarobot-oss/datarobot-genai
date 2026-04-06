@@ -19,18 +19,16 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
-
-from datarobot_genai.drmcp import dr_mcp_integration_tool
-from datarobot_genai.drtools.clients.microsoft_graph import MicrosoftGraphClient
-from datarobot_genai.drtools.clients.microsoft_graph import get_microsoft_graph_access_token
-from datarobot_genai.drtools.clients.microsoft_graph import validate_site_url
+from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphClient
+from datarobot_genai.drtools.core.clients.microsoft_graph import get_microsoft_graph_access_token
+from datarobot_genai.drtools.core.clients.microsoft_graph import validate_site_url
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={
         "microsoft",
         "graph api",
@@ -90,7 +88,7 @@ async def microsoft_graph_search_content(
         "Required when using application permissions to search SharePoint content in "
         "specific regions.",
     ] = None,
-) -> ToolResult | ToolError:
+) -> dict[str, Any]:
     """
     Search for SharePoint and OneDrive content using Microsoft Graph Search API.
 
@@ -168,22 +166,18 @@ async def microsoft_graph_search_content(
         }
         results.append(result_dict)
 
-    return ToolResult(
-        structured_content={
-            "query": search_query,
-            "siteUrl": site_url,
-            "siteId": site_id,
-            "from": from_offset,
-            "size": size,
-            "results": results,
-            "count": len(results),
-        },
-    )
+    return {
+        "query": search_query,
+        "siteUrl": site_url,
+        "siteId": site_id,
+        "from": from_offset,
+        "size": size,
+        "results": results,
+        "count": len(results),
+    }
 
 
-@dr_mcp_integration_tool(
-    tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False
-)
+@tool_metadata(tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False)
 async def microsoft_graph_share_item(
     *,
     file_id: Annotated[str, "The ID of the file or folder to share."],
@@ -193,7 +187,7 @@ async def microsoft_graph_share_item(
     send_invitation: Annotated[
         bool, "Flag determining if recipients should be notified. Default False"
     ] = False,
-) -> ToolResult | ToolError:
+) -> dict[str, Any]:
     """
     Share a SharePoint or Onedrive file or folder with one or more users.
     It works with internal users or existing guest users in the
@@ -228,18 +222,16 @@ async def microsoft_graph_share_item(
             send_invitation=send_invitation,
         )
 
-    return ToolResult(
-        structured_content={
-            "fileId": file_id,
-            "documentLibraryId": document_library_id,
-            "recipientEmails": recipient_emails,
-            "n": len(recipient_emails),
-            "role": role,
-        },
-    )
+    return {
+        "fileId": file_id,
+        "documentLibraryId": document_library_id,
+        "recipientEmails": recipient_emails,
+        "n": len(recipient_emails),
+        "role": role,
+    }
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={
         "microsoft",
         "graph api",
@@ -264,7 +256,7 @@ async def microsoft_create_file(
         str | None,
         "ID of the parent folder. Defaults to 'root' (root of the drive).",
     ] = "root",
-) -> ToolResult | ToolError:
+) -> dict[str, Any]:
     """
     Create a new text file in SharePoint or OneDrive.
 
@@ -306,19 +298,17 @@ async def microsoft_create_file(
             conflict_behavior="rename",
         )
 
-    return ToolResult(
-        structured_content={
-            "file_name": created_file.name,
-            "destination": "onedrive" if is_personal_onedrive else "sharepoint",
-            "driveId": drive_id,
-            "id": created_file.id,
-            "webUrl": created_file.web_url,
-            "parentFolderId": created_file.parent_folder_id,
-        },
-    )
+    return {
+        "file_name": created_file.name,
+        "destination": "onedrive" if is_personal_onedrive else "sharepoint",
+        "driveId": drive_id,
+        "id": created_file.id,
+        "webUrl": created_file.web_url,
+        "parentFolderId": created_file.parent_folder_id,
+    }
 
 
-@dr_mcp_integration_tool(
+@tool_metadata(
     tags={
         "microsoft",
         "graph api",
@@ -353,7 +343,7 @@ async def microsoft_update_metadata(
         "The drive ID (required for OneDrive/drive item updates). "
         "Cannot be used together with site_id and list_id.",
     ] = None,
-) -> ToolResult | ToolError:
+) -> dict[str, Any]:
     """
     Update metadata on a SharePoint list item or OneDrive/SharePoint drive item.
 
@@ -443,6 +433,4 @@ async def microsoft_update_metadata(
         else:
             structured["updated_fields"] = result
 
-    return ToolResult(
-        structured_content=structured,
-    )
+    return structured
