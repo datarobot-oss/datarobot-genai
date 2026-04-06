@@ -32,6 +32,7 @@ from langgraph.graph.message import MessagesState
 from langgraph.graph.state import Command
 from langgraph.graph.state import StateGraph
 
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.agent import LangGraphAgent
 
 
@@ -208,6 +209,50 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
         return {}
 
 
+class FakeMemoryClient(BaseMemoryClient):
+    def __init__(self, retrieved: str = "saved memory") -> None:
+        self.retrieved = retrieved
+        self.retrieve_calls: list[dict[str, Any]] = []
+        self.store_calls: list[dict[str, Any]] = []
+
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        self.retrieve_calls.append(
+            {
+                "prompt": prompt,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+        return self.retrieved
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        self.store_calls.append(
+            {
+                "user_message": user_message,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+
+
 def test_convert_input_message_includes_history() -> None:
     """convert_input_message should include history when template uses {chat_history}."""
     agent = HistoryAwareLangGraphAgent()
@@ -241,6 +286,28 @@ def test_convert_input_message_includes_history() -> None:
     assert "system: You are a helper." in system_content
     assert "First question" in system_content
     assert "First answer" in system_content
+
+
+def test_convert_input_message_includes_memory_when_present_in_state() -> None:
+    """Memory is appended when the template lacks a dedicated memory field."""
+    agent = SimpleLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(id="user_1", content='{"topic": "Paris"}')],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={"memory_context": "User previously asked about Europe."},
+        context=[],
+    )
+
+    command = agent.convert_input_message(run_agent_input)
+    all_messages = command.update["messages"]
+
+    assert len(all_messages) == 2
+    assert isinstance(all_messages[1], HumanMessage)
+    assert "Relevant memory:" in str(all_messages[1].content)
+    assert "User previously asked about Europe." in str(all_messages[1].content)
 
 
 def test_convert_input_message_truncates_history() -> None:
@@ -430,6 +497,35 @@ async def test_langgraph_non_streaming(run_agent_input):
     assert usage_metrics["total_tokens"] == 200
     assert usage_metrics["prompt_tokens"] == 100
     assert usage_metrics["completion_tokens"] == 100
+
+
+async def test_langgraph_invoke_retrieves_and_stores_memory(run_agent_input) -> None:
+    # GIVEN a langgraph agent with a memory client
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = SimpleLangGraphAgent(memory_client=memory_client)
+
+    # WHEN invoking the agent
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN memory retrieval is scoped to the thread and storage is scoped to the run
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": '{"topic": "AI"}',
+            "run_id": None,
+            "agent_id": "SimpleLangGraphAgent",
+            "app_id": "tests.langgraph.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == [
+        {
+            "user_message": '{"topic": "AI"}',
+            "run_id": "run_id",
+            "agent_id": "SimpleLangGraphAgent",
+            "app_id": "tests.langgraph.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:
