@@ -78,7 +78,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
-    def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
         By default this:
@@ -99,11 +99,17 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         uses_chat_history = "chat_history" in vars_list
         history_summary = self.build_history_summary(run_agent_input) if uses_chat_history else ""
 
+        uses_memory = "memory" in vars_list
+        memory = (
+            await self.retrieve_memory_for_run(user_prompt, run_agent_input) if uses_memory else ""
+        )
+
         # Prefer structured dict input when available so templates can access both
         # the original fields (e.g. {topic}) and a plain-text {chat_history}.
         if isinstance(user_prompt, Mapping):
             template_input: Any = dict(user_prompt)
             template_input.setdefault("chat_history", history_summary)
+            template_input.setdefault("memory", memory)
         elif vars_list:
             # When the prompt is a bare value, best-effort map it into the declared
             # input variables. Known variable "chat_history" always receives the
@@ -112,10 +118,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             for name in vars_list:
                 if name == "chat_history":
                     template_input[name] = history_summary
+                elif name == "memory":
+                    template_input[name] = memory
                 else:
                     template_input[name] = user_prompt
         else:
-            # No declared variables: preserve pre-history behaviour.
+            # No declared variables: preserve pre-history and pre-memory behaviour.
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
@@ -163,7 +171,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 raise
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        input_command = self.convert_input_message(run_agent_input)
+        input_command = await self.convert_input_message(run_agent_input)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
         )
