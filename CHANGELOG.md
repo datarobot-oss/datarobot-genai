@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.10.4
+- Update Langgraph template to support mem0 store and retrieve long term memory
+
 ## 0.10.3
 - Updated `openai` and `litellm`, and removed unused transitive dependencies.
 
