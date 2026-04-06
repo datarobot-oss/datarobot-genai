@@ -98,17 +98,23 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         self,
         run_agent_input: RunAgentInput,
     ) -> tuple[Any, Command]:
-        user_prompt = extract_user_prompt_content(run_agent_input)
-        memory = ""
-        state = getattr(run_agent_input, "state", {})
-        if isinstance(state, dict):
-            memory = str(state.get("memory") or "")
-
+        user_prompt, memory = self._extract_prompt_and_memory(run_agent_input)
         return user_prompt, self._convert_input_message_internal(
             run_agent_input=run_agent_input,
             user_prompt=user_prompt,
             memory=memory,
         )
+
+    def _extract_prompt_and_memory(
+        self,
+        run_agent_input: RunAgentInput,
+    ) -> tuple[Any, str]:
+        user_prompt = extract_user_prompt_content(run_agent_input)
+        memory = ""
+        state = getattr(run_agent_input, "state", {})
+        if isinstance(state, dict):
+            memory = str(state.get("memory") or "")
+        return user_prompt, memory
 
     def _convert_input_message_internal(
         self,
@@ -150,29 +156,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             template_input = self._stringify_memory_value(user_prompt)
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
-        if memory and "memory" not in vars_list:
-            current_messages = self._append_memory_to_first_message(current_messages, memory)
         command = Command(  # type: ignore[var-annotated]
             update={
                 "messages": current_messages,
             },
         )
         return command
-
-    def _append_memory_to_first_message(
-        self,
-        messages: list[Any],
-        memory: str,
-    ) -> list[Any]:
-        updated_messages = list(messages)
-        for index, message in enumerate(updated_messages):
-            content = getattr(message, "content", None)
-            if isinstance(content, str):
-                updated_messages[index] = message.model_copy(
-                    update={"content": self.append_memory_context(content, memory)}
-                )
-                break
-        return updated_messages
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.
@@ -211,7 +200,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 raise
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        initial_prompt, _ = self._prepare_input_command(run_agent_input)
+        initial_prompt, _ = self._extract_prompt_and_memory(run_agent_input)
         try:
             memory = await self.retrieve_memory_for_run(initial_prompt, run_agent_input)
         except Exception as exc:
