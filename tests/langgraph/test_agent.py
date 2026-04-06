@@ -210,8 +210,8 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
 
 
 class LegacyOverrideLangGraphAgent(SimpleLangGraphAgent):
-    def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
-        return super().convert_input_message(run_agent_input)
+    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+        return await super().convert_input_message(run_agent_input)
 
 
 class FakeMemoryClient(BaseMemoryClient):
@@ -280,7 +280,7 @@ class FailingMemoryClient(BaseMemoryClient):
         raise RuntimeError("mem0 store unavailable")
 
 
-def test_convert_input_message_includes_history() -> None:
+async def test_convert_input_message_includes_history() -> None:
     """convert_input_message should include history when template uses {chat_history}."""
     agent = HistoryAwareLangGraphAgent()
     run_agent_input = RunAgentInput(
@@ -298,7 +298,7 @@ def test_convert_input_message_includes_history() -> None:
         context=[],
     )
 
-    command = agent.convert_input_message(run_agent_input)
+    command = await agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
     # History is embedded as string in the template, so we expect 2 messages:
@@ -315,7 +315,7 @@ def test_convert_input_message_includes_history() -> None:
     assert "First answer" in system_content
 
 
-def test_convert_input_message_truncates_history() -> None:
+async def test_convert_input_message_truncates_history() -> None:
     """History is truncated to max_history_messages prior turns."""
     agent = HistoryAwareLangGraphAgent()
     max_history = agent.max_history_messages
@@ -336,7 +336,7 @@ def test_convert_input_message_truncates_history() -> None:
         context=[],
     )
 
-    command = agent.convert_input_message(run_agent_input)
+    command = await agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
     # We expect 2 templated messages (system + user)
@@ -353,7 +353,7 @@ def test_convert_input_message_truncates_history() -> None:
     assert '"topic": "Topic 9"' in system_content
 
 
-def test_convert_input_message_injects_chat_history_variable() -> None:
+async def test_convert_input_message_injects_chat_history_variable() -> None:
     """convert_input_message should provide {chat_history} to the prompt template."""
     agent = HistoryAwareLangGraphAgent()
     run_agent_input = RunAgentInput(
@@ -371,7 +371,7 @@ def test_convert_input_message_injects_chat_history_variable() -> None:
         context=[],
     )
 
-    command = agent.convert_input_message(run_agent_input)
+    command = await agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
     # Find the system message generated from the prompt template and assert that
@@ -391,7 +391,7 @@ def test_convert_input_message_injects_chat_history_variable() -> None:
     assert "Follow-up" not in history_text
 
 
-def test_convert_input_message_zero_history_disables_history() -> None:
+async def test_convert_input_message_zero_history_disables_history() -> None:
     """When max_history_messages is 0, no prior turns are included."""
     agent = SimpleLangGraphAgent(max_history_messages=0)
 
@@ -410,7 +410,7 @@ def test_convert_input_message_zero_history_disables_history() -> None:
         context=[],
     )
 
-    command = agent.convert_input_message(run_agent_input)
+    command = await agent.convert_input_message(run_agent_input)
     all_messages = command.update["messages"]
 
     # Only the templated messages for the final user turn should remain.
