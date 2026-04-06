@@ -212,3 +212,10 @@ async def test_retrieve_formats_search_results(monkeypatch: Any) -> None:
     result = await client.retrieve(prompt="hello")
 
     assert result == "first\nsecond\nthird"
+
+
+def test_format_search_result_ignores_none_payloads(monkeypatch: Any) -> None:
+    mem0client = _load_mem0client_module(monkeypatch)
+
+    assert mem0client.Mem0Client._format_search_result(None) == ""
+    assert mem0client.Mem0Client._format_search_result({"results": None}) == ""

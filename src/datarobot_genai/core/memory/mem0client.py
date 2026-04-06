@@ -92,10 +92,14 @@ class Mem0Client(BaseMemoryClient):
 
     @staticmethod
     def _format_search_result(result: Any) -> str:
+        if result is None:
+            return ""
         if isinstance(result, str):
             return result
 
         items = result.get("results", []) if isinstance(result, dict) else result
+        if items is None:
+            return ""
         if not isinstance(items, list):
             return str(items)
 
