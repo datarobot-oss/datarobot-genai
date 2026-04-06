@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
+import copy
 import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
@@ -81,7 +82,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def convert_input_message(
         self,
         run_agent_input: RunAgentInput,
-        memory_context: str = "",
     ) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
@@ -92,7 +92,23 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
           `{chat_history}` variable.
         """
         user_prompt = extract_user_prompt_content(run_agent_input)
+        memory_context = ""
+        state = getattr(run_agent_input, "state", {})
+        if isinstance(state, dict):
+            memory_context = str(state.get("memory_context") or "")
 
+        return self._convert_input_message_internal(
+            run_agent_input=run_agent_input,
+            user_prompt=user_prompt,
+            memory_context=memory_context,
+        )
+
+    def _convert_input_message_internal(
+        self,
+        run_agent_input: RunAgentInput,
+        user_prompt: Any,
+        memory_context: str,
+    ) -> Command:
         # Chat history is opt-in: the model only sees history when the prompt
         # template declares/uses the `{chat_history}` variable.
         input_vars = getattr(self.prompt_template, "input_variables", [])
@@ -108,16 +124,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         if isinstance(user_prompt, Mapping):
             template_input: Any = dict(user_prompt)
             template_input.setdefault("chat_history", history_summary)
-            if memory_context:
-                if "memory_context" in vars_list:
-                    template_input.setdefault("memory_context", memory_context)
-                else:
-                    for name in vars_list:
-                        if name != "chat_history" and name in template_input:
-                            template_input[name] = self.append_memory_context(
-                                self._stringify_memory_value(template_input[name]),
-                                memory_context,
-                            )
+            if "memory_context" in vars_list:
+                template_input.setdefault("memory_context", memory_context)
         elif vars_list:
             # When the prompt is a bare value, best-effort map it into the declared
             # input variables. Known variable "chat_history" always receives the
@@ -129,24 +137,37 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 elif name == "memory_context":
                     template_input[name] = memory_context
                 else:
-                    template_input[name] = self.append_memory_context(
-                        self._stringify_memory_value(user_prompt),
-                        memory_context,
-                    )
+                    template_input[name] = self._stringify_memory_value(user_prompt)
         else:
             # No declared variables: preserve pre-history behaviour.
-            template_input = self.append_memory_context(
-                self._stringify_memory_value(user_prompt),
-                memory_context,
-            )
+            template_input = self._stringify_memory_value(user_prompt)
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
+        if memory_context and "memory_context" not in vars_list:
+            current_messages = self._append_memory_to_first_message(
+                current_messages, memory_context
+            )
         command = Command(  # type: ignore[var-annotated]
             update={
                 "messages": current_messages,
             },
         )
         return command
+
+    def _append_memory_to_first_message(
+        self,
+        messages: list[Any],
+        memory_context: str,
+    ) -> list[Any]:
+        updated_messages = list(messages)
+        for index, message in enumerate(updated_messages):
+            content = getattr(message, "content", None)
+            if isinstance(content, str):
+                updated_messages[index] = message.model_copy(
+                    update={"content": self.append_memory_context(content, memory_context)}
+                )
+                break
+        return updated_messages
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.
@@ -186,12 +207,20 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         user_prompt = extract_user_prompt_content(run_agent_input)
-        memory_context = await self.retrieve_memory_for_run(user_prompt, run_agent_input)
-        input_command = self.convert_input_message(
-            run_agent_input,
-            memory_context=memory_context,
-        )
-        await self.store_memory_for_run(user_prompt, run_agent_input)
+        try:
+            memory_context = await self.retrieve_memory_for_run(user_prompt, run_agent_input)
+        except Exception as exc:
+            logger.warning("Memory retrieval failed: %s", exc)
+            memory_context = ""
+        prompt_input = self._with_memory_context(run_agent_input, memory_context)
+        if type(self).convert_input_message is LangGraphAgent.convert_input_message:
+            input_command = self._convert_input_message_internal(
+                run_agent_input=prompt_input,
+                user_prompt=user_prompt,
+                memory_context=memory_context,
+            )
+        else:
+            input_command = self.convert_input_message(prompt_input)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
         )
@@ -219,13 +248,30 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "total_tokens": 0,
         }
 
-        return self._stream_generator(graph_stream, usage_metrics, run_agent_input)
+        return self._stream_generator(graph_stream, usage_metrics, run_agent_input, user_prompt)
+
+    def _with_memory_context(
+        self,
+        run_agent_input: RunAgentInput,
+        memory_context: str,
+    ) -> RunAgentInput:
+        state = getattr(run_agent_input, "state", {})
+        next_state = dict(state) if isinstance(state, dict) else {}
+        next_state["memory_context"] = memory_context
+
+        if hasattr(run_agent_input, "model_copy"):
+            return run_agent_input.model_copy(update={"state": next_state})
+
+        copied_input = copy.copy(run_agent_input)
+        copied_input.state = next_state
+        return copied_input
 
     async def _stream_generator(
         self,
         graph_stream: AsyncGenerator[tuple[Any, str, Any], None],
         usage_metrics: UsageMetrics,
         run_agent_input: RunAgentInput,
+        user_prompt: Any,
     ) -> InvokeReturn:
         # Partial AG-UI: workflow lifecycle events
         thread_id = run_agent_input.thread_id
@@ -355,6 +401,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
+
+        try:
+            await self.store_memory_for_run(user_prompt, run_agent_input)
+        except Exception as exc:
+            logger.warning("Memory storage failed: %s", exc)
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),
