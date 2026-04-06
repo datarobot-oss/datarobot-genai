@@ -324,12 +324,12 @@ def test_convert_input_message_includes_memory_when_passed_explicitly() -> None:
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
         thread_id="thread_id",
         run_id="run_id",
-        state={"memory_context": "ignored"},
+        state={"memory": "ignored"},
         context=[],
     )
 
     command = agent.convert_input_message(
-        agent._with_memory_context(
+        agent._with_memory(
             run_agent_input,
             "User previously asked about Europe.",
         )
@@ -356,7 +356,7 @@ def test_convert_input_message_does_not_duplicate_memory_across_messages() -> No
     )
 
     command = agent.convert_input_message(
-        agent._with_memory_context(run_agent_input, "User previously asked about Europe.")
+        agent._with_memory(run_agent_input, "User previously asked about Europe.")
     )
     all_messages = command.update["messages"]
     rendered = "\n".join(str(message.content) for message in all_messages)
@@ -378,7 +378,7 @@ def test_convert_input_message_includes_memory_when_state_is_none() -> None:
     )
 
     command = agent.convert_input_message(
-        agent._with_memory_context(
+        agent._with_memory(
             run_agent_input,
             "User previously asked about Europe.",
         )
