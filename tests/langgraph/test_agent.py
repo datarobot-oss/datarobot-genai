@@ -209,6 +209,11 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
         return {}
 
 
+class LegacyOverrideLangGraphAgent(SimpleLangGraphAgent):
+    def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+        return super().convert_input_message(run_agent_input)
+
+
 class FakeMemoryClient(BaseMemoryClient):
     def __init__(self, retrieved: str = "saved memory") -> None:
         self.retrieved = retrieved
@@ -251,6 +256,28 @@ class FakeMemoryClient(BaseMemoryClient):
                 "attributes": attributes,
             }
         )
+
+
+class FailingMemoryClient(BaseMemoryClient):
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        raise RuntimeError("mem0 retrieve unavailable")
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        raise RuntimeError("mem0 store unavailable")
 
 
 def test_convert_input_message_includes_history() -> None:
@@ -302,15 +329,39 @@ def test_convert_input_message_includes_memory_when_passed_explicitly() -> None:
     )
 
     command = agent.convert_input_message(
-        run_agent_input,
-        memory_context="User previously asked about Europe.",
+        agent._with_memory_context(
+            run_agent_input,
+            "User previously asked about Europe.",
+        )
     )
     all_messages = command.update["messages"]
 
     assert len(all_messages) == 2
-    assert isinstance(all_messages[1], HumanMessage)
-    assert "Relevant memory:" in str(all_messages[1].content)
-    assert "User previously asked about Europe." in str(all_messages[1].content)
+    assert isinstance(all_messages[0], SystemMessage)
+    assert "Relevant memory:" in str(all_messages[0].content)
+    assert "User previously asked about Europe." in str(all_messages[0].content)
+
+
+def test_convert_input_message_does_not_duplicate_memory_across_messages() -> None:
+    """Memory is attached once even when the same template variable is reused."""
+    agent = SimpleLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(id="user_1", content='{"topic": "Paris"}')],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    command = agent.convert_input_message(
+        agent._with_memory_context(run_agent_input, "User previously asked about Europe.")
+    )
+    all_messages = command.update["messages"]
+    rendered = "\n".join(str(message.content) for message in all_messages)
+
+    assert rendered.count("Relevant memory:") == 1
 
 
 def test_convert_input_message_includes_memory_when_state_is_none() -> None:
@@ -327,15 +378,17 @@ def test_convert_input_message_includes_memory_when_state_is_none() -> None:
     )
 
     command = agent.convert_input_message(
-        run_agent_input,
-        memory_context="User previously asked about Europe.",
+        agent._with_memory_context(
+            run_agent_input,
+            "User previously asked about Europe.",
+        )
     )
     all_messages = command.update["messages"]
 
     assert len(all_messages) == 2
-    assert isinstance(all_messages[1], HumanMessage)
-    assert "Relevant memory:" in str(all_messages[1].content)
-    assert "User previously asked about Europe." in str(all_messages[1].content)
+    assert isinstance(all_messages[0], SystemMessage)
+    assert "Relevant memory:" in str(all_messages[0].content)
+    assert "User previously asked about Europe." in str(all_messages[0].content)
 
 
 def test_convert_input_message_truncates_history() -> None:
@@ -554,6 +607,56 @@ async def test_langgraph_invoke_retrieves_and_stores_memory(run_agent_input) -> 
             "attributes": {"thread_id": "thread_id"},
         }
     ]
+
+
+async def test_langgraph_invoke_gracefully_degrades_when_memory_fails(run_agent_input) -> None:
+    # GIVEN a langgraph agent whose memory provider errors at runtime
+    agent = SimpleLangGraphAgent(memory_client=FailingMemoryClient())
+
+    # WHEN invoking the agent
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN the agent still completes successfully without failing the request
+    assert events
+    assert events[-1][0].type == EventType.RUN_FINISHED
+
+
+async def test_langgraph_invoke_supports_legacy_convert_input_override(run_agent_input) -> None:
+    # GIVEN a subclass overriding convert_input_message with the original signature
+    agent = LegacyOverrideLangGraphAgent(
+        memory_client=FakeMemoryClient(retrieved="Use concise answers.")
+    )
+
+    # WHEN invoking the agent
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN the override still works and the run completes
+    assert events
+    assert events[-1][0].type == EventType.RUN_FINISHED
+
+
+async def test_langgraph_does_not_store_memory_when_run_fails(run_agent_input) -> None:
+    # GIVEN an agent whose stream fails before completion
+    class FailingWorkflowAgent(SimpleLangGraphAgent):
+        @cached_property
+        def workflow(self) -> StateGraph[MessagesState]:
+            async def failing_stream():
+                raise RuntimeError("graph failed")
+                yield  # pragma: no cover
+
+            return Mock(
+                compile=Mock(return_value=Mock(astream=Mock(return_value=failing_stream())))
+            )
+
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = FailingWorkflowAgent(memory_client=memory_client)
+
+    # WHEN invoking the agent and the graph fails
+    with pytest.raises(RuntimeError, match="graph failed"):
+        _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN the user message is not persisted because the run did not finish
+    assert memory_client.store_calls == []
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:
