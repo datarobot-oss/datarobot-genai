@@ -91,13 +91,20 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         - Includes prior turns only when the prompt template opts in via a
           `{chat_history}` variable.
         """
+        _, command = self._prepare_input_command(run_agent_input)
+        return command
+
+    def _prepare_input_command(
+        self,
+        run_agent_input: RunAgentInput,
+    ) -> tuple[Any, Command]:
         user_prompt = extract_user_prompt_content(run_agent_input)
         memory_context = ""
         state = getattr(run_agent_input, "state", {})
         if isinstance(state, dict):
             memory_context = str(state.get("memory_context") or "")
 
-        return self._convert_input_message_internal(
+        return user_prompt, self._convert_input_message_internal(
             run_agent_input=run_agent_input,
             user_prompt=user_prompt,
             memory_context=memory_context,
@@ -143,7 +150,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             template_input = self._stringify_memory_value(user_prompt)
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
-        if memory_context and "memory_context" not in vars_list:
+        if memory_context and "memory" not in vars_list:
             current_messages = self._append_memory_to_first_message(
                 current_messages, memory_context
             )
@@ -206,20 +213,17 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 raise
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        user_prompt = extract_user_prompt_content(run_agent_input)
+        initial_prompt, _ = self._prepare_input_command(run_agent_input)
         try:
-            memory_context = await self.retrieve_memory_for_run(user_prompt, run_agent_input)
+            memory_context = await self.retrieve_memory_for_run(initial_prompt, run_agent_input)
         except Exception as exc:
             logger.warning("Memory retrieval failed: %s", exc)
             memory_context = ""
         prompt_input = self._with_memory_context(run_agent_input, memory_context)
         if type(self).convert_input_message is LangGraphAgent.convert_input_message:
-            input_command = self._convert_input_message_internal(
-                run_agent_input=prompt_input,
-                user_prompt=user_prompt,
-                memory_context=memory_context,
-            )
+            user_prompt, input_command = self._prepare_input_command(prompt_input)
         else:
+            user_prompt = initial_prompt
             input_command = self.convert_input_message(prompt_input)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
