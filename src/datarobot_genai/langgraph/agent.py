@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
-import copy
 import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Mapping
@@ -79,10 +78,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
-    def convert_input_message(
-        self,
-        run_agent_input: RunAgentInput,
-    ) -> Command:
+    def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
         By default this:
@@ -91,37 +87,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         - Includes prior turns only when the prompt template opts in via a
           `{chat_history}` variable.
         """
-        _, command = self._prepare_input_command(run_agent_input)
-        return command
-
-    def _prepare_input_command(
-        self,
-        run_agent_input: RunAgentInput,
-    ) -> tuple[Any, Command]:
-        user_prompt, memory = self._extract_prompt_and_memory(run_agent_input)
-        return user_prompt, self._convert_input_message_internal(
-            run_agent_input=run_agent_input,
-            user_prompt=user_prompt,
-            memory=memory,
-        )
-
-    def _extract_prompt_and_memory(
-        self,
-        run_agent_input: RunAgentInput,
-    ) -> tuple[Any, str]:
         user_prompt = extract_user_prompt_content(run_agent_input)
-        memory = ""
-        state = getattr(run_agent_input, "state", {})
-        if isinstance(state, dict):
-            memory = str(state.get("memory") or "")
-        return user_prompt, memory
 
-    def _convert_input_message_internal(
-        self,
-        run_agent_input: RunAgentInput,
-        user_prompt: Any,
-        memory: str,
-    ) -> Command:
         # Chat history is opt-in: the model only sees history when the prompt
         # template declares/uses the `{chat_history}` variable.
         input_vars = getattr(self.prompt_template, "input_variables", [])
@@ -137,8 +104,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         if isinstance(user_prompt, Mapping):
             template_input: Any = dict(user_prompt)
             template_input.setdefault("chat_history", history_summary)
-            if "memory" in vars_list:
-                template_input.setdefault("memory", memory)
         elif vars_list:
             # When the prompt is a bare value, best-effort map it into the declared
             # input variables. Known variable "chat_history" always receives the
@@ -147,13 +112,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             for name in vars_list:
                 if name == "chat_history":
                     template_input[name] = history_summary
-                elif name == "memory":
-                    template_input[name] = memory
                 else:
-                    template_input[name] = self._stringify_memory_value(user_prompt)
+                    template_input[name] = user_prompt
         else:
             # No declared variables: preserve pre-history behaviour.
-            template_input = self._stringify_memory_value(user_prompt)
+            template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
         command = Command(  # type: ignore[var-annotated]
@@ -200,18 +163,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 raise
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        initial_prompt, _ = self._extract_prompt_and_memory(run_agent_input)
-        try:
-            memory = await self.retrieve_memory_for_run(initial_prompt, run_agent_input)
-        except Exception as exc:
-            logger.warning("Memory retrieval failed: %s", exc)
-            memory = ""
-        prompt_input = self._with_memory(run_agent_input, memory)
-        if type(self).convert_input_message is LangGraphAgent.convert_input_message:
-            user_prompt, input_command = self._prepare_input_command(prompt_input)
-        else:
-            user_prompt = initial_prompt
-            input_command = self.convert_input_message(prompt_input)
+        input_command = self.convert_input_message(run_agent_input)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
         )
@@ -239,30 +191,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "total_tokens": 0,
         }
 
-        return self._stream_generator(graph_stream, usage_metrics, run_agent_input, user_prompt)
-
-    def _with_memory(
-        self,
-        run_agent_input: RunAgentInput,
-        memory: str,
-    ) -> RunAgentInput:
-        state = getattr(run_agent_input, "state", {})
-        next_state = dict(state) if isinstance(state, dict) else {}
-        next_state["memory"] = memory
-
-        if hasattr(run_agent_input, "model_copy"):
-            return run_agent_input.model_copy(update={"state": next_state})
-
-        copied_input = copy.copy(run_agent_input)
-        copied_input.state = next_state
-        return copied_input
+        return self._stream_generator(graph_stream, usage_metrics, run_agent_input)
 
     async def _stream_generator(
         self,
         graph_stream: AsyncGenerator[tuple[Any, str, Any], None],
         usage_metrics: UsageMetrics,
         run_agent_input: RunAgentInput,
-        user_prompt: Any,
     ) -> InvokeReturn:
         # Partial AG-UI: workflow lifecycle events
         thread_id = run_agent_input.thread_id
@@ -392,11 +327,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-
-        try:
-            await self.store_memory_for_run(user_prompt, run_agent_input)
-        except Exception as exc:
-            logger.warning("Memory storage failed: %s", exc)
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),
