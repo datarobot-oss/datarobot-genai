@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.10.2"
+version = "0.10.3"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -41,12 +41,14 @@ datarobot_genai = [
 package = true
 override-dependencies = [
   "crewai[litellm]>=1.1.0,<2.0.0",
-  "litellm>=1.72.1,<2.0.0,!=1.82.7,!=1.82.8",
+  "litellm>=1.83.0,<2.0.0",
   "ragas>=0.3.8,<0.4.0",
   "onnxruntime==1.23.1; python_version == '3.10'",
 ]
 exclude-dependencies = [
   "uv",
+  "langchain-milvus",
+  "pymilvus",
 ]
 
 [dependency-groups]

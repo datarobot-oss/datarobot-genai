@@ -26,7 +26,7 @@ core = [
     "datarobot>=3.10.0,<4.0.0",
     "datarobot-early-access==3.14.0.2026.3.18.162920",
     "datarobot-predict>=1.13.2,<2.0.0",
-    "openai>=1.76.2,<2.0.0",
+    "openai>=2.0.0,<3.0.0",
     "ragas>=0.3.8,<0.4.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
@@ -125,7 +125,7 @@ drtools = auth + [
 drmcp = drtools + [
     "fastmcp>=2.13.0.2,<3.0.0",
     "requests>=2.32.4,<3.0.0",
-    "openai>=1.76.2,<2.0.0",
+    "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
