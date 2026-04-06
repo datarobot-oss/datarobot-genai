@@ -113,6 +113,5 @@ class Mem0Client(BaseMemoryClient):
                 value = item.get(key)
                 if value:
                     texts.append(str(value))
-                    break
 
         return "\n".join(dict.fromkeys(texts))
