@@ -78,7 +78,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
-    def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+    def convert_input_message(
+        self,
+        run_agent_input: RunAgentInput,
+        memory_context: str = "",
+    ) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
         By default this:
@@ -88,11 +92,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
           `{chat_history}` variable.
         """
         user_prompt = extract_user_prompt_content(run_agent_input)
-        memory_context = ""
-        if hasattr(run_agent_input, "state"):
-            state = getattr(run_agent_input, "state", {})
-            if isinstance(state, dict):
-                memory_context = str(state.get("memory_context") or "")
 
         # Chat history is opt-in: the model only sees history when the prompt
         # template declares/uses the `{chat_history}` variable.
@@ -188,9 +187,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         user_prompt = extract_user_prompt_content(run_agent_input)
         memory_context = await self.retrieve_memory_for_run(user_prompt, run_agent_input)
-        if isinstance(run_agent_input.state, dict):
-            run_agent_input.state["memory_context"] = memory_context
-        input_command = self.convert_input_message(run_agent_input)
+        input_command = self.convert_input_message(
+            run_agent_input,
+            memory_context=memory_context,
+        )
         await self.store_memory_for_run(user_prompt, run_agent_input)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",

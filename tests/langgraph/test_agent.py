@@ -288,7 +288,7 @@ def test_convert_input_message_includes_history() -> None:
     assert "First answer" in system_content
 
 
-def test_convert_input_message_includes_memory_when_present_in_state() -> None:
+def test_convert_input_message_includes_memory_when_passed_explicitly() -> None:
     """Memory is appended when the template lacks a dedicated memory field."""
     agent = SimpleLangGraphAgent()
     run_agent_input = RunAgentInput(
@@ -297,11 +297,39 @@ def test_convert_input_message_includes_memory_when_present_in_state() -> None:
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
         thread_id="thread_id",
         run_id="run_id",
-        state={"memory_context": "User previously asked about Europe."},
+        state={"memory_context": "ignored"},
         context=[],
     )
 
-    command = agent.convert_input_message(run_agent_input)
+    command = agent.convert_input_message(
+        run_agent_input,
+        memory_context="User previously asked about Europe.",
+    )
+    all_messages = command.update["messages"]
+
+    assert len(all_messages) == 2
+    assert isinstance(all_messages[1], HumanMessage)
+    assert "Relevant memory:" in str(all_messages[1].content)
+    assert "User previously asked about Europe." in str(all_messages[1].content)
+
+
+def test_convert_input_message_includes_memory_when_state_is_none() -> None:
+    """Retrieved memory is still injected even when AG-UI state is not a dict."""
+    agent = SimpleLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(id="user_1", content='{"topic": "Paris"}')],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state=None,
+        context=[],
+    )
+
+    command = agent.convert_input_message(
+        run_agent_input,
+        memory_context="User previously asked about Europe.",
+    )
     all_messages = command.update["messages"]
 
     assert len(all_messages) == 2
