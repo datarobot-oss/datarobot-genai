@@ -17,51 +17,73 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import Any
+from datarobot_genai.core.config import Config
+from datarobot_genai.core.utils.llm import _patch_llm_based_on_config
 
-from nat.builder.framework_enum import LLMFrameworkEnum
-from nat.utils.responses_api import validate_no_responses_api
-
-from datarobot_genai.nat.datarobot_llm_clients import _create_datarobot_litellm
-from datarobot_genai.nat.datarobot_llm_clients import _patch_llm_based_on_config
-from datarobot_genai.nat.datarobot_llm_providers import Config
-from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
-from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 
 if TYPE_CHECKING:
     from llama_index.llms.litellm import LiteLLM
 
 
-def get_gateway_llm(llm_name: str) -> LiteLLM:
-    llm_config = DataRobotLLMGatewayModelConfig(model=llm_name)
-    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
-    config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type"},
-        by_alias=True,
-        exclude_none=True,
-    )
-    if not config["model"].startswith("datarobot/"):
-        config["model"] = "datarobot/" + config["model"]
+def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
+    from llama_index.core.base.llms.types import LLMMetadata  # noqa: PLC0415
+    from llama_index.llms.litellm import LiteLLM  # noqa: PLC0415
+
+    class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
+        """DataRobotLiteLLM is a small LiteLLM wrapper class that makes all LiteLLM endpoints
+        compatible with the LlamaIndex library.
+        """
+
+        @property
+        def metadata(self) -> LLMMetadata:
+            """Returns the metadata for the LLM.
+
+            This is required to enable the is_chat_model and is_function_calling_model, which are
+            mandatory for LlamaIndex agents. By default, LlamaIndex assumes these are false unless
+            each individual model config in LiteLLM explicitly sets them to true. To use custom LLM
+            endpoints with LlamaIndex agents, you must override this method to return the
+            appropriate metadata.
+            """
+            return LLMMetadata(
+                context_window=128000,
+                num_output=self.max_tokens or -1,
+                is_chat_model=True,
+                is_function_calling_model=True,
+                model_name=self.model,
+            )
+
+    return DataRobotLiteLLM(**config)
+
+
+async def get_gateway_llm(llm_name: str) -> LiteLLM:
+    llm_config = Config(llm_default_model=llm_name, streamming=True, use_datarobot_llm_gateway=True)
+    config = {
+        "base_url": llm_config.default_base_url(),
+        "stream_options": {"include_usage": True},
+        "api_key": llm_config.default_api_key(),
+    }
+    if not llm_config.llm_default_model.startswith("datarobot/"):
+        config["model"] = "datarobot/" + llm_config.llm_default_model
     config["api_base"] = config.pop("base_url").removesuffix("/api/v2")
     client = _create_datarobot_litellm(config)
-    return _patch_llm_based_on_config(client, llm_config)
+    yield _patch_llm_based_on_config(client, llm_config)
 
 
-def get_deployment_llm(deployment_id: str) -> LiteLLM:
-    dr = Config()
-    base = dr.datarobot_endpoint.rstrip("/")
-    base_url = f"{base}/deployments/{deployment_id}"
-    llm_config = DataRobotLLMDeploymentModelConfig(base_url=base_url)
-    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
-    config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type"},
-        by_alias=True,
-        exclude_none=True,
-    )
-    if not config["model"].startswith("datarobot/"):
-        config["model"] = "datarobot/" + config["model"]
+async def get_deployment_llm(deployment_id: str) -> LiteLLM:
+    llm_config = Config(llm_deployment_id=deployment_id, streamming=True)
+    config = {
+        "base_url": llm_config.default_base_url(),
+        "stream_options": {"include_usage": True},
+        "api_key": llm_config.default_api_key()
+    }
+    if not llm_config.llm_default_model.startswith("datarobot/"):
+        config["model"] = "datarobot/" + llm_config.llm_default_model
     config["api_base"] = config.pop("base_url") + "/chat/completions"
+
+    # TODO do we need headers?
     if llm_config.headers:
         config["additional_kwargs"] = {"extra_headers": llm_config.headers}
 
     client = _create_datarobot_litellm(config)
-    return _patch_llm_based_on_config(client, llm_config)
+    yield _patch_llm_based_on_config(client, llm_config)

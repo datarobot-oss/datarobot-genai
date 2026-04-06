@@ -12,50 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
 from nat.data_models.common import OptionalSecretStr
-from nat.data_models.common import SecretStr
 from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
 from pydantic import Field
 
-
-class Config(DataRobotAppFrameworkBaseSettings):
-    """
-    Finds variables in the priority order of: env
-    variables (including Runtime Parameters), .env, file_secrets, then
-    Pulumi output variables.
-    """
-
-    datarobot_endpoint: str = "https://app.datarobot.com/api/v2"
-    datarobot_api_token: str | None = None
-    llm_deployment_id: str | None = None
-    nim_deployment_id: str | None = None
-    use_datarobot_llm_gateway: bool = True
-    llm_default_model: str | None = None
-
-
-def default_base_url() -> str:
-    config = Config()
-    return (
-        config.datarobot_endpoint.rstrip("/")
-        if config.use_datarobot_llm_gateway
-        else config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
-    )
-
-
-def default_api_key() -> SecretStr | None:
-    config = Config()
-    return SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None
-
-
-def default_model_name() -> str:
-    config = Config()
-    return config.llm_default_model or "datarobot-deployed-llm"
-
+from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import default_api_key
+from datarobot_genai.core.config import default_base_url
+from datarobot_genai.core.config import default_model_name
 
 class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
