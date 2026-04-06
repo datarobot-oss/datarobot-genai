@@ -101,12 +101,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
         except TypeError:
             return str(value)
 
-    @staticmethod
-    def append_memory_context(prompt: str, memory_context: str) -> str:
-        if not memory_context.strip():
-            return prompt
-        return f"{prompt}\n\nRelevant memory:\n{memory_context}"
-
     @property
     def max_history_messages(self) -> int:
         """Maximum number of prior messages to include in chat history.
