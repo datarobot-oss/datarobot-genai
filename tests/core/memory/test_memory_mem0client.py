@@ -56,6 +56,12 @@ class _FakeAsyncMemoryClient:
 
 
 def _load_mem0client_module(monkeypatch: Any) -> Any:
+    for module_name in (
+        "datarobot_genai.core.memory.mem0client",
+        "datarobot_genai.core.memory.datarobot_memory_client",
+    ):
+        sys.modules.pop(module_name, None)
+
     fake_mem0 = types.ModuleType("mem0")
     fake_mem0.AsyncMemoryClient = _FakeAsyncMemoryClient
 
@@ -113,8 +119,6 @@ async def test_retrieve_builds_filter_with_ids(monkeypatch: Any) -> None:
                 {"app_id": "app-1"},
             ]
         },
-        "version": "v2",
-        "output_format": "v1.1",
     }
 
 
@@ -140,12 +144,9 @@ async def test_retrieve_with_optional_attributes_adds_them_to_filter(monkeypatch
                 {"run_id": "r-1"},
                 {"agent_id": "a-1"},
                 {"app_id": "app-1"},
-                {"project_id": "p-1"},
-                {"session_id": "s-1"},
+                {"metadata": {"project_id": "p-1", "session_id": "s-1"}},
             ]
         },
-        "version": "v2",
-        "output_format": "v1.1",
     }
 
 
@@ -188,9 +189,26 @@ async def test_store_merges_optional_attributes(monkeypatch: Any) -> None:
     assert client._memory.last_add_kwargs == {
         "version": "v1",
         "output_format": "v1.1",
-        "project_id": "p-1",
+        "metadata": {"project_id": "p-1"},
         "user_id": client._memory.user_id,
         "run_id": "r-2",
         "agent_id": "a-2",
         "app_id": "app-2",
     }
+
+
+@pytest.mark.asyncio
+async def test_retrieve_formats_search_results(monkeypatch: Any) -> None:
+    mem0client = _load_mem0client_module(monkeypatch)
+    client = mem0client.Mem0Client(api_key="test-key")
+    client._memory.last_search_kwargs = None
+
+    async def fake_search(**kwargs: Any) -> dict[str, Any]:
+        client._memory.last_search_kwargs = kwargs
+        return {"results": [{"memory": "first"}, {"text": "second"}, {"content": "third"}]}
+
+    client._memory.search = fake_search  # type: ignore[method-assign]
+
+    result = await client.retrieve(prompt="hello")
+
+    assert result == "first\nsecond\nthird"
