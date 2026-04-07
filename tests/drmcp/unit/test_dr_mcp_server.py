@@ -267,7 +267,11 @@ class TestDataRobotMCPServer:
         mock_mcp.list_prompts = AsyncMock(return_value=[])
         mock_mcp.list_resources = AsyncMock(return_value=[])
 
-        mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
+        mock_tool1 = MagicMock()
+        mock_tool1.name = "tool1"
+        mock_tool2 = MagicMock()
+        mock_tool2.name = "tool2"
+        mock_tools = [mock_tool1, mock_tool2]
         mock_mcp.list_tools = AsyncMock(return_value=mock_tools)
 
         # Mock lifecycle methods
