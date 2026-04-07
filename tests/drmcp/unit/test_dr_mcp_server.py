@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
-from collections.abc import Iterator
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
