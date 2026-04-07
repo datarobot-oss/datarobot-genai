@@ -99,10 +99,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         uses_chat_history = "chat_history" in vars_list
         history_summary = self.build_history_summary(run_agent_input) if uses_chat_history else ""
 
-        uses_memory = "memory" in vars_list
-        memory = (
-            await self.retrieve_memory_for_run(user_prompt, run_agent_input) if uses_memory else ""
-        )
+        memory = ""
+        if "memory" in vars_list:
+            try:
+                memory = await self.retrieve_memory_for_run(user_prompt, run_agent_input)
+            except Exception as exc:
+                logger.warning("LangGraph memory retrieval failed: %s", exc)
 
         # Prefer structured dict input when available so templates can access both
         # the original fields (e.g. {topic}) and a plain-text {chat_history}.
@@ -337,7 +339,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
         user_prompt = extract_user_prompt_content(run_agent_input)
-        await self.store_memory_for_run(user_prompt, run_agent_input)
+        try:
+            await self.store_memory_for_run(user_prompt, run_agent_input)
+        except Exception as exc:
+            logger.warning("LangGraph memory storage failed: %s", exc)
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),

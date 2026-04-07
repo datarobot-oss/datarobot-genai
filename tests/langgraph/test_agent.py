@@ -209,6 +209,20 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
         return {}
 
 
+class LangGraphAgentWithMemory(SimpleLangGraphAgent):
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {
+                    "role": "system",
+                    "content": "Relevant memory:\n{memory}",
+                },
+                {"role": "user", "content": "Hi, tell me about {topic}."},
+            ]
+        )
+
+
 class LegacyOverrideLangGraphAgent(SimpleLangGraphAgent):
     async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         return await super().convert_input_message(run_agent_input)
@@ -505,9 +519,9 @@ async def test_langgraph_non_streaming(run_agent_input):
 
 
 async def test_langgraph_invoke_retrieves_and_stores_memory(run_agent_input) -> None:
-    # GIVEN a langgraph agent with a memory client
+    # GIVEN a langgraph agent whose prompt opts into memory
     memory_client = FakeMemoryClient(retrieved="Use concise answers.")
-    agent = SimpleLangGraphAgent(memory_client=memory_client)
+    agent = LangGraphAgentWithMemory(memory_client=memory_client)
 
     # WHEN invoking the agent
     _ = [event async for event in agent.invoke(run_agent_input)]
@@ -517,11 +531,34 @@ async def test_langgraph_invoke_retrieves_and_stores_memory(run_agent_input) -> 
         {
             "prompt": '{"topic": "AI"}',
             "run_id": None,
-            "agent_id": "SimpleLangGraphAgent",
+            "agent_id": "LangGraphAgentWithMemory",
             "app_id": "tests.langgraph.test_agent",
             "attributes": {"thread_id": "thread_id"},
         }
     ]
+    assert memory_client.store_calls == [
+        {
+            "user_message": '{"topic": "AI"}',
+            "run_id": "run_id",
+            "agent_id": "LangGraphAgentWithMemory",
+            "app_id": "tests.langgraph.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+async def test_langgraph_invoke_skips_memory_retrieval_when_prompt_does_not_use_it(
+    run_agent_input,
+) -> None:
+    # GIVEN a langgraph agent whose prompt does not declare {memory}
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = SimpleLangGraphAgent(memory_client=memory_client)
+
+    # WHEN invoking the agent
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN retrieval is skipped but the completed run is still stored
+    assert memory_client.retrieve_calls == []
     assert memory_client.store_calls == [
         {
             "user_message": '{"topic": "AI"}',
