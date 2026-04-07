@@ -27,3 +27,6 @@ class BaseAgentConfig(DataRobotAppFrameworkBaseSettings, AgentBaseConfig):
     api_base: str | None = None
     model: str | None = None
     timeout: int = 90
+    use_datarobot_llm_gateway: bool = False
+    mcp_deployment_id: str | None = None
+    external_mcp_url: str | None = None
