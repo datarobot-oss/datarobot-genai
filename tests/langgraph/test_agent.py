@@ -559,15 +559,7 @@ async def test_langgraph_invoke_skips_memory_retrieval_when_prompt_does_not_use_
 
     # THEN retrieval is skipped but the completed run is still stored
     assert memory_client.retrieve_calls == []
-    assert memory_client.store_calls == [
-        {
-            "user_message": '{"topic": "AI"}',
-            "run_id": "run_id",
-            "agent_id": "SimpleLangGraphAgent",
-            "app_id": "tests.langgraph.test_agent",
-            "attributes": {"thread_id": "thread_id"},
-        }
-    ]
+    assert memory_client.store_calls == []
 
 
 async def test_langgraph_invoke_gracefully_degrades_when_memory_fails(run_agent_input) -> None:

@@ -4,8 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.11.1
-- Update Langgraph template to support mem0 store and retrieve long term memory
+## 0.12.0
+- **Breaking** Update Langgraph template to support mem0 store and retrieve long term memory
 
 ## 0.11.0
 - Reworked legacy interface to support mcp_tool_context being external to an agent.

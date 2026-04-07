@@ -338,11 +338,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
-        user_prompt = extract_user_prompt_content(run_agent_input)
-        try:
-            await self.store_memory_for_run(user_prompt, run_agent_input)
-        except Exception as exc:
-            logger.warning("LangGraph memory storage failed: %s", exc)
+        vars_list = getattr(self.prompt_template, "input_variables", [])
+        if "memory" in vars_list:
+            user_prompt = extract_user_prompt_content(run_agent_input)
+            try:
+                await self.store_memory_for_run(user_prompt, run_agent_input)
+            except Exception as exc:
+                logger.warning("LangGraph memory storage failed: %s", exc)
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),
