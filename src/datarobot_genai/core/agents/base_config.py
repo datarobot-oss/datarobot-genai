@@ -13,41 +13,19 @@
 # limitations under the License.
 
 
-class AgentConfig:
-    pass
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from nat.data_models.agent import AgentBaseConfig
+
+from datarobot_genai.core.memory.base import BaseMemoryClient
+
+DEFAULT_MAX_HISTORY_MESSAGES = 20
 
 
-# api_key: str | None = (None,)
-# api_base: str | None = (None,)
-# model: str | None = (None,)
-# verbose: bool | str | None = (True,)
-# timeout: int | None = (90,)
-# authorization_context: dict[str, Any] | None = (None,)
-# forwarded_headers: dict[str, str] | None = (None,)
-# max_history_messages: int | None = (None,)
-
-# name: str | None = Field(
-#     default=None,
-#     description="Optional display name for this function. Used in tracing and observability.",
-# )
-# middleware: list[str] = Field(
-#     default_factory=list,
-#     description="List of function middleware names to apply to this function in order",
-# )
-# description: str = Field(
-#     default="ReAct Agent Workflow", description="The description of this functions use."
-# )
-# workflow_alias: str | None = Field(
-#     default=None,
-#     description=(
-#         "The alias of the workflow. Useful when the agent is configured as a workflow "
-#         "and needs to expose a customized name as a tool."
-#     ),
-# )
-# llm_name: LLMRef = Field(description="The LLM model to use with the agent.")
-# verbose: bool = Field(default=False, description="Set the verbosity of the agent's logging.")
-# description: str = Field(description="The description of this function's use.")
-# log_response_max_chars: PositiveInt = Field(
-#     default=1000,
-#     description="Maximum number of characters to display in logs when logging responses.",
-# )
+class BaseAgentConfig(DataRobotAppFrameworkBaseSettings, AgentBaseConfig):
+    api_key: str | None = None
+    api_base: str | None = None
+    model: str | None = None
+    timeout: int | None = 90
+    forwarded_headers: dict[str, str] | None = None
+    max_history_messages: int = DEFAULT_MAX_HISTORY_MESSAGES
+    memory_client: BaseMemoryClient | None = None

@@ -16,17 +16,17 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from ag_ui.core.types import RunAgentInput
+from datarobot_genai.core.agents.base_config import BaseAgentConfig
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
-from nat.data_models.agent import AgentBaseConfig
 
 
-class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
+class CrewaiAgentConfig(BaseAgentConfig, name="crewai_agent"):
     """NAT config for the CrewAI agent.
 
-    Extends AgentBaseConfig which provides: llm_name, description, verbose.
+    Extends BaseAgentConfig which provides: llm_name, description, verbose.
     The LLM is managed by NAT and accessed via builder.get_llm().
     """
 

@@ -30,8 +30,8 @@ from typing import TypeVar
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 
+from datarobot_genai.core.agents.base_config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
-from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
@@ -67,7 +67,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         verbose: bool = True,
         timeout: int | None = 90,
         forwarded_headers: dict[str, str] | None = None,
-        max_history_messages: int | None = None,
+        max_history_messages: int = DEFAULT_MAX_HISTORY_MESSAGES,
         memory_client: BaseMemoryClient | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
@@ -91,9 +91,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         call time). Subclasses can override via the constructor parameter or
         by overriding this property.
         """
-        if self._max_history_messages is not None:
-            return self._max_history_messages
-        return get_max_history_messages_default()
+        return self._max_history_messages
 
     def set_tools(self, tools: list[TTool]) -> None:
         self._tools = tools
