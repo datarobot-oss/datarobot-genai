@@ -328,13 +328,13 @@ class DataRobotMCPServer:
             raise
 
     async def get_tools(self) -> dict[str, Tool]:
-        return await self._mcp.get_tools()
+        return {t.name: t for t in await self._mcp.list_tools()}
 
     async def get_prompts(self) -> dict[str, Prompt]:
-        return await self._mcp.get_prompts()
+        return {p.name: p for p in await self._mcp.list_prompts()}
 
     async def get_resources(self) -> dict[str, Resource]:
-        return await self._mcp.get_resources()
+        return {r.name: r for r in await self._mcp.list_resources()}
 
 
 def create_mcp_server(
