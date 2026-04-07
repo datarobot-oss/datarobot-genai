@@ -22,14 +22,14 @@ from nat.data_models.agent import AgentBaseConfig
 from nat.data_models.streaming import Streaming
 
 
-class BaseAgentConfig(AgentBaseConfig, name="base_agent"):
+class BaseConfig(AgentBaseConfig, name="base_agent"):
     """NAT config for the base agent."""
 
 
 @register_function(
-    config_type=BaseAgentConfig,
+    config_type=BaseConfig,
 )
-async def base_agent(config: BaseAgentConfig, builder: Builder) -> AsyncGenerator:
+async def base_agent(config: BaseConfig, builder: Builder) -> AsyncGenerator:
     from ag_ui.core import RunAgentInput  # noqa: PLC0415
     from datarobot_genai.dragent.frontends.response import DRAgentEventResponse  # noqa: PLC0415
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
