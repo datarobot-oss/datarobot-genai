@@ -26,6 +26,7 @@ def get_datarobot_gateway_llm(
     model_name: str | None = None, parameters: dict | None = None
 ) -> ChatOpenAI:
     model_name = model_name or default_model_name()
+    model_name = model_name.removeprefix("datarobot/")
     config = {
         "model": model_name,
         "api_key": default_api_key(),
@@ -41,6 +42,7 @@ def get_datarobot_deployment_llm(
     deployment_id: str, model_name: str | None = None, parameters: dict | None = None
 ) -> ChatOpenAI:
     model_name = model_name or default_model_name()
+    model_name = model_name.removeprefix("datarobot/")
     config = {
         "model": model_name,
         "api_key": default_api_key(),
@@ -55,16 +57,7 @@ def get_datarobot_deployment_llm(
 def get_datarobot_nim_llm(
     nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None
 ) -> ChatOpenAI:
-    model_name = model_name or default_model_name()
-    config = {
-        "model": model_name,
-        "api_key": default_api_key(),
-        "api_base": default_deployment_url(nim_deployment_id),
-        "stream_options": {"include_usage": True},
-    }
-    if parameters:
-        config.update(parameters)
-    return _create_datarobot_chat_openai(config)
+    return get_datarobot_deployment_llm(nim_deployment_id, model_name, parameters)
 
 
 def _create_datarobot_chat_openai(config: dict[str, Any]) -> Any:

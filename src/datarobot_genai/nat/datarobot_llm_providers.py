@@ -15,6 +15,7 @@
 from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
+from nat.llm.nim_llm import NIMModelConfig
 from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
 from pydantic import Field
@@ -102,7 +103,7 @@ async def datarobot_llm_deployment(
     )
 
 
-class DataRobotNIMModelConfig(OpenAIModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
+class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
     """A DataRobot NIM LLM provider to be used with an LLM client."""
 
     model_name: str = Field(
