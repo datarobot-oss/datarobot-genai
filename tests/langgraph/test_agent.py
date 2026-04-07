@@ -564,7 +564,7 @@ async def test_langgraph_invoke_skips_memory_retrieval_when_prompt_does_not_use_
 
 async def test_langgraph_invoke_gracefully_degrades_when_memory_fails(run_agent_input) -> None:
     # GIVEN a langgraph agent whose memory provider errors at runtime
-    agent = SimpleLangGraphAgent(memory_client=FailingMemoryClient())
+    agent = LangGraphAgentWithMemory(memory_client=FailingMemoryClient())
 
     # WHEN invoking the agent
     events = [event async for event in agent.invoke(run_agent_input)]
