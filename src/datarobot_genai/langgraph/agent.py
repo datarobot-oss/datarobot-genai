@@ -336,6 +336,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
 
+        user_prompt = extract_user_prompt_content(run_agent_input)
+        await self.store_memory_for_run(user_prompt, run_agent_input)
+
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),
             pipeline_interactions,
