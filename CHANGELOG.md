@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.0
+- Reworked legacy interface to support mcp_tool_context being external to an agent.
+
 ## 0.10.3
 - Updated `openai` and `litellm`, and removed unused transitive dependencies.
 
