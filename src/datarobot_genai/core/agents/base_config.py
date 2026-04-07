@@ -16,16 +16,14 @@
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.data_models.agent import AgentBaseConfig
 
-from datarobot_genai.core.memory.base import BaseMemoryClient
-
-DEFAULT_MAX_HISTORY_MESSAGES = 20
-
 
 class BaseAgentConfig(DataRobotAppFrameworkBaseSettings, AgentBaseConfig):
+    """Base Agent Config class for Agents with common fields.
+
+    These can be overridden globally via environment variable.
+    """
+
     api_key: str | None = None
     api_base: str | None = None
     model: str | None = None
-    timeout: int | None = 90
-    forwarded_headers: dict[str, str] | None = None
-    max_history_messages: int = DEFAULT_MAX_HISTORY_MESSAGES
-    memory_client: BaseMemoryClient | None = None
+    timeout: int = 90
