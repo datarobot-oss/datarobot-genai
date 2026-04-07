@@ -29,6 +29,7 @@ from datarobot_genai.core.chat.responses import (
 )
 from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.nat.agent import NatAgent
+from tests.core.chat.test_completions import noop_mcp_tools_factory
 
 
 class Config(DataRobotAppFrameworkBaseSettings):
@@ -152,7 +153,7 @@ def test_custom_model_streaming_response(agent):
 
     result = thread_pool_executor.submit(
         event_loop.run_until_complete,
-        agent_chat_completion_wrapper(agent, completion_create_params),
+        agent_chat_completion_wrapper(agent, completion_create_params, noop_mcp_tools_factory),
     ).result()
 
     streaming_response_iterator = async_gen_to_sync_thread(result, thread_pool_executor, event_loop)

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from collections.abc import Callable
 from collections.abc import Mapping
 from typing import Any
 from typing import cast
@@ -40,6 +41,11 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import UsageMetrics
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_mcp_tools_with_agent_tools(mcp_tools: Any, agent: BaseAgent) -> list[Any]:
+    """Return MCP tools followed by any tools already set on the agent (e.g. workflow tools)."""
+    return [*list(mcp_tools), *list(agent.tools)]
 
 
 def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str, Any]) -> bool:
@@ -124,9 +130,14 @@ def convert_chat_completion_params_to_run_agent_input(
 
 
 async def agent_chat_completion_wrapper(
-    agent: BaseAgent, chat_completion_params: CompletionCreateParams | Mapping[str, Any]
+    agent: BaseAgent,
+    chat_completion_params: CompletionCreateParams | Mapping[str, Any],
+    mcp_tools_factory: Callable[[], Any],
 ) -> InvokeReturn | tuple[str, MultiTurnSample | None, UsageMetrics]:
     """Wrap the agent's invoke method in a chat completion wrapper.
+
+    MCP tools from ``mcp_tools_factory`` are combined with any tools already on
+    ``agent`` (MCP first, then existing ``agent.tools``).
 
     Returns
     -------
@@ -139,26 +150,35 @@ async def agent_chat_completion_wrapper(
     run_agent_input = convert_chat_completion_params_to_run_agent_input(chat_completion_params)
 
     if is_streaming(chat_completion_params):
-        return agent.invoke(run_agent_input)
+
+        async def _stream_with_mcp() -> InvokeReturn:
+            async with mcp_tools_factory() as mcp_tools:
+                agent.set_tools(_merge_mcp_tools_with_agent_tools(mcp_tools, agent))
+                async for item in agent.invoke(run_agent_input):
+                    yield item
+
+        return _stream_with_mcp()
     else:
-        final_response = ""
-        pipeline_interactions = None
-        usage_metrics = default_usage_metrics()
-        received_run_finished = False
-        async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
-            # When we work in non-streaming mode, we only send back the final message
-            # It is because of limitation of completions interface we can not send back the
-            # intermediate messages
-            if isinstance(event, TextMessageStartEvent):
-                final_response = ""
-            elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
-                final_response += event.delta
-            elif isinstance(event, RunFinishedEvent):
-                received_run_finished = True
-                pipeline_interactions = iter_interactions
-                usage_metrics = iter_metrics
+        async with mcp_tools_factory() as mcp_tools:
+            agent.set_tools(_merge_mcp_tools_with_agent_tools(mcp_tools, agent))
+            final_response = ""
+            pipeline_interactions = None
+            usage_metrics = default_usage_metrics()
+            received_run_finished = False
+            async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
+                # When we work in non-streaming mode, we only send back the final message
+                # It is because of limitation of completions interface we can not send back the
+                # intermediate messages
+                if isinstance(event, TextMessageStartEvent):
+                    final_response = ""
+                elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+                    final_response += event.delta
+                elif isinstance(event, RunFinishedEvent):
+                    received_run_finished = True
+                    pipeline_interactions = iter_interactions
+                    usage_metrics = iter_metrics
 
-        if not received_run_finished:
-            logger.warning("Agent stream ended without RunFinishedEvent")
+            if not received_run_finished:
+                logger.warning("Agent stream ended without RunFinishedEvent")
 
-        return final_response, pipeline_interactions, usage_metrics
+            return final_response, pipeline_interactions, usage_metrics
