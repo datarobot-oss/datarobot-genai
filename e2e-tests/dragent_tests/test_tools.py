@@ -43,6 +43,7 @@ GENERATE_OBJECTID_PROMPT = (
 
 EXPECTED_GENERATE_OBJECTID_RESULT = "69cbb73789723b6936c6c9e1"
 
+
 def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
     """Agent uses calculator tool when asked to compute."""
     # GIVEN: a payload that requests the generate_objectid tool to generate an object ID for a
@@ -75,8 +76,7 @@ def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  #
             e.tool_call_name for e in ag_ui_events if e.type == EventType.TOOL_CALL_START
         }
         assert "generate_objectid" in tool_call_names, (
-            "No tool call event found for generate_objectid. "
-            f"Got: {tool_call_names}"
+            f"No tool call event found for generate_objectid. Got: {tool_call_names}"
         )
     else:
         assert not event_types & tool_types, (
@@ -100,6 +100,7 @@ CALCULATOR_PROMPT = (
 )
 
 EXPECTED_CALCULATOR_RESULT = str((1234 * 567890) + 91011)
+
 
 @pytest.mark.skip(
     "Obsolete test: I kept it here only to because it used to be a problem for crewai, "
@@ -138,8 +139,7 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
             e.tool_call_name for e in ag_ui_events if e.type == EventType.TOOL_CALL_START
         }
         assert "calculator" in tool_call_names, (
-            "No tool call event found for calculator. "
-            f"Got: {tool_call_names}"
+            f"No tool call event found for calculator. Got: {tool_call_names}"
         )
     else:
         assert not event_types & tool_types, (

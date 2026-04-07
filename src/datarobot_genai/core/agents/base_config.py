@@ -16,7 +16,7 @@
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
 
-class BaseAgentConfig(DataRobotAppFrameworkBaseSettings):
+class DRAgentConfig(DataRobotAppFrameworkBaseSettings):
     """Base Agent Config class for Agents with common fields.
 
     These can be overridden globally via environment variable.
