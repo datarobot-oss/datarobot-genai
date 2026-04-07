@@ -57,7 +57,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         """Get metadata about tools, prompts, resources, and system configuration."""
         try:
             # Get tools with tags
-            tools = await mcp._list_tools_mcp()
+            tools = await mcp.list_tools()
             tools_metadata = [
                 {
                     "name": tool.name,
@@ -67,7 +67,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
             ]
 
             # Get prompts with tags
-            prompts = await mcp._list_prompts_mcp()
+            prompts = await mcp.list_prompts()
             prompts_metadata = [
                 {
                     "name": prompt.name,
@@ -77,7 +77,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
             ]
 
             # Get resources with tags
-            resources = await mcp._list_resources_mcp()
+            resources = await mcp.list_resources()
             resources_metadata = [
                 {
                     "name": resource.name,

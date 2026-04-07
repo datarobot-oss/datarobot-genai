@@ -122,7 +122,7 @@ class TestToolRegistration:
         assert deployment_mappings == {deployment_id: "weather_tool"}
 
         # Verify tool registration in MCP
-        registered_tools = await mcp_server._list_tools_mcp()
+        registered_tools = await mcp_server.list_tools()
         assert len(registered_tools) == 1
         assert registered_tools[0].name == "weather_tool"
         assert registered_tools[0].description == "Get weather for cities"
@@ -158,7 +158,7 @@ class TestToolRegistration:
         assert deployment_mappings["deployment-456"] == "Another Tool"
 
         # Verify both tools are registered in MCP
-        registered_tools = await mcp_server._list_tools_mcp()
+        registered_tools = await mcp_server.list_tools()
         assert len(registered_tools) == 2
         tool_names = {tool.name for tool in registered_tools}
         assert tool_names == {"weather_tool", "Another Tool"}

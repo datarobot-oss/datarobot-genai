@@ -49,7 +49,7 @@ def mock_mcp(
 ) -> MagicMock:
     """Create a mock FastMCP instance."""
     mock = MagicMock(spec=FastMCP)
-    mock._list_tools_mcp = AsyncMock(
+    mock.list_tools = AsyncMock(
         return_value=[MagicMock(name="tool1"), MagicMock(name="tool2")]
     )
     mock.get_tools = mock_fastmcp_get_tools
@@ -221,7 +221,7 @@ class TestDataRobotMCPServer:
         assert mock_loop.run_until_complete.call_count == 2
 
         # Verify tools were listed
-        mock_mcp._list_tools_mcp.assert_called_once()
+        mock_mcp.list_tools.assert_called_once()
 
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
@@ -282,11 +282,11 @@ class TestDataRobotMCPServer:
         mock_loop = MagicMock()
         mock_asyncio.new_event_loop.return_value = mock_loop
         mock_mcp.run_stdio_async = AsyncMock()
-        mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
-        mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+        mock_mcp.list_prompts = AsyncMock(return_value=[])
+        mock_mcp.list_resources = AsyncMock(return_value=[])
 
         mock_tools = [MagicMock(name="tool1"), MagicMock(name="tool2")]
-        mock_mcp._list_tools_mcp = AsyncMock(return_value=mock_tools)
+        mock_mcp.list_tools = AsyncMock(return_value=mock_tools)
 
         # Mock lifecycle methods
         mock_lifecycle = MagicMock()
@@ -331,7 +331,7 @@ class TestDataRobotMCPServer:
         server.run()
 
         # Verify tools were listed before server start
-        mock_mcp._list_tools_mcp.assert_called_once()
+        mock_mcp.list_tools.assert_called_once()
         # Should be called twice: once for run_server, once for pre_server_shutdown
         assert mock_loop.run_until_complete.call_count == 2
 

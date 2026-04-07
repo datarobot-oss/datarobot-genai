@@ -245,9 +245,9 @@ class DataRobotMCPServer:
             asyncio.run(self._lifecycle.pre_server_start(self._mcp))
 
             # List registered tools, prompts, and resources before starting server
-            tools = asyncio.run(self._mcp._list_tools_mcp())
-            prompts = asyncio.run(self._mcp._list_prompts_mcp())
-            resources = asyncio.run(self._mcp._list_resources_mcp())
+            tools = asyncio.run(self._mcp.list_tools())
+            prompts = asyncio.run(self._mcp.list_prompts())
+            resources = asyncio.run(self._mcp.list_resources())
 
             tools_count = len(tools)
             prompts_count = len(prompts)

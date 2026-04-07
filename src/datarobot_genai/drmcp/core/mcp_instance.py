@@ -31,12 +31,6 @@ from fastmcp.tools import Tool
 from mcp.types import Annotations as MCPAnnotationsType
 from mcp.types import AnyFunction
 from mcp.types import Icon as MCPIconType
-from mcp.types import ListPromptsRequest
-from mcp.types import ListResourcesRequest
-from mcp.types import ListToolsRequest
-from mcp.types import Prompt as MCPPrompt
-from mcp.types import Resource as MCPResource
-from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
@@ -114,27 +108,6 @@ class DataRobotMCP(FastMCP):
     async def get_resources(self) -> dict[str, Any]:
         """Compat wrapper: fastmcp 3.x renamed get_resources→list_resources and returns a list."""
         return {r.name: r for r in await self.list_resources()}
-
-    async def _list_tools_mcp(self, request: ListToolsRequest | None = None) -> list[MCPTool]:
-        """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
-        result = await super()._list_tools_mcp(request or ListToolsRequest(method="tools/list"))
-        return list(result.tools)
-
-    async def _list_prompts_mcp(self, request: ListPromptsRequest | None = None) -> list[MCPPrompt]:
-        """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
-        result = await super()._list_prompts_mcp(
-            request or ListPromptsRequest(method="prompts/list")
-        )
-        return list(result.prompts)
-
-    async def _list_resources_mcp(
-        self, request: ListResourcesRequest | None = None
-    ) -> list[MCPResource]:
-        """Compat wrapper: fastmcp 3.x requires a request arg and returns a Result object."""
-        result = await super()._list_resources_mcp(
-            request or ListResourcesRequest(method="resources/list")
-        )
-        return list(result.resources)
 
     async def notify_prompts_changed(self) -> None:
         """
@@ -513,7 +486,7 @@ async def check_tool_registration_status_after_it_finishes(
     name_of_tool_to_register: str,
 ) -> None:
     # Verify tool is registered
-    tools = await mcp_server._list_tools_mcp()
+    tools = await mcp_server.list_tools()
     if not any(tool.name == name_of_tool_to_register for tool in tools):
         raise RuntimeError(f"Tool {name_of_tool_to_register} was not registered successfully")
     logger.info(f"Registered tools: {len(tools)}")
@@ -665,7 +638,10 @@ def dr_mcp_prompt(
             return func(*args, **kwargs)
 
         prompt_init_args.set_prompt_category(prompt_category)
-        return mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
+        registered = mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
+        if prompt_init_args.enabled is False:
+            mcp.disable(names={prompt_init_args.name or func.__name__}, components={"prompt"})
+        return registered
 
     return prompt_decorator
 
@@ -680,6 +656,9 @@ def dr_mcp_resource(
             return func(*args, **kwargs)
 
         resource_init_args.set_resource_category(resource_category)
-        return mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+        registered = mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+        if resource_init_args.enabled is False:
+            mcp.disable(names={resource_init_args.name or func.__name__}, components={"resource"})
+        return registered
 
     return resource_decorator

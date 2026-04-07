@@ -35,14 +35,11 @@ async def test_tagged_tool_decorator() -> None:
     def test_function() -> str:
         return "test"
 
-    # Get the tool as exposed via MCP (includes meta)
-    tools = await mcp._list_tools_mcp()
+    tools = await mcp.list_tools()
     assert len(tools) == 1
 
     tool = list(tools)[0]
-    assert hasattr(tool, "meta")
-    assert tool.meta is not None
-    assert tool.meta.get("fastmcp", {}).get("tags") == ["example", "test"]
+    assert tool.tags == {"test", "example"}
 
 
 @pytest.mark.asyncio
