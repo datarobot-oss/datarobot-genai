@@ -21,9 +21,10 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
+from nat.data_models.agent import AgentBaseConfig
 
 
-class CrewaiAgentConfig(BaseAgentConfig, name="crewai_agent"):
+class CrewaiAgentConfig(BaseAgentConfig, AgentBaseConfig, name="crewai_agent"):
     """NAT config for the CrewAI agent.
 
     Extends BaseAgentConfig which provides: llm_name, description, verbose.

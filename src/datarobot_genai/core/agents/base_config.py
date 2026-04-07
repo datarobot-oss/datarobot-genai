@@ -14,10 +14,9 @@
 
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
-from nat.data_models.agent import AgentBaseConfig
 
 
-class BaseAgentConfig(DataRobotAppFrameworkBaseSettings, AgentBaseConfig):
+class BaseAgentConfig(DataRobotAppFrameworkBaseSettings):
     """Base Agent Config class for Agents with common fields.
 
     These can be overridden globally via environment variable.
@@ -30,3 +29,4 @@ class BaseAgentConfig(DataRobotAppFrameworkBaseSettings, AgentBaseConfig):
     use_datarobot_llm_gateway: bool = False
     mcp_deployment_id: str | None = None
     external_mcp_url: str | None = None
+    verbose: bool = False
