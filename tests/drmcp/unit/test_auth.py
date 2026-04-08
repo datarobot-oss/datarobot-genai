@@ -99,6 +99,54 @@ def call_next() -> AsyncMock:
     return mock_next
 
 
+class TestGetHttpHeadersWrapper:
+    """Test that _get_http_headers includes authorization headers.
+
+    fastmcp 3.x changed get_http_headers() to strip 'authorization' by default.
+    Our wrapper must pass include_all=True so auth middleware can read tokens.
+    """
+
+    def test_fastmcp_strips_auth_headers_by_default(self) -> None:
+        """Confirm fastmcp 3.x strips authorization without include_all."""
+        from fastmcp.server.dependencies import get_http_headers
+        from fastmcp.server.dependencies import get_http_request
+
+        fake_request = MagicMock()
+        fake_request.headers = MagicMock()
+        fake_request.headers.items.return_value = [
+            ("authorization", "Bearer token123"),
+            ("x-datarobot-api-token", "dr-token-456"),
+            ("x-custom", "keep-me"),
+        ]
+
+        with patch(
+            "fastmcp.server.dependencies.get_http_request", return_value=fake_request
+        ):
+            default_headers = get_http_headers()
+            all_headers = get_http_headers(include_all=True)
+
+        # Default: authorization is stripped
+        assert "authorization" not in default_headers
+        assert "x-custom" in default_headers
+
+        # include_all: authorization is kept
+        assert "authorization" in all_headers
+        assert all_headers["authorization"] == "Bearer token123"
+
+    def test_wrapper_passes_include_all(self) -> None:
+        """Verify our _get_http_headers wrapper passes include_all=True."""
+        with patch(
+            "datarobot_genai.drtools.core.auth.get_http_headers"
+        ) as mock_get_headers:
+            mock_get_headers.return_value = {"authorization": "Bearer token123"}
+            from datarobot_genai.drtools.core.auth import _get_http_headers
+
+            result = _get_http_headers()
+
+            mock_get_headers.assert_called_once_with(include_all=True)
+            assert result == {"authorization": "Bearer token123"}
+
+
 class TestOAuthMiddleware:
     """Tests for OAuthMiddleware class."""
 
