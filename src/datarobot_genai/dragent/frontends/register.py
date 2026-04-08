@@ -58,6 +58,14 @@ def _filtered_handle(self: logging.Handler, record: logging.LogRecord) -> bool |
         return _orig_handler_handle(self, record)
     if any(s in msg for s in _SUPPRESSED_NAT_MESSAGES):
         return None
+    if isinstance(record.msg, str):
+        record.msg = record.msg.replace("\n", " ")
+    if isinstance(record.args, dict):
+        record.args = {
+            k: v.replace("\n", " ") if isinstance(v, str) else v for k, v in record.args.items()
+        }
+    elif isinstance(record.args, tuple):
+        record.args = tuple(v.replace("\n", " ") if isinstance(v, str) else v for v in record.args)
     return _orig_handler_handle(self, record)
 
 

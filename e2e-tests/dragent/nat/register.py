@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datarobot_genai.core.utils.logging import setup_logging
 from datarobot_genai.nat.tool import nat_tool
 
 from dragent.tool import generate_objectid
 
-setup_logging()
 nat_tool(generate_objectid, "generate_objectid")
