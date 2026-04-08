@@ -1,0 +1,122 @@
+# Copyright 2026 DataRobot, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Tests for :mod:`datarobot_genai.langgraph.llm`."""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+import pytest
+from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+
+from datarobot_genai.langgraph import llm as langgraph_llm
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:WARNING! api_base is not default parameter:UserWarning",
+    "ignore:WARNING! stream_options is not default parameter:UserWarning",
+)
+
+
+@pytest.fixture
+def patched_langgraph_llm_defaults() -> None:
+    with (
+        patch.object(langgraph_llm, "default_api_key", return_value="sk-test-key"),
+        patch.object(langgraph_llm, "default_model_name", return_value="default-model"),
+        patch.object(
+            langgraph_llm,
+            "default_datarobot_llm_gateway_url",
+            return_value="https://example.test/genai/llmgw",
+        ),
+        patch.object(
+            langgraph_llm,
+            "default_deployment_url",
+            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}",
+        ),
+    ):
+        yield
+
+
+def test_module_exports_llm_factory_functions() -> None:
+    assert callable(langgraph_llm.get_datarobot_gateway_llm)
+    assert callable(langgraph_llm.get_datarobot_deployment_llm)
+    assert callable(langgraph_llm.get_datarobot_nim_llm)
+
+
+def test_get_datarobot_gateway_llm_returns_chat_openai_subclass(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm()
+    assert isinstance(llm, ChatOpenAI)
+    assert type(llm).__name__ == "DataRobotChatOpenAI"
+    assert llm.model_name == "default-model"
+    mk = llm.model_kwargs or {}
+    assert mk.get("api_base") == "https://example.test/genai/llmgw"
+    assert mk.get("stream_options") == {"include_usage": True}
+
+
+def test_get_datarobot_gateway_llm_strips_datarobot_model_prefix(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm("datarobot/azure/gpt-4")
+    assert llm.model_name == "azure/gpt-4"
+
+
+def test_get_datarobot_gateway_llm_merges_parameters(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm(parameters={"temperature": 0.25})
+    assert llm.temperature == 0.25
+
+
+def test_get_datarobot_deployment_llm_sets_deployment_api_base(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    llm = langgraph_llm.get_datarobot_deployment_llm("dep-abc-123")
+    assert isinstance(llm, ChatOpenAI)
+    mk = llm.model_kwargs or {}
+    assert mk.get("api_base") == "https://example.test/deployments/dep-abc-123"
+    assert mk.get("stream_options") == {"include_usage": True}
+
+
+def test_get_datarobot_nim_llm_delegates_to_deployment_llm(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    with patch.object(
+        langgraph_llm,
+        "get_datarobot_deployment_llm",
+        wraps=langgraph_llm.get_datarobot_deployment_llm,
+    ) as spy:
+        llm = langgraph_llm.get_datarobot_nim_llm("nim-1", "m", {"max_tokens": 10})
+    spy.assert_called_once_with("nim-1", "m", {"max_tokens": 10})
+    assert isinstance(llm, ChatOpenAI)
+
+
+def test_datarobot_chat_openai_payload_drops_stream_options_when_not_streaming(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm()
+    payload = llm._get_request_payload([HumanMessage("hello")], stream=False)
+    assert payload.get("stream") is False
+    assert "stream_options" not in payload
+
+
+def test_datarobot_chat_openai_payload_keeps_stream_options_when_streaming(
+    patched_langgraph_llm_defaults: None,
+) -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm()
+    payload = llm._get_request_payload([HumanMessage("hello")], stream=True)
+    assert payload.get("stream") is True
+    assert payload.get("stream_options") == {"include_usage": True}
