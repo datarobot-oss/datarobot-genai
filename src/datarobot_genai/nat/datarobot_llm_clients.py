@@ -195,7 +195,9 @@ async def datarobot_llm_deployment_llamaindex(
     if llm_config.headers:
         config["additional_kwargs"] = {"extra_headers": llm_config.headers}
 
-    client = get_datarobot_deployment_llm(config)
+    client = get_datarobot_deployment_llm(
+        llm_config.llm_deployment_id, llm_config.model_name, config
+    )
     yield _patch_llm_based_on_config(client, config)
 
 
