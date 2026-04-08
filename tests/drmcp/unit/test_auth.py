@@ -109,7 +109,6 @@ class TestGetHttpHeadersWrapper:
     def test_fastmcp_strips_auth_headers_by_default(self) -> None:
         """Confirm fastmcp 3.x strips authorization without include_all."""
         from fastmcp.server.dependencies import get_http_headers
-        from fastmcp.server.dependencies import get_http_request
 
         fake_request = MagicMock()
         fake_request.headers = MagicMock()
