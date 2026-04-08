@@ -26,6 +26,7 @@ from __future__ import annotations
 import abc
 import logging
 import uuid
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -44,8 +45,11 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from crewai import Agent
 from crewai import Crew
+from crewai import Task
 from crewai.events import crewai_event_bus
+from crewai.llm import LLM
 from crewai.tools import BaseTool
 from crewai.types.streaming import CrewStreamingOutput
 from crewai.types.streaming import StreamChunkType
@@ -74,16 +78,35 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     and may override ``crew`` to customize the workflow construction.
     """
 
+    def set_llm(self, llm: LLM) -> None:
+        super().set_llm(llm)
+        for agent in self.agents:
+            agent.llm = llm
+            agent.function_calling_llm = llm
+
+    def set_tools(self, tools: list[BaseTool]) -> None:
+        super().set_tools(tools)
+        for agent in self.agents:
+            agent.tools = tools
+
+    def set_verbose(self, verbose: bool) -> None:
+        super().set_verbose(verbose)
+        for agent in self.agents:
+            agent.verbose = verbose
+
+        self.crew.verbose = verbose
+
     @property
     @abc.abstractmethod
-    def agents(self) -> list[Any]:  # CrewAI Agent list
+    def agents(self) -> list[Agent]:  # CrewAI Agent list
         raise NotImplementedError
 
     @property
     @abc.abstractmethod
-    def tasks(self) -> list[Any]:  # CrewAI Task list
+    def tasks(self) -> list[Task]:  # CrewAI Task list
         raise NotImplementedError
 
+    @property
     def crew(self) -> Crew:
         """Create a CrewAI workflow instance.
 
@@ -193,7 +216,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             streaming_event_listener = CrewAIStreamingEventListener()
             streaming_event_listener.setup_listeners(crewai_event_bus)
 
-            crew = self.crew()
+            crew = self.crew
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
             # Chat history is opt-in: only populate it if the agent/template
@@ -368,3 +391,42 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 pipeline_interactions,
                 usage_metrics,
             )
+
+
+def datarobot_agent_class_from_crew(
+    crew: Crew,
+    agents: list[Agent],
+    tasks: list[Task],
+    kickoff_inputs: Callable[[str], dict[str, Any]],
+) -> type[CrewAIAgent]:
+    class DataRobotAgent(CrewAIAgent):
+        def __init__(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> None:
+            self._original_agent_tools = {agent: agent.tools for agent in agents}
+            super().__init__(*args, **kwargs)
+
+        def set_tools(self, tools: list[BaseTool]) -> None:
+            super().set_tools(tools)
+            for agent in agents:
+                # make sure we don't overwrite the original tools
+                agent.tools = self._original_agent_tools[agent] + tools
+
+        @property
+        def crew(self) -> Crew:
+            return crew
+
+        @property
+        def agents(self) -> list[Agent]:
+            return agents
+
+        @property
+        def tasks(self) -> list[Task]:
+            return tasks
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return kickoff_inputs(user_prompt_content)
+
+    return DataRobotAgent

@@ -122,21 +122,10 @@ class NatAgent(BaseAgent[None]):
     def __init__(
         self,
         workflow_path: StrPath,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        model: str | None = None,
-        verbose: bool = True,
-        timeout: int | None = 90,
-        forwarded_headers: dict[str, str] | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
-        super().__init__(
-            api_key=api_key,
-            api_base=api_base,
-            model=model,
-            verbose=verbose,
-            timeout=timeout,
-            forwarded_headers=forwarded_headers,
-        )
+        super().__init__(*args, **kwargs)
         self.workflow_path = workflow_path
 
     def make_user_prompt(self, run_agent_input: RunAgentInput) -> str:

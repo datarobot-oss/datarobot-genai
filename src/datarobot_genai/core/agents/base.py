@@ -62,10 +62,11 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self,
         api_key: str | None = None,
         api_base: str | None = None,
-        model: str | None = None,
+        model_name: str | None = None,
+        llm: Any | None = None,
         tools: list[TTool] | None = None,
         verbose: bool = True,
-        timeout: int | None = 90,
+        timeout: int = 90,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
@@ -74,14 +75,63 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self.api_base = (
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
         )
-        self.model = model
-        self.timeout = timeout if timeout is not None else 90
-        self.verbose = verbose
-        self._tools: list[TTool] = tools or []
+        if llm and model_name:
+            raise ValueError("Cannot set both llm and model_name")
+        self.set_model_name(model_name)
+        self.set_llm(llm)
+        self.set_tools(tools or [])
+        self.set_timeout(timeout)
+        self.set_verbose(verbose)
+        self.set_memory_client(memory_client)
         self._forwarded_headers: dict[str, str] = forwarded_headers or {}
         self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
         self._max_history_messages = max_history_messages
-        self._memory_client: BaseMemoryClient | None = memory_client
+
+    def set_llm(self, llm: Any | None) -> None:
+        self._llm = llm
+
+    @property
+    def llm(self) -> Any | None:
+        return self._llm
+
+    def set_model_name(self, model_name: str | None) -> None:
+        self._model_name = model_name
+
+    @property
+    def model_name(self) -> str | None:
+        return self._model_name
+
+    def set_timeout(self, timeout: int) -> None:
+        self._timeout = timeout
+
+    @property
+    def timeout(self) -> int:
+        return self._timeout
+
+    def set_verbose(self, verbose: bool) -> None:
+        self._verbose = verbose
+
+    @property
+    def verbose(self) -> bool:
+        return self._verbose
+
+    def set_memory_client(self, memory_client: BaseMemoryClient | None) -> None:
+        self._memory_client = memory_client
+
+    @property
+    def memory_client(self) -> BaseMemoryClient | None:
+        return self._memory_client
+
+    def set_tools(self, tools: list[TTool]) -> None:
+        self._tools = tools
+
+    @property
+    def tools(self) -> list[TTool]:
+        """Return the list of tools available to this agent.
+
+        Subclasses can use this to wire tools into the agent.
+        """
+        return self._tools
 
     @property
     def max_history_messages(self) -> int:
@@ -94,17 +144,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
         if self._max_history_messages is not None:
             return self._max_history_messages
         return get_max_history_messages_default()
-
-    def set_tools(self, tools: list[TTool]) -> None:
-        self._tools = tools
-
-    @property
-    def tools(self) -> list[TTool]:
-        """Return the list of tools available to this agent.
-
-        Subclasses can use this to wire tools into the agent.
-        """
-        return self._tools
 
     @property
     def forwarded_headers(self) -> dict[str, str]:
