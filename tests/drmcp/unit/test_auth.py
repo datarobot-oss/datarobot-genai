@@ -119,9 +119,7 @@ class TestGetHttpHeadersWrapper:
             ("x-custom", "keep-me"),
         ]
 
-        with patch(
-            "fastmcp.server.dependencies.get_http_request", return_value=fake_request
-        ):
+        with patch("fastmcp.server.dependencies.get_http_request", return_value=fake_request):
             default_headers = get_http_headers()
             all_headers = get_http_headers(include_all=True)
 
@@ -135,9 +133,7 @@ class TestGetHttpHeadersWrapper:
 
     def test_wrapper_passes_include_all(self) -> None:
         """Verify our _get_http_headers wrapper passes include_all=True."""
-        with patch(
-            "datarobot_genai.drtools.core.auth.get_http_headers"
-        ) as mock_get_headers:
+        with patch("datarobot_genai.drtools.core.auth.get_http_headers") as mock_get_headers:
             mock_get_headers.return_value = {"authorization": "Bearer token123"}
             from datarobot_genai.drtools.core.auth import _get_http_headers
 

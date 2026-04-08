@@ -37,6 +37,7 @@ try:
     def _get_http_headers(**kwargs: Any) -> dict[str, str]:
         # fastmcp 3.x strips authorization headers by default; include them for auth
         return get_http_headers(include_all=True, **kwargs)
+
     _get_context = get_context
 except ImportError:
     # FastMCP not available - create a stub that returns empty dict
