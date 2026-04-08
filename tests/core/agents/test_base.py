@@ -112,20 +112,12 @@ def test_base_agent_env_defaults_and_verbose(monkeypatch: pytest.MonkeyPatch) ->
     assert agent.verbose is False
 
 
-def test_base_agent_model_name_and_llm_optional() -> None:
-    agent = SimpleAgent(model_name="m1")
-    assert agent.model_name == "m1"
-    assert agent.llm is None
+def test_base_agent_llm_optional() -> None:
+    assert SimpleAgent().llm is None
 
     llm = object()
-    agent2 = SimpleAgent(llm=llm)
-    assert agent2.llm is llm
-    assert agent2.model_name is None
-
-
-def test_base_agent_rejects_llm_and_model_name_together() -> None:
-    with pytest.raises(ValueError, match="Cannot set both"):
-        SimpleAgent(model_name="x", llm=object())
+    agent = SimpleAgent(llm=llm)
+    assert agent.llm is llm
 
 
 def test_base_agent_timeout_default() -> None:

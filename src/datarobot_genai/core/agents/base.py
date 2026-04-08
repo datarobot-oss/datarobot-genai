@@ -50,7 +50,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
     Fields:
       - api_key: DataRobot API token
       - api_base: Endpoint for DataRobot, normalized for LLM Gateway usage
-      - model: Preferred model name
+      - llm: Framework-specific LLM client (constructed outside the agent and passed in)
       - timeout: Request timeout
       - verbose: Verbosity flag
       - forwarded_headers: Forwarded headers for the agent
@@ -62,7 +62,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self,
         api_key: str | None = None,
         api_base: str | None = None,
-        model_name: str | None = None,
         llm: Any | None = None,
         tools: list[TTool] | None = None,
         verbose: bool = True,
@@ -75,9 +74,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self.api_base = (
             api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
         )
-        if llm and model_name:
-            raise ValueError("Cannot set both llm and model_name")
-        self.set_model_name(model_name)
         self.set_llm(llm)
         self.set_tools(tools or [])
         self.set_timeout(timeout)
@@ -93,13 +89,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @property
     def llm(self) -> Any | None:
         return self._llm
-
-    def set_model_name(self, model_name: str | None) -> None:
-        self._model_name = model_name
-
-    @property
-    def model_name(self) -> str | None:
-        return self._model_name
 
     def set_timeout(self, timeout: int) -> None:
         self._timeout = timeout
