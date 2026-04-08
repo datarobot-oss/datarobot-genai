@@ -78,8 +78,10 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     and may override ``crew`` to customize the workflow construction.
     """
 
-    def set_llm(self, llm: LLM) -> None:
+    def set_llm(self, llm: LLM | None) -> None:
         super().set_llm(llm)
+        if llm is None:
+            return
         for agent in self.agents:
             agent.llm = llm
             agent.function_calling_llm = llm

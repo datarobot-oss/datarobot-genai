@@ -76,7 +76,7 @@ tasks = [task_planner, task_writer]
 
 crew = Crew(agents=agents, tasks=tasks, stream=True)
 
-kickoff_inputs = lambda user_prompt_content: {  # noqa: E731
+kickoff_inputs = lambda user_prompt_content: {
     "topic": user_prompt_content,
     "chat_history": "",
 }
