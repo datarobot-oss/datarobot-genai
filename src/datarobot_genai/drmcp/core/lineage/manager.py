@@ -113,15 +113,15 @@ class LineageManager:
         ]
 
     async def get_mcp_tools_in_mcp_server(self) -> list[MCPToolMetadata]:
-        mcp_tools = await self.mcp_server_instance._list_tools_mcp()
+        mcp_tools = await self.mcp_server_instance.list_tools()
         return [MCPToolMetadata.from_fastmcp_item(mcp_tool) for mcp_tool in mcp_tools]
 
     async def get_mcp_prompts_in_mcp_server(self) -> list[MCPPromptMetadata]:
-        mcp_prompts = await self.mcp_server_instance._list_prompts_mcp()
+        mcp_prompts = await self.mcp_server_instance.list_prompts()
         return [MCPPromptMetadata.from_fastmcp_item(mcp_prompt) for mcp_prompt in mcp_prompts]
 
     async def get_mcp_resources_in_mcp_server(self) -> list[MCPResourceMetadata]:
-        mcp_resources = await self.mcp_server_instance._list_resources_mcp()
+        mcp_resources = await self.mcp_server_instance.list_resources()
         return [
             MCPResourceMetadata.from_fastmcp_item(mcp_resource) for mcp_resource in mcp_resources
         ]

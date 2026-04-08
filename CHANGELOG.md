@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.0
+- Upgraded fastmcp from 2.x to 3.2.0+ (CVE-2026-32871, CVE-2026-27124, CVE-2025-64340)
+- Replaced `on_duplicate_tools`/`on_duplicate_prompts` with unified `on_duplicate` (fastmcp 3.x API)
+- Replaced `enabled` parameter with `mcp.disable()` for tool/prompt/resource registration (fastmcp 3.x API)
+- Made `Context.set_state`/`get_state` calls async (fastmcp 3.x API)
+
 ## 0.12.0
 - **Breaking** Update Langgraph template to support mem0 store and retrieve long term memory
 
