@@ -45,7 +45,7 @@ class Mem0Client(BaseMemoryClient):
         app_id: str | None = None,
         attributes: dict[str, Any] | None = None,
     ) -> str:
-        conditions = [{"user_id": self._memory.user_id}]
+        conditions: list[dict[str, Any]] = [{"user_id": self._memory.user_id}]
         for key, value in (
             ("run_id", run_id),
             ("agent_id", agent_id),
@@ -55,13 +55,12 @@ class Mem0Client(BaseMemoryClient):
                 conditions.append({key: value})
 
         if attributes:
-            conditions.extend({k: v} for k, v in attributes.items())
+            conditions.append({"metadata": attributes})
 
         filters = {"AND": conditions}
 
-        return await self._memory.search(
-            query=prompt, filters=filters, version="v2", output_format="v1.1"
-        )
+        result = await self._memory.search(query=prompt, filters=filters)
+        return self._format_search_result(result)
 
     async def store(
         self,
@@ -74,12 +73,12 @@ class Mem0Client(BaseMemoryClient):
 
         messages = [{"role": "user", "content": user_message}]
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "version": "v1",
             "output_format": "v1.1",
         }
-
-        kwargs.update(attributes or {})
+        if attributes:
+            kwargs["metadata"] = attributes
 
         kwargs["user_id"] = self._memory.user_id
         if run_id:
@@ -90,3 +89,29 @@ class Mem0Client(BaseMemoryClient):
             kwargs["app_id"] = app_id
 
         await self._memory.add(messages, **kwargs)
+
+    @staticmethod
+    def _format_search_result(result: Any) -> str:
+        if result is None:
+            return ""
+        if isinstance(result, str):
+            return result
+
+        items = result.get("results", []) if isinstance(result, dict) else result
+        if items is None:
+            return ""
+        if not isinstance(items, list):
+            return str(items)
+
+        texts: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                texts.append(str(item))
+                continue
+
+            for key in ("memory", "text", "content"):
+                value = item.get(key)
+                if value:
+                    texts.append(str(value))
+
+        return "\n".join(dict.fromkeys(texts))
