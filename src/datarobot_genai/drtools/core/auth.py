@@ -41,11 +41,7 @@ try:
     _get_context = get_context
 except ImportError:
     # FastMCP not available - create a stub that returns empty dict
-    def _get_http_headers(include_all: bool = False) -> dict[str, str]:
-        """
-        Stub implementation when FastMCP is not available.
-        Returns empty dict to match FastMCP behavior when no request context exists.
-        """
+    def _get_http_headers(**kwargs: Any) -> dict[str, str]:
         return {}
 
     def _get_context() -> Any:
