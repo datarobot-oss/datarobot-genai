@@ -33,6 +33,11 @@ tasks:
     cmds:
       - echo "🔧 Installing dependencies for {{.GROUP}}"
       - uv sync --group dragent-{{.GROUP}} --group lint
+  install-all:
+    desc: "🔧 Install dependencies for all groups"
+    cmds:
+      - echo "🔧 Installing dependencies for all groups"
+      - uv sync --group dragent-nat --group dragent-langgraph --group dragent-crewai --group dragent-llamaindex --group lint
   test-dragent:
     desc: "🧪 Run tests for dragent"
     cmds:

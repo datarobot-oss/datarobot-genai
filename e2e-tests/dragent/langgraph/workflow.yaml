@@ -26,3 +26,4 @@ workflow:
   _type: langgraph_agent
   llm_name: datarobot_llm
   description: LangGraph planner/writer agent
+  verbose: true

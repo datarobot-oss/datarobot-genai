@@ -46,7 +46,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
     from nat.builder.function_info import FunctionInfo
     from nat.builder.function_info import Streaming
 
-    from dragent.crewai.myagent import agent_class
+    from dragent.crewai.myagent import MyAgent
 
     async def _response_fn(
         input_message: RunAgentInput,
@@ -66,7 +66,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
             forwarded_headers=forwarded_headers, authorization_context=authorization_context
         )
         async with mcp_tools_context(mcp_config) as tools:
-            agent = agent_class(
+            agent = MyAgent(
                 llm=llm,
                 forwarded_headers=forwarded_headers,
                 tools=tools,

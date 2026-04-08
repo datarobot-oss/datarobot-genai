@@ -81,4 +81,4 @@ kickoff_inputs = lambda user_prompt_content: {
     "chat_history": "",
 }
 
-agent_class = datarobot_agent_class_from_crew(crew, agents, tasks, kickoff_inputs)
+MyAgent = datarobot_agent_class_from_crew(crew, agents, tasks, kickoff_inputs)
