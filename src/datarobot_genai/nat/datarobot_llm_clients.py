@@ -224,7 +224,7 @@ async def datarobot_nim_langchain(
 async def datarobot_nim_crewai(
     llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
-    from datarobot_genai.langgraph.llm import get_datarobot_nim_llm
+    from datarobot_genai.crewai.llm import get_datarobot_nim_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
 
