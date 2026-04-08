@@ -245,9 +245,9 @@ class DataRobotMCPServer:
             asyncio.run(self._lifecycle.pre_server_start(self._mcp))
 
             # List registered tools, prompts, and resources before starting server
-            tools = asyncio.run(self._mcp._list_tools_mcp())
-            prompts = asyncio.run(self._mcp._list_prompts_mcp())
-            resources = asyncio.run(self._mcp._list_resources_mcp())
+            tools = asyncio.run(self._mcp.list_tools())
+            prompts = asyncio.run(self._mcp.list_prompts())
+            resources = asyncio.run(self._mcp.list_resources())
 
             tools_count = len(tools)
             prompts_count = len(prompts)
@@ -328,13 +328,13 @@ class DataRobotMCPServer:
             raise
 
     async def get_tools(self) -> dict[str, Tool]:
-        return await self._mcp.get_tools()
+        return {t.name: t for t in await self._mcp.list_tools()}
 
     async def get_prompts(self) -> dict[str, Prompt]:
-        return await self._mcp.get_prompts()
+        return {p.name: p for p in await self._mcp.list_prompts()}
 
     async def get_resources(self) -> dict[str, Resource]:
-        return await self._mcp.get_resources()
+        return {r.name: r for r in await self._mcp.list_resources()}
 
 
 def create_mcp_server(

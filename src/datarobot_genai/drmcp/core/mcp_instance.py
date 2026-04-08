@@ -97,6 +97,18 @@ class DataRobotMCP(FastMCP):
         self._deployments_map: dict[str, str] = {}
         self._prompts_map: dict[str, tuple[str, str]] = {}
 
+    async def get_tools(self) -> dict[str, Tool]:
+        """Compat wrapper: fastmcp 3.x renamed get_tools→list_tools and returns a list."""
+        return {t.name: t for t in await self.list_tools()}
+
+    async def get_prompts(self) -> dict[str, Prompt]:
+        """Compat wrapper: fastmcp 3.x renamed get_prompts→list_prompts and returns a list."""
+        return {p.name: p for p in await self.list_prompts()}
+
+    async def get_resources(self) -> dict[str, Any]:
+        """Compat wrapper: fastmcp 3.x renamed get_resources→list_resources and returns a list."""
+        return {r.name: r for r in await self.list_resources()}
+
     async def notify_prompts_changed(self) -> None:
         """
         Notify connected clients that the prompt list has changed.
@@ -250,10 +262,21 @@ class DataRobotMCP(FastMCP):
 # Create the DataRobot MCP instance
 mcp_server_configs: MCPServerConfig = get_config()
 
+if (
+    mcp_server_configs.tool_registration_duplicate_behavior
+    != mcp_server_configs.prompt_registration_duplicate_behavior
+):
+    logger.warning(
+        "FastMCP 3.x uses a single on_duplicate setting for all component types. "
+        "tool_registration_duplicate_behavior=%s will be used; "
+        "prompt_registration_duplicate_behavior=%s will be ignored for FastMCP.",
+        mcp_server_configs.tool_registration_duplicate_behavior,
+        mcp_server_configs.prompt_registration_duplicate_behavior,
+    )
+
 mcp = DataRobotMCP(
     name=mcp_server_configs.mcp_server_name,
-    on_duplicate_tools=mcp_server_configs.tool_registration_duplicate_behavior,
-    on_duplicate_prompts=mcp_server_configs.prompt_registration_duplicate_behavior,
+    on_duplicate=mcp_server_configs.tool_registration_duplicate_behavior,
 )
 
 
@@ -273,7 +296,6 @@ class ToolKwargs(TypedDict, total=False):
     annotations: Any | None
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
-    enabled: bool | None
 
 
 @dataclass
@@ -296,7 +318,9 @@ class PromptInitArguments:
     def to_dict(
         self,
     ) -> dict[str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | None]:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("enabled", None)  # fastmcp 3.x removed 'enabled' from prompt()
+        return d
 
     def set_prompt_category(self, prompt_category: DataRobotMCPPromptCategory) -> None:
         self.meta = self.meta or {}
@@ -328,7 +352,9 @@ class ResourceInitArguments:
     ) -> dict[
         str, str | bool | set[str] | list[MCPIconType] | dict[str, Any] | MCPAnnotationsType | None
     ]:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("enabled", None)  # fastmcp 3.x removed 'enabled' from resource()
+        return d
 
     def set_resource_category(self, resource_category: DataRobotMCPResourceCategory) -> None:
         self.meta = self.meta or {}
@@ -411,9 +437,14 @@ def dr_mcp_tool(
         updated_kwargs = update_mcp_tool_init_args_with_tool_category(
             tool_category, **mcp_tool_init_args
         )
+        # fastmcp 3.x removed 'enabled' from tool(); handle it separately
+        enabled = updated_kwargs.pop("enabled", None)  # type: ignore[typeddict-item]
         # Apply the MCP decorators
         instrumented = dr_mcp_extras()(wrapper)
         mcp.tool(**updated_kwargs)(instrumented)
+        if enabled is False:
+            tool_name = updated_kwargs.get("name") or func.__name__
+            mcp.disable(names={tool_name}, components={"tool"})
         return instrumented
 
     return decorator
@@ -455,7 +486,7 @@ async def check_tool_registration_status_after_it_finishes(
     name_of_tool_to_register: str,
 ) -> None:
     # Verify tool is registered
-    tools = await mcp_server._list_tools_mcp()
+    tools = await mcp_server.list_tools()
     if not any(tool.name == name_of_tool_to_register for tool in tools):
         raise RuntimeError(f"Tool {name_of_tool_to_register} was not registered successfully")
     logger.info(f"Registered tools: {len(tools)}")
@@ -607,7 +638,10 @@ def dr_mcp_prompt(
             return func(*args, **kwargs)
 
         prompt_init_args.set_prompt_category(prompt_category)
-        return mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
+        registered = mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
+        if prompt_init_args.enabled is False:
+            mcp.disable(names={prompt_init_args.name or func.__name__}, components={"prompt"})
+        return registered
 
     return prompt_decorator
 
@@ -622,6 +656,9 @@ def dr_mcp_resource(
             return func(*args, **kwargs)
 
         resource_init_args.set_resource_category(resource_category)
-        return mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+        registered = mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+        if resource_init_args.enabled is False:
+            mcp.disable(names={resource_init_args.name or func.__name__}, components={"resource"})
+        return registered
 
     return resource_decorator

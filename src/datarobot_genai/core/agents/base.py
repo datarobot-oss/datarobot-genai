@@ -122,6 +122,24 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """
         return self._tools
 
+    def _memory_agent_id(self) -> str:
+        return self.__class__.__name__  # Placeholder for now
+
+    def _memory_app_id(self) -> str:
+        return self.__class__.__module__  # Placeholder for now
+
+    def _memory_attributes(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
+        return {"thread_id": run_agent_input.thread_id}
+
+    @staticmethod
+    def _stringify_memory_value(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(value, sort_keys=True)
+        except TypeError:
+            return str(value)
+
     @property
     def max_history_messages(self) -> int:
         """Maximum number of prior messages to include in chat history.
@@ -209,6 +227,31 @@ class BaseAgent(Generic[TTool], abc.ABC):
             agent_id=agent_id,
             app_id=app_id,
             attributes=attributes,
+        )
+
+    async def retrieve_memory_for_run(
+        self,
+        prompt: Any,
+        run_agent_input: RunAgentInput,
+    ) -> str:
+        return await self.retrieve_memory(
+            prompt=self._stringify_memory_value(prompt),
+            agent_id=self._memory_agent_id(),
+            app_id=self._memory_app_id(),
+            attributes=self._memory_attributes(run_agent_input),
+        )
+
+    async def store_memory_for_run(
+        self,
+        user_message: Any,
+        run_agent_input: RunAgentInput,
+    ) -> None:
+        await self.store_memory(
+            user_message=self._stringify_memory_value(user_message),
+            run_id=run_agent_input.run_id,
+            agent_id=self._memory_agent_id(),
+            app_id=self._memory_app_id(),
+            attributes=self._memory_attributes(run_agent_input),
         )
 
     @classmethod

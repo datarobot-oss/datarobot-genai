@@ -14,21 +14,33 @@
 
 """Unit tests for elicitation_test_tool.py module."""
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
-from unittest.mock import patch
 
 import pytest
 from fastmcp import Context
 from fastmcp.server.context import AcceptedElicitation
 from fastmcp.server.context import CancelledElicitation
 from fastmcp.server.context import DeclinedElicitation
-from fastmcp.tools.tool import FunctionTool
+from fastmcp.server.context import _current_context
+from fastmcp.tools.function_tool import FunctionTool
 
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 # Import the tool module to register the tool
 from datarobot_genai.drmcp.test_utils import elicitation_test_tool  # noqa: F401
+
+
+@contextmanager
+def _mock_context(**kwargs):
+    """Set a mock Context in fastmcp's context variable for tool.run() dependency injection."""
+    mock_ctx = MagicMock(spec=Context, **kwargs)
+    token = _current_context.set(mock_ctx)
+    try:
+        yield mock_ctx
+    finally:
+        _current_context.reset(token)
 
 
 class TestGetUserGreeting:
@@ -41,12 +53,7 @@ class TestGetUserGreeting:
         tool = await mcp.get_tool("get_user_greeting")
         assert isinstance(tool, FunctionTool)
 
-        # Mock the context (even though we don't use it, FastMCP requires it)
-        mock_ctx = MagicMock(spec=Context)
-
-        # Patch get_context where resolve_dependencies looks it up (tool.run path)
-        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
-            # Call the tool with username provided
+        with _mock_context():
             tool_result = await tool.run({"username": "testuser"})
             result = tool_result.structured_content
 
@@ -57,16 +64,11 @@ class TestGetUserGreeting:
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_elicitation_accepted(self) -> None:
         """Test get_user_greeting when elicitation is accepted."""
-        # Get the tool from the MCP instance
         tool = await mcp.get_tool("get_user_greeting")
         assert isinstance(tool, FunctionTool)
 
-        # Mock the context's elicit method
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data="accepted_user"))
-
-        # Patch get_context where resolve_dependencies looks it up (tool.run path)
-        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
+        with _mock_context() as mock_ctx:
+            mock_ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data="accepted_user"))
             tool_result = await tool.run({})
             result = tool_result.structured_content
 
@@ -78,16 +80,11 @@ class TestGetUserGreeting:
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_elicitation_declined(self) -> None:
         """Test get_user_greeting when elicitation is declined."""
-        # Get the tool from the MCP instance
         tool = await mcp.get_tool("get_user_greeting")
         assert isinstance(tool, FunctionTool)
 
-        # Mock the context's elicit method
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
-
-        # Patch get_context where resolve_dependencies looks it up (tool.run path)
-        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
+        with _mock_context() as mock_ctx:
+            mock_ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
             tool_result = await tool.run({})
             result = tool_result.structured_content
 
@@ -98,16 +95,11 @@ class TestGetUserGreeting:
     @pytest.mark.asyncio
     async def test_get_user_greeting_with_elicitation_cancelled(self) -> None:
         """Test get_user_greeting when elicitation is cancelled."""
-        # Get the tool from the MCP instance
         tool = await mcp.get_tool("get_user_greeting")
         assert isinstance(tool, FunctionTool)
 
-        # Mock the context's elicit method
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.elicit = AsyncMock(return_value=CancelledElicitation())
-
-        # Patch get_context where resolve_dependencies looks it up (tool.run path)
-        with patch("fastmcp.server.dependencies.get_context", return_value=mock_ctx):
+        with _mock_context() as mock_ctx:
+            mock_ctx.elicit = AsyncMock(return_value=CancelledElicitation())
             tool_result = await tool.run({})
             result = tool_result.structured_content
 
