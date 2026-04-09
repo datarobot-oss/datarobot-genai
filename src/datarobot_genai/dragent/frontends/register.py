@@ -77,19 +77,16 @@ async def dragent_fastapi_front_end(
 
 
 # Register console frontend for `nat dragent run`
-# Lazy import to avoid pulling in console dependencies during entry-point discovery.
-def _register_console_frontend() -> None:
-    from .console import DRAgentConsoleFrontEndConfig
+from .console import DRAgentConsoleFrontEndConfig  # noqa: E402
+
+
+@register_front_end(config_type=DRAgentConsoleFrontEndConfig)
+async def dragent_console_front_end(
+    config: DRAgentConsoleFrontEndConfig, full_config: Config
+) -> AsyncGenerator[typing.Any, None]:
     from .console import DRAgentConsoleFrontEndPlugin
 
-    @register_front_end(config_type=DRAgentConsoleFrontEndConfig)
-    async def dragent_console_front_end(
-        config: DRAgentConsoleFrontEndConfig, full_config: Config
-    ) -> AsyncGenerator[typing.Any, None]:
-        yield DRAgentConsoleFrontEndPlugin(full_config=full_config)
-
-
-_register_console_frontend()
+    yield DRAgentConsoleFrontEndPlugin(full_config=full_config)
 
 
 # Register converters
