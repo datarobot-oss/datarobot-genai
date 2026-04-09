@@ -94,12 +94,8 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
         # See class docstring for why this override is necessary.
         runner_outputs = None
 
-        # --------------- DRAgent addition ---------------
-        step_adaptor = self._get_step_adaptor()
-        # ------------------------------------------------
-
         # --- BEGIN COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.4.1) ---
-        # Only change: self._subscribe_intermediate_steps(step_adaptor) injected inside
+        # Only change: self._subscribe_intermediate_steps() injected inside
         # each session.run() block. Output formatting delegated to super().
         if self.front_end_config.input_query is not None:
 
@@ -110,7 +106,9 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                     user_authentication_callback=self.auth_flow_handler.authenticate,
                 ) as session:
                     async with session.run(query) as runner:
-                        self._subscribe_intermediate_steps(step_adaptor)  # DRAgent addition
+                        # Each query gets its own adaptor to avoid shared mutable state
+                        # (function_level, seen_llm_new_token) across concurrent coroutines.
+                        self._subscribe_intermediate_steps(self._get_step_adaptor())
                         return await runner.result(to_type=str)
 
             input_list = list(self.front_end_config.input_query)
@@ -124,7 +122,7 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                 input_content = f.read()
             async with session_manager.session(user_id=self.front_end_config.user_id) as session:
                 async with session.run(input_content) as runner:
-                    self._subscribe_intermediate_steps(step_adaptor)  # DRAgent addition
+                    self._subscribe_intermediate_steps(self._get_step_adaptor())
                     runner_outputs = await runner.result(to_type=str)
         else:
             raise RuntimeError("No input provided. Should have been caught by pre_run.")
