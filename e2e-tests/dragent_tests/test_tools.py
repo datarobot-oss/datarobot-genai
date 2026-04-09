@@ -35,6 +35,9 @@ if not AGENT_SUPPORTS_TOOL_CALLS:
 if AGENT == "crewai" and LLM == "external":
     pytest.skip("BUZZOK-30223: CrewAI has issues with passing MCP tools to external LLM", allow_module_level=True)
 
+if AGENT == "crewai" and LLM == "deployment":
+    pytest.skip("BUZZOK-30224: CrewAI has issues with passing MCP tools to external LLM", allow_module_level=True)
+
 GENERATE_OBJECTID_PROMPT = (
     "You MUST use the generate_objectid tool to generate an object ID for a deployment. "
     "Do NOT generate it yourself. Call the generate_objectid tool with this exact input: "

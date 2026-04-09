@@ -4,8 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.14.1
-- Helper functions to instantiate LLM classes for LLM Gateway, deployment, NIM
+## 0.13.3
+- Functions to instantiate LLM classes for LLM Gateway, deployment, NIM, and external
+
+## 0.13.2
+- Updated to remove prints, but instead use `logging` instead in our agents outputs
+
+## 0.13.1
+- Added opt-in memory retrieval and storage to the CrewAI base agent when kickoff inputs declare `memory`.
 
 ## 0.13.0
 - Upgraded fastmcp from 2.x to 3.2.0+ (CVE-2026-32871, CVE-2026-27124, CVE-2025-64340)
