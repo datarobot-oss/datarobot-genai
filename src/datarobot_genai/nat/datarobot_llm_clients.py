@@ -82,7 +82,7 @@ async def datarobot_llm_gateway_langchain(
         by_alias=True,
         exclude_none=True,
     )
-    client = get_datarobot_gateway_llm(config["model"], config)
+    client = get_datarobot_gateway_llm(config["model"], parameters=config)
     yield langchain_patch_llm_based_on_config(client, config)
 
 
@@ -151,10 +151,10 @@ async def datarobot_llm_deployment_langchain(
     if llm_config.headers:
         context_headers = {**context_headers, **llm_config.headers}
 
-    config["default_headers"] = context_headers
+    config["extra_headers"] = context_headers
 
     client = get_datarobot_deployment_llm(
-        llm_config.llm_deployment_id, llm_config.model_name, config
+        llm_config.llm_deployment_id, llm_config.model_name, parameters=config
     )
     yield langchain_patch_llm_based_on_config(client, config)
 
@@ -226,7 +226,9 @@ async def datarobot_nim_langchain(
         by_alias=True,
         exclude_none=True,
     )
-    client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
+    client = get_datarobot_nim_llm(
+        llm_config.nim_deployment_id, llm_config.model_name, parameters=config
+    )
     yield langchain_patch_llm_based_on_config(client, config)
 
 
@@ -288,15 +290,17 @@ async def datarobot_llm_component_langchain(
         exclude_none=True,
     )
     if llm_config.use_datarobot_llm_gateway:
-        client = get_datarobot_gateway_llm(llm_config.model_name, config)
+        client = get_datarobot_gateway_llm(llm_config.model_name, parameters=config)
     elif llm_config.llm_deployment_id:
         if llm_config.headers:
             config["default_headers"] = llm_config.headers
         client = get_datarobot_deployment_llm(
-            llm_config.llm_deployment_id, llm_config.model_name, config
+            llm_config.llm_deployment_id, llm_config.model_name, parameters=config
         )
     elif llm_config.nim_deployment_id:
-        client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
+        client = get_datarobot_nim_llm(
+            llm_config.nim_deployment_id, llm_config.model_name, parameters=config
+        )
     else:
         raise ValueError(
             "Either use_datarobot_llm_gateway, llm_deployment_id, or nim_deployment_id must be "
