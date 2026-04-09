@@ -97,16 +97,6 @@ def test_get_step_adaptor_returns_correct_type():
 # --- run_workflow ---
 
 
-async def test_run_workflow_raises_if_session_manager_is_none():
-    # GIVEN a plugin with run_workflow bound
-    plugin = MagicMock(spec=DRAgentConsoleFrontEndPlugin)
-    plugin.run_workflow = DRAgentConsoleFrontEndPlugin.run_workflow.__get__(plugin)
-    # WHEN we pass None as session_manager
-    # THEN it raises RuntimeError
-    with pytest.raises(RuntimeError, match="Session manager must be provided"):
-        await plugin.run_workflow(None)
-
-
 async def test_run_workflow_raises_if_no_input():
     # GIVEN a plugin with no input_query and no input_file
     plugin = MagicMock(spec=DRAgentConsoleFrontEndPlugin)

@@ -92,8 +92,6 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
 
     async def run_workflow(self, session_manager: SessionManager) -> None:
         # See class docstring for why this override is necessary.
-        if session_manager is None:
-            raise RuntimeError("Session manager must be provided")
         runner_outputs = None
 
         # --------------- DRAgent addition ---------------
