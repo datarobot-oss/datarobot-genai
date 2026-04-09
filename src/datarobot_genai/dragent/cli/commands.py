@@ -31,8 +31,6 @@ _FRONTEND_COMMANDS: dict[str, dict[str, str]] = {
     "dragent_console": {"alias": "run", "help": "Execute a dragent workflow locally (in-process)."},
 }
 
-DEFAULT_CONFIG_FILE = "agent/agent/workflow.yaml"
-
 
 class DRAgentCommandGroup(StartCommandGroup):
     """NAT StartCommandGroup filtered to dragent frontends with friendly aliases."""
@@ -42,7 +40,7 @@ class DRAgentCommandGroup(StartCommandGroup):
         for param in params:
             if isinstance(param, click.Option) and "--config_file" in param.opts:
                 param.required = False
-                param.default = DEFAULT_CONFIG_FILE
+                param.default = "agent/agent/workflow.yaml"
                 param.show_default = True
                 param.type = click.Path(exists=True)
                 break

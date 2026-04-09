@@ -19,7 +19,6 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from datarobot_genai.dragent.cli.commands import DEFAULT_CONFIG_FILE
 from datarobot_genai.dragent.cli.commands import dragent_command
 
 _COMMANDS = "datarobot_genai.dragent.cli.commands"
@@ -144,7 +143,3 @@ def test_run_deployment_errors_without_input():
 
 
 # --- constants ---
-
-
-def test_default_config_file_value():
-    assert DEFAULT_CONFIG_FILE == "agent/agent/workflow.yaml"
