@@ -40,9 +40,19 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
         yield []
         return
 
-    logger.info(f"Connecting to MCP server: {mcp_config.server_config['url']}")
+    url = mcp_config.server_config["url"]
+    logger.info("Connecting to MCP server: %s", url)
 
-    # Use MCPServerAdapter as context manager with the server config
-    with MCPServerAdapter(mcp_config.server_config) as tools:
-        logger.info(f"Successfully connected to MCP server, got {len(tools)} tools")
-        yield tools
+    try:
+        with MCPServerAdapter(mcp_config.server_config) as tools:
+            logger.info("Successfully connected to MCP server, got %d tools", len(tools))
+    except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+        logger.warning(
+            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            url,
+            exc,
+        )
+        yield []
+        return
+
+    yield tools
