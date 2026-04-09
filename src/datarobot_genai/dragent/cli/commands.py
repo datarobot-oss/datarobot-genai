@@ -97,12 +97,6 @@ class DRAgentCommandGroup(StartCommandGroup):
 )
 @click.pass_context
 def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | None) -> None:
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-    except ImportError:
-        pass
     ctx.ensure_object(dict)
     ctx.obj["api_token"] = api_token
     ctx.obj["base_url"] = base_url
