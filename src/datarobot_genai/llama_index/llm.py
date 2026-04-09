@@ -56,7 +56,6 @@ def get_datarobot_deployment_llm(
         "api_base": default_deployment_url(deployment_id),
         "stream_options": {"include_usage": True},
     }
-    config["api_base"] = config["api_base"] + "/chat/completions"
 
     if parameters:
         config.update(parameters)
