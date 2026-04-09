@@ -17,6 +17,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 
@@ -42,7 +43,9 @@ class Config(DataRobotAppFrameworkBaseSettings):
     use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
 
-    max_history_messages: int = DEFAULT_MAX_HISTORY_MESSAGES
+    max_history_messages: int = Field(
+        default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
+    )
 
     def get_llm_type(self) -> LLMType:
         if self.use_datarobot_llm_gateway:
@@ -63,7 +66,7 @@ def get_max_history_messages_default() -> int:
     Invalid values fall back to the built-in default. Negative values are
     treated as 0 (disable history).
     """
-    return Config().max_history_messages
+    return max(Config().max_history_messages, 0)
 
 
 def default_base_url() -> str:

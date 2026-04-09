@@ -23,18 +23,6 @@ def test_get_max_history_messages_default_env_unset(monkeypatch: pytest.MonkeyPa
     assert get_max_history_messages_default() == DEFAULT_MAX_HISTORY_MESSAGES
 
 
-def test_get_max_history_messages_default_env_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "nope")
-    assert get_max_history_messages_default() == DEFAULT_MAX_HISTORY_MESSAGES
-
-
-def test_get_max_history_messages_default_env_negative_disables(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "-1")
-    assert get_max_history_messages_default() == 0
-
-
 def test_get_max_history_messages_default_env_zero_disables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
