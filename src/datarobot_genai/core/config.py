@@ -70,15 +70,23 @@ def default_use_datarobot_llm_gateway() -> bool:
     return config.use_datarobot_llm_gateway
 
 
+def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
+    return f"{datarobot_endpoint}/deployments/{deployment_id}/chat/completions"
+
+
 def default_deployment_url(deployment_id: str | None = None) -> str:
     config = Config()
     deployment_id = deployment_id or config.llm_deployment_id
-    return f"{config.datarobot_endpoint}/deployments/{deployment_id}"
+    return deployment_url(deployment_id, config.datarobot_endpoint)
+
+
+def llm_gateway_url(datarobot_endpoint: str) -> str:
+    return datarobot_endpoint.removesuffix("/api/v2")
 
 
 def default_datarobot_llm_gateway_url() -> str:
     config = Config()
-    return f"{config.datarobot_endpoint}/genai/llmgw"
+    return llm_gateway_url(config.datarobot_endpoint)
 
 
 def default_llm_deployment_id() -> str | None:

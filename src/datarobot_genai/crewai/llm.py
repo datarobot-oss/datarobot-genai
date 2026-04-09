@@ -20,9 +20,7 @@ from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
 
 
-def get_datarobot_gateway_llm(
-    model_name: str | None = None, parameters: dict | None = None
-) -> LLM:
+def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
     model_name = model_name or default_model_name()
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
@@ -34,10 +32,10 @@ def get_datarobot_gateway_llm(
         "stream_options": {"include_usage": True},
     }
 
-    config["api_base"] = config["api_base"].removesuffix("/api/v2")
     if parameters:
         config.update(parameters)
-    return LLM(**config)
+    return LLM(**config, is_litellm=True)
+
 
 def get_datarobot_deployment_llm(
     deployment_id: str, model_name: str | None = None, parameters: dict | None = None
@@ -53,10 +51,10 @@ def get_datarobot_deployment_llm(
         "stream_options": {"include_usage": True},
     }
 
-    config["api_base"] = config["api_base"] + "/chat/completions"
     if parameters:
         config.update(parameters)
-    return LLM(**config)
+    return LLM(**config, is_litellm=True)
+
 
 def get_datarobot_nim_llm(
     nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None

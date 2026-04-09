@@ -38,6 +38,11 @@ tasks:
     cmds:
       - echo "🧪 Running tests for dragent"
       - uv run pytest dragent_tests -vv -s
+  test-dragent-streaming:
+    desc: "🧪 Run tests for dragent streaming"
+    cmds:
+      - echo "🧪 Running tests for dragent streaming"
+      - uv run pytest dragent_tests/test_streaming.py -vv -s
   test-drmcp:
     desc: "🧪 Run tests for drmcp"
     cmds:

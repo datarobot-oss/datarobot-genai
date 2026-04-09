@@ -39,11 +39,11 @@ class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-co
         default_factory=default_use_datarobot_llm_gateway,
         description="Whether to use the DataRobot LLM gateway.",
     )
-    llm_deployment_id: str = Field(
+    llm_deployment_id: str | None = Field(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
-    nim_deployment_id: str = Field(
+    nim_deployment_id: str | None = Field(
         description="The NIM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
@@ -84,7 +84,7 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         description="The model name to pass through to the deployment.",
         default="datarobot-deployed-llm",
     )
-    llm_deployment_id: str = Field(
+    llm_deployment_id: str | None = Field(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
@@ -112,7 +112,7 @@ class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ig
         description="The model name to pass through to the deployment.",
         default="datarobot-deployed-llm",
     )
-    nim_deployment_id: str = Field(
+    nim_deployment_id: str | None = Field(
         description="The LLM deployment ID.",
         default_factory=default_nim_deployment_id,
     )

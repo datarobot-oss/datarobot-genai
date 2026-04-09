@@ -86,9 +86,7 @@ def test_get_datarobot_deployment_llm_appends_chat_completions_to_api_base(
 ) -> None:
     llm = crewai_llm.get_datarobot_deployment_llm("dep-abc-123")
     assert isinstance(llm, LLM)
-    assert llm.api_base == (
-        "https://example.test/deployments/dep-abc-123/chat/completions"
-    )
+    assert llm.api_base == ("https://example.test/deployments/dep-abc-123/chat/completions")
     assert llm.additional_params == {"stream_options": {"include_usage": True}}
 
 

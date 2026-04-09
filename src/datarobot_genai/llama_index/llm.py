@@ -36,11 +36,11 @@ def get_datarobot_gateway_llm(
         "api_base": default_datarobot_llm_gateway_url(),
         "stream_options": {"include_usage": True},
     }
-    config["api_base"] = config["api_base"].removesuffix("/api/v2")
 
     if parameters:
         config.update(parameters)
     return _create_datarobot_litellm(config)
+
 
 def get_datarobot_deployment_llm(
     deployment_id: str, model_name: str | None = None, parameters: dict | None = None
@@ -61,6 +61,7 @@ def get_datarobot_deployment_llm(
     if parameters:
         config.update(parameters)
     return _create_datarobot_litellm(config)
+
 
 def get_datarobot_nim_llm(
     nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None

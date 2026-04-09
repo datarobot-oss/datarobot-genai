@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
-from typing import Any
 from typing import TypeVar
 
 from nat.builder.builder import Builder
@@ -41,6 +40,16 @@ if TYPE_CHECKING:
 
 ModelType = TypeVar("ModelType")
 
+EXCLUDE_FIELDS = {
+    "type",
+    "thinking",
+    "headers",
+    "api_type",
+    "llm_deployment_id",
+    "nim_deployment_id",
+    "use_datarobot_llm_gateway",
+}
+
 
 def _patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> ModelType:
     if isinstance(llm_config, RetryMixin):
@@ -52,7 +61,6 @@ def _patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> 
         )
 
     return client
-
 
 
 @register_llm_client(
@@ -70,7 +78,7 @@ async def datarobot_llm_gateway_langchain(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -89,7 +97,7 @@ async def datarobot_llm_gateway_crewai(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -108,13 +116,13 @@ async def datarobot_llm_gateway_llamaindex(
     from datarobot_genai.llama_index.llm import get_datarobot_gateway_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
-    
+
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type"}, 
-        by_alias=True, 
+        exclude=EXCLUDE_FIELDS,
+        by_alias=True,
         exclude_none=True,
     )
-    
+
     client = get_datarobot_gateway_llm(config["model"], config)
     yield _patch_llm_based_on_config(client, config)
 
@@ -134,7 +142,7 @@ async def datarobot_llm_deployment_langchain(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type", "llm_deployment_id", "model_name"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -162,7 +170,7 @@ async def datarobot_llm_deployment_crewai(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type", "llm_deployment_id", "model_name"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -187,7 +195,7 @@ async def datarobot_llm_deployment_llamaindex(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type", "llm_deployment_id", "model_name"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -214,7 +222,7 @@ async def datarobot_nim_langchain(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type", "nim_deployment_id", "model_name"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -231,7 +239,7 @@ async def datarobot_nim_crewai(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type", "nim_deployment_id", "model_name"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -248,10 +256,12 @@ async def datarobot_nim_llamaindex(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "api_type", "nim_deployment_id", "model_name"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
+    if not llm_config.nim_deployment_id:
+        raise ValueError("nim_deployment_id is required")
     client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
     yield _patch_llm_based_on_config(client, config)
 
@@ -273,7 +283,7 @@ async def datarobot_llm_component_langchain(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type", "use_datarobot_llm_gateway"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -309,7 +319,7 @@ async def datarobot_llm_component_crewai(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type", "use_datarobot_llm_gateway"},
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )
@@ -345,7 +355,15 @@ async def datarobot_llm_component_llamaindex(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
     config = llm_config.model_dump(
-        exclude={"type", "thinking", "headers", "api_type", "use_datarobot_llm_gateway"},
+        exclude={
+            "type",
+            "thinking",
+            "headers",
+            "api_type",
+            "llm_deployment_id",
+            "nim_deployment_id",
+            "use_datarobot_llm_gateway",
+        },
         by_alias=True,
         exclude_none=True,
     )

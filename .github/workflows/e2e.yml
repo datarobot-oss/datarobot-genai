@@ -118,6 +118,14 @@ jobs:
         run: |
           uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
+      - name: Run e2e tests (deployment)
+        working-directory: e2e-tests
+        env:
+          LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
+          USE_DATAROBOT_LLM_GATEWAY: 0
+        run: |
+          uv run pytest dragent_tests/test_streaming.py -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
