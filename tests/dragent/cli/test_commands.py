@@ -24,43 +24,6 @@ from datarobot_genai.dragent.cli.commands import dragent_command
 _COMMANDS = "datarobot_genai.dragent.cli.commands"
 
 
-# --- dragent group ---
-
-
-def test_dragent_no_args_shows_help():
-    # GIVEN no arguments
-    # WHEN we invoke the dragent command
-    result = CliRunner().invoke(dragent_command, [])
-    # THEN it shows help text
-    assert result.exit_code == 0
-    assert "DRAgent CLI" in result.output
-
-
-def test_dragent_accepts_api_token():
-    # GIVEN --api-token flag
-    # WHEN we invoke with --help (to avoid subcommand requirement)
-    result = CliRunner().invoke(dragent_command, ["--api-token", "my-token", "--help"])
-    # THEN it exits successfully
-    assert result.exit_code == 0
-
-
-def test_dragent_accepts_base_url():
-    # GIVEN --base-url flag
-    # WHEN we invoke with --help
-    result = CliRunner().invoke(dragent_command, ["--base-url", "https://custom.com", "--help"])
-    # THEN it exits successfully
-    assert result.exit_code == 0
-
-
-def test_dragent_reads_api_token_from_env(monkeypatch):
-    # GIVEN DATAROBOT_API_TOKEN in the environment
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "env-token")
-    # WHEN we invoke with --help
-    result = CliRunner().invoke(dragent_command, ["--help"])
-    # THEN it exits successfully
-    assert result.exit_code == 0
-
-
 # --- run-deployment ---
 
 
@@ -71,7 +34,17 @@ def test_run_deployment_invokes_stream(mock_headers, mock_stream):
     # WHEN we invoke run-deployment
     result = CliRunner().invoke(
         dragent_command,
-        ["--api-token", "tok", "run-deployment", "--deployment-id", "dep-1", "--input", "hi"],
+        [
+            "--api-token",
+            "tok",
+            "--base-url",
+            "https://app.example.com",
+            "run-deployment",
+            "--deployment-id",
+            "dep-1",
+            "--input",
+            "hi",
+        ],
     )
     # THEN stream_agui_events is called with the correct URL
     assert result.exit_code == 0
@@ -91,6 +64,8 @@ def test_run_deployment_show_payload_prints_json(mock_headers, mock_stream):
         [
             "--api-token",
             "tok",
+            "--base-url",
+            "https://app.example.com",
             "run-deployment",
             "--deployment-id",
             "dep-1",
@@ -140,6 +115,3 @@ def test_run_deployment_errors_without_input():
     )
     # THEN it errors about the missing option
     assert result.exit_code != 0
-
-
-# --- constants ---

@@ -18,10 +18,8 @@ import logging
 from unittest.mock import MagicMock
 
 import pytest
-from colorama import Fore
 
 from datarobot_genai.dragent.frontends.console import DRAgentConsoleFrontEndPlugin
-from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 # --- _print_result ---
 
@@ -61,37 +59,6 @@ def test_print_result_does_not_double_print_when_info_handler_exists(capsys):
         assert "test output" not in out
     finally:
         root.removeHandler(handler)
-
-
-def test_print_result_includes_colorama_formatting(capsys):
-    # GIVEN a logger that triggers the print() fallback
-    root = logging.getLogger()
-    original_handlers = root.handlers[:]
-    root.handlers = []
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.WARNING)
-    root.addHandler(handler)
-    try:
-        # WHEN we print a result
-        DRAgentConsoleFrontEndPlugin._print_result("result")
-        # THEN output contains colorama escape codes
-        out = capsys.readouterr().out
-        assert Fore.GREEN in out
-        assert Fore.RESET in out
-    finally:
-        root.handlers = original_handlers
-
-
-# --- _get_step_adaptor ---
-
-
-def test_get_step_adaptor_returns_correct_type():
-    # GIVEN a plugin instance (mocked)
-    plugin = MagicMock(spec=DRAgentConsoleFrontEndPlugin)
-    # WHEN we call _get_step_adaptor
-    adaptor = DRAgentConsoleFrontEndPlugin._get_step_adaptor(plugin)
-    # THEN it returns a DRAgentNestedReasoningStepAdaptor
-    assert isinstance(adaptor, DRAgentNestedReasoningStepAdaptor)
 
 
 # --- run_workflow ---

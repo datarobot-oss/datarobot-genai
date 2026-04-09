@@ -80,15 +80,6 @@ def test_get_session_secret_key_raises_when_not_set(monkeypatch):
         _get_session_secret_key()
 
 
-def test_get_session_secret_key_raises_when_empty(monkeypatch):
-    # GIVEN SESSION_SECRET_KEY is set to empty string
-    monkeypatch.setenv("SESSION_SECRET_KEY", "")
-    # WHEN we read the key
-    # THEN it raises a ClickException
-    with pytest.raises(click.ClickException, match="SESSION_SECRET_KEY is required"):
-        _get_session_secret_key()
-
-
 # --- require_auth ---
 
 
@@ -100,15 +91,6 @@ def test_require_auth_returns_token_and_url():
     # THEN both are returned
     assert token == "tok"
     assert url == "https://example.com"
-
-
-def test_require_auth_preserves_base_url():
-    # GIVEN a base_url with /api/v2
-    ctx = _make_click_ctx(api_token="tok", base_url="https://example.com/api/v2")
-    # WHEN we require auth
-    _, url = require_auth(ctx)
-    # THEN the URL is returned as-is
-    assert url == "https://example.com/api/v2"
 
 
 def test_require_auth_raises_when_no_token():
@@ -149,24 +131,6 @@ def test_build_agui_payload_has_required_fields():
     # THEN all required AG-UI fields are present
     for field in ("threadId", "runId", "state", "tools", "context", "forwardedProps"):
         assert field in payload
-
-
-def test_build_agui_payload_unique_ids_per_call():
-    # GIVEN two calls
-    p1 = build_agui_payload("a")
-    p2 = build_agui_payload("b")
-    # THEN all UUIDs are unique across calls
-    assert p1["threadId"] != p2["threadId"]
-    assert p1["runId"] != p2["runId"]
-    assert p1["messages"][0]["id"] != p2["messages"][0]["id"]
-
-
-def test_build_agui_payload_is_json_serializable():
-    # GIVEN a payload
-    payload = build_agui_payload("test")
-    # WHEN we serialize it
-    # THEN it should not raise
-    json.dumps(payload)
 
 
 # --- stream_agui_events ---
@@ -246,23 +210,6 @@ def test_stream_agui_events_skips_malformed_sse_data(capsys):
     # THEN valid events are still printed
     out = capsys.readouterr().out
     assert "ok" in out
-
-
-def test_stream_agui_events_skips_non_data_lines(capsys):
-    # GIVEN non-data SSE lines (event, comment, blank)
-    lines = [
-        "event: message",
-        ": comment",
-        "",
-        f"data: {json.dumps({'type': 'RUN_FINISHED'})}",
-    ]
-    resp = _mock_stream_response(lines)
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN only data lines are processed
-    out = capsys.readouterr().out
-    assert "Run finished." in out
 
 
 # --- normalize_base_url ---

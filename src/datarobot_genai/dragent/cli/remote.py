@@ -29,10 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_session_secret_key() -> str:
-    """Read SESSION_SECRET_KEY from the environment.
-
-    Relies on load_dotenv() in commands.py having already loaded .env into os.environ.
-    """
+    """Read SESSION_SECRET_KEY from the environment."""
     val = os.environ.get("SESSION_SECRET_KEY", "")
     if not val:
         raise click.ClickException("SESSION_SECRET_KEY is required for auth context but not set.")
