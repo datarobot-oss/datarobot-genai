@@ -280,7 +280,6 @@ class TestPromptInitArguments:
             "description": None,
             "icons": None,
             "tags": None,
-            "enabled": None,
             "meta": None,
         }
 
@@ -315,7 +314,6 @@ class TestResourceInitArguments:
             "icons": None,
             "mime_type": None,
             "tags": None,
-            "enabled": None,
             "annotations": None,
             "meta": None,
         }

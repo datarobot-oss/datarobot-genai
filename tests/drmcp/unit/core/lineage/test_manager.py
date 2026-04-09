@@ -408,7 +408,7 @@ class TestLineageManager:
     ) -> None:
         mock_mcp_server = Mock()
         mock_fastmcp_tool = Mock()
-        mock_mcp_server._list_tools_mcp = AsyncMock(return_value=[mock_fastmcp_tool])
+        mock_mcp_server.list_tools = AsyncMock(return_value=[mock_fastmcp_tool])
 
         manager = LineageManager(mock_mcp_server)
         mcp_tools = await manager.get_mcp_tools_in_mcp_server()
@@ -427,7 +427,7 @@ class TestLineageManager:
     ) -> None:
         mock_mcp_server = Mock()
         mock_fastmcp_prompt = Mock()
-        mock_mcp_server._list_prompts_mcp = AsyncMock(return_value=[mock_fastmcp_prompt])
+        mock_mcp_server.list_prompts = AsyncMock(return_value=[mock_fastmcp_prompt])
 
         manager = LineageManager(mock_mcp_server)
         mcp_tools = await manager.get_mcp_prompts_in_mcp_server()
@@ -446,7 +446,7 @@ class TestLineageManager:
     ) -> None:
         mock_mcp_server = Mock()
         mock_fastmcp_resource = Mock()
-        mock_mcp_server._list_resources_mcp = AsyncMock(return_value=[mock_fastmcp_resource])
+        mock_mcp_server.list_resources = AsyncMock(return_value=[mock_fastmcp_resource])
 
         manager = LineageManager(mock_mcp_server)
         mcp_tools = await manager.get_mcp_resources_in_mcp_server()

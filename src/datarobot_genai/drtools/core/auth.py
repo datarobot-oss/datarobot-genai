@@ -34,15 +34,14 @@ try:
     from fastmcp.server.dependencies import get_http_headers
     from fastmcp.server.middleware import Middleware
 
-    _get_http_headers = get_http_headers
+    def _get_http_headers(**kwargs: Any) -> dict[str, str]:
+        # fastmcp 3.x strips authorization headers by default; include them for auth
+        return get_http_headers(include_all=True, **kwargs)
+
     _get_context = get_context
 except ImportError:
     # FastMCP not available - create a stub that returns empty dict
-    def _get_http_headers(include_all: bool = False) -> dict[str, str]:
-        """
-        Stub implementation when FastMCP is not available.
-        Returns empty dict to match FastMCP behavior when no request context exists.
-        """
+    def _get_http_headers(**kwargs: Any) -> dict[str, str]:
         return {}
 
     def _get_context() -> Any:
@@ -97,7 +96,7 @@ class OAuthMiddleWare(Middleware):
             logger.debug("No valid authorization context extracted from request headers.")
 
         if context.fastmcp_context is not None:
-            context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
+            await context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
             logger.debug("Authorization context attached to state.")
 
         return await call_next(context)
@@ -136,7 +135,7 @@ async def must_get_auth_context() -> AuthCtx:
     """
     context = _get_context()
 
-    auth_ctx = context.get_state(AUTH_CTX_KEY)
+    auth_ctx = await context.get_state(AUTH_CTX_KEY)
     if not auth_ctx:
         raise RuntimeError("Could not retrieve authorization context from FastMCP context state.")
 
