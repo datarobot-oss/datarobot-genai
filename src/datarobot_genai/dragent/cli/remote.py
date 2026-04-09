@@ -108,6 +108,7 @@ def stream_agui_events(
     headers: dict[str, str],
 ) -> None:
     """POST to an AG-UI /generate/stream endpoint and print text events."""
+    run_error: str | None = None
     try:
         with httpx.stream("POST", url, json=payload, headers=headers, timeout=300) as resp:
             if not resp.is_success:
@@ -134,13 +135,19 @@ def stream_agui_events(
                     elif event_type == "RUN_FINISHED":
                         click.echo("\nRun finished.")
                     elif event_type == "RUN_ERROR":
-                        msg = ev.get("message", "Unknown error")
-                        raise click.ClickException(f"Run failed: {msg}")
+                        run_error = ev.get("message", "Unknown error")
+                        break
                     else:
                         logger.debug("Unhandled SSE event type: %s", event_type)
+                if run_error:
+                    break
+    except click.ClickException:
+        raise
     except httpx.ConnectError:
         raise click.ClickException(f"Could not connect to {url}.")
     except httpx.TimeoutException as exc:
         raise click.ClickException(f"Request timed out: {exc}")
     except httpx.HTTPError as exc:
         raise click.ClickException(f"HTTP error during streaming: {exc}")
+    if run_error:
+        raise click.ClickException(f"Run failed: {run_error}")

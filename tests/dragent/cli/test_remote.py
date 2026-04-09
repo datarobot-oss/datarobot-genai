@@ -234,6 +234,13 @@ def test_normalize_base_url_noop_when_clean():
 # --- get_auth_context_headers ---
 
 
+def test_auth_context_handler_import_path():
+    """Verify the lazy import path used in get_auth_context_headers resolves."""
+    from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+
+    assert callable(AuthContextHeaderHandler)
+
+
 @patch("datarobot_genai.core.utils.auth.AuthContextHeaderHandler")
 @patch(f"{_REMOTE}.httpx.get")
 def test_get_auth_context_headers_success(mock_get, mock_handler_cls, monkeypatch):
