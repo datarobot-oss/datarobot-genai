@@ -51,7 +51,7 @@ jobs:
           done
           echo "agents=$agents" >> "$GITHUB_OUTPUT"
 
-  e2e-dragent:
+  e2e-dragent-llmgw:
     needs: detect-changes
     if: needs.detect-changes.outputs.agents != '[]'
     runs-on: ubuntu-latest
@@ -69,7 +69,11 @@ jobs:
       DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
       MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+
       AGENT: ${{ matrix.agent }}
+      LLM: llmgw
+
+      LLM_DEFAULT_MODEL: datarobot/vertex_ai/claude-3-5-haiku@20241022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -115,32 +119,169 @@ jobs:
       - name: Run e2e tests with LLM Gateway (full test suite)
         working-directory: e2e-tests
         env:
-          LLM: llmgw
           LLM_DEFAULT_MODEL: datarobot/vertex_ai/claude-3-5-haiku@20241022
         run: |
-          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results-datarobot-llm-gateway.xml
+          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.agent }}-py${{ matrix.python-version }}
+          path: e2e-tests/test_results/
+          if-no-files-found: ignore
+
+  e2e-dragent-deployment:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agents != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJson(needs.detect-changes.outputs.agents) }}
+        python-version: ['3.12']
+    permissions:
+      contents: read
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
+      MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+
+      AGENT: ${{ matrix.agent }}
+      LLM: deployment
+
+      LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
+      LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            e2e-tests/.venv
+            ~/.cache/uv
+          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          restore-keys: |
+            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-
+
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: |
+          uv sync --group dragent-${{ matrix.agent }}
+
+      - name: Run dragent server in background
+        uses: JarvusInnovations/background-action@v1
+        with:
+          working-directory: e2e-tests
+          run: task dragent:run-${{ matrix.agent }} &
+          wait-on: http-get://localhost:8080/health
+          wait-for: 30s
 
       - name: Run e2e tests with DataRobot LLM Deployment (only tool calls)
         working-directory: e2e-tests
-        env:
-          LLM: deployment
-          LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
-          LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
-          USE_DATAROBOT_LLM_GATEWAY: 0
         run: |
-          uv run pytest dragent_tests/test_tools.py -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results-datarobot-llm-deployment.xml
+          uv run pytest dragent_tests/test_tools.py -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.agent }}-py${{ matrix.python-version }}
+          path: e2e-tests/test_results/
+          if-no-files-found: ignore
+
+  e2e-dragent-external:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agents != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJson(needs.detect-changes.outputs.agents) }}
+        python-version: ['3.12']
+    permissions:
+      contents: read
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
+      MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
+      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+
+      AGENT: ${{ matrix.agent }}
+      LLM: external
+
+      LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
+      LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            e2e-tests/.venv
+            ~/.cache/uv
+          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          restore-keys: |
+            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-
+
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: |
+          uv sync --group dragent-${{ matrix.agent }}
+
+      - name: Run dragent server in background
+        uses: JarvusInnovations/background-action@v1
+        with:
+          working-directory: e2e-tests
+          run: task dragent:run-${{ matrix.agent }} &
+          wait-on: http-get://localhost:8080/health
+          wait-for: 30s
 
       - name: Run e2e tests with external LLM (only tool calls)
         working-directory: e2e-tests
-        env:
-          LLM: external
-          USE_DATAROBOT_LLM_GATEWAY: 0
-          LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
-          AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
-          AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
-          AZURE_API_VERSION: 2025-03-01-preview
         run: |
-          uv run pytest dragent_tests/test_tools.py -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results-datarobot-external-llm.xml
+          uv run pytest dragent_tests/test_tools.py -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
 
       - name: Upload test results
         if: always()
