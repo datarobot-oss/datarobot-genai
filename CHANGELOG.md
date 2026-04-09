@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.2
+- Updated to remove prints, but instead use `logging` instead in our agents outputs
+
 ## 0.13.1
 - Added opt-in memory retrieval and storage to the CrewAI base agent when kickoff inputs declare `memory`.
 

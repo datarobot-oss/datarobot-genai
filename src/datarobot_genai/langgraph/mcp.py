@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import copy
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -26,6 +27,8 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import PrivateAttr
 
 from datarobot_genai.core.mcp import MCPConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
@@ -89,7 +92,7 @@ async def mcp_tools_context(
     server_config = mcp_config.server_config
 
     if not server_config:
-        print("No MCP server configured, using empty tools list", flush=True)
+        logger.info("No MCP server configured, using empty tools list")
         yield []
         return
 
@@ -97,7 +100,7 @@ async def mcp_tools_context(
     server_config = copy.deepcopy(server_config)
 
     url = server_config["url"]
-    print(f"Connecting to MCP server: {url}", flush=True)
+    logger.info(f"Connecting to MCP server: {url}")
 
     # Pop transport from server_config to avoid passing it twice
     # Use .pop() with default to never error
@@ -116,5 +119,5 @@ async def mcp_tools_context(
         # Wrap so LangGraph-injected 'runtime' is filtered from callback inputs (avoids
         # copy.deepcopy of non-serializable ToolRuntime in NAT profiler).
         tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
-        print(f"Successfully loaded {len(tools)} MCP tools", flush=True)
+        logger.info(f"Successfully connected to MCP server, got {len(tools)} tools")
         yield tools
