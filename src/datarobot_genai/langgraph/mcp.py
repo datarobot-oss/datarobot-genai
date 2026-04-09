@@ -100,7 +100,7 @@ async def mcp_tools_context(
     server_config = copy.deepcopy(server_config)
 
     url = server_config["url"]
-    logger.info(f"Connecting to MCP server: {url}")
+    logger.info("Connecting to MCP server: %s", url)
 
     # Pop transport from server_config to avoid passing it twice
     # Use .pop() with default to never error
@@ -113,11 +113,19 @@ async def mcp_tools_context(
     else:
         raise RuntimeError("Unsupported MCP transport specified.")
 
-    async with create_session(connection=connection) as session:
-        # Use the connection to load available MCP tools
-        raw_tools = await load_mcp_tools(session=session)
-        # Wrap so LangGraph-injected 'runtime' is filtered from callback inputs (avoids
-        # copy.deepcopy of non-serializable ToolRuntime in NAT profiler).
-        tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
-        logger.info(f"Successfully connected to MCP server, got {len(tools)} tools")
-        yield tools
+    # Graceful fallback: if we can't connect to the MCP server, yield empty tools
+    # instead of crashing. The try/except wraps only the connect+load phase (before
+    # yield) to avoid double-yielding -- an asynccontextmanager must yield exactly once.
+    try:
+        async with create_session(connection=connection) as session:
+            raw_tools = await load_mcp_tools(session=session)
+            tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
+            logger.info("Successfully loaded %d MCP tools", len(tools))
+            yield tools
+    except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+        logger.warning(
+            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            url,
+            exc,
+        )
+        yield []
