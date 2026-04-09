@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import os
 
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from nat.data_models.common import SecretStr
+
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 
 
@@ -39,3 +42,43 @@ def get_max_history_messages_default() -> int:
     # 0 means "no history". Clamp negatives to 0 to allow "disable history"
     # semantics via env var while preventing unbounded/undefined behavior.
     return max(0, value)
+
+
+class Config(DataRobotAppFrameworkBaseSettings):
+    """
+    Finds variables in the priority order of: env
+    variables (including Runtime Parameters), .env, file_secrets, then
+    Pulumi output variables.
+    """
+
+    datarobot_endpoint: str = "https://app.datarobot.com/api/v2"
+    datarobot_api_token: str | None = None
+    llm_deployment_id: str | None = None
+    nim_deployment_id: str | None = None
+    use_datarobot_llm_gateway: bool = True
+    llm_default_model: str | None = None
+    streamming: bool = False
+
+
+def default_api_key() -> SecretStr | None:
+    config = Config()
+    return SecretStr(config.datarobot_api_token) if config.datarobot_api_token else None
+
+
+def default_llm_deployment_url() -> str:
+    config = Config()
+    return f"{config.datarobot_endpoint}/deployments/{config.llm_deployment_id}"
+
+
+def default_base_url() -> str:
+    config = Config()
+    return (
+        config.datarobot_endpoint.rstrip("/")
+        if config.use_datarobot_llm_gateway
+        else config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
+    )
+
+
+def default_model_name() -> str:
+    config = Config()
+    return config.llm_default_model or "datarobot-deployed-llm"
