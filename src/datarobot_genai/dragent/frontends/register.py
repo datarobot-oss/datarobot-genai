@@ -76,6 +76,22 @@ async def dragent_fastapi_front_end(
     yield DRAgentFastApiFrontEndPlugin(full_config=full_config)
 
 
+# Register console frontend for `nat dragent run`
+# Lazy import to avoid pulling in console dependencies during entry-point discovery.
+def _register_console_frontend() -> None:
+    from .console import DRAgentConsoleFrontEndConfig
+    from .console import DRAgentConsoleFrontEndPlugin
+
+    @register_front_end(config_type=DRAgentConsoleFrontEndConfig)
+    async def dragent_console_front_end(
+        config: DRAgentConsoleFrontEndConfig, full_config: Config
+    ) -> AsyncGenerator[typing.Any, None]:
+        yield DRAgentConsoleFrontEndPlugin(full_config=full_config)
+
+
+_register_console_frontend()
+
+
 # Register converters
 GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request)
 GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
