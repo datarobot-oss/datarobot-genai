@@ -30,6 +30,8 @@ def test_print_result_prints_when_log_level_too_high(capsys):
     """When root logger handlers are above INFO, _print_result falls back to print()."""
     # GIVEN a root logger with only a WARNING-level handler
     root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    root.handlers = []
     handler = logging.StreamHandler()
     handler.setLevel(logging.WARNING)
     root.addHandler(handler)
@@ -41,7 +43,7 @@ def test_print_result_prints_when_log_level_too_high(capsys):
         assert "Workflow Result:" in out
         assert "test output" in out
     finally:
-        root.removeHandler(handler)
+        root.handlers = original_handlers
 
 
 def test_print_result_does_not_double_print_when_info_handler_exists(capsys):
@@ -64,6 +66,8 @@ def test_print_result_does_not_double_print_when_info_handler_exists(capsys):
 def test_print_result_includes_colorama_formatting(capsys):
     # GIVEN a logger that triggers the print() fallback
     root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    root.handlers = []
     handler = logging.StreamHandler()
     handler.setLevel(logging.WARNING)
     root.addHandler(handler)
@@ -75,7 +79,7 @@ def test_print_result_includes_colorama_formatting(capsys):
         assert Fore.GREEN in out
         assert Fore.RESET in out
     finally:
-        root.removeHandler(handler)
+        root.handlers = original_handlers
 
 
 # --- _get_step_adaptor ---

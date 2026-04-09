@@ -29,6 +29,7 @@ except ImportError:
 
 from .remote import build_agui_payload
 from .remote import get_auth_context_headers
+from .remote import normalize_base_url
 from .remote import require_auth
 from .remote import stream_agui_events
 
@@ -95,12 +96,11 @@ class DRAgentCommandGroup(StartCommandGroup):
     "--base-url",
     "base_url",
     envvar="DATAROBOT_ENDPOINT",
-    default="https://app.datarobot.com",
-    show_default=True,
+    default=None,
     help="DataRobot API endpoint.",
 )
 @click.pass_context
-def dragent_command(ctx: click.Context, api_token: str | None, base_url: str) -> None:
+def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | None) -> None:
     ctx.ensure_object(dict)
     ctx.obj["api_token"] = api_token
     ctx.obj["base_url"] = base_url
@@ -122,6 +122,7 @@ def run_deployment_command(
     ctx: click.Context, deployment_id: str, input_query: str, show_payload: bool
 ) -> None:
     api_token, base_url = require_auth(ctx)
+    base_url = normalize_base_url(base_url)
     url = f"{base_url}/api/v2/deployments/{deployment_id}/directAccess/generate/stream"
     headers = {
         "Content-Type": "application/json",

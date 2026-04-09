@@ -71,14 +71,19 @@ def get_auth_context_headers(api_token: str, base_url: str) -> dict[str, str]:
 def require_auth(ctx: click.Context) -> tuple[str, str]:
     """Return (api_token, base_url) from the group context, or raise."""
     api_token: str | None = ctx.obj.get("api_token")
-    base_url: str = ctx.obj.get("base_url", "https://app.datarobot.com")
+    base_url: str | None = ctx.obj.get("base_url")
     if not api_token:
         raise click.UsageError(
             "API token is required. Pass --api-token or set DATAROBOT_API_TOKEN."
         )
-    # Normalize: strip trailing /api/v2 since URLs add it explicitly
-    base_url = base_url.rstrip("/").removesuffix("/api/v2")
+    if not base_url:
+        raise click.UsageError("Base URL is required. Pass --base-url or set DATAROBOT_ENDPOINT.")
     return api_token, base_url
+
+
+def normalize_base_url(base_url: str) -> str:
+    """Strip trailing slash and /api/v2 suffix for URL construction."""
+    return base_url.rstrip("/").removesuffix("/api/v2")
 
 
 def build_agui_payload(user_prompt: str) -> dict[str, typing.Any]:

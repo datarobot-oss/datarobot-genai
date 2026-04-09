@@ -46,6 +46,7 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
     try:
         with MCPServerAdapter(mcp_config.server_config) as tools:
             logger.info("Successfully connected to MCP server, got %d tools", len(tools))
+            yield tools
     except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
         logger.warning(
             "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
@@ -53,6 +54,3 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
             exc,
         )
         yield []
-        return
-
-    yield tools

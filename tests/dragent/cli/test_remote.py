@@ -24,6 +24,8 @@ import pytest
 
 from datarobot_genai.dragent.cli.remote import _get_session_secret_key
 from datarobot_genai.dragent.cli.remote import build_agui_payload
+from datarobot_genai.dragent.cli.remote import get_auth_context_headers
+from datarobot_genai.dragent.cli.remote import normalize_base_url
 from datarobot_genai.dragent.cli.remote import require_auth
 from datarobot_genai.dragent.cli.remote import stream_agui_events
 
@@ -100,22 +102,13 @@ def test_require_auth_returns_token_and_url():
     assert url == "https://example.com"
 
 
-def test_require_auth_strips_trailing_slash():
-    # GIVEN a base_url with a trailing slash
-    ctx = _make_click_ctx(api_token="tok", base_url="https://example.com/")
-    # WHEN we require auth
-    _, url = require_auth(ctx)
-    # THEN the slash is stripped
-    assert url == "https://example.com"
-
-
-def test_require_auth_strips_api_v2_suffix():
-    # GIVEN a base_url ending with /api/v2
+def test_require_auth_preserves_base_url():
+    # GIVEN a base_url with /api/v2
     ctx = _make_click_ctx(api_token="tok", base_url="https://example.com/api/v2")
     # WHEN we require auth
     _, url = require_auth(ctx)
-    # THEN /api/v2 is stripped
-    assert url == "https://example.com"
+    # THEN the URL is returned as-is
+    assert url == "https://example.com/api/v2"
 
 
 def test_require_auth_raises_when_no_token():
@@ -127,13 +120,13 @@ def test_require_auth_raises_when_no_token():
         require_auth(ctx)
 
 
-def test_require_auth_default_base_url():
+def test_require_auth_raises_when_no_base_url():
     # GIVEN no base_url specified
     ctx = _make_click_ctx(api_token="tok")
     # WHEN we require auth
-    _, url = require_auth(ctx)
-    # THEN the default URL is used
-    assert url == "https://app.datarobot.com"
+    # THEN it raises UsageError
+    with pytest.raises(click.UsageError, match="Base URL is required"):
+        require_auth(ctx)
 
 
 # --- build_agui_payload ---
@@ -270,3 +263,86 @@ def test_stream_agui_events_skips_non_data_lines(capsys):
     # THEN only data lines are processed
     out = capsys.readouterr().out
     assert "Run finished." in out
+
+
+# --- normalize_base_url ---
+
+
+def test_normalize_base_url_strips_trailing_slash():
+    assert normalize_base_url("https://example.com/") == "https://example.com"
+
+
+def test_normalize_base_url_strips_api_v2_suffix():
+    assert normalize_base_url("https://example.com/api/v2") == "https://example.com"
+
+
+def test_normalize_base_url_strips_both():
+    assert normalize_base_url("https://example.com/api/v2/") == "https://example.com"
+
+
+def test_normalize_base_url_noop_when_clean():
+    assert normalize_base_url("https://example.com") == "https://example.com"
+
+
+# --- get_auth_context_headers ---
+
+
+@patch("datarobot_genai.core.utils.auth.AuthContextHeaderHandler")
+@patch(f"{_REMOTE}.httpx.get")
+def test_get_auth_context_headers_success(mock_get, mock_handler_cls, monkeypatch):
+    # GIVEN a successful account info response and SESSION_SECRET_KEY
+    monkeypatch.setenv("SESSION_SECRET_KEY", "test-secret")
+    mock_resp = MagicMock()
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {"uid": "user-123", "email": "test@example.com"}
+    mock_get.return_value = mock_resp
+
+    mock_handler = MagicMock()
+    mock_handler.get_header.return_value = {"X-DataRobot-Authorization-Context": "jwt-token"}
+    mock_handler_cls.return_value = mock_handler
+
+    # WHEN we get auth context headers
+    headers = get_auth_context_headers("my-token", "https://app.datarobot.com")
+
+    # THEN it calls the API with the correct token
+    mock_get.assert_called_once()
+    call_kwargs = mock_get.call_args
+    assert "Bearer my-token" in str(call_kwargs)
+
+    # AND constructs the JWT with user info
+    mock_handler.get_header.assert_called_once()
+    auth_ctx = mock_handler.get_header.call_args[0][0]
+    assert auth_ctx["user"]["id"] == "user-123"
+    assert auth_ctx["user"]["email"] == "test@example.com"
+
+    # AND returns the header dict
+    assert headers == {"X-DataRobot-Authorization-Context": "jwt-token"}
+
+
+@patch(f"{_REMOTE}.httpx.get")
+def test_get_auth_context_headers_api_failure(mock_get):
+    # GIVEN a failed API response
+    mock_resp = MagicMock()
+    mock_resp.is_success = False
+    mock_resp.status_code = 401
+    mock_get.return_value = mock_resp
+
+    # WHEN we get auth context headers
+    # THEN it raises ClickException
+    with pytest.raises(click.ClickException, match="Failed to fetch user info"):
+        get_auth_context_headers("bad-token", "https://app.datarobot.com")
+
+
+@patch(f"{_REMOTE}.httpx.get")
+def test_get_auth_context_headers_missing_secret_key(mock_get, monkeypatch):
+    # GIVEN a successful API response but no SESSION_SECRET_KEY
+    monkeypatch.delenv("SESSION_SECRET_KEY", raising=False)
+    mock_resp = MagicMock()
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {"uid": "user-123", "email": "test@example.com"}
+    mock_get.return_value = mock_resp
+
+    # WHEN we get auth context headers
+    # THEN it raises ClickException about missing secret key
+    with pytest.raises(click.ClickException, match="SESSION_SECRET_KEY is required"):
+        get_auth_context_headers("my-token", "https://app.datarobot.com")

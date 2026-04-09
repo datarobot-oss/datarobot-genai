@@ -125,3 +125,13 @@ class TestMCPToolsContext:
         with pytest.raises(RuntimeError):
             async with mcp_tools_context(mcp_config):
                 raise RuntimeError("Connection failed")
+
+    async def test_mcp_tools_context_connection_error_yields_empty(self):
+        """Test graceful fallback when MCP server connection fails."""
+        test_url = "https://mcp-server.example.com/mcp"
+        mcp_config = MCPConfig(external_mcp_url=test_url)
+        with patch(
+            "datarobot_genai.crewai.mcp.MCPServerAdapter", side_effect=ConnectionError("refused")
+        ):
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools == []

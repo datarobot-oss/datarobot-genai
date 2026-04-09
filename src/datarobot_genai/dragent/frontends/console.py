@@ -137,15 +137,15 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
     @staticmethod
     def _print_result(runner_outputs: object) -> None:
         """Print workflow result. Mirrors ConsoleFrontEndPlugin output formatting."""
-        line = f"{'-' * 50}"
+        line = "-" * 50
         prefix = f"{line}\n{Fore.GREEN}Workflow Result:\n"
         suffix = f"{Fore.RESET}\n{line}"
 
-        logger.info(f"{prefix}%s{suffix}", runner_outputs)
+        logger.info("%s%s%s", prefix, runner_outputs, suffix)
 
-        effective_level_too_high = all(
-            type(h) is not logging.StreamHandler or h.level > logging.INFO
+        has_info_stream_handler = any(
+            isinstance(h, logging.StreamHandler) and h.level <= logging.INFO
             for h in logging.getLogger().handlers
         )
-        if effective_level_too_high:
+        if not has_info_stream_handler:
             print(f"{prefix}{runner_outputs}{suffix}")
