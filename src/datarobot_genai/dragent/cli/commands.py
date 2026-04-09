@@ -68,7 +68,12 @@ class DRAgentCommandGroup(StartCommandGroup):
 
         filtered: dict[str, click.Command] = {}
         for original_name, meta in _FRONTEND_COMMANDS.items():
-            cmd = loaded[original_name]  # KeyError if frontend not registered
+            if original_name not in loaded:
+                raise RuntimeError(
+                    f"Frontend '{original_name}' not registered. "
+                    f"Ensure nat.front_ends entry points are installed."
+                )
+            cmd = loaded[original_name]
             cmd.name = meta["alias"]
             cmd.help = meta["help"]
             filtered[meta["alias"]] = cmd
