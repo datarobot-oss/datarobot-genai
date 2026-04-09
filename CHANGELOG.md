@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.3
+- Enabled functionalities of synchronizing MCP item metadata within MCP server (still behind the feature flag).
+
 ## 0.13.2
 - Updated to remove prints, but instead use `logging` instead in our agents outputs
 

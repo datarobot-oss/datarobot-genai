@@ -32,6 +32,11 @@ class TestFeatureFlags:
         ) as mock_func:
             yield mock_func
 
+    @pytest.fixture
+    def mock_feature_flag_create(self) -> Iterator[Mock]:
+        with patch.object(FeatureFlag, "create") as mock_func:
+            yield mock_func
+
     def test_create(self, mock_get_datarobot_client: Mock) -> None:
         mock_datarobot_client = mock_get_datarobot_client.return_value
         expected_feature_flag_name = Mock()
@@ -49,3 +54,9 @@ class TestFeatureFlags:
         assert output == FeatureFlag(
             name=expected_feature_flag_name, enabled=bool(expected_feature_status)
         )
+
+    def test_is_mcp_tools_gallery_support_enabled(self, mock_feature_flag_create: Mock) -> None:
+        output = FeatureFlag.is_mcp_tools_gallery_support_enabled()
+
+        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
+        assert output == mock_feature_flag_create.return_value.enabled
