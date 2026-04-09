@@ -20,13 +20,6 @@ import click
 from nat.cli.commands.start import StartCommandGroup
 from nat.cli.type_registry import RegisteredFrontEndInfo
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
-
 from .remote import build_agui_payload
 from .remote import get_auth_context_headers
 from .remote import normalize_base_url
@@ -106,6 +99,12 @@ class DRAgentCommandGroup(StartCommandGroup):
 )
 @click.pass_context
 def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | None) -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
     ctx.ensure_object(dict)
     ctx.obj["api_token"] = api_token
     ctx.obj["base_url"] = base_url
