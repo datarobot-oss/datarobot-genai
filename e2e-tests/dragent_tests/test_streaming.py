@@ -15,13 +15,18 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 from ag_ui.verify import validate_sequence
 
+from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
+
+if not ALL_TEST_CASES:
+    pytest.skip("Running minimal test set for non-LLM Gateway LLM, skipping streaming tests", allow_module_level=True)
 
 
 def test_generate_streaming(http_client: httpx.Client) -> None:

@@ -2,8 +2,6 @@
 # https://taskfile.dev
 version: '3'
 
-dotenv: [".env"]
-
 vars:
   PROJECT_SRC: "./dragent ./drmcp"
   TESTS_SRC: ""
@@ -16,6 +14,16 @@ includes:
     taskfile: ../.taskfiles/lint.yml
     flatten: true
 
+env:
+  LLM: '{{.LLM | default "llmgw"}}'
+  ENV: '{{.ENV | default "testing"}}'
+  AGENT: '{{.AGENT}}'
+
+dotenv:
+  - '.env.{{.ENV}}'
+  - '.env.{{.LLM}}'
+  - '.env'
+
 tasks:
   default:
     cmds:
@@ -24,25 +32,30 @@ tasks:
     desc: "🔧 Install dependencies for a specific group of functionality"
     requires:
       vars:
-      - name: GROUP
+      - name: AGENT
         enum:
           - nat
-          - langgraph
           - crewai
+          - langgraph
           - llamaindex
+          - base
     cmds:
-      - echo "🔧 Installing dependencies for {{.GROUP}}"
-      - uv sync --group dragent-{{.GROUP}} --group lint
+      - echo "🔧 Installing dependencies for {{.AGENT}}"
+      - uv sync --group dragent-{{.AGENT}} --group lint
   test-dragent:
     desc: "🧪 Run tests for dragent"
+    requires:
+      vars:
+      - name: AGENT
+        enum:
+          - nat
+          - crewai
+          - langgraph
+          - llamaindex
+          - base
     cmds:
       - echo "🧪 Running tests for dragent"
       - uv run pytest dragent_tests -vv -s
-  test-dragent-streaming:
-    desc: "🧪 Run tests for dragent streaming"
-    cmds:
-      - echo "🧪 Running tests for dragent streaming"
-      - uv run pytest dragent_tests/test_streaming.py -vv -s
   test-drmcp:
     desc: "🧪 Run tests for drmcp"
     cmds:
@@ -53,3 +66,19 @@ tasks:
     cmds:
       - echo "🧪 Running tests for {{.TARGET}}"
       - uv run pytest {{.CLI_ARGS}} -vv -s
+
+  run-dragent:
+    desc: "🔨 Run dragent"
+    requires:
+      vars:
+      - name: AGENT
+        enum:
+          - nat
+          - crewai
+          - langgraph
+          - llamaindex
+          - base
+    cmds:
+      - echo "🔨 Running dragent"
+      - task: install
+      - task dragent:run-{{.AGENT}}

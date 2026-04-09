@@ -15,11 +15,13 @@
 from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
+from nat.llm.litellm_llm import LiteLlmModelConfig
 from nat.llm.nim_llm import NIMModelConfig
 from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
 from pydantic import Field
 
+from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_model_name
 from datarobot_genai.core.config import default_nim_deployment_id
@@ -51,6 +53,16 @@ class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-co
         description="Additional headers send to LLM deployment.",
         default=None,
     )
+
+    def get_llm_type(self) -> LLMType:
+        if self.use_datarobot_llm_gateway:
+            return LLMType.GATEWAY
+        elif self.llm_deployment_id:
+            return LLMType.DEPLOYMENT
+        elif self.nim_deployment_id:
+            return LLMType.NIM
+        else:
+            return LLMType.EXTERNAL
 
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
@@ -84,7 +96,7 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         description="The model name to pass through to the deployment.",
         default="datarobot-deployed-llm",
     )
-    llm_deployment_id: str | None = Field(
+    llm_deployment_id: str = Field(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
@@ -112,13 +124,9 @@ class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ig
         description="The model name to pass through to the deployment.",
         default="datarobot-deployed-llm",
     )
-    nim_deployment_id: str | None = Field(
+    nim_deployment_id: str = Field(
         description="The LLM deployment ID.",
         default_factory=default_nim_deployment_id,
-    )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
     )
 
 
@@ -126,4 +134,22 @@ class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ig
 async def datarobot_nim(config: DataRobotNIMModelConfig, _builder: Builder) -> LLMProviderInfo:
     yield LLMProviderInfo(
         config=config, description="DataRobot NIM deployment for use with an LLM client."
+    )
+
+
+class DataRobotLitellmConfig(LiteLlmModelConfig, name="datarobot-litellm"):  # type: ignore[call-arg]
+    """A DataRobot Litellm provider to be used with an LLM client."""
+
+    model_name: str = Field(
+        validation_alias=AliasChoices("model_name", "model"),
+        serialization_alias="model",
+        description="The model name.",
+        default_factory=default_model_name,
+    )
+
+
+@register_llm_provider(config_type=DataRobotLitellmConfig)
+async def datarobot_litellm(config: DataRobotLitellmConfig, _builder: Builder) -> LLMProviderInfo:
+    yield LLMProviderInfo(
+        config=config, description="DataRobot Litellm provider for use with an LLM client."
     )

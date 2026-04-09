@@ -2,34 +2,43 @@
 # https://taskfile.dev
 version: '3'
 
+vars:
+  AGENT_PORT: 8080
+
 tasks:
+  wait:
+    desc: "🔨 Waiting for agent to start"
+    cmds:
+      - echo "🔨 Waiting for agent to start"
+      - until curl -f http://localhost:{{.AGENT_PORT}}/health; do sleep 3; done
+      - echo "🔨 Agent started"
   run-nat:
     desc: "🔨 Running NAT agent"
     dir: ./nat
     cmds:
       - echo "🔨 Running NAT agent"
-      - uv run nat start dragent_fastapi --config_file {{.WORKFLOW_FILE | default "workflow.yaml"}} --port {{.AGENT_PORT | default "8080"}}
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-crewai:
     desc: "🔨 Running CrewAI agent via NAT"
     dir: ./crewai
     cmds:
       - echo "🔨 Running CrewAI agent via NAT"
-      - uv run nat start dragent_fastapi --config_file {{.WORKFLOW_FILE | default "workflow.yaml"}} --port {{.AGENT_PORT | default "8080"}}
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-langgraph:
     desc: "🔨 Running LangGraph agent via NAT"
     dir: ./langgraph
     cmds:
       - echo "🔨 Running LangGraph agent via NAT"
-      - uv run nat start dragent_fastapi --config_file {{.WORKFLOW_FILE | default "workflow.yaml"}} --port {{.AGENT_PORT | default "8080"}}
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-llamaindex:
     desc: "🔨 Running LlamaIndex agent via NAT"
     dir: ./llamaindex
     cmds:
       - echo "🔨 Running LlamaIndex agent via NAT"
-      - uv run nat start dragent_fastapi --config_file {{.WORKFLOW_FILE | default "workflow.yaml"}} --port {{.AGENT_PORT | default "8080"}}
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-base:
     desc: "🔨 Running base agent via NAT"
     dir: ./base
     cmds:
       - echo "🔨 Running base agent via NAT"
-      - uv run nat start dragent_fastapi --config_file {{.WORKFLOW_FILE | default "workflow.yaml"}} --port {{.AGENT_PORT | default "8080"}}
+      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}

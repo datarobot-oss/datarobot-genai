@@ -21,8 +21,13 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
-FRAMEWORK = os.environ.get("FRAMEWORK")
-FRAMEWORK_SUPPORTS_TOOL_CALLS = FRAMEWORK in ["langgraph", "nat", "llamaindex"]
+AGENT = os.environ.get("AGENT")
+AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
+AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
+
+LLM = os.environ.get("LLM")
+
+ALL_TEST_CASES = LLM == "llmgw"
 
 
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]

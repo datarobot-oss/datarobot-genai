@@ -16,10 +16,42 @@ from typing import Any
 
 from llama_index.llms.litellm import LiteLLM
 
+from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.nat.datarobot_auth_provider import Config
+
+
+def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
+    from llama_index.core.base.llms.types import LLMMetadata  # noqa: PLC0415
+    from llama_index.llms.litellm import LiteLLM  # noqa: PLC0415
+
+    class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
+        """DataRobotLiteLLM is a small LiteLLM wrapper class that makes all LiteLLM endpoints
+        compatible with the LlamaIndex library.
+        """
+
+        @property
+        def metadata(self) -> LLMMetadata:
+            """Returns the metadata for the LLM.
+
+            This is required to enable the is_chat_model and is_function_calling_model, which are
+            mandatory for LlamaIndex agents. By default, LlamaIndex assumes these are false unless
+            each individual model config in LiteLLM explicitly sets them to true. To use custom LLM
+            endpoints with LlamaIndex agents, you must override this method to return the
+            appropriate metadata.
+            """
+            return LLMMetadata(
+                context_window=128000,
+                num_output=self.max_tokens or -1,
+                is_chat_model=True,
+                is_function_calling_model=True,
+                model_name=self.model,
+            )
+
+    return DataRobotLiteLLM(**config)
 
 
 def get_datarobot_gateway_llm(
@@ -56,7 +88,6 @@ def get_datarobot_deployment_llm(
         "api_base": default_deployment_url(deployment_id),
         "stream_options": {"include_usage": True},
     }
-    config["api_base"] = config["api_base"] + "/chat/completions"
 
     if parameters:
         config.update(parameters)
@@ -69,31 +100,27 @@ def get_datarobot_nim_llm(
     return get_datarobot_deployment_llm(nim_deployment_id, model_name, parameters)
 
 
-def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
-    from llama_index.core.base.llms.types import LLMMetadata  # noqa: PLC0415
-    from llama_index.llms.litellm import LiteLLM  # noqa: PLC0415
+def get_external_llm(model_name: str | None = None, parameters: dict | None = None) -> LiteLLM:
+    model_name = model_name or default_model_name()
+    model_name = model_name.removeprefix("datarobot/")
+    config = {
+        "model": model_name,
+    }
+    if parameters:
+        config.update(parameters)
+    return _create_datarobot_litellm(config)
 
-    class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
-        """DataRobotLiteLLM is a small LiteLLM wrapper class that makes all LiteLLM endpoints
-        compatible with the LlamaIndex library.
-        """
 
-        @property
-        def metadata(self) -> LLMMetadata:
-            """Returns the metadata for the LLM.
-
-            This is required to enable the is_chat_model and is_function_calling_model, which are
-            mandatory for LlamaIndex agents. By default, LlamaIndex assumes these are false unless
-            each individual model config in LiteLLM explicitly sets them to true. To use custom LLM
-            endpoints with LlamaIndex agents, you must override this method to return the
-            appropriate metadata.
-            """
-            return LLMMetadata(
-                context_window=128000,
-                num_output=self.max_tokens or -1,
-                is_chat_model=True,
-                is_function_calling_model=True,
-                model_name=self.model,
-            )
-
-    return DataRobotLiteLLM(**config)
+def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LiteLLM:
+    config = Config()
+    llm_type = config.get_llm_type()
+    if llm_type == LLMType.GATEWAY:
+        return get_datarobot_gateway_llm(model_name, parameters)
+    elif llm_type == LLMType.DEPLOYMENT:
+        return get_datarobot_deployment_llm(config.llm_deployment_id, model_name, parameters)
+    elif llm_type == LLMType.NIM:
+        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters)
+    elif llm_type == LLMType.EXTERNAL:
+        return get_external_llm(model_name, parameters)
+    else:
+        raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {config}")

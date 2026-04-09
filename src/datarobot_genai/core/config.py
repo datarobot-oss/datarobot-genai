@@ -14,9 +14,18 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
+
+
+class LLMType(StrEnum):
+    GATEWAY = "gateway"
+    DEPLOYMENT = "deployment"
+    NIM = "nim"
+    EXTERNAL = "external"
 
 
 class Config(DataRobotAppFrameworkBaseSettings):
@@ -32,7 +41,18 @@ class Config(DataRobotAppFrameworkBaseSettings):
     nim_deployment_id: str | None = None
     use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
+
     max_history_messages: int = DEFAULT_MAX_HISTORY_MESSAGES
+
+    def get_llm_type(self) -> LLMType:
+        if self.use_datarobot_llm_gateway:
+            return LLMType.GATEWAY
+        elif self.llm_deployment_id:
+            return LLMType.DEPLOYMENT
+        elif self.nim_deployment_id:
+            return LLMType.NIM
+        else:
+            return LLMType.EXTERNAL
 
 
 def get_max_history_messages_default() -> int:
@@ -76,8 +96,10 @@ def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
 
 def default_deployment_url(deployment_id: str | None = None) -> str:
     config = Config()
-    deployment_id = deployment_id or config.llm_deployment_id
-    return deployment_url(deployment_id, config.datarobot_endpoint)
+    default_deployment_id = deployment_id or config.llm_deployment_id
+    if default_deployment_id is None:
+        raise ValueError("Neither deployment ID nor default deployment ID is set")
+    return deployment_url(default_deployment_id, config.datarobot_endpoint)
 
 
 def llm_gateway_url(datarobot_endpoint: str) -> str:

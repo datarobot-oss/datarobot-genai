@@ -14,10 +14,17 @@
 
 from crewai import LLM
 
+from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+
+
+def _crewai_model_factory(config: dict) -> LLM:
+    config["stream_options"] = config.get("stream_options", {"include_usage": True})
+    return LLM(**config, is_litellm=True)
 
 
 def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
@@ -29,12 +36,11 @@ def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | 
         "model": model_name,
         "api_key": default_api_key(),
         "api_base": default_datarobot_llm_gateway_url(),
-        "stream_options": {"include_usage": True},
     }
 
     if parameters:
         config.update(parameters)
-    return LLM(**config, is_litellm=True)
+    return _crewai_model_factory(config)
 
 
 def get_datarobot_deployment_llm(
@@ -48,15 +54,43 @@ def get_datarobot_deployment_llm(
         "model": model_name,
         "api_key": default_api_key(),
         "api_base": default_deployment_url(deployment_id),
-        "stream_options": {"include_usage": True},
     }
 
     if parameters:
         config.update(parameters)
-    return LLM(**config, is_litellm=True)
+    return _crewai_model_factory(config)
 
 
 def get_datarobot_nim_llm(
     nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None
 ) -> LLM:
     return get_datarobot_deployment_llm(nim_deployment_id, model_name, parameters)
+
+
+def get_external_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+    model_name = model_name or default_model_name()
+    model_name = model_name.removeprefix("datarobot/")
+
+    config = {
+        "model": model_name,
+        # Everything else is loaded from the environment by LiteLLM
+    }
+
+    if parameters:
+        config.update(parameters)
+    return _crewai_model_factory(config)
+
+
+def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+    config = Config()
+    llm_type = config.get_llm_type()
+    if llm_type == LLMType.GATEWAY:
+        return get_datarobot_gateway_llm(model_name, parameters)
+    elif llm_type == LLMType.DEPLOYMENT:
+        return get_datarobot_deployment_llm(config.llm_deployment_id, model_name, parameters)  # type: ignore[arg-type]
+    elif llm_type == LLMType.NIM:
+        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters)  # type: ignore[arg-type]
+    elif llm_type == LLMType.EXTERNAL:
+        return get_external_llm(model_name, parameters)
+    else:
+        raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {config}")
