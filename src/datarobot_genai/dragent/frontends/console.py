@@ -31,6 +31,8 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 logger = logging.getLogger(__name__)
 
+_TOOL_RESULT_MAX_LEN = 1000
+
 
 # Registered as "dragent_console" so it doesn't conflict with NAT's built-in "console" frontend.
 # Used by `nat dragent run`.
@@ -80,13 +82,77 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                 return
             for event in getattr(result, "events", []):
                 event_type = type(event).__name__
-                delta = getattr(event, "delta", None)
-                if delta:
-                    streamed_output[0] = True
-                    color = Fore.YELLOW if "Reasoning" in event_type else Fore.CYAN
-                    click.echo(f"{color}{delta}{Style.RESET_ALL}", nl=False, err=True)
-                elif event_type in ("TextMessageEndEvent", "ReasoningMessageEndEvent"):
+                # --- Text messages ---
+                if event_type == "TextMessageContentEvent":
+                    delta = getattr(event, "delta", "")
+                    if delta:
+                        streamed_output[0] = True
+                        click.echo(f"{Fore.CYAN}{delta}{Style.RESET_ALL}", nl=False, err=True)
+                elif event_type == "TextMessageEndEvent":
                     click.echo("", err=True)
+                elif event_type == "TextMessageStartEvent":
+                    pass
+                # --- Reasoning ---
+                elif event_type == "ReasoningMessageContentEvent":
+                    delta = getattr(event, "delta", "")
+                    if delta:
+                        streamed_output[0] = True
+                        click.echo(f"{Fore.YELLOW}{delta}{Style.RESET_ALL}", nl=False, err=True)
+                elif event_type == "ReasoningMessageEndEvent":
+                    click.echo("", err=True)
+                elif event_type in (
+                    "ReasoningStartEvent",
+                    "ReasoningMessageStartEvent",
+                    "ReasoningEndEvent",
+                ):
+                    pass
+                # --- Tool calls ---
+                elif event_type == "ToolCallStartEvent":
+                    name = getattr(event, "tool_call_name", "")
+                    click.echo(
+                        f"\n{Fore.MAGENTA}\u25b6 Tool Call: "
+                        f"{Fore.MAGENTA}{Style.DIM}{name}{Style.RESET_ALL}",
+                        err=True,
+                    )
+                    click.echo(
+                        f"{Fore.MAGENTA}  Arguments: {Style.RESET_ALL}",
+                        nl=False,
+                        err=True,
+                    )
+                elif event_type == "ToolCallArgsEvent":
+                    delta = getattr(event, "delta", "")
+                    click.echo(
+                        f"{Fore.MAGENTA}{Style.DIM}{delta}{Style.RESET_ALL}",
+                        nl=False,
+                        err=True,
+                    )
+                elif event_type == "ToolCallEndEvent":
+                    click.echo("", err=True)
+                elif event_type == "ToolCallResultEvent":
+                    content = getattr(event, "content", "")
+                    if len(content) > _TOOL_RESULT_MAX_LEN:
+                        content = content[:_TOOL_RESULT_MAX_LEN] + "\u2026"
+                    click.echo(
+                        f"{Fore.MAGENTA}  Result: "
+                        f"{Fore.MAGENTA}{Style.DIM}{content}{Style.RESET_ALL}\n",
+                        err=True,
+                    )
+                # --- Steps ---
+                elif event_type == "StepStartedEvent":
+                    name = getattr(event, "step_name", "")
+                    click.echo(f"{Style.DIM}Step: {name}{Style.RESET_ALL}", err=True)
+                elif event_type == "StepFinishedEvent":
+                    pass
+                # --- Run lifecycle ---
+                elif event_type == "RunStartedEvent":
+                    click.echo(f"{Style.DIM}Run started{Style.RESET_ALL}", err=True)
+                elif event_type == "RunFinishedEvent":
+                    pass  # handled by outer code
+                # --- Custom ---
+                elif event_type == "CustomEvent":
+                    name = getattr(event, "name", "")
+                    if name != "Heartbeat":
+                        click.echo(f"{Style.DIM}[{name}]{Style.RESET_ALL}", err=True)
 
         def on_error(exc: Exception) -> None:
             logger.debug("Intermediate step stream error: %s", exc)

@@ -29,6 +29,8 @@ from colorama import Style
 
 logger = logging.getLogger(__name__)
 
+_TOOL_RESULT_MAX_LEN = 1000
+
 
 def _get_session_secret_key() -> str | None:
     """Read SESSION_SECRET_KEY from the environment, or None if not set."""
@@ -156,6 +158,7 @@ def stream_agui_events(
                 events = data.get("events", [data])
                 for ev in events:
                     event_type = ev.get("type", "")
+                    # --- Text messages (stdout) ---
                     if event_type in (
                         "TEXT_MESSAGE_CONTENT",
                         "TEXT_MESSAGE_CHUNK",
@@ -166,11 +169,81 @@ def stream_agui_events(
                         )
                     elif event_type == "TEXT_MESSAGE_END":
                         click.echo("")
+                    elif event_type == "TEXT_MESSAGE_START":
+                        pass
+                    # --- Reasoning (stderr) ---
+                    elif event_type == "REASONING_MESSAGE_CONTENT":
+                        click.echo(
+                            f"{Fore.YELLOW}{ev.get('delta', '')}{Style.RESET_ALL}",
+                            nl=False,
+                            err=True,
+                        )
+                    elif event_type == "REASONING_MESSAGE_END":
+                        click.echo("", err=True)
+                    elif event_type in (
+                        "REASONING_START",
+                        "REASONING_MESSAGE_START",
+                        "REASONING_END",
+                    ):
+                        pass
+                    # --- Tool calls (stderr) ---
+                    elif event_type == "TOOL_CALL_START":
+                        name = ev.get("tool_call_name", "")
+                        click.echo(
+                            f"\n{Fore.MAGENTA}\u25b6 Tool Call: "
+                            f"{Fore.MAGENTA}{Style.DIM}{name}{Style.RESET_ALL}",
+                            err=True,
+                        )
+                        click.echo(
+                            f"{Fore.MAGENTA}  Arguments: {Style.RESET_ALL}",
+                            nl=False,
+                            err=True,
+                        )
+                    elif event_type == "TOOL_CALL_ARGS":
+                        click.echo(
+                            f"{Fore.MAGENTA}{Style.DIM}{ev.get('delta', '')}{Style.RESET_ALL}",
+                            nl=False,
+                            err=True,
+                        )
+                    elif event_type == "TOOL_CALL_END":
+                        click.echo("", err=True)
+                    elif event_type == "TOOL_CALL_RESULT":
+                        content = ev.get("content", "")
+                        if len(content) > _TOOL_RESULT_MAX_LEN:
+                            content = content[:_TOOL_RESULT_MAX_LEN] + "\u2026"
+                        click.echo(
+                            f"{Fore.MAGENTA}  Result: "
+                            f"{Fore.MAGENTA}{Style.DIM}{content}{Style.RESET_ALL}\n",
+                            err=True,
+                        )
+                    # --- Steps (stderr) ---
+                    elif event_type == "STEP_STARTED":
+                        step = ev.get("step_name", "")
+                        click.echo(
+                            f"{Style.DIM}Step: {step}{Style.RESET_ALL}",
+                            err=True,
+                        )
+                    elif event_type == "STEP_FINISHED":
+                        pass
+                    # --- Run lifecycle ---
+                    elif event_type == "RUN_STARTED":
+                        click.echo(
+                            f"{Style.DIM}Run started{Style.RESET_ALL}",
+                            err=True,
+                        )
                     elif event_type == "RUN_FINISHED":
                         click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}")
                     elif event_type == "RUN_ERROR":
                         run_error = ev.get("message", "Unknown error")
                         break
+                    # --- Custom ---
+                    elif event_type == "CUSTOM":
+                        name = ev.get("name", "")
+                        if name != "Heartbeat":
+                            click.echo(
+                                f"{Style.DIM}[{name}]{Style.RESET_ALL}",
+                                err=True,
+                            )
                     else:
                         logger.debug("Unhandled SSE event type: %s", event_type)
                 if run_error:
