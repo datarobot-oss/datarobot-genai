@@ -81,7 +81,7 @@ class DRAgentCommandGroup(StartCommandGroup):
             cmd.help = meta["help"]
             filtered[meta["alias"]] = cmd
 
-        filtered["run-deployment"] = run_deployment_command
+        filtered["query"] = query_command
         self._commands = filtered  # type: ignore[assignment]
         return filtered
 
@@ -115,29 +115,63 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
 
 
 # ---------------------------------------------------------------------------
-# run-deployment
+# query
 # ---------------------------------------------------------------------------
 
 
-@click.command(name="run-deployment", help="Query a deployed model via the DataRobot API.")
-@click.option("--deployment-id", "deployment_id", required=True, help="Deployment ID.")
+@click.command(
+    name="query",
+    help="Query a dragent server. Use --local for localhost (reads AGENT_PORT env var), "
+    "or --deployment-id for a DataRobot deployment.",
+)
+@click.option(
+    "--local", "local", is_flag=True, help="Query localhost using --port or AGENT_PORT env var."
+)
+@click.option(
+    "--port",
+    "port",
+    default=None,
+    type=int,
+    envvar="AGENT_PORT",
+    help="Port for --local. Falls back to AGENT_PORT env var.",
+)
+@click.option("--deployment-id", "deployment_id", default=None, help="DataRobot deployment ID.")
 @click.option("--input", "input_query", required=True, help="Prompt string.")
 @click.option(
     "--show-payload", "show_payload", is_flag=True, help="Show the request payload sent to the API."
 )
 @click.pass_context
-def run_deployment_command(
-    ctx: click.Context, deployment_id: str, input_query: str, show_payload: bool
+def query_command(
+    ctx: click.Context,
+    local: bool,
+    port: int | None,
+    deployment_id: str | None,
+    input_query: str,
+    show_payload: bool,
 ) -> None:
-    api_token, base_url = require_auth(ctx)
-    base_url = normalize_base_url(base_url)
-    url = f"{base_url}/api/v2/deployments/{deployment_id}/directAccess/generate/stream"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_token}",
-        **get_auth_context_headers(api_token, base_url),
-    }
+    if local and deployment_id:
+        raise click.UsageError("Specify either --local or --deployment-id, not both.")
+    if not local and not deployment_id:
+        raise click.UsageError("Specify --local or --deployment-id.")
+
+    if deployment_id:
+        api_token, base_url = require_auth(ctx)
+        base_url = normalize_base_url(base_url)
+        target_url = f"{base_url}/api/v2/deployments/{deployment_id}/directAccess/generate/stream"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_token}",
+            **get_auth_context_headers(api_token, base_url),
+        }
+    else:
+        if not port:
+            raise click.UsageError(
+                "Port is required for --local. Pass --port or set AGENT_PORT env var."
+            )
+        target_url = f"http://localhost:{port}/generate/stream"
+        headers = {"Content-Type": "application/json"}
+
     payload = build_agui_payload(input_query)
     if show_payload:
         click.echo(json.dumps(payload, indent=2))
-    stream_agui_events(url, payload, headers)
+    stream_agui_events(target_url, payload, headers)
