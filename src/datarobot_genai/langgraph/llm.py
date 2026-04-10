@@ -16,12 +16,12 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 
+from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.core.config import Config
 
 
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
@@ -111,10 +111,13 @@ def get_llm(
         return get_datarobot_gateway_llm(model_name, parameters, streaming)
     elif llm_type == LLMType.DEPLOYMENT:
         return get_datarobot_deployment_llm(
-            config.llm_deployment_id, model_name, parameters, streaming
+            config.llm_deployment_id,  # type: ignore[arg-type]
+            model_name,
+            parameters,
+            streaming,
         )
     elif llm_type == LLMType.NIM:
-        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters, streaming)
+        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters, streaming)  # type: ignore[arg-type]
     elif llm_type == LLMType.EXTERNAL:
         return get_external_llm(model_name, parameters, streaming)
     else:

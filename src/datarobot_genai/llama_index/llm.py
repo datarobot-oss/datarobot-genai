@@ -16,12 +16,12 @@ from typing import Any
 
 from llama_index.llms.litellm import LiteLLM
 
+from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.core.config import Config
 
 
 def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
@@ -120,9 +120,9 @@ def get_llm(model_name: str | None = None, parameters: dict | None = None) -> Li
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters)
     elif llm_type == LLMType.DEPLOYMENT:
-        return get_datarobot_deployment_llm(config.llm_deployment_id, model_name, parameters)
+        return get_datarobot_deployment_llm(config.llm_deployment_id, model_name, parameters)  # type: ignore[arg-type]
     elif llm_type == LLMType.NIM:
-        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters)
+        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters)  # type: ignore[arg-type]
     elif llm_type == LLMType.EXTERNAL:
         return get_external_llm(model_name, parameters)
     else:
