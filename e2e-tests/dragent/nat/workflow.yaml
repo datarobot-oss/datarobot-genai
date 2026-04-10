@@ -60,5 +60,5 @@ workflow:
     Feel free to call the MCP tools as needed to help you produce the final blog post.
     Return only the final blog post output from the writer.
     But if you are asked to generate an object ID, use the generate_objectid and return the exact object ID from the tool. Do not
-    return anything else.
+    return anything else. Do not return an empty response.
   verbose: true
