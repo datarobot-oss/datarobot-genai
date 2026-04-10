@@ -421,6 +421,7 @@ def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
     assert agent._inner.llm is agent._preserved
     assert agent._inner.function_calling_llm is agent._preserved
 
+
 async def test_invoke_retrieves_and_stores_memory(
     mock_ragas_event_listener, run_agent_input_with_structured_prompt
 ) -> None:
@@ -446,8 +447,8 @@ async def test_invoke_retrieves_and_stores_memory(
         api_key="k",
         verbose=False,
         memory_client=memory_client,
+        crew=CapturingCrew(out),
     )
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called
     _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
@@ -521,8 +522,8 @@ async def test_invoke_does_not_overwrite_non_empty_memory_override(
         api_key="k",
         verbose=False,
         memory_client=memory_client,
+        crew=CapturingCrew(out),
     )
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called
     _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
@@ -565,8 +566,8 @@ async def test_invoke_gracefully_degrades_when_memory_fails(
         api_key="k",
         verbose=False,
         memory_client=FailingMemoryClient(),
+        crew=CapturingCrew(out),
     )
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called
     events = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
@@ -599,8 +600,8 @@ async def test_invoke_does_not_store_memory_when_run_fails(
         api_key="k",
         verbose=False,
         memory_client=memory_client,
+        crew=FailingCrew(out),
     )
-    agent.crew = lambda: FailingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called and the crew fails
     with pytest.raises(RuntimeError, match="crew failed"):
