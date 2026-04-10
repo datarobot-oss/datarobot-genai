@@ -83,14 +83,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Extract final response text from workflow state and/or events."""
         raise NotImplementedError
 
-    def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        """Create an input string for the workflow from the user prompt."""
-        user_prompt_content = extract_user_prompt_content(run_agent_input)
-        return str(user_prompt_content)
-
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
-        input_message = self.make_input_message(run_agent_input)
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
+        input_message = str(user_prompt_content)
+        uses_memory = "{memory}" in input_message
 
         # Handle {chat_history} placeholder replacement for subclass templates
         if "{chat_history}" in input_message:
@@ -99,6 +96,13 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
             )
             input_message = input_message.replace("{chat_history}", formatted_history)
+        if uses_memory:
+            memory = ""
+            try:
+                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
+            except Exception as exc:
+                logger.warning("LlamaIndex memory retrieval failed: %s", exc)
+            input_message = input_message.replace("{memory}", memory)
 
         logger.info(f"Running agent with user prompt: {input_message}")
 
@@ -289,6 +293,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         _ = self.extract_response_text(state, events)
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
+        if uses_memory:
+            try:
+                await self.store_memory_for_run(user_prompt_content, run_agent_input)
+            except Exception as exc:
+                logger.warning("LlamaIndex memory storage failed: %s", exc)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
