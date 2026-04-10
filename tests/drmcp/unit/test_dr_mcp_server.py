@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+from collections.abc import Iterator
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +23,7 @@ from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.dr_mcp_server import DataRobotMCPServer
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.default import Metadata
+from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 
@@ -84,6 +87,23 @@ def metadata_factory():
 class TestDataRobotMCPServer:
     """Test suite for DataRobotMCPServer class."""
 
+    @pytest.fixture
+    def mock_is_mcp_tools_gallery_support_enabled(self) -> Iterator[Mock]:
+        with patch.object(FeatureFlag, "is_mcp_tools_gallery_support_enabled") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_lineage_manager_cls(self) -> Iterator[Mock]:
+        with patch("datarobot_genai.drmcp.core.dr_mcp_server.LineageManager") as mock_cls:
+            yield mock_cls
+
+    @pytest.fixture
+    def mock_lineage_manager(self, mock_lineage_manager_cls: Mock) -> Iterator[Mock]:
+        mock_lineage_manager = mock_lineage_manager_cls.return_value
+        mock_lineage_manager.sync_mcp_tools = AsyncMock()
+        mock_lineage_manager.sync_mcp_prompts = AsyncMock()
+        return mock_lineage_manager
+
     def test_initialization(self, mock_mcp: MagicMock) -> None:
         """Test server initialization with default transport."""
         server = DataRobotMCPServer(mock_mcp)
@@ -97,9 +117,8 @@ class TestDataRobotMCPServer:
         assert server._mcp_transport == "stdio"
 
     @pytest.mark.usefixtures(
-        "mock_lineage_manager_init",
-        "mock_sync_mcp_tools",
         "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager",
     )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch(
@@ -175,6 +194,7 @@ class TestDataRobotMCPServer:
         with pytest.raises(ValueError, match="Missing required DataRobot credentials"):
             server.run()
 
+    @pytest.mark.usefixtures("mock_is_mcp_tools_gallery_support_enabled")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_credentials")
@@ -185,6 +205,8 @@ class TestDataRobotMCPServer:
         mock_get_config: MagicMock,
         mock_mcp: MagicMock,
         mock_config: MagicMock,
+        mock_lineage_manager_cls: Mock,
+        mock_lineage_manager: Mock,
     ) -> None:
         """Test successful server run."""
         mock_get_config.return_value = mock_config
@@ -209,6 +231,15 @@ class TestDataRobotMCPServer:
         # Verify tools were listed
         mock_mcp.list_tools.assert_called_once()
 
+        # Check linage is collected
+        mock_lineage_manager_cls.assert_called_once_with(mock_mcp)
+        mock_lineage_manager.sync_mcp_tools.assert_called_once_with()
+        mock_lineage_manager.sync_mcp_prompts.assert_called_once_with()
+
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager",
+    )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_credentials")
@@ -237,6 +268,10 @@ class TestDataRobotMCPServer:
         with pytest.raises(Exception, match="Server failed to start"):
             server.run()
 
+    @pytest.mark.usefixtures(
+        "mock_is_mcp_tools_gallery_support_enabled",
+        "mock_lineage_manager",
+    )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_credentials")

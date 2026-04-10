@@ -20,10 +20,6 @@ from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
 from datarobot_genai.drmcp.core.exceptions import DynamicToolRegistrationError
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
-from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
-from datarobot_genai.drmcp.core.lineage.manager import LineageManager
-from datarobot_genai.drmcp.core.mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +39,6 @@ async def register_tools_of_datarobot_deployments() -> None:
         except Exception as exc:
             logger.error(f"Unexpected error for deployment {deployment_id}: {exc}")
             pass
-
-    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
-        try:
-            linear_manager = LineageManager(mcp)
-            await linear_manager.sync_mcp_tools()
-        except LRSEnvVarIsNotSetError as error:
-            error_message = f"MCP item metadata is not sync. {str(error)}"
-            logger.warning(error_message)
 
 
 async def register_tool_of_datarobot_deployment(
