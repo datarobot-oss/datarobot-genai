@@ -40,7 +40,8 @@ class DRAgentCommandGroup(StartCommandGroup):
         for param in params:
             if isinstance(param, click.Option) and "--config_file" in param.opts:
                 param.envvar = "DRAGENT_CONFIG_FILE"
-                break
+            elif isinstance(param, click.Option) and "--port" in param.opts:
+                param.envvar = "AGENT_PORT"
         return params
 
     def invoke_subcommand(  # type: ignore[override]
