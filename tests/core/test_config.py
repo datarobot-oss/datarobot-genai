@@ -21,7 +21,6 @@ from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
-from datarobot_genai.core.config import default_base_url
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_llm_deployment_id
@@ -97,28 +96,6 @@ def test_get_llm_type_deployment_takes_priority_over_nim() -> None:
         nim_deployment_id="nim-456",
     )
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
-
-
-# --- default_base_url ---
-
-
-def test_default_base_url_strips_trailing_slash_for_gateway() -> None:
-    cfg = _make_config(
-        datarobot_endpoint="https://app.datarobot.com/api/v2/",
-        use_datarobot_llm_gateway=True,
-    )
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert default_base_url() == "https://app.datarobot.com/api/v2"
-
-
-def test_default_base_url_appends_deployment_path_when_not_gateway() -> None:
-    cfg = _make_config(
-        datarobot_endpoint="https://app.datarobot.com/api/v2",
-        use_datarobot_llm_gateway=False,
-        llm_deployment_id="dep-xyz",
-    )
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert default_base_url() == "https://app.datarobot.com/api/v2/deployments/dep-xyz"
 
 
 # --- default_api_key ---

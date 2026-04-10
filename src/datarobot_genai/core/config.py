@@ -69,15 +69,6 @@ def get_max_history_messages_default() -> int:
     return max(Config().max_history_messages, 0)
 
 
-def default_base_url() -> str:
-    config = Config()
-    return (
-        config.datarobot_endpoint.rstrip("/")
-        if config.use_datarobot_llm_gateway
-        else config.datarobot_endpoint + f"/deployments/{config.llm_deployment_id}"
-    )
-
-
 def default_api_key() -> str | None:
     config = Config()
     return config.datarobot_api_token if config.datarobot_api_token else None

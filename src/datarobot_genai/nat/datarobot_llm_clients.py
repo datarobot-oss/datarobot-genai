@@ -307,7 +307,7 @@ async def datarobot_llm_component_langchain(
     elif llm_type == LLMType.EXTERNAL:
         client = get_external_llm(llm_config.model_name, config)
     else:
-        raise ValueError("Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
+        raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
 
     yield langchain_patch_llm_based_on_config(client, config)
 
@@ -347,7 +347,7 @@ async def datarobot_llm_component_crewai(
     elif llm_type == LLMType.EXTERNAL:
         client = get_external_llm(llm_config.model_name, config)
     else:
-        raise ValueError("Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
+        raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
     yield _patch_llm_based_on_config(client, config)
 
 
@@ -396,7 +396,7 @@ async def datarobot_llm_component_llamaindex(
     elif llm_type == LLMType.EXTERNAL:
         client = get_external_llm(llm_config.model_name, config)
     else:
-        raise ValueError("Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
+        raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
     yield _patch_llm_based_on_config(client, config)
 
 
