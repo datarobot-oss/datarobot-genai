@@ -24,16 +24,15 @@ from uuid import uuid4
 
 import click
 import httpx
+from colorama import Fore
+from colorama import Style
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session_secret_key() -> str:
-    """Read SESSION_SECRET_KEY from the environment."""
-    val = os.environ.get("SESSION_SECRET_KEY", "")
-    if not val:
-        raise click.ClickException("SESSION_SECRET_KEY is required for auth context but not set.")
-    return val
+def _get_session_secret_key() -> str | None:
+    """Read SESSION_SECRET_KEY from the environment, or None if not set."""
+    return os.environ.get("SESSION_SECRET_KEY") or None
 
 
 def get_auth_context_headers(api_token: str, base_url: str) -> dict[str, str]:
@@ -41,7 +40,18 @@ def get_auth_context_headers(api_token: str, base_url: str) -> dict[str, str]:
 
     Fetches user identity from DataRobot, encodes it as a JWT that
     DRAgentAGUISessionManager decodes to extract user_id.
+
+    Returns an empty dict when SESSION_SECRET_KEY is not set, allowing
+    the agent to run without auth context (e.g. local-only usage).
     """
+    secret_key = _get_session_secret_key()
+    if secret_key is None:
+        logger.warning(
+            "SESSION_SECRET_KEY is not set. Skipping auth context header. "
+            "Set it if the deployment requires X-DataRobot-Authorization-Context."
+        )
+        return {}
+
     from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
     resp = httpx.get(
@@ -61,7 +71,7 @@ def get_auth_context_headers(api_token: str, base_url: str) -> dict[str, str]:
         "user": {"id": raw["uid"], "email": raw["email"]},
         "identities": [],
     }
-    handler = AuthContextHeaderHandler(secret_key=_get_session_secret_key())
+    handler = AuthContextHeaderHandler(secret_key=secret_key)
     return handler.get_header(auth_ctx)
 
 
@@ -129,11 +139,14 @@ def stream_agui_events(
                         "TEXT_MESSAGE_CONTENT",
                         "TEXT_MESSAGE_CHUNK",
                     ):
-                        click.echo(ev.get("delta", ""), nl=False)
+                        click.echo(
+                            f"{Fore.CYAN}{ev.get('delta', '')}{Style.RESET_ALL}",
+                            nl=False,
+                        )
                     elif event_type == "TEXT_MESSAGE_END":
                         click.echo("")
                     elif event_type == "RUN_FINISHED":
-                        click.echo("\nRun finished.")
+                        click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}")
                     elif event_type == "RUN_ERROR":
                         run_error = ev.get("message", "Unknown error")
                         break
@@ -150,4 +163,4 @@ def stream_agui_events(
     except httpx.HTTPError as exc:
         raise click.ClickException(f"HTTP error during streaming: {exc}")
     if run_error:
-        raise click.ClickException(f"Run failed: {run_error}")
+        raise click.ClickException(f"{Fore.RED}\u274c Run failed: {run_error}{Style.RESET_ALL}")

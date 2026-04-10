@@ -71,13 +71,12 @@ def test_get_session_secret_key_returns_value_from_env(monkeypatch):
     assert _get_session_secret_key() == "test-secret"
 
 
-def test_get_session_secret_key_raises_when_not_set(monkeypatch):
+def test_get_session_secret_key_returns_none_when_not_set(monkeypatch):
     # GIVEN SESSION_SECRET_KEY is not set
     monkeypatch.delenv("SESSION_SECRET_KEY", raising=False)
     # WHEN we read the key
-    # THEN it raises a ClickException
-    with pytest.raises(click.ClickException, match="SESSION_SECRET_KEY is required"):
-        _get_session_secret_key()
+    # THEN it returns None
+    assert _get_session_secret_key() is None
 
 
 # --- require_auth ---
@@ -153,6 +152,7 @@ def test_stream_agui_events_prints_text_content(capsys):
     assert "hello " in out
     assert "world" in out
     assert "Run finished." in out
+    assert "\u2705" in out
 
 
 def test_stream_agui_events_raises_on_run_error():
@@ -274,8 +274,9 @@ def test_get_auth_context_headers_success(mock_get, mock_handler_cls, monkeypatc
 
 
 @patch(f"{_REMOTE}.httpx.get")
-def test_get_auth_context_headers_api_failure(mock_get):
-    # GIVEN a failed API response
+def test_get_auth_context_headers_api_failure(mock_get, monkeypatch):
+    # GIVEN a failed API response and SESSION_SECRET_KEY is set
+    monkeypatch.setenv("SESSION_SECRET_KEY", "test-secret")
     mock_resp = MagicMock()
     mock_resp.is_success = False
     mock_resp.status_code = 401
@@ -287,16 +288,10 @@ def test_get_auth_context_headers_api_failure(mock_get):
         get_auth_context_headers("bad-token", "https://app.datarobot.com")
 
 
-@patch(f"{_REMOTE}.httpx.get")
-def test_get_auth_context_headers_missing_secret_key(mock_get, monkeypatch):
-    # GIVEN a successful API response but no SESSION_SECRET_KEY
+def test_get_auth_context_headers_missing_secret_key_returns_empty(monkeypatch):
+    # GIVEN no SESSION_SECRET_KEY
     monkeypatch.delenv("SESSION_SECRET_KEY", raising=False)
-    mock_resp = MagicMock()
-    mock_resp.is_success = True
-    mock_resp.json.return_value = {"uid": "user-123", "email": "test@example.com"}
-    mock_get.return_value = mock_resp
-
     # WHEN we get auth context headers
-    # THEN it raises ClickException about missing secret key
-    with pytest.raises(click.ClickException, match="SESSION_SECRET_KEY is required"):
-        get_auth_context_headers("my-token", "https://app.datarobot.com")
+    headers = get_auth_context_headers("my-token", "https://app.datarobot.com")
+    # THEN it returns an empty dict (no API call made)
+    assert headers == {}

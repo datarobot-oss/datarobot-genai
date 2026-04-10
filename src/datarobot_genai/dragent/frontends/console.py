@@ -19,6 +19,7 @@ import logging
 
 import click
 from colorama import Fore
+from colorama import Style
 from nat.builder.context import Context
 from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.front_ends.console.console_front_end_config import ConsoleFrontEndConfig
@@ -57,12 +58,19 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
         return DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig())
 
     @staticmethod
-    def _subscribe_intermediate_steps(step_adaptor: DRAgentNestedReasoningStepAdaptor) -> None:
+    def _subscribe_intermediate_steps(
+        step_adaptor: DRAgentNestedReasoningStepAdaptor,
+        streamed_output: list[bool],
+    ) -> None:
         """Subscribe to NAT's intermediate step stream and print AG-UI events to the terminal.
 
         Must be called inside ``session.run()`` where the ContextVar-backed event
         stream Subject is active.  Uses the same ``Context.intermediate_step_manager``
         observable that the FastAPI path uses via ``pull_intermediate``.
+
+        *streamed_output* is a single-element list used as a mutable flag; it is set
+        to ``[True]`` when at least one text delta has been printed, so callers can
+        skip the redundant final-result dump.
         """
         context = Context.get()
 
@@ -74,7 +82,9 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                 event_type = type(event).__name__
                 delta = getattr(event, "delta", None)
                 if delta:
-                    click.echo(delta, nl=False, err=True)
+                    streamed_output[0] = True
+                    color = Fore.YELLOW if "Reasoning" in event_type else Fore.CYAN
+                    click.echo(f"{color}{delta}{Style.RESET_ALL}", nl=False, err=True)
                 elif event_type in ("TextMessageEndEvent", "ReasoningMessageEndEvent"):
                     click.echo("", err=True)
 
@@ -93,6 +103,7 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
     async def run_workflow(self, session_manager: SessionManager) -> None:
         # See class docstring for why this override is necessary.
         runner_outputs = None
+        streamed_output: list[bool] = [False]
 
         # --- BEGIN COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.4.1) ---
         # Only change: self._subscribe_intermediate_steps() injected inside
@@ -108,7 +119,9 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                     async with session.run(query) as runner:
                         # Each query gets its own adaptor to avoid shared mutable state
                         # (function_level, seen_llm_new_token) across concurrent coroutines.
-                        self._subscribe_intermediate_steps(self._get_step_adaptor())
+                        self._subscribe_intermediate_steps(
+                            self._get_step_adaptor(), streamed_output
+                        )
                         return await runner.result(to_type=str)
 
             input_list = list(self.front_end_config.input_query)
@@ -122,20 +135,23 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                 input_content = f.read()
             async with session_manager.session(user_id=self.front_end_config.user_id) as session:
                 async with session.run(input_content) as runner:
-                    self._subscribe_intermediate_steps(self._get_step_adaptor())
+                    self._subscribe_intermediate_steps(self._get_step_adaptor(), streamed_output)
                     runner_outputs = await runner.result(to_type=str)
         else:
             raise RuntimeError("No input provided. Should have been caught by pre_run.")
         # --- END COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.4.1) ---
 
-        self._print_result(runner_outputs)
+        if streamed_output[0]:
+            click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}", err=True)
+        else:
+            self._print_result(runner_outputs)
 
     @staticmethod
     def _print_result(runner_outputs: object) -> None:
         """Print workflow result. Mirrors ConsoleFrontEndPlugin output formatting."""
         line = "-" * 50
-        prefix = f"{line}\n{Fore.GREEN}Workflow Result:\n"
-        suffix = f"{Fore.RESET}\n{line}"
+        prefix = f"{line}\n{Fore.GREEN}\u2705 Workflow Result:\n"
+        suffix = f"{Style.RESET_ALL}\n{line}"
 
         logger.info("%s%s%s", prefix, runner_outputs, suffix)
 

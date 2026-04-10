@@ -39,12 +39,24 @@ class DRAgentCommandGroup(StartCommandGroup):
         params = super()._build_params(front_end)
         for param in params:
             if isinstance(param, click.Option) and "--config_file" in param.opts:
-                param.required = False
-                param.default = "agent/agent/workflow.yaml"
-                param.show_default = True
-                param.type = click.Path(exists=True)
+                param.envvar = "DRAGENT_CONFIG_FILE"
                 break
         return params
+
+    def invoke_subcommand(  # type: ignore[override]
+        self,
+        ctx: click.Context,
+        cmd_name: str,
+        config_file: object,
+        override: tuple[tuple[str, str], ...],
+        **kwargs: object,
+    ) -> int | None:
+        if config_file is None:
+            raise click.ClickException(
+                "No config file provided. "
+                "Pass --config_file <path> or set the DRAGENT_CONFIG_FILE env var."
+            )
+        return super().invoke_subcommand(ctx, cmd_name, config_file, override, **kwargs)
 
     def _load_commands(self) -> dict[str, click.Command]:
         # Depends on StartCommandGroup caching into self._commands (nvidia-nat 1.4.1).
