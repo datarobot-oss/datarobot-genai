@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Make agents only accept `llm`
 - Functions to convert native agentic primitives into DataRobot agents
 
+## 0.13.3
+- Enabled functionalities of synchronizing MCP item metadata within MCP server (still behind the feature flag).
+
+## 0.13.2
+- Updated to remove prints, but instead use `logging` instead in our agents outputs
+
+## 0.13.1
+- Added opt-in memory retrieval and storage to the CrewAI base agent when kickoff inputs declare `memory`.
+
 ## 0.13.0
 - Upgraded fastmcp from 2.x to 3.2.0+ (CVE-2026-32871, CVE-2026-27124, CVE-2025-64340)
 - Replaced `on_duplicate_tools`/`on_duplicate_prompts` with unified `on_duplicate` (fastmcp 3.x API)

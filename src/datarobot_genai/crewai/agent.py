@@ -136,6 +136,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
           of prior conversation turns. Use ``{chat_history}`` in agent
           goals/backstories or task descriptions to reference it.
 
+        - ``memory`` (optional): Include this key with an empty string value
+          (``""``) to opt into automatic memory retrieval. When present, the
+          base class will populate it with relevant long-term memory before
+          kickoff and store the user turn after a successful run. Use
+          ``{memory}`` in agent goals/backstories or task descriptions to
+          reference it.
+
         Returns
         -------
         dict[str, Any]
@@ -230,6 +237,16 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 if history_summary and not existing_history_text.strip():
                     kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
+            if "memory" in kickoff_inputs:
+                existing_memory_text = str(kickoff_inputs.get("memory") or "")
+                if not existing_memory_text.strip():
+                    try:
+                        kickoff_inputs["memory"] = await self.retrieve_memory_for_run(
+                            user_prompt_content,
+                            run_agent_input,
+                        )
+                    except Exception as exc:
+                        logger.warning("CrewAI memory retrieval failed: %s", exc)
             message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""
@@ -388,6 +405,11 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
+            if "memory" in kickoff_inputs:
+                try:
+                    await self.store_memory_for_run(user_prompt_content, run_agent_input)
+                except Exception as exc:
+                    logger.warning("CrewAI memory storage failed: %s", exc)
             yield (
                 RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
                 pipeline_interactions,

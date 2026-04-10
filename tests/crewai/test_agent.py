@@ -31,6 +31,7 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.agent import CrewAIAgent
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
 
@@ -65,6 +66,72 @@ class ListenerForTest:
 
     def setup_listeners(self, crewai_event_bus: Any) -> None:
         self.called_setup = True
+
+
+class FakeMemoryClient(BaseMemoryClient):
+    def __init__(self, retrieved: str = "saved memory") -> None:
+        self.retrieved = retrieved
+        self.retrieve_calls: list[dict[str, Any]] = []
+        self.store_calls: list[dict[str, Any]] = []
+
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        self.retrieve_calls.append(
+            {
+                "prompt": prompt,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+        return self.retrieved
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        self.store_calls.append(
+            {
+                "user_message": user_message,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+
+
+class FailingMemoryClient(BaseMemoryClient):
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        raise RuntimeError("mem0 retrieve unavailable")
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        raise RuntimeError("mem0 store unavailable")
 
 
 @pytest.fixture
@@ -125,6 +192,19 @@ def test_create_pipeline_interactions_from_messages_returns_sample() -> None:
 def run_agent_input() -> RunAgentInput:
     return RunAgentInput(
         messages=[UserMessage(content="{}", id="message_id")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+@pytest.fixture
+def run_agent_input_with_structured_prompt() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[UserMessage(content='{"topic": "AI"}', id="message_id")],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
         thread_id="thread_id",
@@ -340,3 +420,200 @@ def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
     agent = _Agent()
     assert agent._inner.llm is agent._preserved
     assert agent._inner.function_calling_llm is agent._preserved
+
+async def test_invoke_retrieves_and_stores_memory(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    class AgentWithMemory(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": ""}
+
+    # GIVEN a CrewAI agent whose kickoff inputs opt into memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemory(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+    )
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    # WHEN invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN the retrieved memory is injected and the user prompt is persisted after success
+    assert captured_inputs["memory"] == "Use concise answers."
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": '{"topic": "AI"}',
+            "run_id": None,
+            "agent_id": "AgentWithMemory",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == [
+        {
+            "user_message": '{"topic": "AI"}',
+            "run_id": "run_id",
+            "agent_id": "AgentWithMemory",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+async def test_invoke_skips_memory_when_prompt_does_not_use_it(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    # GIVEN a CrewAI agent whose kickoff inputs do not opt into memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentForTest(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+    )
+
+    # WHEN invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN memory retrieval and storage are both skipped
+    assert memory_client.retrieve_calls == []
+    assert memory_client.store_calls == []
+
+
+async def test_invoke_does_not_overwrite_non_empty_memory_override(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    class AgentWithMemoryOverride(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": "CUSTOM MEMORY"}
+
+    # GIVEN a CrewAI agent that provides its own memory override
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemoryOverride(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+    )
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    # WHEN invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN the explicit override is preserved and the turn is still stored
+    assert captured_inputs["memory"] == "CUSTOM MEMORY"
+    assert memory_client.retrieve_calls == []
+    assert memory_client.store_calls == [
+        {
+            "user_message": '{"topic": "AI"}',
+            "run_id": "run_id",
+            "agent_id": "AgentWithMemoryOverride",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+async def test_invoke_gracefully_degrades_when_memory_fails(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    class AgentWithMemory(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": ""}
+
+    # GIVEN a CrewAI agent whose memory provider errors at runtime
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemory(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=FailingMemoryClient(),
+    )
+    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+
+    # WHEN invoke is called
+    events = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN the run still completes and the memory placeholder remains empty
+    assert events
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert captured_inputs["memory"] == ""
+
+
+async def test_invoke_does_not_store_memory_when_run_fails(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    class FailingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            raise RuntimeError("crew failed")
+
+    class AgentWithMemory(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": ""}
+
+    # GIVEN a CrewAI agent whose run fails after retrieving memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemory(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+    )
+    agent.crew = lambda: FailingCrew(out)  # type: ignore[assignment]
+
+    # WHEN invoke is called and the crew fails
+    with pytest.raises(RuntimeError, match="crew failed"):
+        _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN retrieval may happen, but storage is skipped because the run never finishes
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": '{"topic": "AI"}',
+            "run_id": None,
+            "agent_id": "AgentWithMemory",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == []

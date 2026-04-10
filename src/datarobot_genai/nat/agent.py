@@ -166,7 +166,9 @@ class NatAgent(BaseAgent[None]):
         chat_request = self.make_chat_request(user_prompt)
 
         # Print commands may need flush=True to ensure they are displayed in real-time.
-        print("Running agent with user prompt:", chat_request.messages[0].content, flush=True)
+        logger.info(
+            f"Running agent with user prompt: {chat_request.messages[0].content}",
+        )
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
@@ -275,7 +277,7 @@ class NatAgent(BaseAgent[None]):
         prefix = f"{line}\nWorkflow Result:\n"
         suffix = f"\n{line}"
 
-        print(f"{prefix}{runner_outputs}{suffix}")
+        logger.info(f"{prefix}{runner_outputs}{suffix}")
 
         return runner_outputs, steps
 

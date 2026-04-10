@@ -20,6 +20,7 @@ Unlike CrewAI which uses a context manager, LlamaIndex uses async calls to
 fetch tools from MCP servers.
 """
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -28,6 +29,8 @@ from llama_index.tools.mcp import BasicMCPClient
 from llama_index.tools.mcp import aget_tools_from_mcp_url
 
 from datarobot_genai.core.mcp import MCPConfig
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -48,14 +51,14 @@ async def mcp_tools_context(
     server_params = mcp_config.server_config
 
     if not server_params:
-        print("No MCP server configured, using empty tools list", flush=True)
+        logger.info("No MCP server configured, using empty tools list")
         yield []
         return
 
     url = server_params["url"]
     headers = server_params.get("headers", {})
 
-    print(f"Connecting to MCP server: {url}", flush=True)
+    logger.info(f"Connecting to MCP server: {url}")
     # Create BasicMCPClient with headers to pass authentication
     client = BasicMCPClient(command_or_url=url, headers=headers)
     tools = await aget_tools_from_mcp_url(
@@ -64,9 +67,6 @@ async def mcp_tools_context(
     )
     # Ensure list
     tools = list(tools) if tools is not None else []
-    print(
-        f"Successfully connected to MCP server, got {len(tools)} tools",
-        flush=True,
-    )
+    logger.info(f"Successfully connected to MCP server, got {len(tools)} tools")
 
     yield tools

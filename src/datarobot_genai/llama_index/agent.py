@@ -16,6 +16,7 @@ from __future__ import annotations
 import abc
 import inspect
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -50,6 +51,8 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
+
+logger = logging.getLogger(__name__)
 
 
 class DataRobotLiteLLM(LiteLLM):
@@ -97,12 +100,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             )
             input_message = input_message.replace("{chat_history}", formatted_history)
 
-        # Preserve prior template startup print for CLI parity
-        try:
-            print("Running agent with user prompt:", input_message, flush=True)
-        except Exception:
-            # Printing is best-effort; proceed regardless
-            pass
+        logger.info(f"Running agent with user prompt: {input_message}")
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
@@ -177,19 +175,16 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     )
                     current_agent_name = agent
                     agent = None
-                    # Print banner for agent switch (do not emit as streamed content)
-                    print("\n" + "=" * 50, flush=True)
-                    print(f"🤖 Agent: {current_agent_name}", flush=True)
-                    print("=" * 50 + "\n", flush=True)
+                    logger.info(f"Agent: {current_agent_name}")
 
             event_type = type(event).__name__
             if event_type == "AgentInput" and hasattr(event, "input"):
-                print("📥 Input:", getattr(event, "input"), flush=True)
+                logger.info(f"Input: {getattr(event, 'input')}")
             elif event_type == "AgentOutput":
                 # Output content
                 resp = getattr(event, "response", None)
                 if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                    print("📤 Output:", getattr(resp, "content"), flush=True)
+                    logger.info(f"Output: {getattr(resp, 'content')}")
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -204,15 +199,15 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         except Exception:
                             pass
                     if names:
-                        print("🛠️  Planning to use tools:", names, flush=True)
+                        logger.info(f"Planning to use tools: {names}")
             elif event_type == "ToolCallResult":
                 tname = getattr(event, "tool_name", None)
                 tid = getattr(event, "tool_id", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
                 tout = getattr(event, "tool_output", None)
-                print(f"🔧 Tool Result ({tname}):", flush=True)
-                print(f"  Arguments: {tkwargs}", flush=True)
-                print(f"  Output: {tout}", flush=True)
+                logger.info(f"Tool Result: {tname}")
+                logger.debug(f"Arguments: {tkwargs}")
+                logger.debug(f"Output: {tout}")
                 yield (
                     ToolCallEndEvent(
                         type=EventType.TOOL_CALL_END,
@@ -236,8 +231,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
                 tid = getattr(event, "tool_id", None)
-                print(f"🔨 Calling Tool: {tname}", flush=True)
-                print(f"  With arguments: {tkwargs}", flush=True)
+                logger.info(f"Calling Tool: {tname}")
+                logger.debug(f"With arguments: {tkwargs}")
                 yield (
                     ToolCallStartEvent(
                         type=EventType.TOOL_CALL_START,
