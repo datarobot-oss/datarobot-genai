@@ -21,7 +21,7 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.nat.datarobot_auth_provider import Config
+from datarobot_genai.core.config import Config
 
 
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
