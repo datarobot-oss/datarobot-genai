@@ -22,6 +22,7 @@ from nat.cli.type_registry import RegisteredFrontEndInfo
 
 from .remote import build_agui_payload
 from .remote import get_auth_context_headers
+from .remote import get_local_auth_context_headers
 from .remote import normalize_base_url
 from .remote import require_auth
 from .remote import stream_agui_events
@@ -170,7 +171,10 @@ def query_command(
                 "Port is required for --local. Pass --port or set AGENT_PORT env var."
             )
         target_url = f"http://localhost:{port}/generate/stream"
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            **get_local_auth_context_headers(),
+        }
 
     payload = build_agui_payload(input_query)
     if show_payload:

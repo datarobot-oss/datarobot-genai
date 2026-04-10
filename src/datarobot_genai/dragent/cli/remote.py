@@ -75,6 +75,27 @@ def get_auth_context_headers(api_token: str, base_url: str) -> dict[str, str]:
     return handler.get_header(auth_ctx)
 
 
+def get_local_auth_context_headers() -> dict[str, str]:
+    """Build X-DataRobot-Authorization-Context header for local server requests.
+
+    Uses SESSION_SECRET_KEY and DATAROBOT_USER_ID from env vars.
+    Returns an empty dict when SESSION_SECRET_KEY is not set.
+    """
+    secret_key = _get_session_secret_key()
+    if secret_key is None:
+        return {}
+
+    from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+
+    user_id = os.environ.get("DATAROBOT_USER_ID", "local_cli_user")
+    auth_ctx = {
+        "user": {"id": user_id, "email": "local@cli"},
+        "identities": [],
+    }
+    handler = AuthContextHeaderHandler(secret_key=secret_key)
+    return handler.get_header(auth_ctx)
+
+
 def require_auth(ctx: click.Context) -> tuple[str, str]:
     """Return (api_token, base_url) from the group context, or raise."""
     api_token: str | None = ctx.obj.get("api_token")
