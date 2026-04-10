@@ -34,7 +34,7 @@ tasks:
       - mkdir -p test_results
       - |
           echo "pytest path: tests/{{.MODULE}}"
-          {{if eq .MODULE "nat"}}uv pip install 'crewai>=1.1.0,<2.0.0' 'llama-index-llms-litellm>=0.4.1,<0.7.0'{{end}}
+          {{if eq .MODULE "nat"}}uv sync --extra nat --extra crewai --extra llamaindex{{end}}
           uv run pytest tests/{{.MODULE}} \
             --junitxml=test_results/test-results.xml -vv -s \
             --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration

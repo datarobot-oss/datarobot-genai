@@ -45,7 +45,7 @@ memory = [
 crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
-    "crewai[litellm]>=1.1.0,<2.0.0",
+    "crewai[litellm]>=1.1.0,<=1.6.1",  # TODO: BUZZOK-30239
     "litellm>=1.83.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
     "nvidia-nat-crewai==1.4.1",
