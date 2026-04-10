@@ -380,6 +380,31 @@ def datarobot_agent_class_from_langgraph(
     graph_factory: Callable[[BaseChatModel, list[BaseTool], bool], StateGraph[MessagesState]],
     prompt_template: ChatPromptTemplate,
 ) -> type[LangGraphAgent]:
+    """Create a LangGraph agent class from a graph factory and prompt template.
+
+    This is a convenience helper that dynamically builds a concrete
+    :class:`LangGraphAgent` subclass so that callers can define an agent
+    entirely from a graph-building function and a prompt template without
+    writing a class by hand.
+
+    Parameters
+    ----------
+    graph_factory : Callable[[BaseChatModel, list[BaseTool], bool], StateGraph[MessagesState]]
+        A callable that receives the LLM client, the list of tools bound to
+        the agent, and a ``verbose`` flag, and returns a compiled LangGraph
+        :class:`StateGraph` ready for execution.
+    prompt_template : ChatPromptTemplate
+        The LangChain prompt template used to format user input before it is
+        fed into the graph. If the template declares a ``{chat_history}``
+        input variable, prior conversation turns are automatically injected.
+
+    Returns
+    -------
+    type[LangGraphAgent]
+        A new :class:`LangGraphAgent` subclass whose ``workflow`` and
+        ``prompt_template`` properties are wired to the provided arguments.
+    """
+
     class DataRobotLangAgent(LangGraphAgent):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)

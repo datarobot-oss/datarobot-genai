@@ -321,6 +321,37 @@ def datarobot_agent_class_from_llamaindex(
     agents: list[BaseWorkflowAgent],
     extract_response_text: Callable[[Any, list[Any]], str],
 ) -> type[LlamaIndexAgent]:
+    """Create a LlamaIndex agent class from a pre-built workflow and agents.
+
+    This is a convenience helper that dynamically builds a concrete
+    :class:`LlamaIndexAgent` subclass so that callers can define an agent
+    entirely from an existing :class:`AgentWorkflow` and its constituent
+    agents without writing a class by hand.
+
+    When the returned class is instantiated, calling ``set_llm`` or
+    ``set_tools`` propagates the LLM / tools to every agent in *agents*
+    while preserving each agent's originally configured tools.
+
+    Parameters
+    ----------
+    workflow : AgentWorkflow
+        A fully configured LlamaIndex :class:`AgentWorkflow` instance that
+        orchestrates the provided agents.
+    agents : list[BaseWorkflowAgent]
+        The list of LlamaIndex workflow agents participating in the workflow.
+        Their ``llm`` and ``tools`` attributes are updated at runtime when the
+        DataRobot platform injects the LLM and MCP tools.
+    extract_response_text : Callable[[Any, list[Any]], str]
+        A callback that extracts the final human-readable response from the
+        workflow result state and the list of streamed events.  Receives
+        ``(result_state, events)`` and must return a ``str``.
+
+    Returns
+    -------
+    type[LlamaIndexAgent]
+        A new :class:`LlamaIndexAgent` subclass wired to the provided
+        workflow, agents, and response extractor.
+    """
     original_agent_tools = {agent.name: agent.tools for agent in agents}
 
     class DataRobotLlamaIndexAgent(LlamaIndexAgent):

@@ -423,6 +423,42 @@ def datarobot_agent_class_from_crew(
     tasks: list[Task],
     kickoff_inputs: Callable[[str], dict[str, Any]],
 ) -> type[CrewAIAgent]:
+    """Create a CrewAI agent class from a pre-built crew, agents, and tasks.
+
+    This is a convenience helper that dynamically builds a concrete
+    :class:`CrewAIAgent` subclass so that callers can define an agent
+    entirely from existing CrewAI objects without writing a class by hand.
+
+    When the returned class is instantiated, calling ``set_tools``
+    propagates the platform-injected tools to every agent in *agents*
+    while preserving each agent's originally configured tools.
+
+    Parameters
+    ----------
+    crew : Crew
+        A fully configured CrewAI :class:`Crew` instance that orchestrates
+        the provided agents and tasks.
+    agents : list[Agent]
+        The list of CrewAI :class:`Agent` instances participating in the crew.
+        Their ``llm`` and ``tools`` attributes are updated at runtime when the
+        DataRobot platform injects the LLM and MCP tools.
+    tasks : list[Task]
+        The list of CrewAI :class:`Task` instances that define the work to be
+        performed during kickoff.
+    kickoff_inputs : Callable[[str], dict[str, Any]]
+        A callable that receives the raw user prompt string and returns a
+        dictionary of inputs for ``Crew.kickoff()``. The dictionary keys
+        should match placeholder names used in task descriptions and agent
+        configurations (e.g. ``{topic}``). Include a ``"chat_history"`` key
+        with an empty string value to opt into automatic history injection.
+
+    Returns
+    -------
+    type[CrewAIAgent]
+        A new :class:`CrewAIAgent` subclass wired to the provided crew,
+        agents, tasks, and kickoff-input builder.
+    """
+
     class DataRobotAgent(CrewAIAgent):
         def __init__(
             self,
