@@ -44,8 +44,14 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from crewai import Crew
+from crewai.events import ToolUsageFinishedEvent
 from crewai.events import crewai_event_bus
+from crewai.events.types.tool_usage_events import ToolUsageStartedEvent
 from crewai.tools import BaseTool
 from crewai.types.streaming import CrewStreamingOutput
 from crewai.types.streaming import StreamChunkType
@@ -230,6 +236,26 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 reasoning_started = False
                 text_started = False
                 async for chunk in crew_output:
+                    @crewai_event_bus.on(ToolUsageStartedEvent)
+                    def on_tool_usage_started(_: Any, event: Any) -> None:
+                        yield (
+                            ToolCallStartEvent(
+                                type=EventType.TOOL_CALL_START,
+                                tool_call_id=event.tool_call_id,
+                                tool_name=event.tool_name,
+                            ),
+                        )
+
+                    @crewai_event_bus.on(ToolUsageFinishedEvent)
+                    def on_tool_usage_finished(_: Any, event: Any) -> None:
+                        yield (
+                            ToolCallEndEvent(
+                                type=EventType.TOOL_CALL_END,
+                                tool_call_id=event.tool_call_id,
+                                tool_name=event.tool_name,
+                            ),
+                        )
+
                     # Show task transitions
                     logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
                     if chunk.agent_role != current_agent_role:
