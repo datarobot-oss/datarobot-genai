@@ -124,7 +124,6 @@ def patch_generate_streaming_response() -> None:
         result_type: type | None = None,
         output_type: type | None = None,
     ) -> typing.AsyncGenerator[typing.Any, None]:
-        print("peter res")
         async with session.run(payload) as runner:
             q: AsyncIOProducerConsumerQueue = AsyncIOProducerConsumerQueue()
             intermediate_complete = await pull_intermediate(q, step_adaptor)
@@ -163,7 +162,6 @@ def patch_generate_streaming_response() -> None:
         filter_steps: str | None = None,
     ) -> typing.AsyncGenerator[typing.Any, None]:
         allowed_types: set[str] | None = None
-        print("peter full")
         if filter_steps:
             if filter_steps.lower() == "none":
                 allowed_types = set()
