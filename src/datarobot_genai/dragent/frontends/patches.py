@@ -86,3 +86,119 @@ def patch_crewai_callback_handler() -> None:
     CrewAIProfilerHandler._llm_call_monkey_patch = _patched_llm_call_monkey_patch
     CrewAIProfilerHandler._llm_call_monkey_patch._dr_patched = True
     logger.debug("Patched CrewAIProfilerHandler for crewai >= 1.1.0 compatibility")
+
+
+def patch_generate_streaming_response() -> None:
+    """Ensure NAT streaming endpoints end the SSE connection when the agent errors.
+
+    NAT's ``generate_streaming_response`` runs result production in ``asyncio.create_task``.
+    If ``runner.result_stream()`` raises, the producer never calls ``queue.close()``,
+    so consumers block forever on ``async for item in q``. We always close the queue
+    in a ``finally`` block and await the producer task so failures propagate.
+    """
+    try:
+        import nat.front_ends.fastapi.response_helpers as rh
+    except ImportError:
+        return
+
+    if getattr(rh.generate_streaming_response, "_dr_patched", False):
+        return
+
+    import asyncio
+    import typing
+
+    from nat.data_models.api_server import ResponseIntermediateStep
+    from nat.data_models.api_server import ResponsePayloadOutput
+    from nat.data_models.api_server import ResponseSerializable
+    from nat.data_models.step_adaptor import StepAdaptorConfig
+    from nat.front_ends.fastapi.intermediate_steps_subscriber import pull_intermediate
+    from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+    from nat.utils.producer_consumer_queue import AsyncIOProducerConsumerQueue
+
+    async def generate_streaming_response(  # noqa: PLR0915
+        payload: typing.Any,
+        *,
+        session: typing.Any,
+        streaming: bool,
+        step_adaptor: StepAdaptor = StepAdaptor(StepAdaptorConfig()),
+        result_type: type | None = None,
+        output_type: type | None = None,
+    ) -> typing.AsyncGenerator[typing.Any, None]:
+        async with session.run(payload) as runner:
+            q: AsyncIOProducerConsumerQueue = AsyncIOProducerConsumerQueue()
+            intermediate_complete = await pull_intermediate(q, step_adaptor)
+
+            async def pull_result() -> None:
+                try:
+                    if session.workflow.has_streaming_output and streaming:
+                        async for chunk in runner.result_stream(to_type=output_type):
+                            await q.put(chunk)
+                    else:
+                        result = await runner.result(to_type=result_type)
+                        await q.put(runner.convert(result, output_type))
+
+                    await intermediate_complete.wait()
+                finally:
+                    await q.close()
+
+            task = asyncio.create_task(pull_result())
+            try:
+                async for item in q:
+                    if isinstance(item, ResponseSerializable):
+                        yield item
+                    else:
+                        yield ResponsePayloadOutput(payload=item)
+            finally:
+                await q.close()
+                await task
+
+    async def generate_streaming_response_full(  # noqa: PLR0915
+        payload: typing.Any,
+        *,
+        session: typing.Any,
+        streaming: bool,
+        result_type: type | None = None,
+        output_type: type | None = None,
+        filter_steps: str | None = None,
+    ) -> typing.AsyncGenerator[typing.Any, None]:
+        allowed_types: set[str] | None = None
+        if filter_steps:
+            if filter_steps.lower() == "none":
+                allowed_types = set()
+            else:
+                allowed_types = set(filter_steps.split(","))
+
+        async with session.run(payload) as runner:
+            q: AsyncIOProducerConsumerQueue = AsyncIOProducerConsumerQueue()
+            intermediate_complete = await pull_intermediate(q, None)
+
+            async def pull_result() -> None:
+                try:
+                    if session.workflow.has_streaming_output and streaming:
+                        async for chunk in runner.result_stream(to_type=output_type):
+                            await q.put(chunk)
+                    else:
+                        result = await runner.result(to_type=result_type)
+                        await q.put(runner.convert(result, output_type))
+
+                    await intermediate_complete.wait()
+                finally:
+                    await q.close()
+
+            task = asyncio.create_task(pull_result())
+            try:
+                async for item in q:
+                    if isinstance(item, ResponseIntermediateStep):
+                        if allowed_types is None or item.type in allowed_types:
+                            yield item
+                    else:
+                        yield ResponsePayloadOutput(payload=item)
+            finally:
+                await q.close()
+                await task
+
+    rh.generate_streaming_response = generate_streaming_response
+    rh.generate_streaming_response_full = generate_streaming_response_full
+    rh.generate_streaming_response._dr_patched = True
+    rh.generate_streaming_response_full._dr_patched = True
+    logger.debug("Patched NAT generate_streaming_response for producer failure handling")

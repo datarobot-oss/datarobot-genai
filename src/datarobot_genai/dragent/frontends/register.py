@@ -33,10 +33,15 @@ from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
 from .patches import patch_crewai_callback_handler
+from .patches import patch_generate_streaming_response
 
 # Patch nvidia-nat-crewai callback handler for crewai >= 1.1.0 compatibility.
 # Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
 patch_crewai_callback_handler()
+
+# Patch nvidia-nat to close NAT's async queue when streaming fails so SSE clients do not hang.
+# This is fixed in nat v1.5.0
+patch_generate_streaming_response()
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)
