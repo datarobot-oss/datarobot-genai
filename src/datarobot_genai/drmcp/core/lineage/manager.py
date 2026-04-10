@@ -30,7 +30,6 @@ from datarobot._experimental.models.user_mcp_server_deployment import (
     TypeOfToolInUserMCPServerDeployment,
 )
 from datarobot.errors import ClientError as DataRobotAPIClientError
-from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.clients import (
     setup_and_return_dr_api_client_with_static_config_in_container,
@@ -40,12 +39,13 @@ from datarobot_genai.drmcp.core.lineage.entities import MCPPromptMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPResourceMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVars
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 logger = logging.getLogger(__name__)
 
 
 class LineageManager:
-    def __init__(self, mcp_server_instance: FastMCP) -> None:
+    def __init__(self, mcp_server_instance: DataRobotMCP) -> None:
         setup_and_return_dr_api_client_with_static_config_in_container()
         self.mcp_server_deployment_id = LRSEnvVars.MLOPS_DEPLOYMENT_ID.get_os_env_value()
         self.mcp_server_instance = mcp_server_instance

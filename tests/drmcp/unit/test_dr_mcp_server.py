@@ -96,6 +96,11 @@ class TestDataRobotMCPServer:
         assert server._mcp == mock_mcp
         assert server._mcp_transport == "stdio"
 
+    @pytest.mark.usefixtures(
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_tools",
+        "mock_is_mcp_tools_gallery_support_enabled",
+    )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.register.get_datarobot_tool_deployments"
