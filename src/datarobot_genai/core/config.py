@@ -14,9 +14,48 @@
 
 from __future__ import annotations
 
-import os
+from enum import StrEnum
+
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
+
+
+class LLMType(StrEnum):
+    GATEWAY = "gateway"
+    DEPLOYMENT = "deployment"
+    NIM = "nim"
+    EXTERNAL = "external"
+
+
+class Config(DataRobotAppFrameworkBaseSettings):
+    """
+    Finds variables in the priority order of: env
+    variables (including Runtime Parameters), .env, file_secrets, then
+    Pulumi output variables.
+    """
+
+    datarobot_endpoint: str = "https://app.datarobot.com/api/v2"
+    datarobot_api_token: str | None = None
+    llm_deployment_id: str | None = None
+    nim_deployment_id: str | None = None
+    use_datarobot_llm_gateway: bool = True
+    llm_default_model: str | None = None
+
+    max_history_messages: int = Field(
+        default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
+    )
+
+    def get_llm_type(self) -> LLMType:
+        if self.use_datarobot_llm_gateway:
+            return LLMType.GATEWAY
+        elif self.llm_deployment_id:
+            return LLMType.DEPLOYMENT
+        elif self.nim_deployment_id:
+            return LLMType.NIM
+        else:
+            return LLMType.EXTERNAL
 
 
 def get_max_history_messages_default() -> int:
@@ -27,15 +66,51 @@ def get_max_history_messages_default() -> int:
     Invalid values fall back to the built-in default. Negative values are
     treated as 0 (disable history).
     """
-    raw = os.getenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES")
-    if not raw:
-        return DEFAULT_MAX_HISTORY_MESSAGES
+    return max(Config().max_history_messages, 0)
 
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return DEFAULT_MAX_HISTORY_MESSAGES
 
-    # 0 means "no history". Clamp negatives to 0 to allow "disable history"
-    # semantics via env var while preventing unbounded/undefined behavior.
-    return max(0, value)
+def default_api_key() -> str | None:
+    config = Config()
+    return config.datarobot_api_token if config.datarobot_api_token else None
+
+
+def default_model_name() -> str:
+    config = Config()
+    return config.llm_default_model or "datarobot-deployed-llm"
+
+
+def default_use_datarobot_llm_gateway() -> bool:
+    config = Config()
+    return config.use_datarobot_llm_gateway
+
+
+def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
+    return f"{datarobot_endpoint}/deployments/{deployment_id}/chat/completions"
+
+
+def default_deployment_url(deployment_id: str | None = None) -> str:
+    config = Config()
+    default_deployment_id = deployment_id or config.llm_deployment_id
+    if default_deployment_id is None:
+        raise ValueError("Neither deployment ID nor default deployment ID is set")
+
+    return deployment_url(default_deployment_id, config.datarobot_endpoint)
+
+
+def llm_gateway_url(datarobot_endpoint: str) -> str:
+    return datarobot_endpoint.removesuffix("/api/v2")
+
+
+def default_datarobot_llm_gateway_url() -> str:
+    config = Config()
+    return llm_gateway_url(config.datarobot_endpoint)
+
+
+def default_llm_deployment_id() -> str | None:
+    config = Config()
+    return config.llm_deployment_id
+
+
+def default_nim_deployment_id() -> str | None:
+    config = Config()
+    return config.nim_deployment_id

@@ -19,17 +19,21 @@ import pytest
 from ag_ui.core import EventType
 from ag_ui.verify import validate_sequence
 
-from dragent_tests.helpers import FRAMEWORK
-from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import AGENT
+from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
+from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("MCP_DEPLOYMENT_ID"),
-    reason="MCP_DEPLOYMENT_ID not set; skipping MCP tests",
-)
+if not os.environ.get("MCP_DEPLOYMENT_ID"):
+    pytest.skip("MCP deployment ID is not set, skipping MCP tool call tests", allow_module_level=True)
+if not AGENT_SUPPORTS_TOOL_CALLS:
+    pytest.skip(f"{AGENT} agent does not support tool calls, skipping MCP tests", allow_module_level=True)
+if not ALL_TEST_CASES:
+    pytest.skip("Running minimal test set for non-LLM Gateway LLM", allow_module_level=True)
 
 MCP_TOOL_PROMPT = (
     "You MUST use the search_datarobot_agentic_docs tool to search for 'MCP server'. "
@@ -42,10 +46,6 @@ EXPECTED_TOOL_CALL_NAMES = {
     "mcp_tools__search_datarobot_agentic_docs"
 }
 
-@pytest.mark.skipif(
-    FRAMEWORK == "base",
-    reason="Base framework does not implement anything, skipping MCP tool call tests",
-)
 def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
     """Agent invokes an MCP tool (search_datarobot_agentic_docs)."""
     # GIVEN: a prompt that invokes the search_datarobot_agentic_docs tool
@@ -69,7 +69,7 @@ def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[
         EventType.TOOL_CALL_RESULT,
     }
     event_types = {e.type for e in mcp_ag_ui_events}
-    if FRAMEWORK_SUPPORTS_TOOL_CALLS:
+    if AGENT_SUPPORTS_TOOL_CALLS_STREAMING:
         assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
 
         # THEN: the tool call events contain mcp_tools__search_datarobot_agentic_docs

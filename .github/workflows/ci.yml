@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.10', '3.11', '3.12', '3.13' ]
+        python-version: [ '3.11', '3.12', '3.13' ]
     permissions:
       contents: read
       pull-requests: read
@@ -61,7 +61,7 @@ jobs:
       - name: Type check (mypy)
         run: |
           task mypy
-      
+
       - name: Check import restrictions
         run: |
           task check-imports
@@ -70,13 +70,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.10', '3.11', '3.12', '3.13' ]
+        python-version: [ '3.11', '3.12', '3.13' ]
         module: [ 'core', 'crewai', 'langgraph', 'llamaindex', 'drmcp', 'nat', 'dragent']
-        exclude:
-          - python-version: '3.10'
-            module: 'nat'
-          - python-version: '3.10'
-            module: 'dragent'
     permissions:
       contents: read
       pull-requests: read

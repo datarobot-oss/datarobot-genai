@@ -19,18 +19,24 @@ import pytest
 from ag_ui.core import EventType
 from ag_ui.verify import validate_sequence
 
-from dragent_tests.helpers import FRAMEWORK
-from dragent_tests.helpers import FRAMEWORK_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import AGENT
+from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
+from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
 from dragent_tests.helpers import GENERATE_STREAM_PATH
+from dragent_tests.helpers import LLM
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
-pytestmark = pytest.mark.skipif(
-    FRAMEWORK == "base",
-    reason="Base framework does not implement anything, skipping tool call tests",
-)
+if not AGENT_SUPPORTS_TOOL_CALLS:
+    pytest.skip(f"{AGENT} agent does not support tool calls, skipping tool call tests", allow_module_level=True)
+
+if AGENT == "crewai" and LLM == "external":
+    pytest.skip("BUZZOK-30223: CrewAI has issues with passing MCP tools to external LLM", allow_module_level=True)
+
+if AGENT == "crewai" and LLM == "deployment":
+    pytest.skip("BUZZOK-30224: CrewAI has issues with passing MCP tools to external LLM", allow_module_level=True)
 
 GENERATE_OBJECTID_PROMPT = (
     "You MUST use the generate_objectid tool to generate an object ID for a deployment. "
@@ -67,7 +73,7 @@ def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  #
         EventType.TOOL_CALL_ARGS,
         EventType.TOOL_CALL_RESULT,
     }
-    if FRAMEWORK_SUPPORTS_TOOL_CALLS:
+    if AGENT_SUPPORTS_TOOL_CALLS_STREAMING:
         assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
 
         # THEN: the tool call events contain the generate_objectid tool
@@ -130,7 +136,7 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
         EventType.TOOL_CALL_ARGS,
         EventType.TOOL_CALL_RESULT,
     }
-    if FRAMEWORK_SUPPORTS_TOOL_CALLS:
+    if AGENT_SUPPORTS_TOOL_CALLS:
         assert event_types & tool_types, f"No tool call events found. Got: {event_types}"
 
         # THEN: the tool call events contain the generate_objectid tool
