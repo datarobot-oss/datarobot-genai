@@ -164,12 +164,6 @@ class MyLlamaAgent(LlamaIndexAgent):
         return f"{result_state}:{len(events)}"
 
 
-class LlamaAgentWithMemory(MyLlamaAgent):
-    def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        user_prompt = super().make_input_message(run_agent_input)
-        return f"Memory:\n{{memory}}\n\nLatest: {user_prompt}"
-
-
 # --- Tests for DataRobotLiteLLM ---
 
 
@@ -276,19 +270,6 @@ def run_agent_input() -> RunAgentInput:
 
 
 @pytest.fixture
-def run_agent_input_with_structured_prompt() -> RunAgentInput:
-    return RunAgentInput(
-        messages=[UserMessage(content='{"topic": "AI"}', id="message_id")],
-        tools=[],
-        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
-        thread_id="thread_id",
-        run_id="run_id",
-        state={},
-        context=[],
-    )
-
-
-@pytest.fixture
 def events() -> list[Any]:
     return [
         AgentWorkflowStartEvent(),
@@ -385,25 +366,16 @@ async def test_llama_index_agent_invoke(
     assert usage[-1] == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
 
-def test_make_input_message_includes_history_summary(run_agent_input_with_history) -> None:
-    """By default, LlamaIndexAgent.make_input_message should NOT include history."""
-    workflow = Workflow(events=[], state="S")
+async def test_invoke_uses_raw_user_prompt(run_agent_input_with_history) -> None:
+    # GIVEN a llamaindex agent without prompt placeholders
+    workflow = CapturingWorkflow(events=[], state="S")
     agent = MyLlamaAgent(workflow)
 
-    text = agent.make_input_message(run_agent_input_with_history)
+    # WHEN invoking the agent
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
-    assert text == "Follow-up"
-
-
-def test_make_input_message_zero_history_disables_summary(
-    run_agent_input_with_history,
-) -> None:
-    """When max_history_messages is 0, history should be disabled."""
-    workflow = Workflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow, max_history_messages=0)
-
-    text = agent.make_input_message(run_agent_input_with_history)
-    assert text == "Follow-up"
+    # THEN the workflow receives the raw final user prompt
+    assert workflow.captured_user_msgs == ["Follow-up"]
 
 
 async def test_invoke_agent_output_with_dict_tool_calls(
@@ -470,28 +442,16 @@ async def test_invoke_agent_stream_multiple_agents(
 
 
 async def test_invoke_replaces_chat_history_placeholder() -> None:
-    """invoke() replaces {chat_history} placeholder with actual history."""
-    captured_msgs: list[str] = []
-
-    class CapturingWorkflow(Workflow):
-        def run(self, *, user_msg: str) -> Handler:
-            captured_msgs.append(user_msg)
-            return super().run(user_msg=user_msg)
-
-    class AgentWithPlaceholder(MyLlamaAgent):
-        def make_input_message(self, run_agent_input: Any) -> str:
-            user_prompt = super().make_input_message(run_agent_input)
-            return f"History:\n{{chat_history}}\n\nLatest: {user_prompt}"
-
+    """invoke() replaces {chat_history} inside the raw user prompt."""
     workflow = CapturingWorkflow(events=[], state="S")
-    agent = AgentWithPlaceholder(workflow)
+    agent = MyLlamaAgent(workflow)
 
     run_agent_input = RunAgentInput(
         messages=[
             AgSystemMessage(id="sys_1", content="You are a helper."),
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content="Follow-up"),
+            UserMessage(id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -503,8 +463,8 @@ async def test_invoke_replaces_chat_history_placeholder() -> None:
 
     _ = [event async for event in agent.invoke(run_agent_input)]
 
-    assert len(captured_msgs) == 1
-    text = captured_msgs[0]
+    assert workflow.captured_user_msgs
+    text = workflow.captured_user_msgs[0]
     assert "system: You are a helper." in text
     assert "user: First question" in text
     assert "assistant: First answer" in text
@@ -512,34 +472,37 @@ async def test_invoke_replaces_chat_history_placeholder() -> None:
 
 
 async def test_invoke_retrieves_and_stores_memory(
-    run_agent_input_with_structured_prompt: RunAgentInput,
+    run_agent_input: RunAgentInput,
 ) -> None:
-    # GIVEN a llamaindex agent whose input template opts into memory
+    # GIVEN a llamaindex agent whose raw user prompt opts into memory
     workflow = CapturingWorkflow(events=[], state="S")
     memory_client = FakeMemoryClient(retrieved="Use concise answers.")
-    agent = LlamaAgentWithMemory(workflow, memory_client=memory_client)
+    agent = MyLlamaAgent(workflow, memory_client=memory_client)
+    run_agent_input.messages = [
+        UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")
+    ]
 
     # WHEN invoking the agent
-    events = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+    events = [event async for event in agent.invoke(run_agent_input)]
 
     # THEN the run completes, the prompt includes retrieved memory, and the turn is stored
-    expected_user_msg = "Memory:\nUse concise answers.\n\nLatest: {'topic': 'AI'}"
+    expected_user_msg = "Memory:\nUse concise answers.\n\nLatest: Follow-up"
     assert isinstance(events[-1][0], RunFinishedEvent)
     assert workflow.captured_user_msgs == [expected_user_msg]
     assert memory_client.retrieve_calls == [
         {
-            "prompt": '{"topic": "AI"}',
+            "prompt": "Memory:\n{memory}\n\nLatest: Follow-up",
             "run_id": None,
-            "agent_id": "LlamaAgentWithMemory",
+            "agent_id": "MyLlamaAgent",
             "app_id": "tests.llamaindex.test_agent",
             "attributes": {"thread_id": "thread_id"},
         }
     ]
     assert memory_client.store_calls == [
         {
-            "user_message": '{"topic": "AI"}',
+            "user_message": "Memory:\n{memory}\n\nLatest: Follow-up",
             "run_id": "run_id",
-            "agent_id": "LlamaAgentWithMemory",
+            "agent_id": "MyLlamaAgent",
             "app_id": "tests.llamaindex.test_agent",
             "attributes": {"thread_id": "thread_id"},
         }
@@ -547,15 +510,15 @@ async def test_invoke_retrieves_and_stores_memory(
 
 
 async def test_invoke_skips_memory_when_placeholder_is_absent(
-    run_agent_input_with_structured_prompt: RunAgentInput,
+    run_agent_input: RunAgentInput,
 ) -> None:
-    # GIVEN a llamaindex agent whose input template does not opt into memory
+    # GIVEN a llamaindex agent whose raw user prompt does not opt into memory
     workflow = Workflow(events=[], state="S")
     memory_client = FakeMemoryClient(retrieved="Use concise answers.")
     agent = MyLlamaAgent(workflow, memory_client=memory_client)
 
     # WHEN invoking the agent
-    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+    _ = [event async for event in agent.invoke(run_agent_input)]
 
     # THEN memory retrieval and storage are both skipped
     assert memory_client.retrieve_calls == []
@@ -563,23 +526,26 @@ async def test_invoke_skips_memory_when_placeholder_is_absent(
 
 
 async def test_invoke_gracefully_degrades_when_memory_fails(
-    run_agent_input_with_structured_prompt: RunAgentInput,
+    run_agent_input: RunAgentInput,
 ) -> None:
-    # GIVEN a llamaindex agent whose memory provider errors at runtime
+    # GIVEN a llamaindex agent whose raw user prompt opts into memory
     workflow = CapturingWorkflow(events=[], state="S")
-    agent = LlamaAgentWithMemory(workflow, memory_client=FailingMemoryClient())
+    agent = MyLlamaAgent(workflow, memory_client=FailingMemoryClient())
+    run_agent_input.messages = [
+        UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")
+    ]
 
     # WHEN invoking the agent
-    events = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+    events = [event async for event in agent.invoke(run_agent_input)]
 
     # THEN the run still completes and the unresolved placeholder is removed
     assert isinstance(events[-1][0], RunFinishedEvent)
-    assert workflow.captured_user_msgs == ["Memory:\n\n\nLatest: {'topic': 'AI'}"]
+    assert workflow.captured_user_msgs == ["Memory:\n\n\nLatest: Follow-up"]
     assert "{memory}" not in workflow.captured_user_msgs[0]
 
 
 async def test_invoke_does_not_store_memory_when_workflow_fails(
-    run_agent_input_with_structured_prompt: RunAgentInput,
+    run_agent_input: RunAgentInput,
 ) -> None:
     class FailingWorkflow(CapturingWorkflow):
         def run(self, *, user_msg: str) -> Handler:
@@ -595,20 +561,23 @@ async def test_invoke_does_not_store_memory_when_workflow_fails(
     # GIVEN a llamaindex agent whose workflow fails after memory retrieval
     workflow = FailingWorkflow(events=[], state="S")
     memory_client = FakeMemoryClient(retrieved="Use concise answers.")
-    agent = LlamaAgentWithMemory(workflow, memory_client=memory_client)
+    agent = MyLlamaAgent(workflow, memory_client=memory_client)
+    run_agent_input.messages = [
+        UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")
+    ]
 
     # WHEN invoking the agent and the workflow fails
     with pytest.raises(RuntimeError, match="workflow failed"):
-        _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+        _ = [event async for event in agent.invoke(run_agent_input)]
 
     # THEN retrieval happens, but storage is skipped because the run never finishes
-    expected_user_msg = "Memory:\nUse concise answers.\n\nLatest: {'topic': 'AI'}"
+    expected_user_msg = "Memory:\nUse concise answers.\n\nLatest: Follow-up"
     assert workflow.captured_user_msgs == [expected_user_msg]
     assert memory_client.retrieve_calls == [
         {
-            "prompt": '{"topic": "AI"}',
+            "prompt": "Memory:\n{memory}\n\nLatest: Follow-up",
             "run_id": None,
-            "agent_id": "LlamaAgentWithMemory",
+            "agent_id": "MyLlamaAgent",
             "app_id": "tests.llamaindex.test_agent",
             "attributes": {"thread_id": "thread_id"},
         }

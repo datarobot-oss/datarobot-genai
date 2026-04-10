@@ -83,15 +83,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Extract final response text from workflow state and/or events."""
         raise NotImplementedError
 
-    def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        """Create an input string for the workflow from the user prompt.
-
-        Subclasses may opt into automatic placeholder replacement by including
-        ``{chat_history}`` and/or ``{memory}`` in the returned string.
-        """
-        user_prompt_content = extract_user_prompt_content(run_agent_input)
-        return str(user_prompt_content)
-
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
