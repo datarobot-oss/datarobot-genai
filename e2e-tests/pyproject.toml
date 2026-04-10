@@ -103,6 +103,8 @@ extend-ignore = [
     "PLR0912",
     # inline imports
     "PLC0415",
+    # assigning a lambda
+    "E731",
 ]
 fixable = [
     "I",    # isort

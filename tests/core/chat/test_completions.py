@@ -248,8 +248,8 @@ class RecordingAgent(AGUIAgent):
     """AGUIAgent that records ``set_tools`` arguments."""
 
     def __init__(self, *, initial_tools: list[Any] | None = None) -> None:
-        super().__init__(tools=initial_tools or [])
         self.set_tools_calls: list[list[Any]] = []
+        super().__init__(tools=initial_tools or [])
 
     def set_tools(self, tools: list[Any]) -> None:  # type: ignore[override]
         self.set_tools_calls.append(list(tools))
@@ -278,7 +278,7 @@ async def test_agent_chat_completion_wrapper_streaming_invokes_mcp_factory_and_s
         "context_entered",
         "context_exited",
     ]
-    assert agent.set_tools_calls == [mcp_tools]
+    assert agent.set_tools_calls == [[], mcp_tools]
     assert agent.tools == mcp_tools
     assert len(events) == 8
 
@@ -310,7 +310,7 @@ async def test_agent_chat_completion_wrapper_merges_mcp_tools_with_existing_agen
         assert isinstance(wrapper_result, tuple)
 
     assert trace == ["factory_called", "context_entered", "context_exited"]
-    assert agent.set_tools_calls == [expected]
+    assert agent.set_tools_calls == [pre_existing, expected]
     assert agent.tools == expected
 
 
@@ -334,7 +334,7 @@ async def test_agent_chat_completion_wrapper_non_streaming_invokes_mcp_factory_a
         "context_entered",
         "context_exited",
     ]
-    assert agent.set_tools_calls == [mcp_tools]
+    assert agent.set_tools_calls == [[], mcp_tools]
     assert agent.tools == mcp_tools
 
 

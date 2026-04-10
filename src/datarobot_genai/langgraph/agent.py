@@ -14,6 +14,7 @@
 import abc
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Callable
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
@@ -31,6 +32,7 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
+from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
@@ -372,3 +374,47 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         ragas_trace = convert_to_ragas_messages(messages)
         return MultiTurnSample(user_input=ragas_trace)
+
+
+def datarobot_agent_class_from_langgraph(
+    graph_factory: Callable[[BaseChatModel, list[BaseTool], bool], StateGraph[MessagesState]],
+    prompt_template: ChatPromptTemplate,
+) -> type[LangGraphAgent]:
+    """Create a LangGraph agent class from a graph factory and prompt template.
+
+    This is a convenience helper that dynamically builds a concrete
+    :class:`LangGraphAgent` subclass so that callers can define an agent
+    entirely from a graph-building function and a prompt template without
+    writing a class by hand.
+
+    Parameters
+    ----------
+    graph_factory : Callable[[BaseChatModel, list[BaseTool], bool], StateGraph[MessagesState]]
+        A callable that receives the LLM client, the list of tools bound to
+        the agent, and a ``verbose`` flag, and returns a compiled LangGraph
+        :class:`StateGraph` ready for execution.
+    prompt_template : ChatPromptTemplate
+        The LangChain prompt template used to format user input before it is
+        fed into the graph. If the template declares a ``{chat_history}``
+        input variable, prior conversation turns are automatically injected.
+
+    Returns
+    -------
+    type[LangGraphAgent]
+        A new :class:`LangGraphAgent` subclass whose ``workflow`` and
+        ``prompt_template`` properties are wired to the provided arguments.
+    """
+
+    class DataRobotLangAgent(LangGraphAgent):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+
+        @property
+        def workflow(self) -> StateGraph[MessagesState]:
+            return graph_factory(self.llm, self.tools, self.verbose)
+
+        @property
+        def prompt_template(self) -> ChatPromptTemplate:
+            return prompt_template
+
+    return DataRobotLangAgent

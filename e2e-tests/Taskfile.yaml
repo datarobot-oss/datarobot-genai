@@ -42,6 +42,11 @@ tasks:
     cmds:
       - echo "🔧 Installing dependencies for {{.AGENT}}"
       - uv sync --group dragent-{{.AGENT}} --group lint
+  install-all:
+    desc: "🔧 Install dependencies for all groups"
+    cmds:
+      - echo "🔧 Installing dependencies for all groups"
+      - uv sync --all-groups
   test-dragent:
     desc: "🧪 Run tests for dragent"
     requires:

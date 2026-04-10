@@ -71,6 +71,7 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
                 llm=llm,
                 forwarded_headers=forwarded_headers,
                 tools=tools,
+                verbose=config.verbose,
             )
 
             async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
