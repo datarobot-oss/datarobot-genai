@@ -34,6 +34,7 @@ from langgraph.graph.state import StateGraph
 
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.agent import LangGraphAgent
+from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 
 
 @pytest.fixture
@@ -178,6 +179,57 @@ class SimpleLangGraphAgent(LangGraphAgent):
     @property
     def langgraph_config(self) -> dict[str, Any]:
         return {}
+
+
+def test_datarobot_agent_class_from_langgraph_factory_receives_llm_tools_verbose() -> None:
+    """graph_factory(llm, tools, verbose) is called when building workflow (each access)."""
+    inner = SimpleLangGraphAgent()
+    mock_graph = inner.workflow
+    calls: list[tuple[Any, list[Any], bool]] = []
+
+    def graph_factory(llm: Any, tools: list[Any], verbose: bool) -> Any:
+        calls.append((llm, list(tools), verbose))
+        return mock_graph
+
+    pt = inner.prompt_template
+    cls = datarobot_agent_class_from_langgraph(graph_factory, pt)
+    mock_llm = Mock()
+    extra_tools = [Mock()]
+    agent = cls(
+        llm=mock_llm,
+        tools=extra_tools,
+        verbose=True,
+        api_key="k",
+        api_base="https://x/",
+    )
+    _ = agent.workflow
+    assert calls == [(mock_llm, extra_tools, True)]
+    assert agent.prompt_template is pt
+
+    _ = agent.workflow
+    assert len(calls) == 2
+    assert calls[1] == (mock_llm, extra_tools, True)
+
+
+@pytest.mark.asyncio
+async def test_datarobot_agent_class_from_langgraph_invoke_streams(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Factory-built agent runs the same invoke/astream path as a hand-written subclass."""
+    inner = SimpleLangGraphAgent()
+    mock_graph = inner.workflow
+
+    def graph_factory(llm: Any, tools: list[Any], verbose: bool) -> Any:
+        return mock_graph
+
+    cls = datarobot_agent_class_from_langgraph(graph_factory, inner.prompt_template)
+    agent = cls(llm=Mock(), tools=[], verbose=True, api_key="k", api_base="https://x/")
+
+    events = [e async for e in agent.invoke(run_agent_input)]
+    assert events
+    assert events[-1][0].type == EventType.RUN_FINISHED
+    mock_graph.compile.assert_called()
+    mock_graph.compile.return_value.astream.assert_called_once()
 
 
 class HistoryAwareLangGraphAgent(LangGraphAgent):

@@ -70,6 +70,7 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
                 llm=llm,
                 forwarded_headers=forwarded_headers,
                 tools=tools,
+                verbose=config.verbose,
             )
 
             async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):

@@ -112,6 +112,18 @@ def test_base_agent_env_defaults_and_verbose(monkeypatch: pytest.MonkeyPatch) ->
     assert agent.verbose is False
 
 
+def test_base_agent_llm_optional() -> None:
+    assert SimpleAgent().llm is None
+
+    llm = object()
+    agent = SimpleAgent(llm=llm)
+    assert agent.llm is llm
+
+
+def test_base_agent_timeout_default() -> None:
+    assert SimpleAgent().timeout == 90
+
+
 def test_base_agent_litellm_api_base_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")

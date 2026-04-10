@@ -14,9 +14,11 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from ag_ui.core import AssistantMessage
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -41,6 +43,7 @@ from ragas import MultiTurnSample
 
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
+from datarobot_genai.llama_index.agent import datarobot_agent_class_from_llamaindex
 
 
 class Handler:
@@ -103,6 +106,74 @@ def test_datarobot_litellm_metadata_properties() -> None:
 
 def test_create_pipeline_interactions_from_events_none() -> None:
     assert LlamaIndexAgent.create_pipeline_interactions_from_events(None) is None
+
+
+# --- Tests for datarobot_agent_class_from_llamaindex ---
+
+
+@pytest.mark.asyncio
+async def test_datarobot_agent_class_from_llamaindex_build_workflow_returns_bound_workflow() -> (
+    None
+):
+    workflow = Mock(name="agent_workflow")
+    cls = datarobot_agent_class_from_llamaindex(workflow, [], lambda _s, _e: "")
+    agent = cls()
+    assert await agent.build_workflow() is workflow
+
+
+def test_datarobot_agent_class_from_llamaindex_set_llm_propagates_to_agents() -> None:
+    a1 = Mock()
+    a1.name = "planner"
+    a1.tools = []
+    a2 = Mock()
+    a2.name = "writer"
+    a2.tools = []
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [a1, a2], lambda _s, _e: "")
+    llm = object()
+    _ = cls(llm=llm)
+    assert a1.llm is llm
+    assert a2.llm is llm
+
+
+def test_datarobot_agent_class_from_llamaindex_set_tools_merges_original_plus_mcp() -> None:
+    orig1 = Mock(name="static_tool_1")
+    orig2 = Mock(name="static_tool_2")
+    a1 = Mock()
+    a1.name = "planner"
+    a1.tools = [orig1]
+    a2 = Mock()
+    a2.name = "writer"
+    a2.tools = [orig2]
+    mcp = Mock(name="mcp_tool")
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [a1, a2], lambda _s, _e: "")
+    agent = cls(tools=[mcp])
+    assert a1.tools == [orig1, mcp]
+    assert a2.tools == [orig2, mcp]
+    assert agent.tools == [mcp]
+
+
+def test_datarobot_agent_class_from_llamaindex_delegates_extract_response_text() -> None:
+    captured: list[tuple[Any, int]] = []
+
+    def extract(state: Any, events: list[Any]) -> str:
+        captured.append((state, len(events)))
+        return "extracted"
+
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [], extract)
+    agent = cls()
+    assert agent.extract_response_text("final_state", [1, 2, 3]) == "extracted"
+    assert captured == [("final_state", 3)]
+
+
+@pytest.mark.asyncio
+async def test_datarobot_agent_class_from_llamaindex_invoke_streams(
+    workflow: Workflow, run_agent_input: RunAgentInput
+) -> None:
+    cls = datarobot_agent_class_from_llamaindex(workflow, [], lambda _s, _e: "")
+    agent = cls(forwarded_headers={"x-datarobot-api-key": "scoped-token-123"})
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    assert events_out
+    assert events_out[-1][0].type == EventType.RUN_FINISHED
 
 
 # --- Tests for LlamaIndexAgent ---
