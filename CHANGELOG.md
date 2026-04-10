@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.1
+- Patch NAT generate_streaming_response to close NAT’s async queue on producer failure and close the A2A event queue on executor error.
+
 ## 0.13.2
 - Updated to remove prints, but instead use `logging` instead in our agents outputs
 

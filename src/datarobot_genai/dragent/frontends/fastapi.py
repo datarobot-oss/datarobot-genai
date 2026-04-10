@@ -78,6 +78,10 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
             token = self.session_manager._context_state.user_id.set(context.context_id)
         try:
             await super().execute(context, event_queue)
+        except BaseException:
+            # Stop A2A/SSE consumers waiting on the queue when the workflow errors mid-stream.
+            await event_queue.close(immediate=True)
+            raise
         finally:
             if token is not None:
                 self.session_manager._context_state.user_id.reset(token)
