@@ -32,12 +32,14 @@ def patched_crewai_llm_defaults() -> None:
         patch.object(
             crewai_llm,
             "default_datarobot_llm_gateway_url",
-            return_value="https://example.test/genai/llmgw/api/v2",
+            return_value="https://example.test/genai/llmgw",
         ),
         patch.object(
             crewai_llm,
             "default_deployment_url",
-            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}",
+            side_effect=lambda deployment_id: (
+                f"https://example.test/deployments/{deployment_id}/chat/completions"
+            ),
         ),
     ):
         yield
@@ -57,7 +59,7 @@ def test_get_datarobot_gateway_llm_returns_crewai_llm(
     assert llm.model == "datarobot/default-model"
     assert llm.api_base == "https://example.test/genai/llmgw"
     assert llm.api_key == "sk-test-key"
-    assert llm.additional_params == {"stream_options": {"include_usage": True}}
+    assert llm.additional_params == {'is_litellm': True, "stream_options": {"include_usage": True}}
 
 
 def test_get_datarobot_gateway_llm_adds_datarobot_model_prefix_when_missing(
@@ -87,7 +89,10 @@ def test_get_datarobot_deployment_llm_appends_chat_completions_to_api_base(
     llm = crewai_llm.get_datarobot_deployment_llm("dep-abc-123")
     assert isinstance(llm, LLM)
     assert llm.api_base == ("https://example.test/deployments/dep-abc-123/chat/completions")
-    assert llm.additional_params == {"stream_options": {"include_usage": True}}
+    assert llm.additional_params == {
+        "is_litellm": True,
+        "stream_options": {"include_usage": True},
+    }
 
 
 def test_get_datarobot_deployment_llm_merges_parameters(

@@ -16,11 +16,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 
 from datarobot_genai.langgraph import llm as langgraph_llm
 
@@ -43,7 +43,7 @@ def patched_langgraph_llm_defaults() -> None:
         patch.object(
             langgraph_llm,
             "default_deployment_url",
-            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}",
+            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}/chat/completions",
         ),
     ):
         yield
@@ -59,19 +59,17 @@ def test_get_datarobot_gateway_llm_returns_chat_openai_subclass(
     patched_langgraph_llm_defaults: None,
 ) -> None:
     llm = langgraph_llm.get_datarobot_gateway_llm()
-    assert isinstance(llm, ChatOpenAI)
-    assert type(llm).__name__ == "DataRobotChatOpenAI"
-    assert llm.model_name == "default-model"
-    mk = llm.model_kwargs or {}
-    assert mk.get("api_base") == "https://example.test/genai/llmgw"
-    assert mk.get("stream_options") == {"include_usage": True}
+    assert isinstance(llm, BaseChatModel)
+    assert llm.model == "datarobot/default-model"
+    assert llm.api_base == "https://example.test/genai/llmgw"
+    assert llm.stream_options == {"include_usage": True}
 
 
 def test_get_datarobot_gateway_llm_strips_datarobot_model_prefix(
     patched_langgraph_llm_defaults: None,
 ) -> None:
     llm = langgraph_llm.get_datarobot_gateway_llm("datarobot/azure/gpt-4")
-    assert llm.model_name == "azure/gpt-4"
+    assert llm.model == "datarobot/azure/gpt-4"
 
 
 def test_get_datarobot_gateway_llm_merges_parameters(
@@ -85,10 +83,9 @@ def test_get_datarobot_deployment_llm_sets_deployment_api_base(
     patched_langgraph_llm_defaults: None,
 ) -> None:
     llm = langgraph_llm.get_datarobot_deployment_llm("dep-abc-123")
-    assert isinstance(llm, ChatOpenAI)
-    mk = llm.model_kwargs or {}
-    assert mk.get("api_base") == "https://example.test/deployments/dep-abc-123"
-    assert mk.get("stream_options") == {"include_usage": True}
+    assert isinstance(llm, BaseChatModel)
+    assert llm.api_base == "https://example.test/deployments/dep-abc-123/chat/completions"
+    assert llm.stream_options == {"include_usage": True}
 
 
 def test_get_datarobot_nim_llm_delegates_to_deployment_llm(
@@ -100,23 +97,28 @@ def test_get_datarobot_nim_llm_delegates_to_deployment_llm(
         wraps=langgraph_llm.get_datarobot_deployment_llm,
     ) as spy:
         llm = langgraph_llm.get_datarobot_nim_llm("nim-1", "m", {"max_tokens": 10})
-    spy.assert_called_once_with("nim-1", "m", {"max_tokens": 10})
-    assert isinstance(llm, ChatOpenAI)
+    spy.assert_called_once_with("nim-1", "m", {"max_tokens": 10}, True)
+    assert isinstance(llm, BaseChatModel)
 
 
-def test_datarobot_chat_openai_payload_drops_stream_options_when_not_streaming(
+def test_gateway_llm_factory_omits_stream_options_kwarg_when_not_streaming(
     patched_langgraph_llm_defaults: None,
 ) -> None:
-    llm = langgraph_llm.get_datarobot_gateway_llm()
-    payload = llm._get_request_payload([HumanMessage("hello")], stream=False)
-    assert payload.get("stream") is False
-    assert "stream_options" not in payload
+    """ChatLiteLLM has no ``_get_request_payload``; assert our factory kwargs instead."""
+    with patch("langchain_litellm.ChatLiteLLM") as mock_cls:
+        mock_cls.return_value = MagicMock(spec=BaseChatModel)
+        langgraph_llm.get_datarobot_gateway_llm(streaming=False)
+        kwargs = mock_cls.call_args.kwargs
+        assert kwargs.get("streaming") is False
+        assert "stream_options" not in kwargs
 
 
-def test_datarobot_chat_openai_payload_keeps_stream_options_when_streaming(
+def test_gateway_llm_factory_passes_stream_options_when_streaming(
     patched_langgraph_llm_defaults: None,
 ) -> None:
-    llm = langgraph_llm.get_datarobot_gateway_llm()
-    payload = llm._get_request_payload([HumanMessage("hello")], stream=True)
-    assert payload.get("stream") is True
-    assert payload.get("stream_options") == {"include_usage": True}
+    with patch("langchain_litellm.ChatLiteLLM") as mock_cls:
+        mock_cls.return_value = MagicMock(spec=BaseChatModel)
+        langgraph_llm.get_datarobot_gateway_llm(streaming=True)
+        kwargs = mock_cls.call_args.kwargs
+        assert kwargs.get("streaming") is True
+        assert kwargs.get("stream_options") == {"include_usage": True}

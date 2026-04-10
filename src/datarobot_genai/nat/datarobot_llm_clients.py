@@ -286,7 +286,6 @@ async def datarobot_llm_component_langchain(
     from datarobot_genai.langgraph.llm import get_external_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
-
     config = llm_config.model_dump(
         exclude=EXCLUDE_FIELDS,
         by_alias=True,
@@ -384,7 +383,9 @@ async def datarobot_llm_component_llamaindex(
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
     elif llm_type == LLMType.DEPLOYMENT:
         if llm_config.headers:
-            config["extra_headers"] = llm_config.headers
+            additional_kwargs = dict(config.get("additional_kwargs") or {})
+            additional_kwargs["extra_headers"] = llm_config.headers
+            config["additional_kwargs"] = additional_kwargs
         client = get_datarobot_deployment_llm(
             llm_config.llm_deployment_id,  # type: ignore[arg-type]
             llm_config.model_name,

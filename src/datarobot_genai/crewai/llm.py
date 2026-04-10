@@ -49,7 +49,6 @@ def get_datarobot_deployment_llm(
     model_name = model_name or default_model_name()
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
-
     config = {
         "model": model_name,
         "api_key": default_api_key(),

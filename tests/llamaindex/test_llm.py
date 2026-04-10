@@ -37,12 +37,12 @@ def patched_llama_index_llm_defaults() -> None:
         patch.object(
             llama_index_llm,
             "default_datarobot_llm_gateway_url",
-            return_value="https://example.test/genai/llmgw/api/v2",
+            return_value="https://example.test/genai/llmgw",
         ),
         patch.object(
             llama_index_llm,
             "default_deployment_url",
-            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}",
+            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}/chat/completions",
         ),
     ):
         yield
