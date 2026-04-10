@@ -14,6 +14,7 @@
 
 """Tests for external tool registration."""
 
+import inspect
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -390,8 +391,7 @@ class TestExternalToolCallableErrorHandling:
         error_body = '{"detail": "stop sequence too long"}'
 
         callable_fn = _external_tool_callable_factory(simple_tool_config)
-        # Get the dynamically created input model from the callable's annotations
-        input_model = list(callable_fn.__annotations__.values())[0]
+        input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
             mocked.post(self.TOOL_URL, status=400, body=error_body)
@@ -410,10 +410,10 @@ class TestExternalToolCallableErrorHandling:
         error_body = '{"detail": "Internal server error"}'
 
         callable_fn = _external_tool_callable_factory(simple_tool_config)
-        input_model = list(callable_fn.__annotations__.values())[0]
+        input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
-            mocked.post(self.TOOL_URL, status=500, body=error_body, repeat=True)
+            mocked.post(self.TOOL_URL, status=500, body=error_body)
 
             with pytest.raises(RuntimeError, match="HTTP 500 error from deployment"):
                 await callable_fn(input_model())
@@ -429,7 +429,7 @@ class TestExternalToolCallableErrorHandling:
         response_body = '{"result": "success"}'
 
         callable_fn = _external_tool_callable_factory(simple_tool_config)
-        input_model = list(callable_fn.__annotations__.values())[0]
+        input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
             mocked.post(
@@ -453,7 +453,7 @@ class TestExternalToolCallableErrorHandling:
         error_body = '{"message":"The stop sequence you provided at index 0 is longer than the model limit of 10 characters."}'
 
         callable_fn = _external_tool_callable_factory(simple_tool_config)
-        input_model = list(callable_fn.__annotations__.values())[0]
+        input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
             mocked.post(self.TOOL_URL, status=400, body=error_body)
