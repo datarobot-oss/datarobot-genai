@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
-
 from datarobot_genai.core.agents import make_system_prompt
-from datarobot_genai.langgraph.agent import LangGraphAgent
+from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 from langchain.agents import create_agent
-from langchain_core.language_models import BaseChatModel
+from langchain.chat_models import BaseChatModel
+from langchain.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langgraph.graph import END
@@ -29,60 +28,50 @@ from dragent.tool import generate_objectid
 
 generate_objectid_tool = tool(generate_objectid)
 
+prompt_template = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a helpful assistant. {chat_history}"),
+        ("user", "{topic}"),
+    ]
+)
 
-class MyAgent(LangGraphAgent):
-    """Planner -> Writer LangGraph agent with calculator tool for e2e testing."""
 
-    def __init__(
-        self,
-        llm: BaseChatModel | None = None,
-        **kwargs: Any,
-    ):
-        super().__init__(**kwargs)
-        self._llm = llm
+def graph_factory(
+    llm: BaseChatModel, tools: list[BaseTool], verbose: bool = False
+) -> StateGraph[MessagesState]:
+    agent_planner = create_agent(
+        llm,
+        tools=[generate_objectid_tool] + tools,
+        system_prompt=make_system_prompt(
+            "You are a content planner. Given a topic, produce a short bullet-point "
+            "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
+            "Use the generate_objectid tool when asked to generate an object ID for a "
+            "deployment."
+        ),
+        name="planner",
+        debug=verbose,
+    )
 
-    @property
-    def prompt_template(self) -> ChatPromptTemplate:
-        return ChatPromptTemplate.from_messages(
-            [
-                ("system", "You are a helpful assistant. {chat_history}"),
-                ("user", "{topic}"),
-            ]
-        )
+    agent_writer = create_agent(
+        llm,
+        tools=[generate_objectid_tool] + tools,
+        system_prompt=make_system_prompt(
+            "You are a concise writer. Using the planner's outline, write a short response "
+            "in 2-3 sentences. Use the generate_objectid tool when asked to "
+            "generate an object ID for a deployment."
+        ),
+        name="writer",
+        debug=verbose,
+    )
 
-    @property
-    def workflow(self) -> StateGraph[MessagesState]:
-        graph = StateGraph(MessagesState)
-        graph.add_node("planner_node", self.agent_planner)
-        graph.add_node("writer_node", self.agent_writer)
-        graph.add_edge(START, "planner_node")
-        graph.add_edge("planner_node", "writer_node")
-        graph.add_edge("writer_node", END)
-        return graph
+    graph = StateGraph(MessagesState)
+    graph.add_node("planner_node", agent_planner)
+    graph.add_node("writer_node", agent_writer)
+    graph.add_edge(START, "planner_node")
+    graph.add_edge("planner_node", "writer_node")
+    graph.add_edge("writer_node", END)
 
-    @property
-    def agent_planner(self) -> Any:
-        return create_agent(
-            self._llm,
-            tools=[generate_objectid_tool] + self.tools,
-            system_prompt=make_system_prompt(
-                "You are a content planner. Given a topic, produce a short bullet-point "
-                "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
-                "Use the generate_objectid tool when asked to generate an object ID for a "
-                "deployment."
-            ),
-            name="planner",
-        )
+    return graph
 
-    @property
-    def agent_writer(self) -> Any:
-        return create_agent(
-            self._llm,
-            tools=[generate_objectid_tool] + self.tools,
-            system_prompt=make_system_prompt(
-                "You are a concise writer. Using the planner's outline, write a short response "
-                "in 2-3 sentences. Use the generate_objectid tool when asked to "
-                "generate an object ID for a deployment."
-            ),
-            name="writer",
-        )
+
+MyAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)

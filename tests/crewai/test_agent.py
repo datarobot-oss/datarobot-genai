@@ -15,6 +15,7 @@
 # ruff: noqa: I001
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from crewai.types.streaming import CrewStreamingOutput
@@ -32,9 +33,19 @@ from ragas.messages import HumanMessage
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.agent import CrewAIAgent
+from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
 
 
 # --- Test helpers ---
+
+
+def _mock_crewai_agent() -> MagicMock:
+    agent = MagicMock()
+    agent.llm = None
+    agent.function_calling_llm = None
+    agent.tools = []
+    agent.verbose = True
+    return agent
 
 
 class CrewForTest:
@@ -42,6 +53,7 @@ class CrewForTest:
         self.args = args
         self.kwargs = kwargs
         self.output = output
+        self.verbose = True
 
     async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[name-defined]
         return self.output or CrewOutput(raw="final-output")
@@ -135,23 +147,28 @@ def mock_ragas_event_listener() -> ListenerForTest:
 
 
 class AgentForTest(CrewAIAgent):
-    def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any) -> None:
+        crew_kw = kwargs.pop("crew", None)
         self.crew_output = crew_output
+        self._crew_for_test: Any = crew_kw if crew_kw is not None else CrewForTest(crew_output)
+        self._agents_for_test: list[MagicMock] = [_mock_crewai_agent(), _mock_crewai_agent()]
+        self._tasks_for_test: list[MagicMock] = [MagicMock(), MagicMock()]
+        super().__init__(*args, **kwargs)
 
     @property
     def agents(self) -> list[Any]:
-        return [object()]
+        return self._agents_for_test
 
     @property
     def tasks(self) -> list[Any]:
-        return [object()]
+        return self._tasks_for_test
 
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
         return {"topic": user_prompt_content}
 
+    @property
     def crew(self) -> Any:
-        return CrewForTest(self.crew_output)
+        return self._crew_for_test
 
 
 # --- Tests for create_pipeline_interactions_from_messages ---
@@ -262,8 +279,9 @@ async def test_invoke_does_not_include_chat_history_by_default(
             return super().kickoff_async(inputs=inputs)
 
     out = CrewOutput(raw="agent result")
-    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    agent = AgentForTest(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
@@ -286,8 +304,9 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
             return {"topic": user_prompt_content, "chat_history": ""}
 
     out = CrewOutput(raw="agent result")
-    agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    agent = AgentWithPlaceholder(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
@@ -316,12 +335,91 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
             return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
 
     out = CrewOutput(raw="agent result")
-    agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    agent = AgentWithOverride(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
+
+
+# --- datarobot_agent_class_from_crew ---
+
+
+def test_datarobot_agent_class_from_crew_subclass_and_kickoff_inputs() -> None:
+    crew = MagicMock()
+    crew.verbose = True
+    ca = _mock_crewai_agent()
+    cb = _mock_crewai_agent()
+    ta, tb = MagicMock(), MagicMock()
+
+    def kickoff(u: str) -> dict[str, Any]:
+        return {"topic": u, "extra": 1}
+
+    agent_cls = datarobot_agent_class_from_crew(crew, [ca, cb], [ta, tb], kickoff)
+    assert issubclass(agent_cls, CrewAIAgent)
+
+    instance = agent_cls(api_base="https://x/", api_key="k", verbose=False)
+    assert instance.crew is crew
+    assert instance.agents == [ca, cb]
+    assert instance.tasks == [ta, tb]
+    assert instance.make_kickoff_inputs("hello") == {"topic": "hello", "extra": 1}
+
+
+def test_datarobot_agent_class_from_crew_set_tools_merges_with_original() -> None:
+    crew = MagicMock()
+    crew.verbose = True
+    orig_a = MagicMock()
+    orig_b = MagicMock()
+    mcp_tool = MagicMock()
+
+    ca = _mock_crewai_agent()
+    ca.tools = [orig_a]
+    cb = _mock_crewai_agent()
+    cb.tools = [orig_b]
+
+    agent_cls = datarobot_agent_class_from_crew(
+        crew, [ca, cb], [MagicMock(), MagicMock()], lambda u: {"topic": u}
+    )
+    instance = agent_cls()
+    instance.set_tools([mcp_tool])
+
+    assert ca.tools == [orig_a, mcp_tool]
+    assert cb.tools == [orig_b, mcp_tool]
+    assert instance.tools == [mcp_tool]
+
+
+def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
+    """Pre-built CrewAI agents keep their LLM when BaseAgent is constructed without llm."""
+
+    class _Agent(CrewAIAgent):
+        def __init__(self) -> None:
+            self._preserved = object()
+            self._inner = _mock_crewai_agent()
+            self._inner.llm = self._preserved
+            self._inner.function_calling_llm = self._preserved
+            self._test_crew = CrewForTest()
+            super().__init__(api_key="k", api_base="https://x/", verbose=False)
+
+        @property
+        def agents(self) -> list[Any]:
+            return [self._inner]
+
+        @property
+        def tasks(self) -> list[Any]:
+            return [MagicMock()]
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content}
+
+        @property
+        def crew(self) -> Any:
+            return self._test_crew
+
+    agent = _Agent()
+    assert agent._inner.llm is agent._preserved
+    assert agent._inner.function_calling_llm is agent._preserved
 
 
 async def test_invoke_retrieves_and_stores_memory(
@@ -349,8 +447,8 @@ async def test_invoke_retrieves_and_stores_memory(
         api_key="k",
         verbose=False,
         memory_client=memory_client,
+        crew=CapturingCrew(out),
     )
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called
     _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
@@ -424,8 +522,8 @@ async def test_invoke_does_not_overwrite_non_empty_memory_override(
         api_key="k",
         verbose=False,
         memory_client=memory_client,
+        crew=CapturingCrew(out),
     )
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called
     _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
@@ -468,8 +566,8 @@ async def test_invoke_gracefully_degrades_when_memory_fails(
         api_key="k",
         verbose=False,
         memory_client=FailingMemoryClient(),
+        crew=CapturingCrew(out),
     )
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called
     events = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
@@ -502,8 +600,8 @@ async def test_invoke_does_not_store_memory_when_run_fails(
         api_key="k",
         verbose=False,
         memory_client=memory_client,
+        crew=FailingCrew(out),
     )
-    agent.crew = lambda: FailingCrew(out)  # type: ignore[assignment]
 
     # WHEN invoke is called and the crew fails
     with pytest.raises(RuntimeError, match="crew failed"):

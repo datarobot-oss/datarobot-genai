@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.0
+- Reworked agents to only accept `llm`: its not the job of an agent to instantiate the LLM
+- Implemented functions to convert native agentic primitives into DataRobot agents
+
 ## 0.13.3
 - Enabled functionalities of synchronizing MCP item metadata within MCP server (still behind the feature flag).
 
