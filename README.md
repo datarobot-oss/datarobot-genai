@@ -28,7 +28,7 @@
 - Integrations: CrewAI, LangGraph, LlamaIndex, NAT, MCP
 
 ## Installation
-- Requires Python 3.10–3.13.
+- Requires Python 3.11–3.13.
 - Install:
 ```bash
 pip install --upgrade pip

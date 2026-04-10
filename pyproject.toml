@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.14.1"
+version = "0.14.2"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -40,10 +40,9 @@ datarobot_genai = [
 [tool.uv]
 package = true
 override-dependencies = [
-  "crewai[litellm]>=1.1.0,<2.0.0",
+  "crewai[litellm]==1.6.1",  # TODO: BUZZOK-30239
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.3.8,<0.4.0",
-  "onnxruntime==1.23.1; python_version == '3.10'",
 ]
 exclude-dependencies = [
   "uv",
@@ -146,8 +145,6 @@ source = ["datarobot_genai"]
 omit = [
     "*/__init__.py",
     "*/test_utils/*",
-    # nat requires Python >=3.11, can't be imported on 3.10 for coverage
-    "*/nat/*",
 ]
 
 # Custom import restrictions (enforced by scripts/check_imports.py)

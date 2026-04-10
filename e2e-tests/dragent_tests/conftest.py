@@ -55,7 +55,7 @@ def authorization_context_encoded(session_secret_key, datarobot_user_id) -> str:
 
 @pytest.fixture(scope="session")
 def http_client(authorization_context_encoded: str) -> Generator[httpx.Client]:  # type: ignore[type-arg]
-    timeout = httpx.Timeout(connect=10, read=300, write=10, pool=10)
+    timeout = httpx.Timeout(connect=10, read=60, write=10, pool=10)
     headers = {
         "X-DataRobot-Authorization-Context": authorization_context_encoded,
     }
