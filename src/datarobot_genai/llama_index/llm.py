@@ -57,13 +57,7 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
 def get_datarobot_gateway_llm(
     model_name: str | None = None, parameters: dict | None = None
 ) -> LiteLLM:
-    model_name = model_name or default_model_name()
-
-    if not model_name.startswith("datarobot/"):
-        model_name = "datarobot/" + model_name
-
     config = {
-        "model": model_name,
         "api_key": default_api_key(),
         "api_base": default_datarobot_llm_gateway_url(),
         "stream_options": {"include_usage": True},
@@ -71,19 +65,20 @@ def get_datarobot_gateway_llm(
 
     if parameters:
         config.update(parameters)
+
+    model_name = model_name or default_model_name()
+
+    if not model_name.startswith("datarobot/"):
+        model_name = "datarobot/" + model_name
+
+    config["model"] = model_name
     return _create_datarobot_litellm(config)
 
 
 def get_datarobot_deployment_llm(
     deployment_id: str, model_name: str | None = None, parameters: dict | None = None
 ) -> LiteLLM:
-    model_name = model_name or default_model_name()
-
-    if not model_name.startswith("datarobot/"):
-        model_name = "datarobot/" + model_name
-
     config = {
-        "model": model_name,
         "api_key": default_api_key(),
         "api_base": default_deployment_url(deployment_id),
         "stream_options": {"include_usage": True},
@@ -91,6 +86,12 @@ def get_datarobot_deployment_llm(
 
     if parameters:
         config.update(parameters)
+
+    model_name = model_name or default_model_name()
+    if not model_name.startswith("datarobot/"):
+        model_name = "datarobot/" + model_name
+
+    config["model"] = model_name
     return _create_datarobot_litellm(config)
 
 
@@ -101,13 +102,15 @@ def get_datarobot_nim_llm(
 
 
 def get_external_llm(model_name: str | None = None, parameters: dict | None = None) -> LiteLLM:
-    model_name = model_name or default_model_name()
-    model_name = model_name.removeprefix("datarobot/")
     config = {
-        "model": model_name,
+        # Everything else is loaded from the environment by LiteLLM
     }
     if parameters:
         config.update(parameters)
+
+    model_name = model_name or default_model_name()
+    model_name = model_name.removeprefix("datarobot/")
+    config["model"] = model_name
     return _create_datarobot_litellm(config)
 
 

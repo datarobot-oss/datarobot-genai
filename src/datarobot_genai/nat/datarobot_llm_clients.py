@@ -296,7 +296,7 @@ async def datarobot_llm_component_langchain(
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
     elif llm_type == LLMType.DEPLOYMENT:
         if llm_config.headers:
-            config["default_headers"] = llm_config.headers
+            config["extra_headers"] = llm_config.headers
         client = get_datarobot_deployment_llm(
             llm_config.llm_deployment_id,  # type: ignore[arg-type]
             llm_config.model_name,

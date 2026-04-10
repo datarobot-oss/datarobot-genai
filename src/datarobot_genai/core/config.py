@@ -101,7 +101,7 @@ def default_deployment_url(deployment_id: str | None = None) -> str:
     config = Config()
     default_deployment_id = deployment_id or config.llm_deployment_id
     if default_deployment_id is None:
-        raise ValueError("Neither deployment ID nor default deployment ID is set") 
+        raise ValueError("Neither deployment ID nor default deployment ID is set")
 
     return deployment_url(default_deployment_id, config.datarobot_endpoint)
 

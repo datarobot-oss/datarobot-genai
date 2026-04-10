@@ -16,11 +16,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 from crewai import LLM
 
+from datarobot_genai.core.config import LLMType
 from datarobot_genai.crewai import llm as crewai_llm
 
 
@@ -59,7 +61,7 @@ def test_get_datarobot_gateway_llm_returns_crewai_llm(
     assert llm.model == "datarobot/default-model"
     assert llm.api_base == "https://example.test/genai/llmgw"
     assert llm.api_key == "sk-test-key"
-    assert llm.additional_params == {'is_litellm': True, "stream_options": {"include_usage": True}}
+    assert llm.additional_params == {"is_litellm": True, "stream_options": {"include_usage": True}}
 
 
 def test_get_datarobot_gateway_llm_adds_datarobot_model_prefix_when_missing(
@@ -116,3 +118,89 @@ def test_get_datarobot_nim_llm_delegates_to_deployment_llm(
         llm = crewai_llm.get_datarobot_nim_llm("nim-1", "m", {"max_tokens": 10})
     spy.assert_called_once_with("nim-1", "m", {"max_tokens": 10})
     assert isinstance(llm, LLM)
+
+
+def test_get_external_llm_returns_crewai_llm(
+    patched_crewai_llm_defaults: None,
+) -> None:
+    llm = crewai_llm.get_external_llm()
+    assert isinstance(llm, LLM)
+    assert llm.model == "default-model"
+
+
+def test_get_external_llm_strips_datarobot_prefix(
+    patched_crewai_llm_defaults: None,
+) -> None:
+    llm = crewai_llm.get_external_llm("datarobot/azure/gpt-4")
+    assert llm.model == "azure/gpt-4"
+
+
+def test_get_external_llm_preserves_model_without_prefix(
+    patched_crewai_llm_defaults: None,
+) -> None:
+    llm = crewai_llm.get_external_llm("azure/gpt-4")
+    assert llm.model == "azure/gpt-4"
+
+
+def test_get_external_llm_merges_parameters(
+    patched_crewai_llm_defaults: None,
+) -> None:
+    llm = crewai_llm.get_external_llm(parameters={"temperature": 0.7})
+    assert llm.temperature == 0.7
+
+
+def test_get_llm_routes_to_gateway(patched_crewai_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.GATEWAY
+    with patch.object(crewai_llm, "Config", return_value=config):
+        llm = crewai_llm.get_llm()
+    assert isinstance(llm, LLM)
+    assert llm.api_base == "https://example.test/genai/llmgw"
+
+
+def test_get_llm_routes_to_deployment(patched_crewai_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.DEPLOYMENT
+    config.llm_deployment_id = "dep-123"
+    with patch.object(crewai_llm, "Config", return_value=config):
+        llm = crewai_llm.get_llm()
+    assert isinstance(llm, LLM)
+    assert llm.api_base == "https://example.test/deployments/dep-123/chat/completions"
+
+
+def test_get_llm_routes_to_nim(patched_crewai_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.NIM
+    config.nim_deployment_id = "nim-456"
+    with patch.object(crewai_llm, "Config", return_value=config):
+        llm = crewai_llm.get_llm()
+    assert isinstance(llm, LLM)
+    assert llm.api_base == "https://example.test/deployments/nim-456/chat/completions"
+
+
+def test_get_llm_routes_to_external(patched_crewai_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.EXTERNAL
+    with patch.object(crewai_llm, "Config", return_value=config):
+        llm = crewai_llm.get_llm()
+    assert isinstance(llm, LLM)
+    assert llm.model == "default-model"
+
+
+def test_get_llm_raises_on_unknown_type(patched_crewai_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = "unknown"
+    with patch.object(crewai_llm, "Config", return_value=config):
+        with pytest.raises(ValueError, match="Invalid LLM type"):
+            crewai_llm.get_llm()
+
+
+def test_get_llm_forwards_model_name_and_parameters(
+    patched_crewai_llm_defaults: None,
+) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.GATEWAY
+    with patch.object(crewai_llm, "Config", return_value=config):
+        llm = crewai_llm.get_llm(model_name="azure/gpt-4", parameters={"temperature": 0.5})
+    assert llm.model == "datarobot/azure/gpt-4"
+    assert llm.temperature == 0.5

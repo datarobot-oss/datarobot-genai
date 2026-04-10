@@ -16,11 +16,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 from llama_index.llms.litellm import LiteLLM
 
+from datarobot_genai.core.config import LLMType
 from datarobot_genai.llama_index import llm as llama_index_llm
 
 pytestmark = pytest.mark.filterwarnings(
@@ -42,7 +44,9 @@ def patched_llama_index_llm_defaults() -> None:
         patch.object(
             llama_index_llm,
             "default_deployment_url",
-            side_effect=lambda deployment_id: f"https://example.test/deployments/{deployment_id}/chat/completions",
+            side_effect=lambda deployment_id: (
+                f"https://example.test/deployments/{deployment_id}/chat/completions"
+            ),
         ),
     ):
         yield
@@ -120,3 +124,92 @@ def test_datarobot_litellm_metadata_enables_chat_and_tooling(
     assert md.is_function_calling_model is True
     assert md.model_name == llm.model
     assert md.context_window == 128000
+
+
+def test_get_external_llm_returns_litellm_subclass(
+    patched_llama_index_llm_defaults: None,
+) -> None:
+    llm = llama_index_llm.get_external_llm()
+    assert isinstance(llm, LiteLLM)
+    assert llm.model == "default-model"
+
+
+def test_get_external_llm_strips_datarobot_prefix(
+    patched_llama_index_llm_defaults: None,
+) -> None:
+    llm = llama_index_llm.get_external_llm("datarobot/azure/gpt-4")
+    assert llm.model == "azure/gpt-4"
+
+
+def test_get_external_llm_preserves_model_without_prefix(
+    patched_llama_index_llm_defaults: None,
+) -> None:
+    llm = llama_index_llm.get_external_llm("azure/gpt-4")
+    assert llm.model == "azure/gpt-4"
+
+
+def test_get_external_llm_merges_parameters(
+    patched_llama_index_llm_defaults: None,
+) -> None:
+    llm = llama_index_llm.get_external_llm(parameters={"temperature": 0.7})
+    assert llm.temperature == 0.7
+
+
+def test_get_llm_routes_to_gateway(patched_llama_index_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.GATEWAY
+    with patch.object(llama_index_llm, "Config", return_value=config):
+        llm = llama_index_llm.get_llm()
+    assert isinstance(llm, LiteLLM)
+    extras = llm.additional_kwargs
+    assert extras.get("api_base") == "https://example.test/genai/llmgw"
+
+
+def test_get_llm_routes_to_deployment(patched_llama_index_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.DEPLOYMENT
+    config.llm_deployment_id = "dep-123"
+    with patch.object(llama_index_llm, "Config", return_value=config):
+        llm = llama_index_llm.get_llm()
+    assert isinstance(llm, LiteLLM)
+    extras = llm.additional_kwargs
+    assert extras.get("api_base") == "https://example.test/deployments/dep-123/chat/completions"
+
+
+def test_get_llm_routes_to_nim(patched_llama_index_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.NIM
+    config.nim_deployment_id = "nim-456"
+    with patch.object(llama_index_llm, "Config", return_value=config):
+        llm = llama_index_llm.get_llm()
+    assert isinstance(llm, LiteLLM)
+    extras = llm.additional_kwargs
+    assert extras.get("api_base") == "https://example.test/deployments/nim-456/chat/completions"
+
+
+def test_get_llm_routes_to_external(patched_llama_index_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.EXTERNAL
+    with patch.object(llama_index_llm, "Config", return_value=config):
+        llm = llama_index_llm.get_llm()
+    assert isinstance(llm, LiteLLM)
+    assert llm.model == "default-model"
+
+
+def test_get_llm_raises_on_unknown_type(patched_llama_index_llm_defaults: None) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = "unknown"
+    with patch.object(llama_index_llm, "Config", return_value=config):
+        with pytest.raises(ValueError, match="Invalid LLM type"):
+            llama_index_llm.get_llm()
+
+
+def test_get_llm_forwards_model_name_and_parameters(
+    patched_llama_index_llm_defaults: None,
+) -> None:
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.GATEWAY
+    with patch.object(llama_index_llm, "Config", return_value=config):
+        llm = llama_index_llm.get_llm(model_name="azure/gpt-4", parameters={"temperature": 0.5})
+    assert llm.model == "datarobot/azure/gpt-4"
+    assert llm.temperature == 0.5
