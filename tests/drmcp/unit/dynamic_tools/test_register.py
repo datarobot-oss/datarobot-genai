@@ -451,7 +451,10 @@ class TestExternalToolCallableErrorHandling:
     ):
         """Test that the error message includes the deployment's error response body."""
         mock_config.return_value.tool_registration_allow_empty_schema = True
-        error_body = '{"message":"The stop sequence you provided at index 0 is longer than the model limit of 10 characters."}'
+        error_body = (
+            '{"message":"The stop sequence you provided at index 0 is longer than '
+            'the model limit of 10 characters."}'
+        )
 
         callable_fn = _external_tool_callable_factory(simple_tool_config)
         input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
