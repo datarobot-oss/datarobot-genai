@@ -22,13 +22,13 @@ from pathlib import Path
 
 import pytest
 
-from dragent_tests.helpers import FRAMEWORK
+from dragent_tests.helpers import AGENT
 
 _E2E_ROOT = Path(__file__).resolve().parent.parent
-_WORKFLOW_CONFIG = _E2E_ROOT / "dragent" / (FRAMEWORK or "langgraph") / "workflow.yaml"
+_WORKFLOW_CONFIG = _E2E_ROOT / "dragent" / (AGENT or "langgraph") / "workflow.yaml"
 
 
-@pytest.mark.skipif(not FRAMEWORK, reason="FRAMEWORK env var not set")
+@pytest.mark.skipif(not AGENT, reason="AGENT env var not set")
 @pytest.mark.skipif(
     not _WORKFLOW_CONFIG.exists(),
     reason=f"Workflow config not found: {_WORKFLOW_CONFIG}",
