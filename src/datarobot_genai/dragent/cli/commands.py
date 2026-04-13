@@ -40,6 +40,7 @@ class DRAgentCommandGroup(StartCommandGroup):
         params = super()._build_params(front_end)
         for param in params:
             if isinstance(param, click.Option) and "--config_file" in param.opts:
+                param.required = False
                 param.envvar = "DRAGENT_CONFIG_FILE"
             elif isinstance(param, click.Option) and "--port" in param.opts:
                 param.envvar = "AGENT_PORT"
