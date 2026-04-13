@@ -384,10 +384,10 @@ class TestExternalToolCallableErrorHandling:
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_http_headers", return_value={})
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_config")
-    async def test_http_400_raises_runtime_error(
+    async def test_http_400_raises_tool_error(
         self, mock_config, mock_headers, simple_tool_config
     ):
-        """Test that HTTP 400 responses raise RuntimeError with error details."""
+        """Test that HTTP 400 responses raise ToolError with error details."""
         mock_config.return_value.tool_registration_allow_empty_schema = True
         error_body = '{"detail": "stop sequence too long"}'
 
@@ -403,10 +403,10 @@ class TestExternalToolCallableErrorHandling:
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_http_headers", return_value={})
     @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_config")
-    async def test_http_500_raises_runtime_error(
+    async def test_http_500_raises_tool_error(
         self, mock_config, mock_headers, simple_tool_config
     ):
-        """Test that HTTP 500 responses raise RuntimeError."""
+        """Test that HTTP 500 responses raise ToolError."""
         mock_config.return_value.tool_registration_allow_empty_schema = True
         error_body = '{"detail": "Internal server error"}'
 
