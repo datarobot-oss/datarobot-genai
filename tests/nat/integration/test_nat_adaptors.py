@@ -49,9 +49,9 @@ async def test_datarobot_llm_gateway_langchain():
         # NAT 1.6 reports usage via usage_metadata instead of response_metadata["token_usage"]
         usage = response.usage_metadata
         assert usage is not None
-        assert usage.output_tokens > 0
-        assert usage.total_tokens > 0
-        assert usage.input_tokens > 0
+        assert usage["output_tokens"] > 0
+        assert usage["total_tokens"] > 0
+        assert usage["input_tokens"] > 0
 
 
 async def test_datarobot_llm_gateway_crewai():
@@ -227,9 +227,9 @@ async def test_datarobot_llm_component_langchain():
         # NAT 1.6 reports usage via usage_metadata instead of response_metadata["token_usage"]
         usage = response.usage_metadata
         assert usage is not None
-        assert usage.output_tokens > 0
-        assert usage.total_tokens > 0
-        assert usage.input_tokens > 0
+        assert usage["output_tokens"] > 0
+        assert usage["total_tokens"] > 0
+        assert usage["input_tokens"] > 0
 
 
 async def test_datarobot_llm_component_crewai():
