@@ -163,7 +163,7 @@ def _external_tool_callable_factory(
                     error_body = content.decode(response.charset or "utf-8", errors="replace")
                     logger.warning(
                         f"External tool request failed with status {response.status}",
-                        extras={
+                        extra={
                             "url": url,
                             "error_body": error_body,
                         },
