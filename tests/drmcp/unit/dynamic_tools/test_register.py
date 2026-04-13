@@ -414,7 +414,7 @@ class TestExternalToolCallableErrorHandling:
         input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
-            mocked.post(self.TOOL_URL, status=500, body=error_body)
+            mocked.post(self.TOOL_URL, status=500, body=error_body, repeat=True)
 
             with pytest.raises(ToolError, match="HTTP 500 error from deployment"):
                 await callable_fn(input_model())

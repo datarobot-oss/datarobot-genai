@@ -160,18 +160,14 @@ def _external_tool_callable_factory(
                 content = await response.read()
 
                 if response.status >= 400:
-                    error_body = content.decode(
-                        response.charset or "utf-8", errors="replace"
-                    )
+                    error_body = content.decode(response.charset or "utf-8", errors="replace")
                     logger.warning(
                         "External tool request to %s failed with status %d: %s",
                         url,
                         response.status,
                         error_body,
                     )
-                    raise ToolError(
-                        f"HTTP {response.status} error from deployment: {error_body}"
-                    )
+                    raise ToolError(f"HTTP {response.status} error from deployment: {error_body}")
 
                 return format_response_as_tool_result(
                     data=content,
