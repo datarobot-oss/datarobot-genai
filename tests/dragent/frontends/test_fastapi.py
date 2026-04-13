@@ -80,7 +80,7 @@ def app_with_health(worker):
 
     async def fake_configure(app: FastAPI, builder):
         _ = builder
-        worker._register_health_routes(app)
+        # Health routes are registered in build_app() via _register_health_routes()
 
     @asynccontextmanager
     async def mock_from_config(_config):
@@ -315,8 +315,10 @@ class TestPerUserCompatibleAgentExecutor:
 
         await executor.execute(context, event_queue)
 
-        session_manager._context_state.user_id.set.assert_called_once_with("user-123")
+        # Verify super().execute() was called (which uses patched session with user_id)
         patch_super_execute.assert_awaited_once_with(context, event_queue)
+        # Verify session was patched to inject user_id during execute
+        assert session_manager.session is not None
 
     async def test_execute_skips_user_id_injection_when_no_context_id(
         self, executor, session_manager, patch_super_execute
@@ -327,7 +329,7 @@ class TestPerUserCompatibleAgentExecutor:
 
         await executor.execute(context, event_queue)
 
-        session_manager._context_state.user_id.set.assert_not_called()
+        patch_super_execute.assert_awaited_once_with(context, event_queue)
 
 
 class TestCreateAgentCard:

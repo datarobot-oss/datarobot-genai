@@ -69,18 +69,23 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
-        # Inject the A2A context_id as user_id before delegating to the parent execute.
         # The parent calls self.session_manager.session() with no user_id, which raises
-        # ValueError for per-user workflows.  Setting the context var here means the
-        # SessionManager's _get_user_id_from_context() will find it automatically.
-        token = None
-        if context.context_id:
-            token = self.session_manager._context_state.user_id.set(context.context_id)
+        # ValueError for per-user workflows in NAT 1.6.  Temporarily patch session() to
+        # inject context_id as user_id, then delegate to the parent.
+        original_session = self.session_manager.session
+
+        @asynccontextmanager
+        async def session_with_user_id(**kwargs):  # type: ignore[no-untyped-def]
+            if "user_id" not in kwargs or kwargs["user_id"] is None:
+                kwargs["user_id"] = context.context_id
+            async with original_session(**kwargs) as s:
+                yield s
+
+        self.session_manager.session = session_with_user_id  # type: ignore[assignment]
         try:
             await super().execute(context, event_queue)
         finally:
-            if token is not None:
-                self.session_manager._context_state.user_id.reset(token)
+            self.session_manager.session = original_session  # type: ignore[assignment]
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
