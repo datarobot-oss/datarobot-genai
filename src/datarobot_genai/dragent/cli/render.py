@@ -120,7 +120,7 @@ def render_event(
     elif event_type == RUN_STARTED:
         click.echo(f"{Style.DIM}Run started{Style.RESET_ALL}", err=True)
     elif event_type == RUN_FINISHED:
-        click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}")
+        click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}", err=err)
     elif event_type == RUN_ERROR:
         pass  # Caller handles this (raise ClickException / break loop).
     elif event_type == CUSTOM:
@@ -215,6 +215,11 @@ def render_object_event(event: object) -> bool:
     canonical = _OBJECT_TYPE_MAP.get(class_name)
     if canonical is None:
         logger.debug("Unhandled object event type: %s", class_name)
+        return False
+
+    # The console frontend prints its own "Run finished" message after the
+    # workflow completes, so skip it here to avoid duplicate output.
+    if canonical in (RUN_FINISHED, RUN_ERROR):
         return False
 
     delta = getattr(event, "delta", "")
