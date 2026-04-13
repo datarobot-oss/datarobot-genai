@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.7
+- Migrated NAT dependencies from 1.4.1 to 1.6.0
+    - Updated import path for tool_calling_agent (nat.agent -> nat.plugins.langchain.agent)
+    - Replaced set_metadata_from_http_request with session() override for user_id resolution
+    - Added session() override to extract user_id from DR auth context header
+    - Registered health routes in build_app() for NAT 1.6 compatibility
+    - Stripped internal NAT params (verify_ssl) from crewai LLM config
+    - Wrapped tool_calling_agent stream_fn for AG-UI event conversion
+
 ## 0.14.6
 - Fixed MCP tool calls to deployments silently swallowing HTTP error responses instead of surfacing them as tool errors.
 

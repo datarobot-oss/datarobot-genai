@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from nat.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
+from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 
 from datarobot_genai.dragent.plugins.per_user_tool_calling_agent import (
     PerUserToolCallAgentWorkflowConfig,
