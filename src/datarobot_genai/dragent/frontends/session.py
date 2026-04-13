@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import logging
 
 from fastapi import Request
@@ -37,7 +38,9 @@ class DRAgentAGUISessionManager(SessionManager):
         """Get workflow streaming output schema for OpenAPI documentation."""
         return DRAgentEventResponse
 
-    def set_metadata_from_http_request(self, request: Request) -> None:
+    async def set_metadata_from_http_request(
+        self, request: Request
+    ) -> tuple[contextvars.Token, contextvars.Token]:
         """Extend base metadata extraction to also set user_id from DataRobot auth context.
 
         The DataRobot UI does not set the ``nat-session`` cookie that NAT normally uses
@@ -45,14 +48,14 @@ class DRAgentAGUISessionManager(SessionManager):
         via the ``X-DataRobot-Authorization-Context`` JWT header.  We decode that header
         and use the contained user ID so that per-user workflows receive a stable identity.
         """
-        super().set_metadata_from_http_request(request)
+        result = await super().set_metadata_from_http_request(request)
 
         # Only attempt extraction if user_id wasn't already set (e.g. via nat-session cookie).
-        if self._context_state.user_id.get():
-            return
+        if not self._context_state.user_id.get():
+            auth_ctx = _auth_context_handler.get_context(dict(request.headers))
+            if auth_ctx is not None:
+                user_id = auth_ctx.user.id
+                self._context_state.user_id.set(user_id)
+                logger.debug("Set user_id from DataRobot auth context: %s", user_id)
 
-        auth_ctx = _auth_context_handler.get_context(dict(request.headers))
-        if auth_ctx is not None:
-            user_id = auth_ctx.user.id
-            self._context_state.user_id.set(user_id)
-            logger.debug("Set user_id from DataRobot auth context: %s", user_id)
+        return result
