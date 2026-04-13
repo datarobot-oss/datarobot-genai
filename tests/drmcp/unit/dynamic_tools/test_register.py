@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 from aioresponses import aioresponses
+from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import Tool
 from fastmcp.tools.tool import ToolResult
 
@@ -396,7 +397,7 @@ class TestExternalToolCallableErrorHandling:
         with aioresponses() as mocked:
             mocked.post(self.TOOL_URL, status=400, body=error_body)
 
-            with pytest.raises(RuntimeError, match="HTTP 400 error from deployment"):
+            with pytest.raises(ToolError, match="HTTP 400 error from deployment"):
                 await callable_fn(input_model())
 
     @pytest.mark.asyncio
@@ -415,7 +416,7 @@ class TestExternalToolCallableErrorHandling:
         with aioresponses() as mocked:
             mocked.post(self.TOOL_URL, status=500, body=error_body)
 
-            with pytest.raises(RuntimeError, match="HTTP 500 error from deployment"):
+            with pytest.raises(ToolError, match="HTTP 500 error from deployment"):
                 await callable_fn(input_model())
 
     @pytest.mark.asyncio
@@ -458,6 +459,6 @@ class TestExternalToolCallableErrorHandling:
         with aioresponses() as mocked:
             mocked.post(self.TOOL_URL, status=400, body=error_body)
 
-            with pytest.raises(RuntimeError, match="stop sequence") as exc_info:
+            with pytest.raises(ToolError, match="stop sequence") as exc_info:
                 await callable_fn(input_model())
             assert "400" in str(exc_info.value)

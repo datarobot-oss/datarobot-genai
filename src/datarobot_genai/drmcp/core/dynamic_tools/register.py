@@ -25,6 +25,7 @@ import aiohttp
 from aiohttp import ClientTimeout
 from aiohttp_retry import ExponentialRetry
 from aiohttp_retry import RetryClient
+from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools.tool import Tool
 from fastmcp.tools.tool import ToolResult
@@ -168,7 +169,7 @@ def _external_tool_callable_factory(
                         response.status,
                         error_body,
                     )
-                    raise RuntimeError(
+                    raise ToolError(
                         f"HTTP {response.status} error from deployment: {error_body}"
                     )
 

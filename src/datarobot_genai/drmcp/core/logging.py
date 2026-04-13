@@ -93,6 +93,6 @@ def log_execution(func: F) -> F:
             return result
         except Exception as e:
             error_msg = _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
-            raise ToolError(error_msg)
+            raise ToolError(error_msg) from e
 
     return wrapper  # type: ignore[return-value]
