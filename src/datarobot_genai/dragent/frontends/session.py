@@ -14,10 +14,14 @@
 
 import contextvars
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Request
 from nat.runtime.session import SessionManager
 from pydantic import BaseModel
+from starlette.requests import HTTPConnection
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
@@ -27,6 +31,14 @@ from .response import DRAgentEventResponse
 logger = logging.getLogger(__name__)
 
 _auth_context_handler = AuthContextHeaderHandler()
+
+
+def _extract_user_id_from_dr_auth_context(request: Request) -> str | None:
+    """Extract user ID from X-DataRobot-Authorization-Context header."""
+    auth_ctx = _auth_context_handler.get_context(dict(request.headers))
+    if auth_ctx is not None:
+        return auth_ctx.user.id
+    return None
 
 
 class DRAgentAGUISessionManager(SessionManager):
@@ -41,21 +53,28 @@ class DRAgentAGUISessionManager(SessionManager):
     async def set_metadata_from_http_request(
         self, request: Request
     ) -> tuple[contextvars.Token, contextvars.Token]:
-        """Extend base metadata extraction to also set user_id from DataRobot auth context.
+        """Extend base metadata extraction."""
+        return await super().set_metadata_from_http_request(request)
+
+    @asynccontextmanager
+    async def session(  # type: ignore[override]
+        self,
+        *,
+        user_id: str | None = None,
+        http_connection: HTTPConnection | None = None,
+        **kwargs: Any,
+    ) -> AsyncGenerator:  # type: ignore[type-arg]
+        """Override session to extract user_id from DataRobot auth context header.
 
         The DataRobot UI does not set the ``nat-session`` cookie that NAT normally uses
         to identify users for per-user workflows.  Instead, DataRobot passes user identity
         via the ``X-DataRobot-Authorization-Context`` JWT header.  We decode that header
-        and use the contained user ID so that per-user workflows receive a stable identity.
+        and pass the user ID to NAT's session so it resolves identity correctly.
         """
-        result = await super().set_metadata_from_http_request(request)
-
-        # Only attempt extraction if user_id wasn't already set (e.g. via nat-session cookie).
-        if not self._context_state.user_id.get():
-            auth_ctx = _auth_context_handler.get_context(dict(request.headers))
-            if auth_ctx is not None:
-                user_id = auth_ctx.user.id
-                self._context_state.user_id.set(user_id)
+        if user_id is None and isinstance(http_connection, Request):
+            user_id = _extract_user_id_from_dr_auth_context(http_connection)
+            if user_id is not None:
                 logger.debug("Set user_id from DataRobot auth context: %s", user_id)
 
-        return result
+        async with super().session(user_id=user_id, http_connection=http_connection, **kwargs) as s:
+            yield s
