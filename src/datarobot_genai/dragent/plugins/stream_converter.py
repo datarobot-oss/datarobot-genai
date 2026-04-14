@@ -47,72 +47,73 @@ async def convert_chunks_to_ag_ui_events(
     START/CONTENT/END sequences. State is local to this call.
     """
     active_message_id: str | None = None
-    active_tool_calls: set[str] = set()
+    active_tool_calls: list[str] = []
     # Map tool call index -> id for follow-up chunks that have id=None
     tool_call_index_to_id: dict[int, str] = {}
     zero = default_usage_metrics()
 
-    async for chunk in chunks:
-        if not isinstance(chunk, ChatResponseChunk) or not chunk.choices:
-            continue
+    try:
+        async for chunk in chunks:
+            if not isinstance(chunk, ChatResponseChunk) or not chunk.choices:
+                continue
 
-        delta = chunk.choices[0].delta
-        events: list[Any] = []
+            delta = chunk.choices[0].delta
+            events: list[Any] = []
 
-        # Text content
-        if delta and delta.content:
-            if active_message_id is None:
-                active_message_id = chunk.id or ""
+            # Text content
+            if delta and delta.content:
+                if active_message_id is None:
+                    active_message_id = chunk.id or ""
+                    events.append(
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START,
+                            message_id=active_message_id,
+                            role="assistant",
+                        )
+                    )
                 events.append(
-                    TextMessageStartEvent(
-                        type=EventType.TEXT_MESSAGE_START,
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
                         message_id=active_message_id,
-                        role="assistant",
+                        delta=delta.content,
                     )
                 )
-            events.append(
-                TextMessageContentEvent(
-                    type=EventType.TEXT_MESSAGE_CONTENT,
-                    message_id=active_message_id,
-                    delta=delta.content,
-                )
+
+            # Tool calls
+            if delta and delta.tool_calls:
+                for tc in delta.tool_calls:
+                    # First chunk has id; follow-ups have id=None, use index to look up
+                    tc_id = tc.id or tool_call_index_to_id.get(tc.index, "")
+                    if tc.id and tc_id not in active_tool_calls:
+                        active_tool_calls.append(tc_id)
+                        tool_call_index_to_id[tc.index] = tc_id
+                        name = tc.function.name if tc.function else ""
+                        events.append(
+                            ToolCallStartEvent(
+                                type=EventType.TOOL_CALL_START,
+                                tool_call_id=tc_id,
+                                tool_call_name=name,
+                            )
+                        )
+                    if tc.function and tc.function.arguments and tc_id:
+                        events.append(
+                            ToolCallArgsEvent(
+                                type=EventType.TOOL_CALL_ARGS,
+                                tool_call_id=tc_id,
+                                delta=tc.function.arguments,
+                            )
+                        )
+
+            if events:
+                yield DRAgentEventResponse(events=events, usage_metrics=zero)
+    finally:
+        # Close any active lifecycle at stream end
+        end: list[Any] = []
+        if active_message_id is not None:
+            end.append(
+                TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=active_message_id)
             )
-
-        # Tool calls
-        if delta and delta.tool_calls:
-            for tc in delta.tool_calls:
-                # First chunk has id; follow-ups have id=None, use index to look up
-                tc_id = tc.id or tool_call_index_to_id.get(tc.index, "")
-                if tc.id and tc_id not in active_tool_calls:
-                    active_tool_calls.add(tc_id)
-                    tool_call_index_to_id[tc.index] = tc_id
-                    name = tc.function.name if tc.function else ""
-                    events.append(
-                        ToolCallStartEvent(
-                            type=EventType.TOOL_CALL_START,
-                            tool_call_id=tc_id,
-                            tool_call_name=name,
-                        )
-                    )
-                if tc.function and tc.function.arguments and tc_id:
-                    events.append(
-                        ToolCallArgsEvent(
-                            type=EventType.TOOL_CALL_ARGS,
-                            tool_call_id=tc_id,
-                            delta=tc.function.arguments,
-                        )
-                    )
-
-        if events:
-            yield DRAgentEventResponse(events=events, usage_metrics=zero)
-
-    # Close any active lifecycle at stream end
-    end: list[Any] = []
-    if active_message_id is not None:
-        end.append(
-            TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=active_message_id)
-        )
-    for tc_id in active_tool_calls:
-        end.append(ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=tc_id))
-    if end:
-        yield DRAgentEventResponse(events=end, usage_metrics=zero)
+        for tc_id in active_tool_calls:
+            end.append(ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=tc_id))
+        if end:
+            yield DRAgentEventResponse(events=end, usage_metrics=zero)

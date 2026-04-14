@@ -202,3 +202,15 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.is_litellm is True
     assert llm.temperature == 0.5
+
+
+def test_internal_nat_keys_are_stripped_from_config() -> None:
+    """NAT puts verify_ssl/ssl_verify in config; they must be stripped before crewai sees them."""
+    llm = crewai_llm.get_datarobot_gateway_llm(
+        parameters={"verify_ssl": False, "ssl_verify": True, "temperature": 0.5}
+    )
+    assert isinstance(llm, LLM)
+    assert llm.temperature == 0.5
+    # These keys should NOT appear in additional_params (where litellm would see them)
+    assert "verify_ssl" not in llm.additional_params
+    assert "ssl_verify" not in llm.additional_params

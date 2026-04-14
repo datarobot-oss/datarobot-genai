@@ -12,20 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compatibility patches for nvidia-nat-crewai 1.4.1 with crewai >= 1.1.0.
-
-nvidia-nat-crewai 1.4.1 expects crewai < 1.0.0 response format where
-``choice.model_extra["message"]`` holds the LLM message. In crewai >= 1.1.0,
-``message`` is a proper attribute on the choice object. This module patches
-the callback handler to support both formats.
+"""Compatibility patches for nvidia-nat-crewai streaming with crewai >= 1.1.0.
 
 When ``stream=True``, LiteLLM returns a stream object (e.g. ``CustomStreamWrapper``)
-without ``.choices``. NAT's ``wrapped_llm_call`` only handles non-streaming
-``ModelResponse`` objects, so streaming calls must bypass that wrapper and call
-``litellm.completion`` directly.
+without ``.choices``. NAT's ``wrapped_llm_call`` calls ``output.choices[0].model_dump()``
+which crashes for streaming responses, so streaming calls must bypass that wrapper
+and call ``litellm.completion`` directly.
 
-TODO(BUZZOK-29844): Remove once nvidia-nat-crewai ships a fix upstream.
-Upstream issue: https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1802
+TODO(BUZZOK-29844): Remove once nvidia-nat-crewai fixes streaming handling upstream.
 """
 
 import logging
@@ -36,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def patch_crewai_callback_handler() -> None:
-    """Patch CrewAIProfilerHandler._llm_call_monkey_patch for crewai >= 1.1.0 compatibility."""
+    """Patch CrewAIProfilerHandler._llm_call_monkey_patch to bypass NAT's wrapper for streaming."""
     try:
         from nat.plugins.crewai.crewai_callback_handler import CrewAIProfilerHandler
     except ImportError:
@@ -48,40 +42,18 @@ def patch_crewai_callback_handler() -> None:
     _original_method = CrewAIProfilerHandler._llm_call_monkey_patch
 
     def _patched_llm_call_monkey_patch(self: Any) -> Callable[..., Any]:
-        """Wrap the original monkey patch to inject message into model_extra before it runs."""
+        """Wrap the original monkey patch to bypass NAT's wrapper for streaming calls."""
         original_litellm = self._original_llm_call
+        patched_wrapped = _original_method(self)
 
-        def fixed_wrapped(*args: Any, **kwargs: Any) -> Any:
-            def compat_completion(*a: Any, **kw: Any) -> Any:
-                output = original_litellm(*a, **kw)
-                choices = getattr(output, "choices", None)
-                if not choices:
-                    return output
-                for choice in choices:
-                    if (
-                        choice.model_extra is not None
-                        and "message" not in choice.model_extra
-                        and hasattr(choice, "message")
-                        and choice.message is not None
-                    ):
-                        choice.model_extra["message"] = choice.message.model_dump()
-                return output
+        def dispatch(*args: Any, **kwargs: Any) -> Any:
+            # NAT's wrapped_llm_call calls output.choices[0].model_dump()
+            # which crashes for streaming responses (CustomStreamWrapper).
+            if kwargs.get("stream"):
+                return original_litellm(*args, **kwargs)
+            return patched_wrapped(*args, **kwargs)
 
-            self._original_llm_call = compat_completion
-            try:
-                patched_wrapped = _original_method(self)
-
-                def dispatch(*a: Any, **kw: Any) -> Any:
-                    # NAT's wrapped_llm_call reads output.choices; streaming returns an iterator.
-                    if kw.get("stream"):
-                        return original_litellm(*a, **kw)
-                    return patched_wrapped(*a, **kw)
-
-                return dispatch(*args, **kwargs)
-            finally:
-                self._original_llm_call = original_litellm
-
-        return fixed_wrapped
+        return dispatch
 
     CrewAIProfilerHandler._llm_call_monkey_patch = _patched_llm_call_monkey_patch
     CrewAIProfilerHandler._llm_call_monkey_patch._dr_patched = True

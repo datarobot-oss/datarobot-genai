@@ -223,3 +223,47 @@ class TestEdgeCases:
         start_events = [e for e in events if isinstance(e, ToolCallStartEvent)]
         assert len(start_events) == 1
         assert start_events[0].tool_call_name == ""
+
+
+class TestErrorHandling:
+    @pytest.mark.asyncio
+    async def test_end_events_emitted_on_upstream_exception(self):
+        """END events must be emitted even when the upstream generator raises."""
+
+        async def _failing_gen():
+            yield _make_chunk(content="Hello")
+            raise RuntimeError("upstream error")
+
+        responses = []
+        with pytest.raises(RuntimeError, match="upstream error"):
+            async for resp in convert_chunks_to_ag_ui_events(_failing_gen()):
+                responses.append(resp)
+
+        events = _flat_events(responses)
+        assert any(isinstance(e, TextMessageStartEvent) for e in events)
+        assert any(isinstance(e, TextMessageEndEvent) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_tool_call_end_events_emitted_on_upstream_exception(self):
+        """Tool call END events must be emitted even when the upstream generator raises."""
+
+        async def _failing_gen():
+            yield _make_chunk(
+                tool_calls=[
+                    ChoiceDeltaToolCall(
+                        index=0,
+                        id="tc-1",
+                        function=ChoiceDeltaToolCallFunction(name="search", arguments='{"q":"hi"}'),
+                    )
+                ]
+            )
+            raise RuntimeError("upstream error")
+
+        responses = []
+        with pytest.raises(RuntimeError, match="upstream error"):
+            async for resp in convert_chunks_to_ag_ui_events(_failing_gen()):
+                responses.append(resp)
+
+        events = _flat_events(responses)
+        assert any(isinstance(e, ToolCallStartEvent) for e in events)
+        assert any(isinstance(e, ToolCallEndEvent) for e in events)
