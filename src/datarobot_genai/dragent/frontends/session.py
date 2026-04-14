@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextvars
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -49,12 +48,6 @@ class DRAgentAGUISessionManager(SessionManager):
     def get_workflow_streaming_output_schema(self) -> type[BaseModel]:
         """Get workflow streaming output schema for OpenAPI documentation."""
         return DRAgentEventResponse
-
-    async def set_metadata_from_http_request(
-        self, request: Request
-    ) -> tuple[contextvars.Token, contextvars.Token]:
-        """Extend base metadata extraction."""
-        return await super().set_metadata_from_http_request(request)
 
     @asynccontextmanager
     async def session(  # type: ignore[override]
