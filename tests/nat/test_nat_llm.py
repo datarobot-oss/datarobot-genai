@@ -108,7 +108,6 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
         assert llm.additional_params == {
-            "is_litellm": True,
             "max_retries": 10,
             "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
             "stream_options": {"include_usage": True},
@@ -297,7 +296,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_base == "https://app.datarobot.com"
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
-                "is_litellm": True,
                 "max_retries": 10,
                 "stream_options": {"include_usage": True},
             }
@@ -309,7 +307,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "is_litellm": True,
                 "stream_options": {"include_usage": True},
                 "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
             }
@@ -321,7 +318,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "is_litellm": True,
                 "stream_options": {"include_usage": True},
             }
         elif llm_config.get_llm_type() == LLMType.EXTERNAL:
@@ -329,7 +325,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_base is None
             assert llm.api_key is None
             assert llm.additional_params == {
-                "is_litellm": True,
                 "max_retries": 10,
                 "stream_options": {"include_usage": True},
             }
