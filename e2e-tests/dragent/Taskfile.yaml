@@ -17,28 +17,28 @@ tasks:
     dir: ./nat
     cmds:
       - echo "🔨 Running NAT agent"
-      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-crewai:
     desc: "🔨 Running CrewAI agent via NAT"
     dir: ./crewai
     cmds:
       - echo "🔨 Running CrewAI agent via NAT"
-      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-langgraph:
     desc: "🔨 Running LangGraph agent via NAT"
     dir: ./langgraph
     cmds:
       - echo "🔨 Running LangGraph agent via NAT"
-      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-llamaindex:
     desc: "🔨 Running LlamaIndex agent via NAT"
     dir: ./llamaindex
     cmds:
       - echo "🔨 Running LlamaIndex agent via NAT"
-      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-base:
     desc: "🔨 Running base agent via NAT"
     dir: ./base
     cmds:
       - echo "🔨 Running base agent via NAT"
-      - uv run nat start dragent_fastapi --config_file workflow.yaml --port {{.AGENT_PORT}}
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
