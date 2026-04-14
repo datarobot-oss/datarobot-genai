@@ -315,10 +315,8 @@ class TestPerUserCompatibleAgentExecutor:
 
         await executor.execute(context, event_queue)
 
-        # Verify super().execute() was called (which uses patched session with user_id)
+        session_manager._context_state.user_id.set.assert_called_once_with("user-123")
         patch_super_execute.assert_awaited_once_with(context, event_queue)
-        # Verify session was patched to inject user_id during execute
-        assert session_manager.session is not None
 
     async def test_execute_skips_user_id_injection_when_no_context_id(
         self, executor, session_manager, patch_super_execute
@@ -329,7 +327,7 @@ class TestPerUserCompatibleAgentExecutor:
 
         await executor.execute(context, event_queue)
 
-        patch_super_execute.assert_awaited_once_with(context, event_queue)
+        session_manager._context_state.user_id.set.assert_not_called()
 
 
 class TestCreateAgentCard:
