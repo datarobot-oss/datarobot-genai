@@ -274,3 +274,13 @@ class TestMCPToolsContext:
             )
             async with mcp_tools_context(mcp_config):
                 pass
+
+    async def test_mcp_tools_context_connection_error_yields_empty(self):
+        """Test graceful fallback when MCP server connection fails."""
+        external_url = "https://mcp-server.example.com/mcp"
+        mcp_config = MCPConfig(external_mcp_url=external_url)
+        with patch(
+            "datarobot_genai.langgraph.mcp.create_session", side_effect=ConnectionError("refused")
+        ):
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools == []

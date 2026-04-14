@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.3
+- Added `nat dragent` shell frontend for NAT - provides `nat dragent serve`, `nat dragent run`, and `nat dragent query` commands
+- MCP tool loading now gracefully falls back to empty tools on connection errors (CrewAI, LangGraph, LlamaIndex)
+
 ## 0.14.2
 - Implemented functions to instantiate LLM classes for LLM Gateway, deployment, NIM, and external
 

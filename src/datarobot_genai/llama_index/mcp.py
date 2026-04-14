@@ -58,15 +58,25 @@ async def mcp_tools_context(
     url = server_params["url"]
     headers = server_params.get("headers", {})
 
-    logger.info(f"Connecting to MCP server: {url}")
-    # Create BasicMCPClient with headers to pass authentication
-    client = BasicMCPClient(command_or_url=url, headers=headers)
-    tools = await aget_tools_from_mcp_url(
-        command_or_url=url,
-        client=client,
-    )
-    # Ensure list
-    tools = list(tools) if tools is not None else []
-    logger.info(f"Successfully connected to MCP server, got {len(tools)} tools")
+    logger.info("Connecting to MCP server: %s", url)
+
+    try:
+        # Create BasicMCPClient with headers to pass authentication
+        client = BasicMCPClient(command_or_url=url, headers=headers)
+        tools = await aget_tools_from_mcp_url(
+            command_or_url=url,
+            client=client,
+        )
+        # Ensure list
+        tools = list(tools) if tools is not None else []
+        logger.info("Successfully connected to MCP server, got %d tools", len(tools))
+    except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+        logger.warning(
+            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            url,
+            exc,
+        )
+        yield []
+        return
 
     yield tools
