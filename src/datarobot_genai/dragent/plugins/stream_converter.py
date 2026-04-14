@@ -23,6 +23,7 @@ per-request with no global state.
 """
 
 import logging
+import sys
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -116,7 +117,15 @@ async def convert_chunks_to_ag_ui_events(
             if events:
                 yield DRAgentEventResponse(events=events, usage_metrics=zero)
     finally:
-        # Close any active lifecycle at stream end
+        # Close any active lifecycle at stream end.
+        # When the generator is closed via aclose() (client disconnect), Python
+        # throws GeneratorExit.  Yielding during GeneratorExit is illegal in async
+        # generators, so we detect that case and skip the yield.
+        exc_type = sys.exc_info()[0]
+        if exc_type is GeneratorExit:
+            logger.debug("Client disconnected before end events could be delivered")
+            return
+
         end: list[Any] = []
         if active_message_id is not None:
             end.append(
@@ -125,7 +134,4 @@ async def convert_chunks_to_ag_ui_events(
         for tc_id in active_tool_calls:
             end.append(ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=tc_id))
         if end:
-            try:
-                yield DRAgentEventResponse(events=end, usage_metrics=zero)
-            except GeneratorExit:
-                logger.debug("Client disconnected before end events could be delivered")
+            yield DRAgentEventResponse(events=end, usage_metrics=zero)

@@ -86,7 +86,8 @@ class TestPerUserToolCallingAgentWrapper:
     @pytest.mark.asyncio
     async def test_yields_fn_info_unchanged_when_stream_fn_is_none(self):
         """When stream_fn is None, the wrapper yields fn_info as-is."""
-        original_fn_info = _make_fn_info(stream_fn=None)
+        original_fn_info = MagicMock(spec=FunctionInfo)
+        original_fn_info.stream_fn = None
 
         async def fake_gen(config, builder):
             yield original_fn_info
