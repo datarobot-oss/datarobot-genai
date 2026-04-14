@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.3
+- Pin crewai to 1.11.0: fixes is_litellm issues
+
 ## 0.14.2
 - Implemented functions to instantiate LLM classes for LLM Gateway, deployment, NIM, and external
 
