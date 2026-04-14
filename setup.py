@@ -55,8 +55,8 @@ crewai = core + [
 
 langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
-    "langgraph>=1.0.0,<1.1.0",
-    "langgraph-prebuilt>=1.0.0,<1.1.0",
+    "langgraph>=1.0.0,<2.0.0",
+    "langgraph-prebuilt>=1.0.0,<2.0.0",
     "litellm>=1.83.0,<2.0.0",
     "nvidia-nat-langchain==1.4.1",
     "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
