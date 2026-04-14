@@ -21,39 +21,68 @@ the name ``per_user_tool_calling_agent`` using ``register_per_user_function`` so
 that per-user function groups can be used while still benefiting from OpenAI-style
 structured tool calling (``bind_tools``).
 
-``tool_calling_agent_workflow.__wrapped__`` is the raw async generator function
-before ``@register_function`` wrapped it with ``asynccontextmanager``.
-``register_per_user_function`` re-wraps it with ``asynccontextmanager`` internally,
-so no implementation needs to be duplicated here.
+NAT 1.6 added a ``stream_fn`` that yields ``ChatResponseChunk``.  We wrap it
+to produce ``DRAgentEventResponse`` with valid AG-UI event sequences instead.
+See ``stream_converter.py`` for the conversion logic.
 """
+
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
+from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
 from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling_agent_workflow
+
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.plugins.stream_converter import convert_chunks_to_ag_ui_events
 
 
 class PerUserToolCallAgentWorkflowConfig(
     ToolCallAgentWorkflowConfig,
     name="per_user_tool_calling_agent",  # type: ignore[call-arg]
 ):
-    """Per-user version of tool_calling_agent.
+    """Per-user version of tool_calling_agent."""
 
-    Identical to ``tool_calling_agent`` in every way except that it is instantiated
-    once per user, which allows per-user function groups (e.g. ``a2a_client``) to be
-    listed in ``tool_names``.
-    """
-
-    pass  # Inherits all fields from ToolCallAgentWorkflowConfig
+    pass
 
 
-# Re-register the raw build function (.__wrapped__ is the original async generator
-# before asynccontextmanager wrapped it) as a per-user function under the new config type.
+async def _per_user_tool_calling_agent(
+    config: PerUserToolCallAgentWorkflowConfig, builder: Any
+) -> AsyncGenerator[Any, None]:
+    """Wrap the original tool_calling_agent with AG-UI stream conversion."""
+    from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
+
+    original_gen = tool_calling_agent_workflow.__wrapped__(config, builder)
+    fn_info: FunctionInfo = await original_gen.__anext__()
+
+    if fn_info.stream_fn is None:
+        yield fn_info
+        return
+
+    original_stream_fn = fn_info.stream_fn
+
+    async def wrapped_stream(
+        chat_request_or_message: ChatRequestOrMessage,
+    ) -> AsyncGenerator[DRAgentEventResponse, None]:
+        async for event in convert_chunks_to_ag_ui_events(
+            original_stream_fn(chat_request_or_message)
+        ):
+            yield event
+
+    yield FunctionInfo.create(
+        single_fn=fn_info.single_fn,
+        stream_fn=wrapped_stream,
+        description=fn_info.description,
+    )
+
+
 register_per_user_function(
     config_type=PerUserToolCallAgentWorkflowConfig,
     input_type=ChatRequest,
     single_output_type=ChatResponse,
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
-)(tool_calling_agent_workflow.__wrapped__)
+)(_per_user_tool_calling_agent)
