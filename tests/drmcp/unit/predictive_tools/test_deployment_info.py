@@ -652,6 +652,69 @@ async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> Non
 
 
 @pytest.mark.asyncio
+async def test_get_deployment_info_deployment_not_found() -> None:
+    """get_deployment_info raises ToolError when deployment ID doesn't exist."""
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient") as mock_drc,
+    ):
+        mock_client = MagicMock()
+        mock_client.Deployment.get.side_effect = Exception(
+            "404 client error: {'message': 'Not Found'}"
+        )
+        mock_drc.return_value.get_client.return_value = mock_client
+        with pytest.raises(ToolError, match=r"Deployment.*not found"):
+            await get_deployment_info(deployment_id="nonexistent_id")
+
+
+@pytest.mark.asyncio
+async def test_get_deployment_info_project_not_found() -> None:
+    """get_deployment_info raises ToolError when associated project doesn't exist."""
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient") as mock_drc,
+    ):
+        mock_client = MagicMock()
+        mock_deployment = MagicMock()
+        mock_deployment.model = {"project_id": "deleted_proj", "id": "model123"}
+        mock_deployment.get_features.return_value = []
+        mock_deployment.get_capabilities.return_value = None
+        mock_client.Deployment.get.return_value = mock_deployment
+        mock_client.Project.get.side_effect = Exception(
+            "404 client error: {'message': \"Project with ID deleted_proj doesn't exist\"}"
+        )
+        mock_drc.return_value.get_client.return_value = mock_client
+        with pytest.raises(ToolError, match=r"Project or model.*not found"):
+            await get_deployment_info(deployment_id="dep_with_deleted_project")
+
+
+@pytest.mark.asyncio
+async def test_get_deployment_info_other_error() -> None:
+    """get_deployment_info raises ToolError with context for non-404 errors."""
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient") as mock_drc,
+    ):
+        mock_client = MagicMock()
+        mock_client.Deployment.get.side_effect = Exception("500 server error: internal failure")
+        mock_drc.return_value.get_client.return_value = mock_client
+        with pytest.raises(ToolError, match=r"Failed to retrieve deployment"):
+            await get_deployment_info(deployment_id="dep_id")
+
+
+@pytest.mark.asyncio
 async def test_get_deployment_info_custom_model() -> None:
     class DummyDeployment:
         model: dict[str, Any] = {}

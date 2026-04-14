@@ -51,7 +51,16 @@ async def get_model_info_from_deployment(
         raise ToolError("Deployment ID must be provided")
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    deployment = client.Deployment.get(deployment_id)
+    try:
+        deployment = client.Deployment.get(deployment_id)
+    except Exception as e:
+        error_str = str(e)
+        if "404" in error_str or "Not Found" in error_str:
+            raise ToolError(
+                f"Deployment '{deployment_id}' not found. Please verify the deployment ID exists "
+                "and you have access to it."
+            )
+        raise ToolError(f"Failed to retrieve deployment '{deployment_id}': {error_str}")
     return deployment.model
 
 
@@ -185,8 +194,19 @@ async def get_prediction_history(
     if end_time:
         params["endTime"] = end_time
 
-    response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
-    data = response.json()
+    try:
+        response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
+        data = response.json()
+    except Exception as e:
+        error_str = str(e)
+        if "404" in error_str or "Not Found" in error_str:
+            raise ToolError(
+                f"Deployment '{deployment_id}' not found or has no prediction history. "
+                "Please verify the deployment ID exists and you have access to it."
+            )
+        raise ToolError(
+            f"Failed to retrieve prediction history for deployment '{deployment_id}': {error_str}"
+        )
     rows = data.get("data", [])
     next_page = data.get("next")
 

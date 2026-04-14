@@ -46,7 +46,17 @@ async def get_deployment_info(
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    deployment = client.Deployment.get(deployment_id)
+
+    try:
+        deployment = client.Deployment.get(deployment_id)
+    except Exception as e:
+        error_str = str(e)
+        if "404" in error_str or "Not Found" in error_str:
+            raise ToolError(
+                f"Deployment '{deployment_id}' not found. Please verify the deployment ID exists "
+                "and you have access to it."
+            )
+        raise ToolError(f"Failed to retrieve deployment '{deployment_id}': {error_str}")
 
     # get features from the deployment
     features_raw = deployment.get_features()
@@ -68,8 +78,19 @@ async def get_deployment_info(
         target = ""
         target_type = ""
     else:
-        project = client.Project.get(deployment.model["project_id"])
-        model = client.Model.get(project=project, model_id=deployment.model["id"])
+        try:
+            project = client.Project.get(deployment.model["project_id"])
+            model = client.Model.get(project=project, model_id=deployment.model["id"])
+        except Exception as e:
+            error_str = str(e)
+            if "404" in error_str or "Not Found" in error_str:
+                raise ToolError(
+                    f"Project or model associated with deployment '{deployment_id}' not found. "
+                    "The deployment may reference a deleted project."
+                )
+            raise ToolError(
+                f"Failed to retrieve project/model for deployment '{deployment_id}': {error_str}"
+            )
         model_type = model.model_type
         target = project.target
         target_type = project.target_type

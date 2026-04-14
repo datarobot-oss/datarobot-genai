@@ -115,9 +115,9 @@ async def test_get_model_info_from_deployment_not_found() -> None:
         patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await deployment.get_model_info_from_deployment(deployment_id="dep_id")
-        assert "404 client error: {'message': 'Not Found'}" == str(exc_info.value)
+        assert "not found" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio
