@@ -23,15 +23,9 @@ from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
 
-# Keys that NAT puts in the LLM config but should not be forwarded to the
-# LLM API via litellm's additional_params (they cause "extra inputs" errors).
-_INTERNAL_NAT_KEYS = {"verify_ssl", "ssl_verify"}
-
 
 def _crewai_model_factory(config: dict) -> LLM:
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
-    for key in _INTERNAL_NAT_KEYS:
-        config.pop(key, None)
 
     # This class is used to override all the magic LLM tries to pull on using
     # native LLM clients. We don't want to use native LLM clients, we want to use

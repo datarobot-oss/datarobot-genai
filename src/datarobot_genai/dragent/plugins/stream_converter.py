@@ -22,6 +22,7 @@ This module converts between the two, tracking lifecycle state
 per-request with no global state.
 """
 
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -36,6 +37,8 @@ from nat.data_models.api_server import ChatResponseChunk
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+
+logger = logging.getLogger(__name__)
 
 
 async def convert_chunks_to_ag_ui_events(
@@ -83,7 +86,13 @@ async def convert_chunks_to_ag_ui_events(
             if delta and delta.tool_calls:
                 for tc in delta.tool_calls:
                     # First chunk has id; follow-ups have id=None, use index to look up
-                    tc_id = tc.id or tool_call_index_to_id.get(tc.index, "")
+                    tc_id = tc.id or tool_call_index_to_id.get(tc.index)
+                    if tc_id is None:
+                        logger.warning(
+                            "Tool call chunk at index %d has no id and no prior mapping; skipping",
+                            tc.index,
+                        )
+                        continue
                     if tc.id and tc_id not in active_tool_calls:
                         active_tool_calls.append(tc_id)
                         tool_call_index_to_id[tc.index] = tc_id
@@ -95,7 +104,7 @@ async def convert_chunks_to_ag_ui_events(
                                 tool_call_name=name,
                             )
                         )
-                    if tc.function and tc.function.arguments and tc_id:
+                    if tc.function and tc.function.arguments:
                         events.append(
                             ToolCallArgsEvent(
                                 type=EventType.TOOL_CALL_ARGS,
@@ -116,4 +125,7 @@ async def convert_chunks_to_ag_ui_events(
         for tc_id in active_tool_calls:
             end.append(ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=tc_id))
         if end:
-            yield DRAgentEventResponse(events=end, usage_metrics=zero)
+            try:
+                yield DRAgentEventResponse(events=end, usage_metrics=zero)
+            except GeneratorExit:
+                logger.debug("Client disconnected before end events could be delivered")

@@ -267,3 +267,16 @@ class TestErrorHandling:
         events = _flat_events(responses)
         assert any(isinstance(e, ToolCallStartEvent) for e in events)
         assert any(isinstance(e, ToolCallEndEvent) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_aclose_during_stream_does_not_raise(self):
+        """Closing the generator mid-stream (client disconnect) must not raise RuntimeError."""
+
+        async def _slow_gen():
+            yield _make_chunk(content="Hello")
+            yield _make_chunk(content=" world")
+
+        gen = convert_chunks_to_ag_ui_events(_slow_gen())
+        # Consume first response then close (simulates client disconnect)
+        await gen.__anext__()
+        await gen.aclose()  # Should not raise RuntimeError

@@ -411,7 +411,7 @@ async def litellm_crewai_internal(
     client = get_external_llm(
         llm_config.model_name,
         llm_config.model_dump(
-            exclude={"type", "thinking", "api_type"},
+            exclude={"type", "thinking", "api_type", "verify_ssl"},
             by_alias=True,
             exclude_none=True,
             exclude_unset=True,

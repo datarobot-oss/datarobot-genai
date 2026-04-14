@@ -69,10 +69,10 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
-        # Set context_id as user_id via context var before delegating to parent.
-        # The parent calls session_manager.session() with no user_id; our session()
-        # override in DRAgentAGUISessionManager reads this context var and passes it
-        # as the user_id parameter so NAT resolves identity correctly.
+        # Intentional workaround: we can't pass user_id directly to session() because
+        # the parent's execute() is what calls session(). Instead, set the context var
+        # here so that DRAgentAGUISessionManager.session() reads it as a fallback.
+        # This couples to NAT's _context_state private API
         token = None
         if context.context_id:
             token = self.session_manager._context_state.user_id.set(context.context_id)
