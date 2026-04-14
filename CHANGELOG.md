@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.6
+- Fixed CrewAI tool calling by enforcing client-side stop-word truncation when upstream APIs ignore the `stop` parameter
+
 ## 0.14.5
 - Relaxed `langgraph` and `langgraph-prebuilt` version constraints from `<1.1.0` to `<2.0.0`
 

@@ -38,6 +38,13 @@ def _crewai_model_factory(config: dict) -> LLM:
             super().__init__(*args, **kwargs)
             self.is_litellm = True
 
+        def call(self, *args: Any, **kwargs: Any) -> Any:
+            """Enforce client-side stop-word truncation when API ignores stop parameter."""
+            result = super().call(*args, **kwargs)
+            if isinstance(result, str):
+                return self._apply_stop_words(result)
+            return result
+
     return LitellmOnlyLLM(**config)
 
 

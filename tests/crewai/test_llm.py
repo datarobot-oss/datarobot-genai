@@ -202,3 +202,63 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.is_litellm is True
     assert llm.temperature == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Stop-word truncation (LitellmOnlyLLM.call override)
+# ---------------------------------------------------------------------------
+
+
+def test_litellm_only_llm_call_applies_stop_words() -> None:
+    """When stop words are set, hallucinated content after the stop word is truncated."""
+    llm = crewai_llm.get_datarobot_gateway_llm(parameters={"stop": ["\nObservation:"]})
+    hallucinated = (
+        "Thought: I need to search.\n"
+        "Action: search\n"
+        "Action Input: query\n"
+        "Observation: fake result\n"
+        "Final Answer: hallucinated"
+    )
+    with patch.object(LLM, "call", return_value=hallucinated):
+        result = llm.call("test message")
+    assert result == "Thought: I need to search.\nAction: search\nAction Input: query"
+    assert "Observation:" not in result
+    assert "Final Answer:" not in result
+
+
+def test_litellm_only_llm_call_no_stop_words_returns_unchanged() -> None:
+    """Without stop words configured, responses pass through unchanged."""
+    llm = crewai_llm.get_datarobot_gateway_llm()
+    response = "Some text\nObservation: data\nFinal Answer: done"
+    with patch.object(LLM, "call", return_value=response):
+        result = llm.call("test message")
+    assert result == response
+
+
+def test_litellm_only_llm_call_non_string_result_passes_through() -> None:
+    """Non-string return values (e.g. tool call results) are not truncated."""
+    llm = crewai_llm.get_datarobot_gateway_llm(parameters={"stop": ["\nObservation:"]})
+    tool_call_result = [{"function": {"name": "search", "arguments": "{}"}}]
+    with patch.object(LLM, "call", return_value=tool_call_result):
+        result = llm.call("test message")
+    assert result == tool_call_result
+
+
+def test_litellm_only_llm_call_no_stop_word_in_response_returns_unchanged() -> None:
+    """Stop words configured but not present in the response -- unchanged."""
+    llm = crewai_llm.get_datarobot_gateway_llm(parameters={"stop": ["\nObservation:"]})
+    clean_response = "Thought: I know the answer.\nFinal Answer: 42"
+    with patch.object(LLM, "call", return_value=clean_response):
+        result = llm.call("test message")
+    assert result == clean_response
+
+
+def test_litellm_only_llm_call_multiple_stop_words_truncates_at_earliest() -> None:
+    """Multiple stop words: truncation happens at the earliest occurrence."""
+    llm = crewai_llm.get_datarobot_gateway_llm(
+        parameters={"stop": ["\nObservation:", "\nFinal Answer:"]}
+    )
+    response = "Action: search\nObservation: found\nFinal Answer: done"
+    with patch.object(LLM, "call", return_value=response):
+        result = llm.call("test message")
+    assert result == "Action: search"
