@@ -25,7 +25,7 @@ from dragent.tool import generate_objectid
 
 generate_objectid_tool = FunctionTool.from_defaults(fn=generate_objectid, name="generate_objectid")
 
-llm = get_llm(model="datarobot/azure-openai-gpt-5-codex")
+llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 planner = FunctionAgent(
     name="planner",

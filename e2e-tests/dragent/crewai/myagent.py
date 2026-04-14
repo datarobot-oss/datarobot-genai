@@ -26,7 +26,7 @@ from dragent.tool import generate_objectid
 generate_objectid_tool = tool(generate_objectid)
 calculator_tool = tool(calculator)
 
-llm = get_llm(model="datarobot/azure-openai-gpt-5-codex")
+llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 agent_planner = Agent(
     role="Content Planner",
