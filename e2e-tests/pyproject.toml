@@ -48,7 +48,7 @@ base_agent = "dragent.base.register"
 [tool.uv]
 package = true
 override-dependencies = [
-    "crewai[litellm]>=1.11.0",  # TODO: BUZZOK-30239
+    "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
 ]
 exclude-dependencies = [
