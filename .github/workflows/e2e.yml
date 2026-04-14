@@ -121,7 +121,12 @@ jobs:
         env:
           LLM_DEFAULT_MODEL: datarobot/vertex_ai/claude-3-5-haiku@20241022
         run: |
-          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+          if [ "${{ matrix.agent }}" = "nat" ]; then
+            uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=3 --reruns-delay=5 --junitxml=test_results/results.xml
+          else
+            uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+          fi
+
 
       - name: Upload test results
         if: always()

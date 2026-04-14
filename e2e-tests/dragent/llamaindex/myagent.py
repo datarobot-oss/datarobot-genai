@@ -16,16 +16,16 @@ from typing import Any
 
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.llama_index.agent import datarobot_agent_class_from_llamaindex
+from datarobot_genai.llama_index.llm import get_llm
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.tools import FunctionTool
-from llama_index.llms.litellm import LiteLLM
 
 from dragent.tool import generate_objectid
 
 generate_objectid_tool = FunctionTool.from_defaults(fn=generate_objectid, name="generate_objectid")
 
-llm = LiteLLM(model="datarobot/azure-openai-gpt-5-codex")
+llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 planner = FunctionAgent(
     name="planner",

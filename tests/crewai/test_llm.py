@@ -60,7 +60,7 @@ def test_get_datarobot_gateway_llm_returns_crewai_llm() -> None:
     assert llm.api_base == "https://example.test/genai/llmgw"
     assert llm.api_key == "sk-test-key"
     assert llm.is_litellm is True
-    assert llm.additional_params == {"is_litellm": True, "stream_options": {"include_usage": True}}
+    assert llm.additional_params == {"stream_options": {"include_usage": True}}
 
 
 def test_get_datarobot_gateway_llm_adds_datarobot_model_prefix_when_missing() -> None:
@@ -88,7 +88,6 @@ def test_get_datarobot_deployment_llm_appends_chat_completions_to_api_base() -> 
     assert llm.is_litellm is True
     assert llm.api_base == ("https://example.test/deployments/dep-abc-123/chat/completions")
     assert llm.additional_params == {
-        "is_litellm": True,
         "stream_options": {"include_usage": True},
     }
 
@@ -123,7 +122,6 @@ def test_get_external_llm_returns_crewai_llm() -> None:
     assert llm.api_key is None
     assert llm.is_litellm is True
     assert llm.additional_params == {
-        "is_litellm": True,
         "stream_options": {"include_usage": True},
     }
     assert llm.model == "default-model"

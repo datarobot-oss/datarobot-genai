@@ -15,10 +15,10 @@
 from crewai import Agent
 from crewai import Crew
 from crewai import Task
-from crewai.llm import LLM
 from crewai.tools import tool
 from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
+from datarobot_genai.crewai.llm import get_llm
 from datarobot_genai.drtools.calculator import calculator
 
 from dragent.tool import generate_objectid
@@ -26,7 +26,7 @@ from dragent.tool import generate_objectid
 generate_objectid_tool = tool(generate_objectid)
 calculator_tool = tool(calculator)
 
-llm = LLM(model="datarobot/azure-openai-gpt-5-codex", is_litellm=True)
+llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 agent_planner = Agent(
     role="Content Planner",
