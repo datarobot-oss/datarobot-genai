@@ -24,7 +24,7 @@ from datarobot_genai.core.config import default_model_name
 
 def _crewai_model_factory(config: dict) -> LLM:
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
-    return LLM(**config, is_litellm=True)
+    return LLM(**config)
 
 
 def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
