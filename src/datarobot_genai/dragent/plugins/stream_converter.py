@@ -48,6 +48,8 @@ async def convert_chunks_to_ag_ui_events(
     """
     active_message_id: str | None = None
     active_tool_calls: set[str] = set()
+    # Map tool call index -> id for follow-up chunks that have id=None
+    tool_call_index_to_id: dict[int, str] = {}
     zero = default_usage_metrics()
 
     async for chunk in chunks:
@@ -79,9 +81,11 @@ async def convert_chunks_to_ag_ui_events(
         # Tool calls
         if delta and delta.tool_calls:
             for tc in delta.tool_calls:
-                tc_id = tc.id or ""
-                if tc_id and tc_id not in active_tool_calls:
+                # First chunk has id; follow-ups have id=None, use index to look up
+                tc_id = tc.id or tool_call_index_to_id.get(tc.index, "")
+                if tc.id and tc_id not in active_tool_calls:
                     active_tool_calls.add(tc_id)
+                    tool_call_index_to_id[tc.index] = tc_id
                     name = tc.function.name if tc.function else ""
                     events.append(
                         ToolCallStartEvent(

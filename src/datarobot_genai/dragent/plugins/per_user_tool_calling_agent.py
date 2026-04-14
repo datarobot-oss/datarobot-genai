@@ -57,27 +57,30 @@ async def _per_user_tool_calling_agent(
     from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
 
     original_gen = tool_calling_agent_workflow.__wrapped__(config, builder)
-    fn_info: FunctionInfo = await original_gen.__anext__()
+    try:
+        fn_info: FunctionInfo = await original_gen.__anext__()
 
-    if fn_info.stream_fn is None:
-        yield fn_info
-        return
+        if fn_info.stream_fn is None:
+            yield fn_info
+            return
 
-    original_stream_fn = fn_info.stream_fn
+        original_stream_fn = fn_info.stream_fn
 
-    async def wrapped_stream(
-        chat_request_or_message: ChatRequestOrMessage,
-    ) -> AsyncGenerator[DRAgentEventResponse, None]:
-        async for event in convert_chunks_to_ag_ui_events(
-            original_stream_fn(chat_request_or_message)
-        ):
-            yield event
+        async def wrapped_stream(
+            chat_request_or_message: ChatRequestOrMessage,
+        ) -> AsyncGenerator[DRAgentEventResponse, None]:
+            async for event in convert_chunks_to_ag_ui_events(
+                original_stream_fn(chat_request_or_message)
+            ):
+                yield event
 
-    yield FunctionInfo.create(
-        single_fn=fn_info.single_fn,
-        stream_fn=wrapped_stream,
-        description=fn_info.description,
-    )
+        yield FunctionInfo.create(
+            single_fn=fn_info.single_fn,
+            stream_fn=wrapped_stream,
+            description=fn_info.description,
+        )
+    finally:
+        await original_gen.aclose()
 
 
 register_per_user_function(
