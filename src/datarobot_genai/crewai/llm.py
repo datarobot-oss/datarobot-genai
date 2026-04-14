@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 from crewai import LLM
 
 from datarobot_genai.core.config import Config
@@ -24,7 +26,19 @@ from datarobot_genai.core.config import default_model_name
 
 def _crewai_model_factory(config: dict) -> LLM:
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
-    return LLM(**config, is_litellm=True)
+
+    # This class is used to override all the magic LLM tries to pull on using
+    # native LLM clients. We don't want to use native LLM clients, we want to use
+    # LiteLLM for the way we establish our agents.
+    class LitellmOnlyLLM(LLM):
+        def __new__(cls, *args: Any, **kwargs: Any) -> "LitellmOnlyLLM":
+            return object.__new__(cls)
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.is_litellm = True
+
+    return LitellmOnlyLLM(**config)
 
 
 def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
