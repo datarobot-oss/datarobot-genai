@@ -192,26 +192,26 @@ def get_router_llm(
 
         def _stream_complete(self, prompt: str, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "RouterDataRobotLiteLLM does not support streaming completions. "
-                "Use non-streaming mode or upgrade litellm.Router to support streaming."
+                "Streaming is not yet supported for router-based LLM calls. "
+                "Please use non-streaming mode."
             )
 
         async def _stream_acomplete(self, prompt: str, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "RouterDataRobotLiteLLM does not support streaming completions. "
-                "Use non-streaming mode or upgrade litellm.Router to support streaming."
+                "Streaming is not yet supported for router-based LLM calls. "
+                "Please use non-streaming mode."
             )
 
         def _stream_chat(self, messages: Any, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "RouterDataRobotLiteLLM does not support streaming chat. "
-                "Use non-streaming mode or upgrade litellm.Router to support streaming."
+                "Streaming is not yet supported for router-based LLM calls. "
+                "Please use non-streaming mode."
             )
 
         async def _stream_achat(self, messages: Any, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "RouterDataRobotLiteLLM does not support streaming chat. "
-                "Use non-streaming mode or upgrade litellm.Router to support streaming."
+                "Streaming is not yet supported for router-based LLM calls. "
+                "Please use non-streaming mode."
             )
 
     return RouterDataRobotLiteLLM(model="primary")

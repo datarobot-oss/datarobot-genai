@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from typing import Any
 
 from crewai import LLM
@@ -98,6 +99,31 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
     return _crewai_model_factory(config)
 
 
+def _serialize_router_tool_calls(message: Any) -> str | None:
+    """Serialize tool_calls from a litellm message to JSON for CrewAI parsing.
+
+    CrewAI expects tool calls to be JSON-serialized within the content field.
+    Returns None if no tool calls present; otherwise returns JSON string.
+    """
+    if not getattr(message, "tool_calls", None):
+        return None
+    return json.dumps(
+        {
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ]
+        }
+    )
+
+
 def get_router_llm(
     primary_config: Any,
     fallback_configs: list[Any],
@@ -135,32 +161,15 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
         ) -> str:
-            import json
-
             resp = self._llm_router.completion(
                 "primary",
                 messages=messages,
                 **({"tools": tools} if tools else {}),
             )
-            content = resp.choices[0].message.content or ""
-            # If the response includes tool_calls, serialize them to JSON
-            # and append to content for CrewAI's tool parsing.
-            if getattr(resp.choices[0].message, "tool_calls", None):
-                tool_calls_data = {
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in resp.choices[0].message.tool_calls
-                    ]
-                }
-                content = json.dumps(tool_calls_data)
-            return content
+            message = resp.choices[0].message
+            content = message.content or ""
+            tool_calls_json = _serialize_router_tool_calls(message)
+            return tool_calls_json or content
 
         async def acall(
             self,
@@ -169,32 +178,15 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
         ) -> str:
-            import json
-
             resp = await self._llm_router.acompletion(
                 "primary",
                 messages=messages,
                 **({"tools": tools} if tools else {}),
             )
-            content = resp.choices[0].message.content or ""
-            # If the response includes tool_calls, serialize them to JSON
-            # and append to content for CrewAI's tool parsing.
-            if getattr(resp.choices[0].message, "tool_calls", None):
-                tool_calls_data = {
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in resp.choices[0].message.tool_calls
-                    ]
-                }
-                content = json.dumps(tool_calls_data)
-            return content
+            message = resp.choices[0].message
+            content = message.content or ""
+            tool_calls_json = _serialize_router_tool_calls(message)
+            return tool_calls_json or content
 
     return RouterLitellmOnlyLLM(model="datarobot-router")
 
