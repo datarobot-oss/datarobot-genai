@@ -24,6 +24,7 @@ from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
 from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import ReasoningStartEvent
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -103,7 +104,9 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         except Exception as e:
             logger.exception("Error processing intermediate step: %s", e)
-            return None
+            return DRAgentEventResponse(
+                events=[RunErrorEvent(message=str(e), code="STEP_PROCESSING_ERROR")]
+            )
 
         if result is not None:
             result.usage_metrics = self._get_usage_metrics(step.usage_info)
@@ -410,7 +413,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                 if events:
                     yield DRAgentEventResponse(events=events, usage_metrics=zero)
         finally:
-            exc_type = sys.exc_info()[0]
+            exc_type, exc_val, _ = sys.exc_info()
             if exc_type is GeneratorExit:
                 logger.debug("Client disconnected before end events could be delivered")
                 return
@@ -420,5 +423,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                 end.extend(self._handle_text_end(active_message_id))
             for tc_id in active_tool_calls:
                 end.append(ToolCallEndEvent(tool_call_id=tc_id))
+            if exc_val is not None:
+                end.append(RunErrorEvent(message=str(exc_val), code="STREAM_ERROR"))
             if end:
                 yield DRAgentEventResponse(events=end, usage_metrics=zero)

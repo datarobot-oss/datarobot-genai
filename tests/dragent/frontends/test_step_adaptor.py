@@ -26,6 +26,7 @@ from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
 from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import ReasoningStartEvent
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -956,7 +957,7 @@ class TestProcessChunksEdgeCases:
 
 class TestProcessChunksErrorHandling:
     @pytest.mark.asyncio
-    async def test_end_events_emitted_on_upstream_exception(self):
+    async def test_end_events_and_run_error_emitted_on_upstream_exception(self):
         adaptor = _make_adaptor()
 
         async def _failing_gen():
@@ -971,6 +972,10 @@ class TestProcessChunksErrorHandling:
         events = _flat_events(responses)
         assert any(isinstance(e, TextMessageStartEvent) for e in events)
         assert any(isinstance(e, TextMessageEndEvent) for e in events)
+        error_events = [e for e in events if isinstance(e, RunErrorEvent)]
+        assert len(error_events) == 1
+        assert error_events[0].message == "upstream error"
+        assert error_events[0].code == "STREAM_ERROR"
 
     @pytest.mark.asyncio
     async def test_aclose_during_stream_does_not_raise(self):
