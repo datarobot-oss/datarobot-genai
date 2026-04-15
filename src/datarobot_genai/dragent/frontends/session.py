@@ -46,7 +46,6 @@ def _patch_user_manager() -> None:
     auth_handler = AuthContextHeaderHandler()
     original_extract = UserManager.extract_user_from_connection
 
-    @classmethod  # type: ignore[misc]
     def _extract_with_dr_auth(cls: type, connection: HTTPConnection) -> UserInfo | None:
         if isinstance(connection, Request):
             auth_ctx = auth_handler.get_context(dict(connection.headers))
@@ -58,8 +57,8 @@ def _patch_user_manager() -> None:
                 return user_info
         return original_extract.__func__(cls, connection)
 
-    UserManager.extract_user_from_connection = _extract_with_dr_auth
-    UserManager.extract_user_from_connection._dr_patched = True
+    _extract_with_dr_auth._dr_patched = True  # type: ignore[attr-defined]
+    UserManager.extract_user_from_connection = classmethod(_extract_with_dr_auth)  # type: ignore[assignment]
 
 
 _patch_user_manager()
