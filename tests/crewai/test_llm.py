@@ -271,9 +271,7 @@ def test_litellm_stop_word_llm_call_stop_word_absent_returns_unchanged(
 
 def test_litellm_stop_word_llm_call_multiple_stop_words_truncates_at_earliest() -> None:
     """Multiple stop words: truncation happens at the earliest occurrence."""
-    llm = LitellmStopWordLLM(
-        model="openai/gpt-4o", stop=["\nObservation:", "\nFinal Answer:"]
-    )
+    llm = LitellmStopWordLLM(model="openai/gpt-4o", stop=["\nObservation:", "\nFinal Answer:"])
     response = "Action: search\nObservation: found\nFinal Answer: done"
     with patch.object(LLM, "call", return_value=response):
         result = llm.call("test message")
