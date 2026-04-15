@@ -31,10 +31,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph.message import MessagesState
 from langgraph.graph.state import Command
 from langgraph.graph.state import StateGraph
+from langgraph.types import Interrupt
 
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.agent import LangGraphAgent
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
+from datarobot_genai.langgraph.hitl import LANGGRAPH_RESUME_STATE_KEY
 
 
 @pytest.fixture
@@ -514,7 +516,7 @@ async def test_langgraph_non_streaming(run_agent_input):
             )
             agent.workflow.compile().astream.assert_called_once_with(
                 input=expected_command,
-                config={},
+                config={"configurable": {"thread_id": "thread_id"}},
                 debug=True,
                 stream_mode=["updates", "messages"],
                 subgraphs=True,
@@ -638,6 +640,53 @@ async def test_langgraph_invoke_supports_legacy_convert_input_override(run_agent
     # THEN the override still works and the run completes
     assert events
     assert events[-1][0].type == EventType.RUN_FINISHED
+
+
+async def test_convert_input_message_resume_returns_command_resume() -> None:
+    """HITL continuation: state contains langgraph_resume -> Command(resume=...)."""
+    agent = HistoryAwareLangGraphAgent()
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(content='{"topic": "x"}', id="m")],
+        tools=[],
+        forwarded_props={},
+        thread_id="thread_id",
+        run_id="run_id",
+        state={LANGGRAPH_RESUME_STATE_KEY: "human approved"},
+        context=[],
+    )
+    command = await agent.convert_input_message(run_agent_input)
+    assert command.resume == "human approved"
+
+
+class InterruptStreamAgent(SimpleLangGraphAgent):
+    """Mock graph that only emits a LangGraph __interrupt__ update."""
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        async def mock_stream():
+            yield (
+                (),
+                "updates",
+                {"__interrupt__": (Interrupt(value={"question": "ok?"}, id="intr-1"),)},
+            )
+
+        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream()))
+        mock_state_graph = Mock(compile=Mock(return_value=mock_graph_stream))
+        return mock_state_graph
+
+
+@pytest.mark.asyncio
+async def test_invoke_emits_interrupt_custom_event(run_agent_input: RunAgentInput) -> None:
+    agent = InterruptStreamAgent()
+    events = [e async for e in agent.invoke(run_agent_input)]
+    custom_events = [e[0] for e in events if e[0].type == EventType.CUSTOM]
+    assert len(custom_events) == 1
+    assert custom_events[0].name == "langgraph.interrupt"
+    assert custom_events[0].value["interrupts"][0]["id"] == "intr-1"
+    finished = events[-1][0]
+    assert finished.type == EventType.RUN_FINISHED
+    assert finished.result is not None
+    assert finished.result["langgraph"]["interrupted"] is True
 
 
 async def test_langgraph_does_not_store_memory_when_run_fails(run_agent_input) -> None:

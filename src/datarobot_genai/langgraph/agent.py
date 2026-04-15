@@ -21,6 +21,7 @@ from typing import Any
 from typing import Optional
 from typing import cast
 
+from ag_ui.core import CustomEvent
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
@@ -39,12 +40,15 @@ from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
+from langgraph.types import Checkpointer
 from langgraph.types import Command
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.langgraph.hitl import extract_langgraph_resume
+from datarobot_genai.langgraph.hitl import interrupts_to_ag_ui_value
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -80,6 +84,34 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
+    @property
+    def langgraph_checkpointer(self) -> Checkpointer | None:
+        """Checkpointer for LangGraph compilation.
+
+        Human-in-the-loop flows using :func:`langgraph.types.interrupt` require a
+        checkpointer (e.g. :class:`langgraph.checkpoint.memory.InMemorySaver`).
+        Override this property to enable HITL; default is ``None`` (no checkpointer).
+        """
+        return None
+
+    def build_langgraph_runnable_config(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
+        """Merge :attr:`langgraph_config` with per-run ``thread_id`` for checkpointing."""
+        cfg: dict[str, Any] = dict(self.langgraph_config)
+        existing = cfg.get("configurable")
+        if isinstance(existing, dict):
+            configurable = {**existing, "thread_id": run_agent_input.thread_id}
+        else:
+            configurable = {"thread_id": run_agent_input.thread_id}
+        cfg["configurable"] = configurable
+        return cfg
+
+    def _compile_workflow(self) -> Any:
+        """Compile the workflow graph, attaching :attr:`langgraph_checkpointer` when set."""
+        ckpt = self.langgraph_checkpointer
+        if ckpt is not None:
+            return self.workflow.compile(checkpointer=ckpt)
+        return self.workflow.compile()
+
     async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
@@ -88,7 +120,15 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
           and feeds it through `prompt_template` to build the current turn.
         - Includes prior turns only when the prompt template opts in via a
           `{chat_history}` variable.
+
+        For human-in-the-loop continuations, if ``run_agent_input.state`` (or
+        ``forwarded_props``) contains ``langgraph_resume``, returns
+        ``Command(resume=...)`` and skips prompt formatting.
         """
+        resume_payload = extract_langgraph_resume(run_agent_input)
+        if resume_payload is not None:
+            return Command(resume=resume_payload)
+
         user_prompt = extract_user_prompt_content(run_agent_input)
 
         # Chat history is opt-in: the model only sees history when the prompt
@@ -181,7 +221,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         )
 
         # Create and invoke the Langgraph Agentic Workflow with the inputs
-        langgraph_execution_graph = self.workflow.compile()
+        langgraph_execution_graph = self._compile_workflow()
 
         graph_stream = cast(
             AsyncGenerator[tuple[Any, str, Any], None],
@@ -189,7 +229,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 input=input_command,
                 # LangGraph expects a RunnableConfig, but our config is a plain dict.
                 # Cast to Any to avoid leaking LangGraph internals into this interface.
-                config=cast(Any, self.langgraph_config),
+                config=cast(Any, self.build_langgraph_runnable_config(run_agent_input)),
                 debug=self.verbose,
                 # Streaming updates and messages from all the nodes
                 stream_mode=["updates", "messages"],
@@ -318,6 +358,29 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     raise ValueError(f"Invalid message event: {message_event}")
             elif mode == "updates":
                 update_event: dict[str, Any] = event  # type: ignore[assignment]
+                if "__interrupt__" in update_event:
+                    intr_tuple = update_event["__interrupt__"]
+                    custom_value = interrupts_to_ag_ui_value(intr_tuple)
+                    yield (
+                        CustomEvent(
+                            type=EventType.CUSTOM,
+                            name="langgraph.interrupt",
+                            value=custom_value,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    events.append(update_event)
+                    yield (
+                        RunFinishedEvent(
+                            thread_id=thread_id,
+                            run_id=run_id,
+                            result={"langgraph": {"interrupted": True, **custom_value}},
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    return
                 events.append(update_event)
                 current_node = next(iter(update_event))
                 node_data = update_event[current_node]
@@ -403,6 +466,12 @@ def datarobot_agent_class_from_langgraph(
     type[LangGraphAgent]
         A new :class:`LangGraphAgent` subclass whose ``workflow`` and
         ``prompt_template`` properties are wired to the provided arguments.
+
+    Human-in-the-loop
+    ------------------
+    Override :attr:`LangGraphAgent.langgraph_checkpointer` on the returned class
+    (or a subclass) to supply a checkpointer; use ``interrupt()`` in graph nodes
+    and pass resume payloads via ``run_agent_input.state["langgraph_resume"]``.
     """
 
     class DataRobotLangAgent(LangGraphAgent):
