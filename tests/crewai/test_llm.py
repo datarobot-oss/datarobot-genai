@@ -24,6 +24,7 @@ from crewai import LLM
 
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.crewai import llm as crewai_llm
+from datarobot_genai.crewai.llm import LitellmStopWordLLM
 
 
 @pytest.fixture(autouse=True)
@@ -205,13 +206,26 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stop-word truncation (LitellmOnlyLLM.call override)
+# LitellmStopWordLLM – isolated unit tests
 # ---------------------------------------------------------------------------
 
 
-def test_litellm_only_llm_call_applies_stop_words() -> None:
-    """When stop words are set, hallucinated content after the stop word is truncated."""
-    llm = crewai_llm.get_datarobot_gateway_llm(parameters={"stop": ["\nObservation:"]})
+@pytest.fixture
+def stop_word_llm() -> LitellmStopWordLLM:
+    """A LitellmStopWordLLM instance with a single stop word, created directly."""
+    return LitellmStopWordLLM(model="openai/gpt-4o", stop=["\nObservation:"])
+
+
+def test_litellm_stop_word_llm_is_litellm_subclass() -> None:
+    llm = LitellmStopWordLLM(model="openai/gpt-4o")
+    assert isinstance(llm, LLM)
+    assert llm.is_litellm is True
+
+
+def test_litellm_stop_word_llm_call_applies_stop_words(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Hallucinated content after the stop word is truncated."""
     hallucinated = (
         "Thought: I need to search.\n"
         "Action: search\n"
@@ -220,43 +234,45 @@ def test_litellm_only_llm_call_applies_stop_words() -> None:
         "Final Answer: hallucinated"
     )
     with patch.object(LLM, "call", return_value=hallucinated):
-        result = llm.call("test message")
+        result = stop_word_llm.call("test message")
     assert result == "Thought: I need to search.\nAction: search\nAction Input: query"
     assert "Observation:" not in result
     assert "Final Answer:" not in result
 
 
-def test_litellm_only_llm_call_no_stop_words_returns_unchanged() -> None:
+def test_litellm_stop_word_llm_call_no_stop_words_returns_unchanged() -> None:
     """Without stop words configured, responses pass through unchanged."""
-    llm = crewai_llm.get_datarobot_gateway_llm()
+    llm = LitellmStopWordLLM(model="openai/gpt-4o")
     response = "Some text\nObservation: data\nFinal Answer: done"
     with patch.object(LLM, "call", return_value=response):
         result = llm.call("test message")
     assert result == response
 
 
-def test_litellm_only_llm_call_non_string_result_passes_through() -> None:
+def test_litellm_stop_word_llm_call_non_string_result_passes_through(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
     """Non-string return values (e.g. tool call results) are not truncated."""
-    llm = crewai_llm.get_datarobot_gateway_llm(parameters={"stop": ["\nObservation:"]})
     tool_call_result = [{"function": {"name": "search", "arguments": "{}"}}]
     with patch.object(LLM, "call", return_value=tool_call_result):
-        result = llm.call("test message")
+        result = stop_word_llm.call("test message")
     assert result == tool_call_result
 
 
-def test_litellm_only_llm_call_no_stop_word_in_response_returns_unchanged() -> None:
-    """Stop words configured but not present in the response -- unchanged."""
-    llm = crewai_llm.get_datarobot_gateway_llm(parameters={"stop": ["\nObservation:"]})
+def test_litellm_stop_word_llm_call_stop_word_absent_returns_unchanged(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Stop words configured but not present in the response — unchanged."""
     clean_response = "Thought: I know the answer.\nFinal Answer: 42"
     with patch.object(LLM, "call", return_value=clean_response):
-        result = llm.call("test message")
+        result = stop_word_llm.call("test message")
     assert result == clean_response
 
 
-def test_litellm_only_llm_call_multiple_stop_words_truncates_at_earliest() -> None:
+def test_litellm_stop_word_llm_call_multiple_stop_words_truncates_at_earliest() -> None:
     """Multiple stop words: truncation happens at the earliest occurrence."""
-    llm = crewai_llm.get_datarobot_gateway_llm(
-        parameters={"stop": ["\nObservation:", "\nFinal Answer:"]}
+    llm = LitellmStopWordLLM(
+        model="openai/gpt-4o", stop=["\nObservation:", "\nFinal Answer:"]
     )
     response = "Action: search\nObservation: found\nFinal Answer: done"
     with patch.object(LLM, "call", return_value=response):

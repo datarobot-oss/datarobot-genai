@@ -24,28 +24,33 @@ from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
 
 
+class LitellmStopWordLLM(LLM):
+    """CrewAI LLM subclass that forces LiteLLM usage and enforces client-side stop-word truncation.
+
+    CrewAI's ``LLM.__new__`` may choose a native client instead of LiteLLM for some
+    model strings.  The ``__new__`` override forces ``object.__new__`` so that LiteLLM
+    is always used.  The ``call()`` override ensures stop words are honoured even when
+    the underlying API silently ignores the stop parameter.
+    """
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "LitellmStopWordLLM":
+        return object.__new__(cls)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.is_litellm = True
+
+    def call(self, *args: Any, **kwargs: Any) -> Any:
+        """Enforce client-side stop-word truncation when API ignores stop parameter."""
+        result = super().call(*args, **kwargs)
+        if isinstance(result, str):
+            return self._apply_stop_words(result)
+        return result
+
+
 def _crewai_model_factory(config: dict) -> LLM:
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
-
-    # This class is used to override all the magic LLM tries to pull on using
-    # native LLM clients. We don't want to use native LLM clients, we want to use
-    # LiteLLM for the way we establish our agents.
-    class LitellmOnlyLLM(LLM):
-        def __new__(cls, *args: Any, **kwargs: Any) -> "LitellmOnlyLLM":
-            return object.__new__(cls)
-
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-            self.is_litellm = True
-
-        def call(self, *args: Any, **kwargs: Any) -> Any:
-            """Enforce client-side stop-word truncation when API ignores stop parameter."""
-            result = super().call(*args, **kwargs)
-            if isinstance(result, str):
-                return self._apply_stop_words(result)
-            return result
-
-    return LitellmOnlyLLM(**config)
+    return LitellmStopWordLLM(**config)
 
 
 def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
