@@ -40,6 +40,9 @@ def _patch_user_manager() -> None:
     This monkey-patches ``extract_user_from_connection`` to try the DataRobot header
     first, falling back to the original implementation for standard auth.
     """
+    if getattr(UserManager.extract_user_from_connection, "_dr_patched", False):
+        return
+
     auth_handler = AuthContextHeaderHandler()
     original_extract = UserManager.extract_user_from_connection
 
@@ -56,6 +59,7 @@ def _patch_user_manager() -> None:
         return original_extract.__func__(cls, connection)
 
     UserManager.extract_user_from_connection = _extract_with_dr_auth
+    UserManager.extract_user_from_connection._dr_patched = True
 
 
 _patch_user_manager()

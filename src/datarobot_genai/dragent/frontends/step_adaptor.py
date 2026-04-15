@@ -413,6 +413,10 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                 if events:
                     yield DRAgentEventResponse(events=events, usage_metrics=zero)
         finally:
+            # Dual-delivery: on upstream errors, we emit end/error events AND let
+            # the exception propagate so the caller can handle it.  This ensures
+            # the AG-UI client receives proper close events even when the stream
+            # fails, while still surfacing the error to the server-side caller.
             exc_type, exc_val, _ = sys.exc_info()
             if exc_type is GeneratorExit:
                 logger.debug("Client disconnected before end events could be delivered")
