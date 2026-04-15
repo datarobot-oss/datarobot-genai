@@ -664,6 +664,107 @@ async def test_langgraph_does_not_store_memory_when_run_fails(run_agent_input) -
     assert memory_client.store_calls == []
 
 
+class NonStreamingLangGraphAgent(LangGraphAgent):
+    """Simulates a non-streaming model (e.g. RouterChatModel) that emits AIMessage, not AIMessageChunk."""
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        async def mock_stream_generator():
+            # Non-streaming model emits a full AIMessage with tool_calls
+            yield (
+                "model_node",
+                "messages",
+                (
+                    AIMessage(
+                        content="",
+                        id="msg-001",
+                        tool_calls=[
+                            {
+                                "name": "search",
+                                "args": {"query": "DataRobot"},
+                                "id": "tc-001",
+                                "type": "tool_call",
+                            }
+                        ],
+                    ),
+                    {},
+                ),
+            )
+            yield (
+                "tool_node",
+                "messages",
+                (
+                    ToolMessage(
+                        tool_call_id="tc-001",
+                        id="tm-001",
+                        content="DataRobot is an AI platform.",
+                    ),
+                    {},
+                ),
+            )
+            # Non-streaming model emits a full AIMessage with text content
+            yield (
+                "model_node",
+                "messages",
+                (
+                    AIMessage(content="DataRobot is an AI platform.", id="msg-002"),
+                    {},
+                ),
+            )
+            yield (
+                "model_node",
+                "updates",
+                {
+                    "model_node": {
+                        "usage": {"total_tokens": 50, "prompt_tokens": 25, "completion_tokens": 25},
+                        "messages": [AIMessage(content="DataRobot is an AI platform.", id="msg-002")],
+                    }
+                },
+            )
+
+        return Mock(compile=Mock(return_value=Mock(astream=Mock(return_value=mock_stream_generator()))))
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [{"role": "user", "content": "Tell me about {topic}."}]
+        )
+
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_stream_generator_handles_non_streaming_ai_message(run_agent_input) -> None:
+    """_stream_generator handles full AIMessage from non-streaming models like RouterChatModel."""
+    agent = NonStreamingLangGraphAgent()
+    events = [e[0] async for e in agent.invoke(run_agent_input) if isinstance(e[0], BaseEvent)]
+
+    event_types = [e.type for e in events]
+    assert EventType.RUN_STARTED in event_types
+    assert EventType.TOOL_CALL_START in event_types
+    assert EventType.TOOL_CALL_ARGS in event_types
+    assert EventType.TOOL_CALL_END in event_types
+    assert EventType.TOOL_CALL_RESULT in event_types
+    assert EventType.TEXT_MESSAGE_START in event_types
+    assert EventType.TEXT_MESSAGE_CONTENT in event_types
+    assert EventType.TEXT_MESSAGE_END in event_types
+    assert EventType.RUN_FINISHED in event_types
+
+    tool_start = next(e for e in events if e.type == EventType.TOOL_CALL_START)
+    assert tool_start.tool_call_id == "tc-001"
+    assert tool_start.tool_call_name == "search"
+    assert tool_start.parent_message_id == "msg-001"
+
+    tool_args = next(e for e in events if e.type == EventType.TOOL_CALL_ARGS)
+    assert tool_args.tool_call_id == "tc-001"
+    assert '"query"' in tool_args.delta  # args are JSON-serialized
+
+    text_content = next(e for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT)
+    assert text_content.delta == "DataRobot is an AI platform."
+
+
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:
     # None returns None
     assert LangGraphAgent.create_pipeline_interactions_from_events(None) is None
