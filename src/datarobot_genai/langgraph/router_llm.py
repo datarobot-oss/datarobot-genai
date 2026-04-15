@@ -112,6 +112,20 @@ class RouterChatModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "datarobot-router"
 
+    def bind_tools(
+        self,
+        tools: Any,
+        *,
+        tool_choice: Any | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        from langchain_core.utils.function_calling import convert_to_openai_tool  # noqa: PLC0415
+
+        formatted = [convert_to_openai_tool(t) for t in tools]
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
+        return self.bind(tools=formatted, **kwargs)
+
     def _generate(
         self,
         messages: list[BaseMessage],

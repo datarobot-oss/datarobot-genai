@@ -334,6 +334,49 @@ async def test_router_chat_model_agenerate_returns_fallback_result():
     assert result.generations[0].message.content == "fallback-answer"
 
 
+def test_router_chat_model_bind_tools_formats_and_passes_tools():
+    """bind_tools converts tools to OpenAI format and passes them through self.bind()."""
+    from langchain_core.tools import tool  # noqa: PLC0415
+
+    @tool
+    def my_tool(x: int) -> str:
+        """A simple test tool."""
+        return str(x)
+
+    mock_router = MagicMock()
+    mock_router.completion = MagicMock(return_value=_make_litellm_response("ok"))
+
+    model = RouterChatModel(router=mock_router)
+    bound = model.bind_tools([my_tool])
+
+    # Invoke through the bound model so the tools kwarg flows to _generate.
+    bound.invoke([HumanMessage(content="call it")])
+
+    _, call_kwargs = mock_router.completion.call_args
+    assert "tools" in call_kwargs
+    assert call_kwargs["tools"][0]["function"]["name"] == "my_tool"
+
+
+def test_router_chat_model_bind_tools_passes_tool_choice():
+    """bind_tools forwards tool_choice to the completion call."""
+    from langchain_core.tools import tool  # noqa: PLC0415
+
+    @tool
+    def noop(x: str) -> str:
+        """No-op."""
+        return x
+
+    mock_router = MagicMock()
+    mock_router.completion = MagicMock(return_value=_make_litellm_response("ok"))
+
+    model = RouterChatModel(router=mock_router)
+    bound = model.bind_tools([noop], tool_choice="auto")
+    bound.invoke([HumanMessage(content="go")])
+
+    _, call_kwargs = mock_router.completion.call_args
+    assert call_kwargs.get("tool_choice") == "auto"
+
+
 # ---------------------------------------------------------------------------
 # NAT WorkflowBuilder smoke tests (all three frameworks)
 # ---------------------------------------------------------------------------
