@@ -114,6 +114,85 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
     return _create_datarobot_litellm(config)
 
 
+def get_router_llm(
+    primary_config: Any,
+    fallback_configs: list[Any],
+    router_settings: dict | None = None,
+) -> LiteLLM:
+    """Return a LlamaIndex ``LiteLLM`` whose calls are routed through a ``litellm.Router``.
+
+    Args:
+        primary_config: ``DataRobotLLMComponentModelConfig`` for the primary model.
+        fallback_configs: Ordered list of fallback configs.
+        router_settings: Extra kwargs forwarded to ``litellm.Router``.
+    """
+    from llama_index.core.base.llms.types import LLMMetadata  # noqa: PLC0415
+
+    from datarobot_genai.core.router import _config_to_litellm_params
+    from datarobot_genai.core.router import build_litellm_router
+
+    router = build_litellm_router(
+        _config_to_litellm_params(primary_config),
+        [_config_to_litellm_params(c) for c in fallback_configs],
+        router_settings,
+    )
+
+    class RouterDataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
+        """LlamaIndex LiteLLM subclass that delegates completions to a litellm.Router."""
+
+        @property
+        def metadata(self) -> LLMMetadata:
+            return LLMMetadata(
+                context_window=128000,
+                num_output=self.max_tokens or -1,
+                is_chat_model=True,
+                is_function_calling_model=True,
+                model_name=self.model,
+            )
+
+        def _complete(self, prompt: str, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import CompletionResponse  # noqa: PLC0415
+
+            resp = router.completion(
+                "primary",
+                messages=[{"role": "user", "content": prompt}],
+                **kwargs,
+            )
+            return CompletionResponse(text=resp.choices[0].message.content or "")
+
+        async def _acomplete(self, prompt: str, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import CompletionResponse  # noqa: PLC0415
+
+            resp = await router.acompletion(
+                "primary",
+                messages=[{"role": "user", "content": prompt}],
+                **kwargs,
+            )
+            return CompletionResponse(text=resp.choices[0].message.content or "")
+
+        def _chat(self, messages: Any, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            resp = router.completion("primary", messages=message_dicts, **kwargs)
+            content = resp.choices[0].message.content or ""
+            return ChatResponse(message=ChatMessage(role="assistant", content=content))
+
+        async def _achat(self, messages: Any, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            resp = await router.acompletion("primary", messages=message_dicts, **kwargs)
+            content = resp.choices[0].message.content or ""
+            return ChatResponse(message=ChatMessage(role="assistant", content=content))
+
+    return RouterDataRobotLiteLLM(model="primary")
+
+
 def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LiteLLM:
     config = Config()
     llm_type = config.get_llm_type()
