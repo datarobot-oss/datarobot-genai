@@ -958,16 +958,14 @@ class TestProcessChunksEdgeCases:
 class TestProcessChunksErrorHandling:
     @pytest.mark.asyncio
     async def test_end_events_and_run_error_emitted_on_upstream_exception(self):
+        """Upstream errors are absorbed and surfaced as RunErrorEvent, not propagated."""
         adaptor = _make_adaptor()
 
         async def _failing_gen():
             yield _make_chunk(content="Hello")
             raise RuntimeError("upstream error")
 
-        responses = []
-        with pytest.raises(RuntimeError, match="upstream error"):
-            async for resp in adaptor.process_chunks(_failing_gen()):
-                responses.append(resp)
+        responses = await _collect(adaptor.process_chunks(_failing_gen()))
 
         events = _flat_events(responses)
         assert any(isinstance(e, TextMessageStartEvent) for e in events)

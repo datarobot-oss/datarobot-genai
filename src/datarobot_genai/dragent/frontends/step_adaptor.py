@@ -369,10 +369,11 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         Tool calls use ``_handle_tool_call_chunk`` for incremental streaming.
         """
         active_message_id: str | None = None
-        active_tool_calls: list[str] = []
+        active_tool_calls: set[str] = set()
         tool_index_map: dict[int, str] = {}
         zero = default_usage_metrics()
 
+        error: Exception | None = None
         try:
             async for chunk in chunks:
                 if not isinstance(chunk, ChatResponseChunk) or not chunk.choices:
@@ -399,7 +400,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                             continue
                         is_new = tc.id is not None and tc_id not in active_tool_calls
                         if is_new:
-                            active_tool_calls.append(tc_id)
+                            active_tool_calls.add(tc_id)
                             tool_index_map[tc.index] = tc_id
                         events.extend(
                             self._handle_tool_call_chunk(
@@ -412,22 +413,22 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
                 if events:
                     yield DRAgentEventResponse(events=events, usage_metrics=zero)
+        except Exception as exc:
+            error = exc
         finally:
-            # Dual-delivery: on upstream errors, we emit end/error events AND let
-            # the exception propagate so the caller can handle it.  This ensures
-            # the AG-UI client receives proper close events even when the stream
-            # fails, while still surfacing the error to the server-side caller.
-            exc_type, exc_val, _ = sys.exc_info()
-            if exc_type is GeneratorExit:
+            if sys.exc_info()[0] is GeneratorExit:
                 logger.debug("Client disconnected before end events could be delivered")
                 return
 
-            end: list[Event] = []
-            if active_message_id is not None:
-                end.extend(self._handle_text_end(active_message_id))
-            for tc_id in active_tool_calls:
-                end.append(ToolCallEndEvent(tool_call_id=tc_id))
-            if exc_val is not None:
-                end.append(RunErrorEvent(message=str(exc_val), code="STREAM_ERROR"))
-            if end:
-                yield DRAgentEventResponse(events=end, usage_metrics=zero)
+        # Emit end/error events after the stream completes (normally or on error).
+        # Errors are surfaced to the AG-UI client via RunErrorEvent rather than
+        # propagated as exceptions, so NAT's streaming infrastructure stays stable.
+        end: list[Event] = []
+        if active_message_id is not None:
+            end.extend(self._handle_text_end(active_message_id))
+        for tc_id in active_tool_calls:
+            end.append(ToolCallEndEvent(tool_call_id=tc_id))
+        if error is not None:
+            end.append(RunErrorEvent(message=str(error), code="STREAM_ERROR"))
+        if end:
+            yield DRAgentEventResponse(events=end, usage_metrics=zero)
