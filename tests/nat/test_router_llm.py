@@ -25,11 +25,13 @@ from langchain_core.messages import HumanMessage
 from llama_index.llms.litellm import LiteLLM
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
+from pydantic import ValidationError
 
 import datarobot_genai.nat.datarobot_llm_clients  # noqa: F401
 from datarobot_genai.core.router import _config_to_litellm_params
 from datarobot_genai.core.router import build_litellm_router
 from datarobot_genai.langgraph.router_llm import RouterChatModel
+from datarobot_genai.nat.datarobot_llm_clients import _router_settings_from_config
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMRouterConfig
 
@@ -85,7 +87,7 @@ def test_router_config_round_trip():
 
 
 def test_router_config_requires_at_least_one_fallback():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         DataRobotLLMRouterConfig(
             primary=DataRobotLLMComponentModelConfig(
                 llm_deployment_id="abc",
@@ -196,11 +198,78 @@ def test_config_to_litellm_params_gateway():
     assert "app.datarobot.com" in params["api_base"]
 
 
+def test_config_to_litellm_params_nim():
+    """Test NIM deployment type conversion."""
+    cfg = DataRobotLLMComponentModelConfig(
+        nim_deployment_id="nim-deploy",
+        api_key="nimkey",
+        use_datarobot_llm_gateway=False,
+    )
+    with patch(
+        "datarobot_genai.core.config.Config",
+        return_value=MagicMock(
+            datarobot_endpoint="https://app.datarobot.com/api/v2",
+            datarobot_api_token="fallback-token",
+        ),
+    ):
+        params = _config_to_litellm_params(cfg)
+
+    assert params["model"].startswith("datarobot/")
+    assert "nim-deploy" in params["api_base"]
+    assert params["api_key"] == "nimkey"
+
+
+def test_config_to_litellm_params_external():
+    """Test external LLM type conversion."""
+    cfg = DataRobotLLMComponentModelConfig(
+        model_name="openai/gpt-4o",
+        api_key="ext-key",
+        use_datarobot_llm_gateway=False,
+    )
+    with patch(
+        "datarobot_genai.core.config.Config",
+        return_value=MagicMock(datarobot_api_token="unused"),
+    ):
+        params = _config_to_litellm_params(cfg)
+
+    assert params["model"] == "openai/gpt-4o"
+    assert "api_base" not in params
+    assert params["api_key"] == "ext-key"
+
+
+# ---------------------------------------------------------------------------
+# _router_settings_from_config
+# ---------------------------------------------------------------------------
+
+
+def test_router_settings_from_config_with_defaults():
+    """Router settings respects defaults."""
+    cfg = _make_router_config()
+    settings = _router_settings_from_config(cfg)
+    assert settings["allowed_fails"] == 3
+    assert "retry_policy" not in settings
+    assert "cooldown_time" not in settings
+
+
+def test_router_settings_from_config_with_all_options():
+    """Router settings includes all provided options."""
+    cfg = _make_router_config(
+        allowed_fails=5,
+        retry_policy={"RateLimitErrorRetries": 2},
+        cooldown_time=30.0,
+    )
+    settings = _router_settings_from_config(cfg)
+    assert settings["allowed_fails"] == 5
+    assert settings["retry_policy"] == {"RateLimitErrorRetries": 2}
+    assert settings["cooldown_time"] == 30.0
+
+
 # ---------------------------------------------------------------------------
 # RouterChatModel — LangChain
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_router_chat_model_agenerate_success():
     """_agenerate delegates to router.acompletion and returns a ChatResult."""
     mock_router = MagicMock()
@@ -215,6 +284,7 @@ async def test_router_chat_model_agenerate_success():
     assert result.generations[0].message.content == "world"
 
 
+@pytest.mark.asyncio
 async def test_router_chat_model_generate_success():
     """_generate delegates to router.completion and returns a ChatResult."""
     mock_router = MagicMock()
@@ -227,6 +297,7 @@ async def test_router_chat_model_generate_success():
     assert result.generations[0].message.content == "sync-reply"
 
 
+@pytest.mark.asyncio
 async def test_router_chat_model_agenerate_propagates_error():
     """Errors from router.acompletion propagate out of RouterChatModel._agenerate.
 
@@ -252,6 +323,7 @@ async def test_router_chat_model_agenerate_propagates_error():
     mock_router.acompletion.assert_called_once()
 
 
+@pytest.mark.asyncio
 async def test_router_chat_model_agenerate_returns_fallback_result():
     """When the router returns a response (after internal fallback), RouterChatModel returns it."""
     mock_router = MagicMock()
@@ -267,6 +339,7 @@ async def test_router_chat_model_agenerate_returns_fallback_result():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_router_langchain_via_workflow_builder():
     cfg = _make_router_config()
     async with WorkflowBuilder() as builder:
@@ -275,6 +348,7 @@ async def test_router_langchain_via_workflow_builder():
     assert isinstance(llm, BaseChatModel)
 
 
+@pytest.mark.asyncio
 async def test_router_crewai_via_workflow_builder():
     cfg = _make_router_config()
     async with WorkflowBuilder() as builder:
@@ -283,6 +357,7 @@ async def test_router_crewai_via_workflow_builder():
     assert isinstance(llm, LLM)
 
 
+@pytest.mark.asyncio
 async def test_router_llamaindex_via_workflow_builder():
     cfg = _make_router_config()
     async with WorkflowBuilder() as builder:

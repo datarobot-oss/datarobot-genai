@@ -135,12 +135,32 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
         ) -> str:
+            import json
+
             resp = self._llm_router.completion(
                 "primary",
                 messages=messages,
                 **({"tools": tools} if tools else {}),
             )
-            return resp.choices[0].message.content or ""
+            content = resp.choices[0].message.content or ""
+            # If the response includes tool_calls, serialize them to JSON
+            # and append to content for CrewAI's tool parsing.
+            if getattr(resp.choices[0].message, "tool_calls", None):
+                tool_calls_data = {
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in resp.choices[0].message.tool_calls
+                    ]
+                }
+                content = json.dumps(tool_calls_data)
+            return content
 
         async def acall(
             self,
@@ -149,12 +169,32 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
         ) -> str:
+            import json
+
             resp = await self._llm_router.acompletion(
                 "primary",
                 messages=messages,
                 **({"tools": tools} if tools else {}),
             )
-            return resp.choices[0].message.content or ""
+            content = resp.choices[0].message.content or ""
+            # If the response includes tool_calls, serialize them to JSON
+            # and append to content for CrewAI's tool parsing.
+            if getattr(resp.choices[0].message, "tool_calls", None):
+                tool_calls_data = {
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in resp.choices[0].message.tool_calls
+                    ]
+                }
+                content = json.dumps(tool_calls_data)
+            return content
 
     return RouterLitellmOnlyLLM(model="datarobot-router")
 

@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 
 def _lc_messages_to_litellm(messages: list[BaseMessage]) -> list[dict]:
     """Convert LangChain messages to litellm/OpenAI message dicts."""
-    from langchain_core.messages import AIMessage as _AIMessage
     from langchain_core.messages import FunctionMessage
     from langchain_core.messages import HumanMessage
     from langchain_core.messages import SystemMessage
@@ -41,7 +40,7 @@ def _lc_messages_to_litellm(messages: list[BaseMessage]) -> list[dict]:
     for msg in messages:
         if isinstance(msg, HumanMessage):
             result.append({"role": "user", "content": msg.content})
-        elif isinstance(msg, _AIMessage):
+        elif isinstance(msg, AIMessage):
             d: dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
             if msg.tool_calls:
                 d["tool_calls"] = [
