@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
+import json
 import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
@@ -34,6 +35,7 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
+from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -285,6 +287,66 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     elif message.content:
                         # Its a text message
                         # Handle the start and end of the text message
+                        if message.id != current_message_id:
+                            if current_message_id:
+                                yield (
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=current_message_id,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                            current_message_id = str(message.id or "")
+                            yield (
+                                TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START,
+                                    message_id=current_message_id,
+                                    role="assistant",
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=current_message_id,
+                                delta=str(message.content),
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                elif isinstance(message, AIMessage):
+                    # Non-streaming model (e.g. RouterChatModel) returns a complete
+                    # AIMessage rather than AIMessageChunk. Handle tool calls and text.
+                    if message.tool_calls:
+                        for tc in message.tool_calls:
+                            tc_id = str(tc.get("id") or "")
+                            tool_call_id = tc_id
+                            yield (
+                                ToolCallStartEvent(
+                                    type=EventType.TOOL_CALL_START,
+                                    tool_call_id=tool_call_id,
+                                    tool_call_name=tc["name"],
+                                    parent_message_id=str(message.id or ""),
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                            args = tc.get("args")
+                            if args:
+                                yield (
+                                    ToolCallArgsEvent(
+                                        type=EventType.TOOL_CALL_ARGS,
+                                        tool_call_id=tool_call_id,
+                                        delta=json.dumps(args)
+                                        if isinstance(args, dict)
+                                        else str(args),
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                    elif message.content:
                         if message.id != current_message_id:
                             if current_message_id:
                                 yield (
