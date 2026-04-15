@@ -46,7 +46,7 @@ async def test_datarobot_llm_gateway_langchain():
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "3" in response.content.lower()
-        # NAT 1.6 reports usage via usage_metadata instead of response_metadata["token_usage"]
+        # ChatLiteLLM puts usage in usage_metadata, not response_metadata["token_usage"]
         usage = response.usage_metadata
         assert usage is not None
         assert usage["output_tokens"] > 0
@@ -224,7 +224,7 @@ async def test_datarobot_llm_component_langchain():
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "3" in response.content.lower()
-        # NAT 1.6 reports usage via usage_metadata instead of response_metadata["token_usage"]
+        # ChatLiteLLM puts usage in usage_metadata, not response_metadata["token_usage"]
         usage = response.usage_metadata
         assert usage is not None
         assert usage["output_tokens"] > 0
