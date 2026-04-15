@@ -212,7 +212,7 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
 
 @pytest.fixture
 def stop_word_llm() -> LitellmStopWordLLM:
-    """A LitellmStopWordLLM instance with a single stop word, created directly."""
+    """Return a LitellmStopWordLLM instance with a single stop word configured."""
     return LitellmStopWordLLM(model="openai/gpt-4o", stop=["\nObservation:"])
 
 
