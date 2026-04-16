@@ -177,8 +177,24 @@ def get_router_llm(
 
             message_dicts = to_openai_message_dicts(messages)
             resp = router.completion("primary", messages=message_dicts, **kwargs)
-            content = resp.choices[0].message.content or ""
-            return ChatResponse(message=ChatMessage(role="assistant", content=content))
+            message = resp.choices[0].message
+            content = message.content or ""
+            additional_kwargs: dict = {}
+            if message.tool_calls:
+                additional_kwargs["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ]
+            return ChatResponse(
+                message=ChatMessage(
+                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                ),
+                raw=resp,
+            )
 
         async def _achat(self, messages: Any, **kwargs: Any) -> Any:
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
@@ -187,31 +203,93 @@ def get_router_llm(
 
             message_dicts = to_openai_message_dicts(messages)
             resp = await router.acompletion("primary", messages=message_dicts, **kwargs)
-            content = resp.choices[0].message.content or ""
-            return ChatResponse(message=ChatMessage(role="assistant", content=content))
+            message = resp.choices[0].message
+            content = message.content or ""
+            additional_kwargs: dict = {}
+            if message.tool_calls:
+                additional_kwargs["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ]
+            return ChatResponse(
+                message=ChatMessage(
+                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                ),
+                raw=resp,
+            )
 
         def _stream_complete(self, prompt: str, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "Streaming is not yet supported for router-based LLM calls. "
-                "Please use non-streaming mode."
+                "Streaming completion is not supported for router-based LLM calls."
             )
 
         async def _stream_acomplete(self, prompt: str, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "Streaming is not yet supported for router-based LLM calls. "
-                "Please use non-streaming mode."
+                "Streaming completion is not supported for router-based LLM calls."
             )
 
         def _stream_chat(self, messages: Any, **kwargs: Any) -> Any:
-            raise NotImplementedError(
-                "Streaming is not yet supported for router-based LLM calls. "
-                "Please use non-streaming mode."
+            # LlamaIndex agents call stream_chat even when the underlying LLM is
+            # non-streaming. Make a single blocking router call and yield one chunk
+            # so the agent workflow can proceed.
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            resp = router.completion("primary", messages=message_dicts, **kwargs)
+            message = resp.choices[0].message
+            content = message.content or ""
+            additional_kwargs: dict = {}
+            if message.tool_calls:
+                additional_kwargs["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ]
+            yield ChatResponse(
+                message=ChatMessage(
+                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                ),
+                delta=content,
+                raw=resp,
             )
 
         async def _stream_achat(self, messages: Any, **kwargs: Any) -> Any:
-            raise NotImplementedError(
-                "Streaming is not yet supported for router-based LLM calls. "
-                "Please use non-streaming mode."
+            # LlamaIndex agents call astream_chat when using stream_events(). Make
+            # a single async router call and yield one chunk so the workflow can
+            # proceed without raising NotImplementedError.
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            resp = await router.acompletion("primary", messages=message_dicts, **kwargs)
+            message = resp.choices[0].message
+            content = message.content or ""
+            additional_kwargs: dict = {}
+            if message.tool_calls:
+                additional_kwargs["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ]
+            yield ChatResponse(
+                message=ChatMessage(
+                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                ),
+                delta=content,
+                raw=resp,
             )
 
     return RouterDataRobotLiteLLM(model="primary")

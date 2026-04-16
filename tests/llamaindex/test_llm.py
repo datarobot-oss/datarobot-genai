@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -23,6 +24,7 @@ import pytest
 from llama_index.llms.litellm import LiteLLM
 
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from datarobot_genai.llama_index import llm as llama_index_llm
 
 pytestmark = pytest.mark.filterwarnings(
@@ -189,3 +191,233 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
         llm = llama_index_llm.get_llm(model_name="azure/gpt-4", parameters={"temperature": 0.5})
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.temperature == 0.5
+
+
+# ---------------------------------------------------------------------------
+# get_router_llm
+# ---------------------------------------------------------------------------
+
+
+def _make_component_config(deployment_id: str = "dep-id") -> DataRobotLLMComponentModelConfig:
+    return DataRobotLLMComponentModelConfig(
+        llm_deployment_id=deployment_id,
+        api_key="test-key",
+        use_datarobot_llm_gateway=False,
+    )
+
+
+def _make_mock_router(
+    content: str = "response", tool_calls: list | None = None
+) -> MagicMock:
+    message = MagicMock()
+    message.content = content
+    message.tool_calls = tool_calls or []
+    resp = MagicMock()
+    resp.choices = [MagicMock(message=message)]
+    mock_router = MagicMock()
+    mock_router.completion = MagicMock(return_value=resp)
+    mock_router.acompletion = AsyncMock(return_value=resp)
+    return mock_router
+
+
+def _make_mock_tool_call(id: str, name: str, arguments: str) -> MagicMock:
+    tc = MagicMock()
+    tc.id = id
+    tc.type = "function"
+    tc.function.name = name
+    tc.function.arguments = arguments
+    return tc
+
+
+def test_get_router_llm_returns_litellm_instance() -> None:
+    with patch("datarobot_genai.core.router.build_litellm_router") as mock_build, patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        mock_build.return_value = _make_mock_router()
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+    assert isinstance(llm, LiteLLM)
+
+
+def test_router_llm_chat_returns_text_content() -> None:
+    mock_router = _make_mock_router("hello from chat")
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    result = llm._chat([ChatMessage(role="user", content="hi")])
+    assert result.message.content == "hello from chat"
+    mock_router.completion.assert_called_once()
+
+
+def test_router_llm_chat_includes_tool_calls_in_additional_kwargs() -> None:
+    tc = _make_mock_tool_call("tc-1", "search", '{"query": "cats"}')
+    mock_router = _make_mock_router(content="", tool_calls=[tc])
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    result = llm._chat([ChatMessage(role="user", content="search for cats")])
+    tool_calls = result.message.additional_kwargs.get("tool_calls", [])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["id"] == "tc-1"
+    assert tool_calls[0]["function"]["name"] == "search"
+    assert tool_calls[0]["function"]["arguments"] == '{"query": "cats"}'
+
+
+@pytest.mark.asyncio
+async def test_router_llm_achat_returns_text_content() -> None:
+    mock_router = _make_mock_router("async hello")
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    result = await llm._achat([ChatMessage(role="user", content="hi")])
+    assert result.message.content == "async hello"
+    mock_router.acompletion.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_router_llm_achat_includes_tool_calls_in_additional_kwargs() -> None:
+    tc = _make_mock_tool_call("tc-2", "lookup", '{"id": 42}')
+    mock_router = _make_mock_router(content="", tool_calls=[tc])
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    result = await llm._achat([ChatMessage(role="user", content="look it up")])
+    tool_calls = result.message.additional_kwargs.get("tool_calls", [])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["id"] == "tc-2"
+    assert tool_calls[0]["function"]["name"] == "lookup"
+
+
+def test_router_llm_stream_chat_yields_single_chunk_with_content() -> None:
+    mock_router = _make_mock_router("streamed text")
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    chunks = list(llm._stream_chat([ChatMessage(role="user", content="hi")]))
+    assert len(chunks) == 1
+    assert chunks[0].message.content == "streamed text"
+    assert chunks[0].delta == "streamed text"
+    mock_router.completion.assert_called_once()
+
+
+def test_router_llm_stream_chat_yields_tool_calls() -> None:
+    tc = _make_mock_tool_call("tc-3", "fetch", '{"url": "https://example.com"}')
+    mock_router = _make_mock_router(content="", tool_calls=[tc])
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    chunks = list(llm._stream_chat([ChatMessage(role="user", content="fetch it")]))
+    assert len(chunks) == 1
+    tool_calls = chunks[0].message.additional_kwargs.get("tool_calls", [])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "fetch"
+
+
+@pytest.mark.asyncio
+async def test_router_llm_stream_achat_yields_single_chunk_with_content() -> None:
+    mock_router = _make_mock_router("async streamed text")
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    chunks = [c async for c in llm._stream_achat([ChatMessage(role="user", content="hi")])]
+    assert len(chunks) == 1
+    assert chunks[0].message.content == "async streamed text"
+    assert chunks[0].delta == "async streamed text"
+    mock_router.acompletion.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_router_llm_stream_achat_yields_tool_calls() -> None:
+    tc = _make_mock_tool_call("tc-4", "analyze", '{"data": "cats"}')
+    mock_router = _make_mock_router(content="", tool_calls=[tc])
+
+    with patch(
+        "datarobot_genai.core.router.build_litellm_router", return_value=mock_router
+    ), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = llama_index_llm.get_router_llm(
+            _make_component_config(), [_make_component_config("fb")]
+        )
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    chunks = [c async for c in llm._stream_achat([ChatMessage(role="user", content="analyze")])]
+    assert len(chunks) == 1
+    tool_calls = chunks[0].message.additional_kwargs.get("tool_calls", [])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["id"] == "tc-4"
+    assert tool_calls[0]["function"]["name"] == "analyze"

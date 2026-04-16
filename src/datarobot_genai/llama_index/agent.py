@@ -127,6 +127,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         message_id = str(uuid.uuid4())
         text_started = False
         agent: str | None = None
+        agent_output_text: str = ""
 
         async for event in handler.stream_events():
             events.append(event)
@@ -188,7 +189,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 # Output content
                 resp = getattr(event, "response", None)
                 if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                    logger.info(f"Output: {getattr(resp, 'content')}")
+                    _text = str(getattr(resp, "content", ""))
+                    logger.info(f"Output: {_text}")
+                    agent_output_text = _text  # kept for non-streaming fallback below
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -263,6 +266,29 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 usage_metrics,
             )
             agent = None
+
+        if not text_started and agent_output_text:
+            # Non-streaming LLM (e.g. RouterDataRobotLiteLLM): the streaming loop
+            # produced no delta events. Fall back to text from the AgentOutput event.
+            yield (
+                TextMessageStartEvent(
+                    type=EventType.TEXT_MESSAGE_START,
+                    message_id=message_id,
+                    role="assistant",
+                ),
+                None,
+                usage_metrics,
+            )
+            yield (
+                TextMessageContentEvent(
+                    type=EventType.TEXT_MESSAGE_CONTENT,
+                    message_id=message_id,
+                    delta=agent_output_text,
+                ),
+                None,
+                usage_metrics,
+            )
+            text_started = True
 
         if text_started:
             yield (
