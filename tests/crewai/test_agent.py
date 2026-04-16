@@ -24,6 +24,9 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -576,6 +579,60 @@ async def test_invoke_gracefully_degrades_when_memory_fails(
     assert events
     assert isinstance(events[-1][0], RunFinishedEvent)
     assert captured_inputs["memory"] == ""
+
+
+async def test_invoke_streaming_fallback_text_when_no_text_chunks(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    """CrewStreamingOutput with no TEXT chunks (non-streaming LLM) falls back to result.raw."""
+
+    class EmptyCrewStreamingOutput(CrewStreamingOutput):
+        """Simulates CrewStreamingOutput from a non-streaming LLM — no chunk iteration."""
+
+        def __new__(cls, *args: Any, **kwargs: Any) -> "EmptyCrewStreamingOutput":
+            return object.__new__(cls)
+
+        def __init__(self, raw_text: str) -> None:
+            self._raw_text = raw_text
+
+        def __aiter__(self) -> Any:
+            return self._no_chunks()
+
+        async def _no_chunks(self) -> Any:
+            return
+            yield  # pragma: no cover
+
+        @property
+        def result(self) -> CrewOutput:
+            return CrewOutput(raw=self._raw_text)
+
+    class StreamingCrew(CrewForTest):
+        async def kickoff_async(  # type: ignore[override]
+            self, *, inputs: dict[str, Any]
+        ) -> EmptyCrewStreamingOutput:
+            return EmptyCrewStreamingOutput("final answer from router llm")
+
+    agent = AgentForTest(
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        crew=StreamingCrew(),
+    )
+
+    events = [event async for event in agent.invoke(run_agent_input)]
+    event_objects = [e[0] for e in events]
+
+    assert isinstance(event_objects[0], RunStartedEvent)
+    assert isinstance(event_objects[-1], RunFinishedEvent)
+
+    text_starts = [e for e in event_objects if isinstance(e, TextMessageStartEvent)]
+    text_contents = [e for e in event_objects if isinstance(e, TextMessageContentEvent)]
+    text_ends = [e for e in event_objects if isinstance(e, TextMessageEndEvent)]
+
+    assert len(text_starts) == 1
+    assert len(text_contents) == 1
+    assert len(text_ends) == 1
+    assert text_contents[0].delta == "final answer from router llm"
 
 
 async def test_invoke_does_not_store_memory_when_run_fails(

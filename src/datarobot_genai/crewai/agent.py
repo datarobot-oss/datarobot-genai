@@ -378,6 +378,37 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         None,
                         usage_metrics,
                     )
+                if not text_started and not reasoning_started:
+                    # Non-streaming LLM (e.g. RouterLitellmOnlyLLM): the streaming
+                    # loop produced no TEXT chunks. Fall back to crew_output.result.raw.
+                    result_raw = str(getattr(crew_output.result, "raw", "") or "")
+                    if result_raw:
+                        yield (
+                            TextMessageStartEvent(
+                                type=EventType.TEXT_MESSAGE_START,
+                                message_id=message_id,
+                                role="assistant",
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message_id,
+                                delta=result_raw,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END,
+                                message_id=message_id,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
             else:
                 response_text = str(crew_output.raw)
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
