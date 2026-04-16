@@ -19,6 +19,7 @@ This module provides MCP server connection management for CrewAI agents.
 """
 
 import logging
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -43,14 +44,26 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
     url = mcp_config.server_config["url"]
     logger.info("Connecting to MCP server: %s", url)
 
+    # MCPServerAdapter uses a background thread that prints a huge traceback
+    # to stderr when it can't connect. Suppress it so our graceful fallback
+    # is the only output the user sees.
+    original_excepthook = threading.excepthook
+
+    def _suppress_mcp_thread_exceptions(args: threading.ExceptHookArgs) -> None:
+        logger.debug("Suppressed MCPServerAdapter thread exception: %s", args.exc_value)
+
     try:
+        threading.excepthook = _suppress_mcp_thread_exceptions
         with MCPServerAdapter(mcp_config.server_config) as tools:
+            threading.excepthook = original_excepthook
             logger.info("Successfully connected to MCP server, got %d tools", len(tools))
             yield tools
-    except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+    except (ConnectionError, OSError, TimeoutError, ExceptionGroup, RuntimeError) as exc:
         logger.warning(
             "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
             url,
             exc,
         )
         yield []
+    finally:
+        threading.excepthook = original_excepthook
