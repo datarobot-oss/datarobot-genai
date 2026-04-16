@@ -160,6 +160,7 @@ def get_router_llm(
             tools: list[dict] | None = None,
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
+            **kwargs: Any,
         ) -> str:
             resp = self._llm_router.completion(
                 "primary",
@@ -177,6 +178,7 @@ def get_router_llm(
             tools: list[dict] | None = None,
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
+            **kwargs: Any,
         ) -> str:
             resp = await self._llm_router.acompletion(
                 "primary",

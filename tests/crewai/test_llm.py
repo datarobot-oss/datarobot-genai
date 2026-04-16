@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -24,6 +25,7 @@ from crewai import LLM
 
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.crewai import llm as crewai_llm
+from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMComponentModelConfig
 
 
 @pytest.fixture(autouse=True)
@@ -202,3 +204,78 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.is_litellm is True
     assert llm.temperature == 0.5
+
+
+# ---------------------------------------------------------------------------
+# get_router_llm
+# ---------------------------------------------------------------------------
+
+
+def _make_component_config(deployment_id: str = "dep-id") -> DataRobotLLMComponentModelConfig:
+    return DataRobotLLMComponentModelConfig(
+        llm_deployment_id=deployment_id,
+        api_key="test-key",
+        use_datarobot_llm_gateway=False,
+    )
+
+
+def _make_mock_router(content: str = "response") -> MagicMock:
+    choice = MagicMock()
+    choice.message.content = content
+    choice.message.tool_calls = None
+    resp = MagicMock()
+    resp.choices = [choice]
+    mock_router = MagicMock()
+    mock_router.completion = MagicMock(return_value=resp)
+    mock_router.acompletion = AsyncMock(return_value=resp)
+    return mock_router
+
+
+def test_get_router_llm_returns_llm_instance() -> None:
+    with patch("datarobot_genai.core.router.build_litellm_router") as mock_build, patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        mock_build.return_value = _make_mock_router()
+        llm = crewai_llm.get_router_llm(_make_component_config(), [_make_component_config("fb")])
+    assert isinstance(llm, LLM)
+
+
+def test_router_llm_call_accepts_available_functions_kwarg() -> None:
+    """CrewAI passes available_functions to llm.call(); RouterLitellmOnlyLLM must accept it."""
+    mock_router = _make_mock_router("hello")
+
+    with patch("datarobot_genai.core.router.build_litellm_router", return_value=mock_router), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = crewai_llm.get_router_llm(_make_component_config(), [_make_component_config("fb")])
+
+    # This must not raise TypeError even though available_functions is not in the explicit signature.
+    result = llm.call(
+        [{"role": "user", "content": "hi"}],
+        available_functions={"some_fn": lambda: None},
+        response_model=None,
+    )
+    assert result == "hello"
+    mock_router.completion.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_router_llm_acall_accepts_available_functions_kwarg() -> None:
+    """CrewAI may pass available_functions to llm.acall(); RouterLitellmOnlyLLM must accept it."""
+    mock_router = _make_mock_router("async-hello")
+
+    with patch("datarobot_genai.core.router.build_litellm_router", return_value=mock_router), patch(
+        "datarobot_genai.core.router._config_to_litellm_params",
+        return_value={"model": "datarobot/gpt-4o", "api_base": "https://x/", "api_key": "k"},
+    ):
+        llm = crewai_llm.get_router_llm(_make_component_config(), [_make_component_config("fb")])
+
+    result = await llm.acall(
+        [{"role": "user", "content": "hi"}],
+        available_functions={"some_fn": lambda: None},
+        response_model=None,
+    )
+    assert result == "async-hello"
+    mock_router.acompletion.assert_called_once()
