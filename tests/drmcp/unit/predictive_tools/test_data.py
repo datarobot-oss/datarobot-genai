@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -25,7 +26,9 @@ from datarobot_genai.drtools.predictive import data
 
 
 @pytest.mark.asyncio
-async def test_upload_dataset_to_ai_catalog_success() -> None:
+async def test_upload_dataset_to_ai_catalog_success_from_bytes() -> None:
+    raw = b"a,b\n1,2\n"
+    b64 = base64.b64encode(raw).decode("ascii")
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -33,20 +36,23 @@ async def test_upload_dataset_to_ai_catalog_success() -> None:
             return_value="token",
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
-        patch("datarobot_genai.drtools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
         mock_catalog_item = MagicMock()
         mock_catalog_item.id = "12345"
-        mock_catalog_item.name = "test_dataset"
         mock_catalog_item.status = "completed"
         mock_catalog_item.version_id = None
         mock_catalog_item.name = "somefile.csv"
         mock_client.Dataset.create_from_file.return_value = mock_catalog_item
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        result = await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
-        mock_client.Dataset.create_from_file.assert_called_once_with("somefile.csv")
+        result = await data.upload_dataset_to_ai_catalog(
+            file_content_base64=b64, dataset_filename="somefile.csv"
+        )
+        mock_client.Dataset.create_from_file.assert_called_once()
+        kwargs = mock_client.Dataset.create_from_file.call_args.kwargs
+        assert kwargs["filelike"].name == "somefile.csv"
+        assert kwargs["filelike"].getvalue() == raw
         assert isinstance(result, dict)
         assert result == {
             "dataset_id": "12345",
@@ -113,7 +119,7 @@ async def test_upload_dataset_to_ai_catalog_error_with_url() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
+async def test_upload_dataset_to_ai_catalog_error_no_content_or_url() -> None:
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -124,13 +130,13 @@ async def test_upload_dataset_to_ai_catalog_error_no_file_path_or_url() -> None:
     ):
         with pytest.raises(
             ToolError,
-            match="Either file_path or file_url must be provided.",
+            match="Either file_content_base64 or file_url must be provided.",
         ):
             await data.upload_dataset_to_ai_catalog()
 
 
 @pytest.mark.asyncio
-async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> None:
+async def test_upload_dataset_to_ai_catalog_error_both_base64_and_url() -> None:
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -141,15 +147,16 @@ async def test_upload_dataset_to_ai_catalog_error_both_file_path_and_url() -> No
     ):
         with pytest.raises(
             ToolError,
-            match="Please provide either file_path or file_url, not both.",
+            match="Please provide either file_content_base64 or file_url, not both.",
         ):
             await data.upload_dataset_to_ai_catalog(
-                file_path="somefile.csv", file_url="https://example.com/somefile.csv"
+                file_content_base64=base64.b64encode(b"x").decode("ascii"),
+                file_url="https://example.com/somefile.csv",
             )
 
 
 @pytest.mark.asyncio
-async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
+async def test_upload_dataset_to_ai_catalog_invalid_base64() -> None:
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -157,13 +164,23 @@ async def test_upload_dataset_to_ai_catalog_file_not_found() -> None:
             return_value="token",
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient"),
-        patch("datarobot_genai.drtools.predictive.data.os.path.exists", return_value=False),
     ):
-        with pytest.raises(
-            ToolError,
-            match="File not found: nofile.csv",
-        ):
-            await data.upload_dataset_to_ai_catalog(file_path="nofile.csv")
+        with pytest.raises(ToolError, match="Invalid base64"):
+            await data.upload_dataset_to_ai_catalog(file_content_base64="not-valid-base64!!!")
+
+
+@pytest.mark.asyncio
+async def test_upload_dataset_to_ai_catalog_base64_whitespace_only() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient"),
+    ):
+        with pytest.raises(ToolError, match="file_content_base64"):
+            await data.upload_dataset_to_ai_catalog(file_content_base64="   ")
 
 
 @pytest.mark.asyncio
@@ -175,14 +192,15 @@ async def test_upload_dataset_to_ai_catalog_error() -> None:
             return_value="token",
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
-        patch("datarobot_genai.drtools.predictive.data.os.path.exists", return_value=True),
     ):
         mock_client = MagicMock()
         mock_client.Dataset.create_from_file.side_effect = Exception("fail")
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         with pytest.raises(Exception) as exc_info:
-            await data.upload_dataset_to_ai_catalog(file_path="somefile.csv")
+            await data.upload_dataset_to_ai_catalog(
+                file_content_base64=base64.b64encode(b"x").decode("ascii")
+            )
         assert "fail" in str(exc_info.value)
 
 

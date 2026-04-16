@@ -134,12 +134,25 @@ async def must_get_auth_context() -> AuthCtx:
         The authorization context associated with the current request.
     """
     context = _get_context()
+    if context is None:
+        raise RuntimeError("No FastMCP request context available.")
 
     auth_ctx = await context.get_state(AUTH_CTX_KEY)
     if not auth_ctx:
         raise RuntimeError("Could not retrieve authorization context from FastMCP context state.")
 
-    return auth_ctx
+    # FastMCP may round-trip state as plain dicts; reconstruct AuthCtx for attribute access.
+    if isinstance(auth_ctx, AuthCtx):
+        return auth_ctx
+    if isinstance(auth_ctx, dict):
+        try:
+            return AuthCtx(**auth_ctx)
+        except Exception as exc:
+            raise RuntimeError(
+                "Authorization context in state could not be reconstructed as AuthCtx."
+            ) from exc
+
+    raise RuntimeError(f"Unexpected authorization context type: {type(auth_ctx)!r}")
 
 
 async def get_access_token(provider_type: str | None = None) -> str:

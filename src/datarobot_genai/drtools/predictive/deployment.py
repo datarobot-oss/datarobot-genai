@@ -18,12 +18,12 @@ from typing import Annotated
 from typing import Any
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import MODEL_EXTENSIONS
-from datarobot_genai.drtools.core.clients.datarobot import REQUIRED_FILES
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import deploy_custom_model_impl
-from datarobot_genai.drtools.core.clients.datarobot import find_model_file_in_folder
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.deployment_utils import MODEL_EXTENSIONS
+from datarobot_genai.drtools.core.deployment_utils import REQUIRED_FILES
+from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
+from datarobot_genai.drtools.core.deployment_utils import find_model_file_in_folder
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,8 @@ async def deploy_model(
     }
 
 
-@tool_metadata(tags={"predictive", "deployment", "write", "custom", "create"})
+# TODO: MODEL-23163 - This tool does not support remote MCP deployments, update or remove.
+# @tool_metadata(tags={"predictive", "deployment", "write", "custom", "create"})
 async def deploy_custom_model(
     *,
     model_folder: Annotated[

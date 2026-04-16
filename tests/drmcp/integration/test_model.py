@@ -120,14 +120,13 @@ class TestMCPToolsIntegration:
             )
             assert "LogLoss" in data["best_model"]["metrics"]
 
-            # 6 Test scoring dataset with specified model /
-            # nonexistent dataset (stub raises for example.com URL)
+            # 6 Test scoring: unknown AI Catalog dataset id (stub Dataset.get raises)
             result = await session.call_tool(
                 "score_dataset_with_model",
                 {
                     "project_id": project_id,
                     "model_id": "standalone_model",
-                    "dataset_url": "https://example.com/dataset.csv",
+                    "dataset_id": "nonexistent_dataset",
                 },
             )
 

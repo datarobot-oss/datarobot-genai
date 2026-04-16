@@ -191,21 +191,13 @@ async def generate_prediction_data_template(
 async def validate_prediction_data(
     *,
     deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
-    file_path: Annotated[
-        str, "Path to the CSV file to validate (optional if csv_string is provided)"
-    ]
-    | None = None,
-    csv_string: Annotated[str, "CSV data as a string (optional, used if file_path is not provided)"]
-    | None = None,
+    csv_string: Annotated[str, "CSV data as a string (same format as predict_realtime dataset)."],
 ) -> dict[str, Any]:
-    """Validate if a CSV file is suitable for making predictions with a deployment."""
-    # Load the data
-    if csv_string is not None:
-        df = pl.read_csv(io.StringIO(csv_string))
-    elif file_path is not None:
-        df = pl.read_csv(file_path)
-    else:
-        raise ToolError("Must provide either file_path or csv_string.")
+    """Validate whether inline CSV data is suitable for making predictions with a deployment."""
+    if not csv_string or not csv_string.strip():
+        raise ToolError("Argument validation error: 'csv_string' cannot be empty.")
+
+    df = pl.read_csv(io.StringIO(csv_string))
 
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
@@ -310,7 +302,6 @@ async def validate_prediction_data(
 
     # Add summary
     validation_report["summary"] = {
-        "file_path": file_path,
         "rows": len(df),
         "columns": len(df.columns),
         "deployment_id": deployment_id,

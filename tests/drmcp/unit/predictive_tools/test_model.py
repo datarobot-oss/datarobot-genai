@@ -102,24 +102,45 @@ async def test_get_best_model_error() -> None:
 async def test_score_dataset_with_model_success() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
-    mock_model = MagicMock()
+    mock_dr_model = MagicMock()
     mock_job = MagicMock(id="jobid")
-    mock_model.score.return_value = mock_job
-    mock_model.model_type = "type1"
-    mock_model.metrics = {"AUC": 0.9}
-    mock_client.Model.get.return_value = mock_model
+    mock_catalog_ds = MagicMock()
+    mock_catalog_ds.id = "catalog_ds"
+    mock_prediction_ds = MagicMock()
+    mock_prediction_ds.id = "pred_ds_uploaded"
+    mock_client.Dataset.get.return_value = mock_catalog_ds
+    mock_project.upload_dataset_from_catalog.return_value = mock_prediction_ds
+    mock_dr_model.request_predictions.return_value = mock_job
+    mock_dr_model.model_type = "type1"
+    mock_dr_model.metrics = {"AUC": 0.9}
+    mock_client.Model.get.return_value = mock_dr_model
     mock_client.Project.get.return_value = mock_project
     p1, p2 = _patch_model_client(mock_client)
+    ds_id = "catalog_ds"
     with p1, p2 as mock_drc:
         mock_drc.return_value.get_client.return_value = mock_client
         result = await model.score_dataset_with_model(
-            project_id="pid", model_id="mid", dataset_url="url"
+            project_id="pid", model_id="mid", dataset_id=ds_id
         )
     mock_client.Project.get.assert_called_once_with("pid")
     mock_client.Model.get.assert_called_once_with(mock_project, "mid")
-    mock_model.score.assert_called_once_with("url")
+    mock_client.Dataset.get.assert_called_once_with(ds_id)
+    mock_project.upload_dataset_from_catalog.assert_called_once_with(dataset_id="catalog_ds")
+    mock_dr_model.request_predictions.assert_called_once_with(dataset_id="pred_ds_uploaded")
     assert isinstance(result, dict)
     assert result["scoring_job_id"] == "jobid"
+    assert result["catalog_dataset_id"] == "catalog_ds"
+    assert result["prediction_dataset_id"] == "pred_ds_uploaded"
+
+
+@pytest.mark.asyncio
+async def test_score_dataset_with_model_empty_dataset_id() -> None:
+    with pytest.raises(ToolError, match="Dataset ID must be provided"):
+        await model.score_dataset_with_model(
+            project_id="pid",
+            model_id="mid",
+            dataset_id="   ",
+        )
 
 
 @pytest.mark.asyncio
@@ -135,7 +156,9 @@ async def test_score_dataset_with_model_project_not_found() -> None:
         mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(Exception) as exc_info:
             await model.score_dataset_with_model(
-                project_id=project_id, model_id="mid", dataset_url="url"
+                project_id=project_id,
+                model_id="mid",
+                dataset_id="dsid",
             )
     assert exception_message == str(exc_info.value)
 
@@ -153,7 +176,9 @@ async def test_score_dataset_with_model_model_not_found() -> None:
         mock_drc.return_value.get_client.return_value = mock_client
         with pytest.raises(Exception) as exc_info:
             await model.score_dataset_with_model(
-                project_id="pid", model_id="mid", dataset_url="url"
+                project_id="pid",
+                model_id="mid",
+                dataset_id="dsid",
             )
     assert exception_message == str(exc_info.value)
 
@@ -167,7 +192,9 @@ async def test_score_dataset_with_model_error() -> None:
     ):
         with pytest.raises(Exception) as exc_info:
             await model.score_dataset_with_model(
-                project_id="pid", model_id="mid", dataset_url="url"
+                project_id="pid",
+                model_id="mid",
+                dataset_id="dsid",
             )
         assert "fail" == str(exc_info.value)
 
