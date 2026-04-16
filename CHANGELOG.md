@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.1
+- Added opt-in memory retrieval and storage to the NAT base agent when prompts declare `{memory}`.
+
 ## 0.15.0
 - Migrated NAT dependencies from 1.4.1 to 1.6.0
     - Updated import path for tool_calling_agent (nat.agent -> nat.plugins.langchain.agent)
