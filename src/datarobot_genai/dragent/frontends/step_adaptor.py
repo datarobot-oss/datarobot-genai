@@ -14,8 +14,6 @@
 
 import json
 import logging
-import sys
-from collections.abc import AsyncGenerator
 
 from ag_ui.core import CustomEvent
 from ag_ui.core import Event
@@ -24,7 +22,6 @@ from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
 from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import ReasoningStartEvent
-from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -40,18 +37,13 @@ from nat.builder.context import IntermediateStep
 from nat.builder.context import IntermediateStepPayload
 from nat.builder.context import IntermediateStepType
 from nat.builder.context import InvocationNode
-from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ResponseSerializable
 from nat.data_models.intermediate_step import IntermediateStepCategory
-from nat.data_models.intermediate_step import StreamEventData
-from nat.data_models.intermediate_step import TraceMetadata
 from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.data_models.step_adaptor import StepAdaptorMode
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
-
-from datarobot_genai.core.agents import default_usage_metrics
 
 from .response import DRAgentEventResponse
 
@@ -104,9 +96,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
         except Exception as e:
             logger.exception("Error processing intermediate step: %s", e)
-            return DRAgentEventResponse(
-                events=[RunErrorEvent(message=str(e), code="STEP_PROCESSING_ERROR")]
-            )
+            return None
 
         if result is not None:
             result.usage_metrics = self._get_usage_metrics(step.usage_info)
@@ -313,122 +303,3 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         event = CustomEvent(name=payload.event_type, value=payload)
         response = DRAgentEventResponse(events=[event])
         return response
-
-    def _llm_payload(
-        self, event_type: IntermediateStepType, message_id: str, chunk: str = ""
-    ) -> IntermediateStepPayload:
-        """Minimal IntermediateStepPayload for delegating to ``_handle_llm_*``."""
-        return IntermediateStepPayload(
-            event_type=event_type,
-            name="",
-            UUID=message_id,
-            data=StreamEventData(chunk=chunk),
-            metadata=TraceMetadata(),
-        )
-
-    def _handle_text_chunk(self, message_id: str, content: str) -> list[Event]:
-        """Delegate a text content chunk to ``_handle_llm_primary_function``."""
-        return self._handle_llm_primary_function(
-            self._llm_payload(IntermediateStepType.LLM_NEW_TOKEN, message_id, content)
-        )
-
-    def _handle_text_start(self, message_id: str) -> list[Event]:
-        """Delegate LLM_START to ``_handle_llm_primary_function``."""
-        return self._handle_llm_primary_function(
-            self._llm_payload(IntermediateStepType.LLM_START, message_id)
-        )
-
-    def _handle_text_end(self, message_id: str) -> list[Event]:
-        """Delegate LLM_END to ``_handle_llm_primary_function``."""
-        return self._handle_llm_primary_function(
-            self._llm_payload(IntermediateStepType.LLM_END, message_id)
-        )
-
-    def _handle_tool_call_chunk(
-        self, tc_id: str, name: str | None, arguments: str | None, is_new: bool
-    ) -> list[Event]:
-        """Handle a streaming tool call chunk.
-
-        Unlike ``_handle_tool`` which receives complete TOOL_START/TOOL_END
-        pairs, this handles incremental argument chunks from ChatResponseChunk.
-        """
-        events: list[Event] = []
-        if is_new:
-            events.append(ToolCallStartEvent(tool_call_id=tc_id, tool_call_name=name or ""))
-        if arguments:
-            events.append(ToolCallArgsEvent(tool_call_id=tc_id, delta=arguments))
-        return events
-
-    async def process_chunks(
-        self,
-        chunks: AsyncGenerator[ChatResponseChunk, None],
-    ) -> AsyncGenerator[DRAgentEventResponse, None]:
-        """Convert a ChatResponseChunk stream into AG-UI events.
-
-        Text is delegated to ``_handle_llm_primary_function``.
-        Tool calls use ``_handle_tool_call_chunk`` for incremental streaming.
-        """
-        active_message_id: str | None = None
-        active_tool_calls: set[str] = set()
-        tool_index_map: dict[int, str] = {}
-        zero = default_usage_metrics()
-
-        error: Exception | None = None
-        try:
-            async for chunk in chunks:
-                if not isinstance(chunk, ChatResponseChunk) or not chunk.choices:
-                    continue
-
-                delta = chunk.choices[0].delta
-                events: list[Event] = []
-
-                if delta and delta.content:
-                    if active_message_id is None:
-                        active_message_id = chunk.id or ""
-                        events.extend(self._handle_text_start(active_message_id))
-                    events.extend(self._handle_text_chunk(active_message_id, delta.content))
-
-                if delta and delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        tc_id = tc.id or tool_index_map.get(tc.index)
-                        if tc_id is None:
-                            logger.warning(
-                                "Tool call chunk at index %d has no id"
-                                " and no prior mapping; skipping",
-                                tc.index,
-                            )
-                            continue
-                        is_new = tc.id is not None and tc_id not in active_tool_calls
-                        if is_new:
-                            active_tool_calls.add(tc_id)
-                            tool_index_map[tc.index] = tc_id
-                        events.extend(
-                            self._handle_tool_call_chunk(
-                                tc_id=tc_id,
-                                name=tc.function.name if tc.function else None,
-                                arguments=tc.function.arguments if tc.function else None,
-                                is_new=is_new,
-                            )
-                        )
-
-                if events:
-                    yield DRAgentEventResponse(events=events, usage_metrics=zero)
-        except Exception as exc:
-            error = exc
-        finally:
-            if sys.exc_info()[0] is GeneratorExit:
-                logger.debug("Client disconnected before end events could be delivered")
-                return
-
-        # Emit end/error events after the stream completes (normally or on error).
-        # Errors are surfaced to the AG-UI client via RunErrorEvent rather than
-        # propagated as exceptions, so NAT's streaming infrastructure stays stable.
-        end: list[Event] = []
-        if active_message_id is not None:
-            end.extend(self._handle_text_end(active_message_id))
-        for tc_id in active_tool_calls:
-            end.append(ToolCallEndEvent(tool_call_id=tc_id))
-        if error is not None:
-            end.append(RunErrorEvent(message=str(error), code="STREAM_ERROR"))
-        if end:
-            yield DRAgentEventResponse(events=end, usage_metrics=zero)

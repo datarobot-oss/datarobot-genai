@@ -34,12 +34,11 @@ from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
-from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling_agent_workflow
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
+from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
 
 
 class PerUserToolCallAgentWorkflowConfig(
@@ -70,8 +69,9 @@ async def _per_user_tool_calling_agent(
         async def wrapped_stream(
             chat_request_or_message: ChatRequestOrMessage,
         ) -> AsyncGenerator[DRAgentEventResponse, None]:
-            adaptor = DRAgentNestedReasoningStepAdaptor(StepAdaptorConfig())
-            async for event in adaptor.process_chunks(original_stream_fn(chat_request_or_message)):
+            async for event in convert_chunks_to_agui_events(
+                original_stream_fn(chat_request_or_message)
+            ):
                 yield event
 
         yield FunctionInfo.create(
