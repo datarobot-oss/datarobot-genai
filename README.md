@@ -44,6 +44,17 @@ pip install "datarobot-genai[crewai,langgraph,llamaindex]"
 ```
   Available extras include: `crewai`, `langgraph`, `llamaindex`, `nat`, `drmcp`, `pydanticai`.
 
+## Excluded Dependencies
+
+Some transitive dependencies are excluded via `exclude-dependencies` in `pyproject.toml` because they are unused by this project. Do not re-add them.
+
+| Package | Pulled in by | Reason for exclusion |
+|---|---|---|
+| `uv` | build tooling | Not a runtime dependency |
+| `langchain-milvus` | langchain ecosystem | Unused vector store integration |
+| `pymilvus` | langchain-milvus | Transitive dep of langchain-milvus |
+| `flask` | nvidia-nat-core 1.6.0 | Only used in NAT examples, not core library code ([ref](https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/main/packages/nvidia_nat_core/pyproject.toml#L66)) |
+
 ## Development
 Prerequisites: Python 3.11–3.14, uv, Task CLI, pre-commit.
 ```bash

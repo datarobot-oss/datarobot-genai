@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.14.6"
+version = "0.15.0"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -51,6 +51,7 @@ exclude-dependencies = [
   "uv",
   "langchain-milvus",
   "pymilvus",
+  "flask", # direct dependency of nat 1.6.0
 ]
 
 [dependency-groups]

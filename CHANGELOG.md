@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.0
+- Migrated NAT dependencies from 1.4.1 to 1.6.0
+    - Updated import path for tool_calling_agent (nat.agent -> nat.plugins.langchain.agent)
+    - Monkey-patched UserManager.extract_user_from_connection for DR auth context user_id resolution
+    - Registered health routes in build_app() for NAT 1.6 compatibility
+    - Stripped internal NAT params (verify_ssl) from crewai LLM config
+    - Wrapped tool_calling_agent stream_fn for AG-UI event conversion
+    - Removed CrewAI callback handler compatibility patch (fixed upstream in NAT 1.6)
+    - Excluded flask transitive dependency from nvidia-nat-core 1.6.0
+
 ## 0.14.6
 - Fixed MCP tool calls to deployments silently swallowing HTTP error responses instead of surfacing them as tool errors.
 

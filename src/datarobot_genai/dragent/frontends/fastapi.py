@@ -203,6 +203,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
         app = super().build_app()
 
+        # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
+        # NAT 1.6 no longer calls self.add_health_route() so we register here.
+        self._register_health_routes(app)
+
         # app.router.lifespan_context is the lifespan set by the parent's build_app().
         # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.
         # (app.add_event_handler("shutdown", ...) is silently ignored when a lifespan is set.)
@@ -221,8 +225,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         setup_logging()
         return app
 
-    async def add_health_route(self, app: FastAPI) -> None:
-        """Add a health check endpoint to the FastAPI app."""
+    def _register_health_routes(self, app: FastAPI) -> None:
+        """Register DataRobot health check endpoints."""
 
         class HealthResponse(BaseModel):
             status: str = Field(description="Health status of the server")
