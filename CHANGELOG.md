@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.14.7
+- Crew AI parameters
+
 ## 0.14.6
 - Fixed MCP tool calls to deployments silently swallowing HTTP error responses instead of surfacing them as tool errors.
 

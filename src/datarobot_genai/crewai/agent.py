@@ -98,6 +98,46 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         self.crew.verbose = verbose
 
+    def set_role(self, role: str) -> None:
+        for agent in self.agents:
+            agent.role = role
+
+    def set_goal(self, goal: str) -> None:
+        for agent in self.agents:
+            agent.goal = goal
+
+    def set_backstory(self, backstory: str) -> None:
+        for agent in self.agents:
+            agent.backstory = backstory
+
+    def set_max_iter(self, max_iter: int) -> None:
+        for agent in self.agents:
+            agent.max_iter = max_iter
+
+    def set_max_rpm(self, max_rpm: int) -> None:
+        for agent in self.agents:
+            agent.max_rpm = max_rpm
+
+    def set_max_execution_time(self, max_execution_time: int | None) -> None:
+        for agent in self.agents:
+            agent.max_execution_time = max_execution_time
+
+    def set_allow_delegation(self, allow_delegation: bool) -> None:
+        for agent in self.agents:
+            agent.allow_delegation = allow_delegation
+
+    def set_max_retry_limit(self, max_retry_limit: int) -> None:
+        for agent in self.agents:
+            agent.max_retry_limit = max_retry_limit
+
+    def set_reasoning(self, reasoning: bool) -> None:
+        for agent in self.agents:
+            agent.reasoning = reasoning
+
+    def set_max_reasoning_attempts(self, max_reasoning_attempts: int | None) -> None:
+        for agent in self.agents:
+            agent.max_reasoning_attempts = max_reasoning_attempts
+
     @property
     @abc.abstractmethod
     def agents(self) -> list[Agent]:  # CrewAI Agent list
