@@ -16,9 +16,12 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from fastapi import Request
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
+from nat.data_models.user_info import UserInfo
 from nat.runtime.session import SessionManager
+from nat.runtime.user_manager import UserManager
 
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -58,3 +61,41 @@ class TestDRAgentAGUISessionManager:
     ):
         schema = session_manager.get_workflow_streaming_output_schema()
         assert schema is DRAgentEventResponse
+
+
+class TestUserManagerPatch:
+    """Verify that the UserManager monkey-patch resolves DR auth context.
+
+    The patch is applied at module import time by session.py's ``_patch_user_manager()``.
+    These tests verify the already-applied patch.
+    """
+
+    def test_dr_auth_context_resolves_to_user_info(self):
+        """UserManager returns UserInfo when DR auth context header is present."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"x-datarobot-authorization-context": "fake-jwt"}
+        mock_request.cookies = {}
+        mock_auth_ctx = MagicMock()
+        mock_auth_ctx.user.id = "user-abc-123"
+
+        # Patch the handler instance captured by _patch_user_manager at import time
+        with patch(
+            "datarobot_genai.dragent.frontends.session.AuthContextHeaderHandler.get_context",
+            return_value=mock_auth_ctx,
+        ):
+            result = UserManager.extract_user_from_connection(mock_request)
+
+        assert result is not None
+        assert isinstance(result, UserInfo)
+        expected = UserInfo._from_session_cookie("user-abc-123")
+        assert result.get_user_id() == expected.get_user_id()
+
+    def test_falls_back_to_original_when_no_dr_header(self):
+        """UserManager falls back to standard auth when no DR header is present."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.cookies = {}
+        mock_request.headers = {}
+
+        result = UserManager.extract_user_from_connection(mock_request)
+
+        assert result is None

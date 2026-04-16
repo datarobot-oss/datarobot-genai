@@ -15,8 +15,11 @@
 import logging
 
 from fastapi import Request
+from nat.data_models.user_info import UserInfo
 from nat.runtime.session import SessionManager
+from nat.runtime.user_manager import UserManager
 from pydantic import BaseModel
+from starlette.requests import HTTPConnection
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
@@ -25,7 +28,40 @@ from .response import DRAgentEventResponse
 
 logger = logging.getLogger(__name__)
 
-_auth_context_handler = AuthContextHeaderHandler()
+
+def _patch_user_manager() -> None:
+    """Extend ``UserManager.extract_user_from_connection`` with DataRobot auth.
+
+    NAT 1.6 replaced the extensible context-based user_id resolution with
+    ``UserManager.extract_user_from_connection()`` (#1775) which only supports
+    standard auth (Bearer JWT, cookies, API key).  DataRobot passes user identity
+    via ``X-DataRobot-Authorization-Context``, which UserManager doesn't know about.
+
+    This monkey-patches ``extract_user_from_connection`` to try the DataRobot header
+    first, falling back to the original implementation for standard auth.
+    """
+    if getattr(UserManager.extract_user_from_connection, "_dr_patched", False):
+        return
+
+    auth_handler = AuthContextHeaderHandler()
+    original_extract = UserManager.extract_user_from_connection
+
+    def _extract_with_dr_auth(cls: type, connection: HTTPConnection) -> UserInfo | None:
+        if isinstance(connection, Request):
+            auth_ctx = auth_handler.get_context(dict(connection.headers))
+            if auth_ctx is not None:
+                user_info = UserInfo._from_session_cookie(auth_ctx.user.id)
+                logger.debug(
+                    "Resolved user_id from DataRobot auth context: %s", user_info.get_user_id()
+                )
+                return user_info
+        return original_extract.__func__(cls, connection)
+
+    _extract_with_dr_auth._dr_patched = True  # type: ignore[attr-defined]
+    UserManager.extract_user_from_connection = classmethod(_extract_with_dr_auth)  # type: ignore[assignment]
+
+
+_patch_user_manager()
 
 
 class DRAgentAGUISessionManager(SessionManager):
@@ -36,23 +72,3 @@ class DRAgentAGUISessionManager(SessionManager):
     def get_workflow_streaming_output_schema(self) -> type[BaseModel]:
         """Get workflow streaming output schema for OpenAPI documentation."""
         return DRAgentEventResponse
-
-    def set_metadata_from_http_request(self, request: Request) -> None:
-        """Extend base metadata extraction to also set user_id from DataRobot auth context.
-
-        The DataRobot UI does not set the ``nat-session`` cookie that NAT normally uses
-        to identify users for per-user workflows.  Instead, DataRobot passes user identity
-        via the ``X-DataRobot-Authorization-Context`` JWT header.  We decode that header
-        and use the contained user ID so that per-user workflows receive a stable identity.
-        """
-        super().set_metadata_from_http_request(request)
-
-        # Only attempt extraction if user_id wasn't already set (e.g. via nat-session cookie).
-        if self._context_state.user_id.get():
-            return
-
-        auth_ctx = _auth_context_handler.get_context(dict(request.headers))
-        if auth_ctx is not None:
-            user_id = auth_ctx.user.id
-            self._context_state.user_id.set(user_id)
-            logger.debug("Set user_id from DataRobot auth context: %s", user_id)

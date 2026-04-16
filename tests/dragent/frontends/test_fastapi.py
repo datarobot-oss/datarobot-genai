@@ -78,16 +78,12 @@ def a2a_frontend_config():
 def app_with_health(worker):
     """Build the FastAPI app the same way the server does, mocking WorkflowBuilder."""
 
-    async def fake_configure(app: FastAPI, builder):
-        _ = builder
-        await worker.add_health_route(app)
-
     @asynccontextmanager
     async def mock_from_config(_config):
         yield MagicMock()
 
     with (
-        patch.object(worker, "configure", side_effect=fake_configure),
+        patch.object(worker, "configure", new_callable=AsyncMock),
         patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
     ):
         yield worker.build_app()

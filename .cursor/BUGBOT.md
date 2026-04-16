@@ -115,3 +115,18 @@ When bumping child components, list all the changes:
 ### B10. Use git rename when moving files
 
 copier relies on git history when it updates component and merges with local changes. Recently we have moved agent.py → myagent.py, and this broke downstream templates, so we had to add a custom migration.
+
+### B11. Dependency discipline
+
+Every new dependency added to `pyproject.toml` or `uv.lock` should be justified. Review PRs that introduce new packages and verify they are actually needed.
+
+`pyproject.toml` contains an `exclude-dependencies` list under `[tool.uv]`. These packages are intentionally excluded because they are unused transitive dependencies pulled in by upstream packages. Do not remove entries from this list or re-add these packages without TECHLEAD approval.
+
+Current exclusions:
+
+| Package | Pulled in by | Reason |
+|---|---|---|
+| `uv` | build tooling | Not a runtime dependency |
+| `langchain-milvus` | langchain ecosystem | Unused vector store integration |
+| `pymilvus` | langchain-milvus | Transitive dep of langchain-milvus |
+| `flask` | nvidia-nat-core 1.6.0 | Only used in NAT examples, not core library code |
