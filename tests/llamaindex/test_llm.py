@@ -376,7 +376,8 @@ def test_router_llm_stream_chat_yields_tool_calls() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_llm_stream_achat_yields_single_chunk_with_content() -> None:
+async def test_router_llm_astream_chat_yields_single_chunk_with_content() -> None:
+    """_astream_chat is the method astream_chat() actually calls (not _stream_achat)."""
     mock_router = _make_mock_router("async streamed text")
 
     with patch(
@@ -391,7 +392,8 @@ async def test_router_llm_stream_achat_yields_single_chunk_with_content() -> Non
 
     from llama_index.core.base.llms.types import ChatMessage
 
-    chunks = [c async for c in llm._stream_achat([ChatMessage(role="user", content="hi")])]
+    gen = await llm._astream_chat([ChatMessage(role="user", content="hi")])
+    chunks = [c async for c in gen]
     assert len(chunks) == 1
     assert chunks[0].message.content == "async streamed text"
     assert chunks[0].delta == "async streamed text"
@@ -399,7 +401,7 @@ async def test_router_llm_stream_achat_yields_single_chunk_with_content() -> Non
 
 
 @pytest.mark.asyncio
-async def test_router_llm_stream_achat_yields_tool_calls() -> None:
+async def test_router_llm_astream_chat_yields_tool_calls() -> None:
     tc = _make_mock_tool_call("tc-4", "analyze", '{"data": "cats"}')
     mock_router = _make_mock_router(content="", tool_calls=[tc])
 
@@ -415,7 +417,8 @@ async def test_router_llm_stream_achat_yields_tool_calls() -> None:
 
     from llama_index.core.base.llms.types import ChatMessage
 
-    chunks = [c async for c in llm._stream_achat([ChatMessage(role="user", content="analyze")])]
+    gen = await llm._astream_chat([ChatMessage(role="user", content="analyze")])
+    chunks = [c async for c in gen]
     assert len(chunks) == 1
     tool_calls = chunks[0].message.additional_kwargs.get("tool_calls", [])
     assert len(tool_calls) == 1

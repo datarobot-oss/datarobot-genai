@@ -262,10 +262,11 @@ def get_router_llm(
                 raw=resp,
             )
 
-        async def _stream_achat(self, messages: Any, **kwargs: Any) -> Any:
-            # LlamaIndex agents call astream_chat when using stream_events(). Make
-            # a single async router call and yield one chunk so the workflow can
-            # proceed without raising NotImplementedError.
+        async def _astream_chat(self, messages: Any, **kwargs: Any) -> Any:
+            # LlamaIndex's astream_chat() calls self._astream_chat() (not _stream_achat).
+            # Make a single async router call and return a one-chunk async generator so
+            # the agent workflow can proceed. The return value must be an async generator
+            # that yields ChatResponse objects, matching the base class contract.
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
@@ -284,13 +285,17 @@ def get_router_llm(
                     }
                     for tc in message.tool_calls
                 ]
-            yield ChatResponse(
-                message=ChatMessage(
-                    role="assistant", content=content, additional_kwargs=additional_kwargs
-                ),
-                delta=content,
-                raw=resp,
-            )
+
+            async def gen() -> Any:
+                yield ChatResponse(
+                    message=ChatMessage(
+                        role="assistant", content=content, additional_kwargs=additional_kwargs
+                    ),
+                    delta=content,
+                    raw=resp,
+                )
+
+            return gen()
 
     return RouterDataRobotLiteLLM(model="primary")
 
