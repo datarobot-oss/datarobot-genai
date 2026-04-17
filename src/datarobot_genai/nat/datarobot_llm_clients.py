@@ -496,7 +496,7 @@ async def datarobot_llm_router_langchain(
         llm_config.fallbacks,
         _router_settings_from_config(llm_config),
     )
-    yield langchain_patch_llm_based_on_config(client, {})
+    yield langchain_patch_llm_based_on_config(client, llm_config)
 
 
 @register_llm_client(
@@ -505,6 +505,10 @@ async def datarobot_llm_router_langchain(
 async def datarobot_llm_router_crewai(
     llm_config: DataRobotLLMRouterConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:
+    from nat.plugins.crewai.llm import (  # noqa: PLC0415
+        _patch_llm_based_on_config as crewai_patch_llm_based_on_config,
+    )
+
     from datarobot_genai.crewai.llm import get_router_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
@@ -514,7 +518,7 @@ async def datarobot_llm_router_crewai(
         llm_config.fallbacks,
         _router_settings_from_config(llm_config),
     )
-    yield client
+    yield crewai_patch_llm_based_on_config(client, llm_config)
 
 
 @register_llm_client(
@@ -523,6 +527,10 @@ async def datarobot_llm_router_crewai(
 async def datarobot_llm_router_llamaindex(
     llm_config: DataRobotLLMRouterConfig, builder: Builder
 ) -> AsyncGenerator[LiteLLM]:
+    from nat.plugins.llama_index.llm import (  # noqa: PLC0415
+        _patch_llm_based_on_config as llama_index_patch_llm_based_on_config,
+    )
+
     from datarobot_genai.llama_index.llm import get_router_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
@@ -532,4 +540,4 @@ async def datarobot_llm_router_llamaindex(
         llm_config.fallbacks,
         _router_settings_from_config(llm_config),
     )
-    yield client
+    yield llama_index_patch_llm_based_on_config(client, llm_config)
