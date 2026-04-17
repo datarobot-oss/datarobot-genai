@@ -16,6 +16,7 @@ import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from collections.abc import Mapping
+from functools import cached_property
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Optional
@@ -38,6 +39,7 @@ from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Checkpointer
@@ -84,15 +86,17 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
         }
 
-    @property
+    @cached_property
     def langgraph_checkpointer(self) -> Checkpointer | None:
         """Checkpointer for LangGraph compilation.
 
-        Human-in-the-loop flows using :func:`langgraph.types.interrupt` require a
-        checkpointer (e.g. :class:`langgraph.checkpoint.memory.InMemorySaver`).
-        Override this property to enable HITL; default is ``None`` (no checkpointer).
+        Defaults to :class:`~langgraph.checkpoint.memory.InMemorySaver` so state is
+        persisted per ``configurable.thread_id`` (including human-in-the-loop flows
+        that use :func:`langgraph.types.interrupt`). Override this property to use a
+        different saver (e.g. Postgres), or return ``None`` to compile without a
+        checkpointer.
         """
-        return None
+        return InMemorySaver()
 
     def build_langgraph_runnable_config(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
         """Merge :attr:`langgraph_config` with per-run ``thread_id`` for checkpointing."""
@@ -359,6 +363,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             elif mode == "updates":
                 update_event: dict[str, Any] = event  # type: ignore[assignment]
                 if "__interrupt__" in update_event:
+                    # breakpoint()
                     intr_tuple = update_event["__interrupt__"]
                     custom_value = interrupts_to_ag_ui_value(intr_tuple)
                     yield (
@@ -469,9 +474,10 @@ def datarobot_agent_class_from_langgraph(
 
     Human-in-the-loop
     ------------------
-    Override :attr:`LangGraphAgent.langgraph_checkpointer` on the returned class
-    (or a subclass) to supply a checkpointer; use ``interrupt()`` in graph nodes
-    and pass resume payloads via ``run_agent_input.state["langgraph_resume"]``.
+    Checkpointing defaults to :class:`~langgraph.checkpoint.memory.InMemorySaver`
+    per agent instance. Override :attr:`LangGraphAgent.langgraph_checkpointer` to
+    use another saver. Use ``interrupt()`` in graph nodes and pass resume payloads
+    via ``run_agent_input.state["langgraph_resume"]``.
     """
 
     class DataRobotLangAgent(LangGraphAgent):

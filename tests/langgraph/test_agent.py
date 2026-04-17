@@ -28,6 +28,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.message import MessagesState
 from langgraph.graph.state import Command
 from langgraph.graph.state import StateGraph
@@ -487,6 +488,11 @@ async def test_convert_input_message_zero_history_disables_history() -> None:
     assert isinstance(all_messages[1], HumanMessage)
 
 
+def test_langgraph_default_checkpointer_is_in_memory_saver() -> None:
+    agent = SimpleLangGraphAgent()
+    assert isinstance(agent.langgraph_checkpointer, InMemorySaver)
+
+
 async def test_langgraph_non_streaming(run_agent_input):
     # GIVEN a simple langgraph agent implementation
     agent = SimpleLangGraphAgent()
@@ -514,6 +520,8 @@ async def test_langgraph_non_streaming(run_agent_input):
                     ]
                 }
             )
+            ckpt = agent.langgraph_checkpointer
+            assert agent.workflow.compile.call_args_list[0].kwargs["checkpointer"] is ckpt
             agent.workflow.compile().astream.assert_called_once_with(
                 input=expected_command,
                 config={"configurable": {"thread_id": "thread_id"}},
