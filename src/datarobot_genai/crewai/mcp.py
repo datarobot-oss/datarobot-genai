@@ -44,9 +44,9 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
     logger.info("Connecting to MCP server: %s", url)
 
     try:
-        with MCPServerAdapter(mcp_config.server_config) as tools:
-            logger.info("Successfully connected to MCP server, got %d tools", len(tools))
-            yield tools
+        adapter = MCPServerAdapter(mcp_config.server_config)
+        tools = adapter.__enter__()
+        logger.info("Successfully connected to MCP server, got %d tools", len(tools))
     except Exception as exc:
         logger.warning(
             "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
@@ -54,3 +54,9 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
             exc,
         )
         yield []
+        return
+
+    try:
+        yield tools
+    finally:
+        adapter.__exit__(None, None, None)
