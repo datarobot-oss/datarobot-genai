@@ -139,27 +139,31 @@ async def score_dataset_with_model(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
     model_id: Annotated[str, "The DataRobot model ID"],
-    dataset_url: Annotated[str, "The dataset URL"],
+    dataset_id: Annotated[str, "AI Catalog dataset ID to score with this model"],
 ) -> dict[str, Any]:
-    """Score a dataset using a specific DataRobot model."""
+    """Score a dataset using a specific DataRobot model (async predict job)."""
     if not project_id:
         raise ToolError("Project ID must be provided")
     if not model_id:
         raise ToolError("Model ID must be provided")
-    if not dataset_url:
-        raise ToolError("Dataset URL must be provided")
+    if not dataset_id or not dataset_id.strip():
+        raise ToolError("Dataset ID must be provided")
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
-    model = client.Model.get(project, model_id)
-    job = model.score(dataset_url)
+    dr_model = client.Model.get(project, model_id)
+    catalog_dataset = client.Dataset.get(dataset_id)
+    prediction_dataset = project.upload_dataset_from_catalog(dataset_id=catalog_dataset.id)
+    job = dr_model.request_predictions(dataset_id=prediction_dataset.id)
 
     return {
+        "message": "Scoring job started",
         "scoring_job_id": job.id,
+        "catalog_dataset_id": catalog_dataset.id,
+        "prediction_dataset_id": prediction_dataset.id,
         "project_id": project_id,
         "model_id": model_id,
-        "dataset_url": dataset_url,
     }
 
 

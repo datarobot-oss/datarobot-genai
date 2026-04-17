@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,28 +22,6 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
-
-
-@pytest.fixture(scope="session")
-def expectations_for_predict_by_file_path_success(
-    deployment_id: str, classification_predict_file_path: Path
-) -> ETETestExpectations:
-    return ETETestExpectations(
-        tool_calls_expected=[
-            ToolCallTestExpectations(
-                name="predict_by_file_path",
-                parameters={
-                    "deployment_id": deployment_id,
-                    "file_path": str(classification_predict_file_path),
-                    "timeout": 600,
-                },
-                result=SHOULD_NOT_BE_EMPTY,
-            ),
-        ],
-        llm_response_content_contains_expectations=[
-            "prediction",
-        ],
-    )
 
 
 @pytest.fixture(scope="session")
@@ -123,40 +100,6 @@ class TestPredictE2E(ToolBaseE2E):
         [
             """
         I have a DataRobot deployment with ID '{deployment_id}'.
-        Please run batch predictions using the local CSV file at '{file_path}'
-        with a timeout of 600 seconds.
-        """
-        ],
-    )
-    async def test_predict_by_file_path_success(
-        self,
-        llm_client: Any,
-        expectations_for_predict_by_file_path_success: ETETestExpectations,
-        deployment_id: str,
-        classification_predict_file_path: Path,
-        prompt_template: str,
-    ) -> None:
-        prompt = prompt_template.format(
-            deployment_id=deployment_id,
-            file_path=str(classification_predict_file_path),
-        )
-
-        async with ete_test_mcp_session() as session:
-            frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_predict_by_file_path_success"
-            await self._run_test_with_expectations(
-                prompt,
-                expectations_for_predict_by_file_path_success,
-                llm_client,
-                session,
-                test_name,
-            )
-
-    @pytest.mark.parametrize(
-        "prompt_template",
-        [
-            """
-        I have a DataRobot deployment with ID '{deployment_id}'.
         Please run batch predictions using the AI Catalog dataset with ID '{dataset_id}'.
         """
         ],
@@ -179,6 +122,45 @@ class TestPredictE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = frame.f_code.co_name if frame else "test_predict_by_ai_catalog_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_predict_by_ai_catalog_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        The MCP server has no access to my laptop files. Deployment ID is '{deployment_id}'.
+        Run batch predictions with predict_by_ai_catalog using only dataset_id '{dataset_id}'
+        (AI Catalog). Do not use local file paths or batch intake from disk.
+        """
+        ],
+    )
+    async def test_predict_by_ai_catalog_catalog_id_only_prompt(
+        self,
+        llm_client: Any,
+        expectations_for_predict_by_ai_catalog_success: ETETestExpectations,
+        deployment_id: str,
+        classification_project_id: str,
+        classification_predict_dataset: Any,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            dataset_id=classification_predict_dataset["dataset_id"],
+            project_id=classification_project_id,
+        )
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_predict_by_ai_catalog_catalog_id_only_prompt"
+            )
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_by_ai_catalog_success,

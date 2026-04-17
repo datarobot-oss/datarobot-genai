@@ -49,11 +49,11 @@ class StubModel:
         self.featurelist_name = "Informative Features"
         self.sample_pct = 64.0
 
-    def score(self, dataset_url: str) -> MagicMock:
-        """Stub scoring method. Raises for fake URLs so integration tests can assert errors."""
-        if "example.com" in (dataset_url or ""):
-            raise Exception("404 client error: {'message': 'Not Found'}")
-        return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
+    def request_predictions(
+        self, dataset: Any = None, dataset_id: Any = None, **kwargs: Any
+    ) -> MagicMock:
+        """Stub ``Model.request_predictions`` (used by score_dataset_with_model)."""
+        return MagicMock(id=f"pred_job_{self.id}")
 
     def request_feature_impact(self) -> None:
         """Stub request_feature_impact; no-op in tests."""
@@ -98,6 +98,10 @@ class StubProject:
     def get_models(self) -> list:
         """Stub get_models (matches real API: no arguments)."""
         return self._models
+
+    def upload_dataset_from_catalog(self, dataset_id: str, **kwargs: Any) -> Any:
+        """Stub ``Project.upload_dataset_from_catalog`` (used by score_dataset_with_model)."""
+        return SimpleNamespace(id=f"prediction_dataset_for_{dataset_id}")
 
 
 class StubDeployment:

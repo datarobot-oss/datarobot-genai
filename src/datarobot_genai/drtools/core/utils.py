@@ -18,8 +18,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
-from .clients.s3 import upload_dataframe_to_s3
 from .constants import MAX_INLINE_SIZE
+from .exceptions import ToolError
 
 
 def is_valid_url(url: str) -> bool:
@@ -35,20 +35,17 @@ class PredictionResponse(BaseModel):
     type: str
     data: str | None = None
     resource_id: str | None = None
-    s3_url: str | None = None
     show_explanations: bool | None = None
 
 
-def predictions_result_response(
-    df: Any, bucket: str, key: str, resource_name: str, show_explanations: bool = False
-) -> PredictionResponse:
+def predictions_result_response(df: Any, show_explanations: bool = False) -> PredictionResponse:
     csv_str = df.to_csv(index=False)
-    if len(csv_str.encode("utf-8")) < MAX_INLINE_SIZE:
+    encoded_len = len(csv_str.encode("utf-8"))
+    if encoded_len < MAX_INLINE_SIZE:
         return PredictionResponse(type="inline", data=csv_str, show_explanations=show_explanations)
-    else:
-        s3_url = upload_dataframe_to_s3(df, bucket, key)
-        return PredictionResponse(
-            type="resource",
-            s3_url=s3_url,
-            show_explanations=show_explanations,
-        )
+    raise ToolError(
+        f"Prediction CSV is {encoded_len} bytes, which exceeds the inline limit "
+        f"of {MAX_INLINE_SIZE} bytes. "
+        "Use batch prediction (for example predict_by_ai_catalog) for large outputs, "
+        "or reduce rows or explanations."
+    )

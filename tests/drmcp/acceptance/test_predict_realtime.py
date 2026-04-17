@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -30,26 +29,11 @@ INLINE_CSV_DATASET = (
     '"The software interface is clean and very easy to navigate",software'
 )
 
-
-@pytest.fixture(scope="session")
-def expectations_for_predict_realtime_file_success(
-    deployment_id: str, classification_predict_file_path: Path
-) -> ETETestExpectations:
-    return ETETestExpectations(
-        tool_calls_expected=[
-            ToolCallTestExpectations(
-                name="predict_realtime",
-                parameters={
-                    "deployment_id": deployment_id,
-                    "file_path": str(classification_predict_file_path),
-                },
-                result=SHOULD_NOT_BE_EMPTY,
-            ),
-        ],
-        llm_response_content_contains_expectations=[
-            "prediction",
-        ],
-    )
+# JSON rows equivalent to a small scoring batch (no file paths).
+INLINE_JSON_DATASET = (
+    '[{"text_review":"Compact review for testing","product_category":"electronics"},'
+    '{"text_review":"Second row","product_category":"software"}]'
+)
 
 
 @pytest.fixture(scope="session")
@@ -94,42 +78,30 @@ def expectations_for_predict_realtime_dataset_string_success(
     )
 
 
+@pytest.fixture(scope="session")
+def expectations_for_predict_realtime_json_dataset_success(
+    deployment_id: str,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="predict_realtime",
+                parameters={
+                    "deployment_id": deployment_id,
+                    "dataset": INLINE_JSON_DATASET,
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "prediction",
+        ],
+    )
+
+
 @pytest.mark.asyncio
 class TestPredictRealtimeE2E(ToolBaseE2E):
     """End-to-end tests for realtime prediction functionality."""
-
-    @pytest.mark.parametrize(
-        "prompt_template",
-        [
-            """
-        I have a DataRobot deployment with ID '{deployment_id}'.
-        Please run realtime predictions using the local CSV file at '{file_path}'.
-        """
-        ],
-    )
-    async def test_predict_realtime_file_success(
-        self,
-        llm_client: Any,
-        expectations_for_predict_realtime_file_success: ETETestExpectations,
-        deployment_id: str,
-        classification_predict_file_path: Path,
-        prompt_template: str,
-    ) -> None:
-        prompt = prompt_template.format(
-            deployment_id=deployment_id,
-            file_path=str(classification_predict_file_path),
-        )
-
-        async with ete_test_mcp_session() as session:
-            frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_predict_realtime_file_success"
-            await self._run_test_with_expectations(
-                prompt,
-                expectations_for_predict_realtime_file_success,
-                llm_client,
-                session,
-                test_name,
-            )
 
     @pytest.mark.parametrize(
         "prompt_template",
@@ -194,6 +166,42 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_realtime_dataset_string_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        I have a DataRobot deployment with ID '{deployment_id}'.
+        Run predict_realtime using the dataset parameter only (inline JSON array, not a file path).
+        Use this exact JSON string as dataset (copy verbatim):
+
+        {dataset}
+        """
+        ],
+    )
+    async def test_predict_realtime_json_dataset_success(
+        self,
+        llm_client: Any,
+        expectations_for_predict_realtime_json_dataset_success: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            dataset=INLINE_JSON_DATASET,
+        )
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name if frame else "test_predict_realtime_json_dataset_success"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_predict_realtime_json_dataset_success,
                 llm_client,
                 session,
                 test_name,

@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.2
+<<<<<<< HEAD
 - Adding parameters to Crew AI agents
+=======
+- Removed the dedicated S3 client module from `drtools.core.clients` (S3 is no longer exposed as a first-class tool client here).
+- Removed the `predict_by_file_path` predictive tool; use catalog or dataset-based prediction flows instead.
+- `predict_realtime` now accepts inline prediction payload data only (for example CSV/JSON text via `dataset`); local `file_path` is no longer supported.
+- `validate_prediction_data` now takes inline CSV content (`csv_string`) only; local file paths are no longer supported.
+- `upload_dataset_to_ai_catalog` uploads via `file_content_base64` and `dataset_filename`, or `file_url`; local filesystem paths are no longer accepted for remote-safe MCP usage.
+- `score_dataset_with_model` takes an AI Catalog `dataset_id`, copies it into the project with `Project.upload_dataset_from_catalog`, then runs `Model.request_predictions` on the prediction dataset (catalog datasets are not valid for `request_predictions` alone; `Model.score` does not exist); dataset URL parameters were removed.
+- Refactored deployment helper logic into `drtools.core.deployment_utils` and trimmed `deployment.py` to orchestration on top of it.
+- Adjusted the DataRobot SDK client wrapper, shared constants, and tool error messaging in `utils.py` to align with the updated prediction and upload flows.
+- Updated tests to align with the changes.
+>>>>>>> origin/main
 
 ## 0.15.1
 - Added opt-in memory retrieval and storage to the NAT base agent when prompts declare `{memory}`.
