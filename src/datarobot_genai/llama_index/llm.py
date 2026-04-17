@@ -137,6 +137,157 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
     return _create_datarobot_litellm(config)
 
 
+def get_router_llm(
+    primary: Any,
+    fallbacks: list[Any],
+    router_settings: dict | None = None,
+) -> LiteLLM:
+    """Return a LlamaIndex ``LiteLLM`` whose calls are routed through a ``litellm.Router``.
+
+    Args:
+        primary: ``LLMConfig`` for the primary model.
+        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
+        router_settings: Extra kwargs forwarded to ``litellm.Router``.
+    """
+    from llama_index.core.base.llms.types import LLMMetadata  # noqa: PLC0415
+
+    from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
+
+    router = build_litellm_router(primary, fallbacks, router_settings)
+
+    class RouterDataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
+        """LlamaIndex LiteLLM subclass that delegates to a litellm.Router with streaming."""
+
+        @property
+        def metadata(self) -> LLMMetadata:
+            return LLMMetadata(
+                context_window=128000,
+                num_output=self.max_tokens or -1,
+                is_chat_model=True,
+                is_function_calling_model=True,
+                model_name=self.model,
+            )
+
+        def _chat(self, messages: Any, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            resp = router.completion("primary", messages=message_dicts, **kwargs)
+            message = resp.choices[0].message
+            content = message.content or ""
+            additional_kwargs: dict = {}
+            if message.tool_calls:
+                additional_kwargs["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ]
+            return ChatResponse(
+                message=ChatMessage(
+                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                ),
+                raw=resp,
+            )
+
+        async def _achat(self, messages: Any, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            resp = await router.acompletion("primary", messages=message_dicts, **kwargs)
+            message = resp.choices[0].message
+            content = message.content or ""
+            additional_kwargs: dict = {}
+            if message.tool_calls:
+                additional_kwargs["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in message.tool_calls
+                ]
+            return ChatResponse(
+                message=ChatMessage(
+                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                ),
+                raw=resp,
+            )
+
+        def _stream_chat(self, messages: Any, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            accumulated = []
+            tool_calls_seen: list[Any] = []
+            for chunk in router.completion(
+                "primary", messages=message_dicts, stream=True, **kwargs
+            ):
+                delta = chunk.choices[0].delta
+                content = delta.content or ""
+                if content:
+                    accumulated.append(content)
+                if getattr(delta, "tool_calls", None):
+                    tool_calls_seen.extend(delta.tool_calls)
+                additional_kwargs: dict = {}
+                if tool_calls_seen:
+                    additional_kwargs["tool_calls_delta"] = delta.tool_calls
+                yield ChatResponse(
+                    message=ChatMessage(
+                        role="assistant",
+                        content="".join(accumulated),
+                        additional_kwargs=additional_kwargs,
+                    ),
+                    delta=content,
+                    raw=chunk,
+                )
+
+        async def _astream_chat(self, messages: Any, **kwargs: Any) -> Any:
+            from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
+            from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+
+            message_dicts = to_openai_message_dicts(messages)
+            accumulated = []
+            tool_calls_seen: list[Any] = []
+            response = await router.acompletion(
+                "primary", messages=message_dicts, stream=True, **kwargs
+            )
+
+            async def gen() -> Any:
+                async for chunk in response:
+                    delta = chunk.choices[0].delta
+                    content = delta.content or ""
+                    if content:
+                        accumulated.append(content)
+                    if getattr(delta, "tool_calls", None):
+                        tool_calls_seen.extend(delta.tool_calls)
+                    additional_kwargs: dict = {}
+                    if tool_calls_seen:
+                        additional_kwargs["tool_calls_delta"] = delta.tool_calls
+                    yield ChatResponse(
+                        message=ChatMessage(
+                            role="assistant",
+                            content="".join(accumulated),
+                            additional_kwargs=additional_kwargs,
+                        ),
+                        delta=content,
+                        raw=chunk,
+                    )
+
+            return gen()
+
+    return RouterDataRobotLiteLLM(model="primary")
+
+
 def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LiteLLM:
     config = Config()
     llm_type = config.get_llm_type()

@@ -33,6 +33,7 @@ from .datarobot_llm_providers import DataRobotLitellmConfig
 from .datarobot_llm_providers import DataRobotLLMComponentModelConfig
 from .datarobot_llm_providers import DataRobotLLMDeploymentModelConfig
 from .datarobot_llm_providers import DataRobotLLMGatewayModelConfig
+from .datarobot_llm_providers import DataRobotLLMRouterConfig
 from .datarobot_llm_providers import DataRobotNIMModelConfig
 
 if TYPE_CHECKING:
@@ -50,6 +51,10 @@ EXCLUDE_FIELDS = {
     "llm_deployment_id",
     "nim_deployment_id",
     "use_datarobot_llm_gateway",
+    # Fields inherited from LLMConfig that are not framework-level LLM kwargs:
+    "datarobot_api_token",
+    "datarobot_endpoint",
+    "llm_default_model",
 }
 
 
@@ -461,3 +466,70 @@ async def litellm_llamaindex_internal(
     )
 
     yield _patch_llm_based_on_config(llm, llm_config)
+
+
+def _router_settings_from_config(llm_config: DataRobotLLMRouterConfig) -> dict:
+    settings: dict = {"allowed_fails": llm_config.allowed_fails}
+    if llm_config.retry_policy is not None:
+        settings["retry_policy"] = llm_config.retry_policy
+    if llm_config.cooldown_time is not None:
+        settings["cooldown_time"] = llm_config.cooldown_time
+    return settings
+
+
+@register_llm_client(
+    config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN
+)
+async def datarobot_llm_router_langchain(
+    llm_config: DataRobotLLMRouterConfig, builder: Builder
+) -> AsyncGenerator[ChatOpenAI]:
+    from nat.plugins.langchain.llm import (  # noqa: PLC0415
+        _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
+    )
+
+    from datarobot_genai.langgraph.llm import get_router_llm
+
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
+
+    client = get_router_llm(
+        llm_config.primary,
+        llm_config.fallbacks,
+        _router_settings_from_config(llm_config),
+    )
+    yield langchain_patch_llm_based_on_config(client, {})
+
+
+@register_llm_client(
+    config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.CREWAI
+)
+async def datarobot_llm_router_crewai(
+    llm_config: DataRobotLLMRouterConfig, builder: Builder
+) -> AsyncGenerator[LLM]:
+    from datarobot_genai.crewai.llm import get_router_llm
+
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
+
+    client = get_router_llm(
+        llm_config.primary,
+        llm_config.fallbacks,
+        _router_settings_from_config(llm_config),
+    )
+    yield client
+
+
+@register_llm_client(
+    config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
+)
+async def datarobot_llm_router_llamaindex(
+    llm_config: DataRobotLLMRouterConfig, builder: Builder
+) -> AsyncGenerator[LiteLLM]:
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
+
+    client = get_router_llm(
+        llm_config.primary,
+        llm_config.fallbacks,
+        _router_settings_from_config(llm_config),
+    )
+    yield client
