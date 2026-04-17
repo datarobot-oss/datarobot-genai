@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from typing import Any
 
 from crewai import LLM
@@ -99,6 +100,159 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
     config["model"] = model_name
 
     return _crewai_model_factory(config)
+
+
+def _serialize_router_tool_calls(message: Any) -> str | None:
+    """Serialize tool_calls from a litellm message to JSON for CrewAI parsing."""
+    if not getattr(message, "tool_calls", None):
+        return None
+    return json.dumps(
+        {
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ]
+        }
+    )
+
+
+def get_router_llm(
+    primary: Any,
+    fallbacks: list[Any],
+    router_settings: dict | None = None,
+) -> LLM:
+    """Return a CrewAI ``LLM`` whose calls are routed through a ``litellm.Router``.
+
+    Args:
+        primary: ``LLMConfig`` for the primary model.
+        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
+        router_settings: Extra kwargs forwarded to ``litellm.Router``.
+    """
+    from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
+
+    router = build_litellm_router(primary, fallbacks, router_settings)
+
+    class RouterLitellmOnlyLLM(LLM):
+        def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
+            return object.__new__(cls)
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.is_litellm = True
+            self._llm_router = router
+
+        def call(
+            self,
+            messages: list[dict],
+            tools: list[dict] | None = None,
+            callbacks: list | None = None,
+            available_tools: list[dict] | None = None,
+            **kwargs: Any,
+        ) -> str:
+            accumulated = []
+            tool_calls_seen: list[Any] = []
+            for chunk in self._llm_router.completion(
+                "primary",
+                messages=messages,
+                stream=True,
+                **({"tools": tools} if tools else {}),
+            ):
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    accumulated.append(delta.content)
+                    if callbacks:
+                        for cb in callbacks:
+                            if hasattr(cb, "on_llm_new_token"):
+                                cb.on_llm_new_token(delta.content)
+                if getattr(delta, "tool_calls", None):
+                    tool_calls_seen.extend(delta.tool_calls)
+            if tool_calls_seen:
+                # Reconstruct complete tool calls from streaming deltas
+                merged: dict[int, dict] = {}
+                for tc in tool_calls_seen:
+                    idx = tc.index
+                    if idx not in merged:
+                        merged[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tc.id:
+                        merged[idx]["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        merged[idx]["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        merged[idx]["arguments"] += tc.function.arguments
+                return json.dumps(
+                    {
+                        "tool_calls": [
+                            {
+                                "id": v["id"],
+                                "type": "function",
+                                "function": {"name": v["name"], "arguments": v["arguments"]},
+                            }
+                            for v in merged.values()
+                        ]
+                    }
+                )
+            return "".join(accumulated)
+
+        async def acall(
+            self,
+            messages: list[dict],
+            tools: list[dict] | None = None,
+            callbacks: list | None = None,
+            available_tools: list[dict] | None = None,
+            **kwargs: Any,
+        ) -> str:
+            accumulated = []
+            tool_calls_seen: list[Any] = []
+            response = await self._llm_router.acompletion(
+                "primary",
+                messages=messages,
+                stream=True,
+                **({"tools": tools} if tools else {}),
+            )
+            async for chunk in response:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    accumulated.append(delta.content)
+                    if callbacks:
+                        for cb in callbacks:
+                            if hasattr(cb, "on_llm_new_token"):
+                                cb.on_llm_new_token(delta.content)
+                if getattr(delta, "tool_calls", None):
+                    tool_calls_seen.extend(delta.tool_calls)
+            if tool_calls_seen:
+                merged: dict[int, dict] = {}
+                for tc in tool_calls_seen:
+                    idx = tc.index
+                    if idx not in merged:
+                        merged[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tc.id:
+                        merged[idx]["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        merged[idx]["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        merged[idx]["arguments"] += tc.function.arguments
+                return json.dumps(
+                    {
+                        "tool_calls": [
+                            {
+                                "id": v["id"],
+                                "type": "function",
+                                "function": {"name": v["name"], "arguments": v["arguments"]},
+                            }
+                            for v in merged.values()
+                        ]
+                    }
+                )
+            return "".join(accumulated)
+
+    return RouterLitellmOnlyLLM(model="datarobot-router")
 
 
 def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:

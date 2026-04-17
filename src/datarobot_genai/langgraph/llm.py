@@ -102,6 +102,26 @@ def get_external_llm(
     return _create_datarobot_chat_litellm(config)
 
 
+def get_router_llm(
+    primary: Any,
+    fallbacks: list[Any],
+    router_settings: dict | None = None,
+) -> BaseChatModel:
+    """Return a :class:`~datarobot_genai.langgraph.router_llm.RouterChatModel` backed by a ``litellm.Router``.
+
+    Args:
+        primary: ``LLMConfig`` for the primary model.
+        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
+        router_settings: Extra kwargs forwarded to ``litellm.Router``
+            (e.g. ``allowed_fails``, ``cooldown_time``, ``retry_policy``).
+    """
+    from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
+    from datarobot_genai.langgraph.router_llm import RouterChatModel  # noqa: PLC0415
+
+    router = build_litellm_router(primary, fallbacks, router_settings)
+    return RouterChatModel(router=router)
+
+
 def get_llm(
     model_name: str | None = None, parameters: dict | None = None, streaming: bool = True
 ) -> BaseChatModel:
