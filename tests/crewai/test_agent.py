@@ -422,6 +422,112 @@ def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
     assert agent._inner.function_calling_llm is agent._preserved
 
 
+def test_crewai_agent_init_accepts_roles_goals_backstories() -> None:
+    agent = AgentForTest(
+        verbose=False,
+        roles=["R0", "R1"],
+        goals=["G0", "G1"],
+        backstories=["B0", "B1"],
+    )
+    a0, a1 = agent._agents_for_test
+    assert a0.role == "R0" and a1.role == "R1"
+    assert a0.goal == "G0" and a1.goal == "G1"
+    assert a0.backstory == "B0" and a1.backstory == "B1"
+
+
+def test_crewai_agent_init_accepts_execution_settings() -> None:
+    agent = AgentForTest(
+        verbose=False,
+        max_iter=12,
+        max_rpm=15,
+        max_execution_time=120,
+        allow_delegation=False,
+        max_retry_limit=3,
+        reasoning=True,
+        max_reasoning_attempts=2,
+    )
+    a0, a1 = agent._agents_for_test
+    assert a0.max_iter == 12 and a1.max_iter == 12
+    assert a0.max_rpm == 15 and a1.max_rpm == 15
+    assert a0.max_execution_time == 120 and a1.max_execution_time == 120
+    assert a0.allow_delegation is False and a1.allow_delegation is False
+    assert a0.max_retry_limit == 3 and a1.max_retry_limit == 3
+    assert a0.reasoning is True and a1.reasoning is True
+    assert a0.max_reasoning_attempts == 2 and a1.max_reasoning_attempts == 2
+
+
+def test_crewai_agent_set_roles_goals_backstories_per_agent() -> None:
+    agent = AgentForTest(verbose=False)
+    a0, a1 = agent._agents_for_test
+    a0.role = a0.goal = a0.backstory = "orig0"
+    a1.role = a1.goal = a1.backstory = "orig1"
+
+    agent.set_roles(["Planner", "Writer"])
+    agent.set_goals(["Plan {topic}", "Write about {topic}"])
+    agent.set_backstories(["bs0", "bs1"])
+
+    assert a0.role == "Planner"
+    assert a1.role == "Writer"
+    assert a0.goal == "Plan {topic}"
+    assert a1.goal == "Write about {topic}"
+    assert a0.backstory == "bs0"
+    assert a1.backstory == "bs1"
+
+
+def test_crewai_agent_set_roles_length_mismatch() -> None:
+    agent = AgentForTest(verbose=False)
+    with pytest.raises(ValueError, match="roles length"):
+        agent.set_roles(["only-one"])
+
+
+def test_crewai_agent_singular_setters_require_index_when_multiple_agents() -> None:
+    agent = AgentForTest(verbose=False)
+    with pytest.raises(ValueError, match="set_role"):
+        agent.set_role("X")
+
+
+def test_crewai_agent_singular_setters_with_agent_index() -> None:
+    agent = AgentForTest(verbose=False)
+    a0, a1 = agent._agents_for_test
+    agent.set_role("R1", agent_index=1)
+    agent.set_goal("G0", agent_index=0)
+    agent.set_backstory("B1", agent_index=1)
+    assert a0.role != "R1"
+    assert a1.role == "R1"
+    assert a0.goal == "G0"
+    assert a1.backstory == "B1"
+
+
+def test_crewai_agent_singular_setters_single_agent_without_index() -> None:
+    class SingleAgentForTest(CrewAIAgent):
+        def __init__(self) -> None:
+            self._only = _mock_crewai_agent()
+            super().__init__(verbose=False)
+
+        @property
+        def agents(self) -> list[Any]:
+            return [self._only]
+
+        @property
+        def tasks(self) -> list[Any]:
+            return [MagicMock()]
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content}
+
+        @property
+        def crew(self) -> Any:
+            return CrewForTest()
+
+    agent = SingleAgentForTest()
+    agent.set_role("Solo")
+    agent.set_goal("Do {topic}")
+    agent.set_backstory("solo-bs")
+    assert agent._only.role == "Solo"
+    assert agent._only.goal == "Do {topic}"
+    assert agent._only.backstory == "solo-bs"
+
+
 async def test_invoke_retrieves_and_stores_memory(
     mock_ragas_event_listener, run_agent_input_with_structured_prompt
 ) -> None:
