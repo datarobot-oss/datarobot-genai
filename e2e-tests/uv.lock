@@ -862,7 +862,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.1"
+version = "0.15.3"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -982,7 +982,6 @@ requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
-    { name = "boto3", marker = "extra == 'drtools'", specifier = ">=1.34.0,<2.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
     { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },
