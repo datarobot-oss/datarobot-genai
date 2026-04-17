@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.15.2"
+version = "0.15.3"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -124,6 +124,9 @@ fixable = [
 ]
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
+]
+"docs/**/*.py" = [
+    "INP001", # implicit-namespace-package: standalone example scripts
 ]
 "tests/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow imports in test functions

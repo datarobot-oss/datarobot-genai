@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.3
+- README.md and standalone documentation
+
 ## 0.15.2
 - Removed the dedicated S3 client module from `drtools.core.clients` (S3 is no longer exposed as a first-class tool client here).
 - Removed the `predict_by_file_path` predictive tool; use catalog or dataset-based prediction flows instead.
