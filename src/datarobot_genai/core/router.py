@@ -15,11 +15,41 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import Any
 
 if TYPE_CHECKING:
     import litellm
 
     from datarobot_genai.core.config import LLMConfig
+
+
+def merge_streaming_tool_calls(tool_calls_seen: list[Any]) -> list[dict]:
+    """Merge streaming tool-call delta objects into complete tool-call dicts.
+
+    Each element of *tool_calls_seen* must have ``.index``, ``.id``,
+    and ``.function`` attributes matching the litellm/OpenAI streaming schema.
+    Returns a list of OpenAI-format tool-call dicts ready to forward to the
+    framework or serialize as JSON.
+    """
+    merged: dict[int, dict] = {}
+    for tc in tool_calls_seen:
+        idx = tc.index
+        if idx not in merged:
+            merged[idx] = {"id": "", "name": "", "arguments": ""}
+        if tc.id:
+            merged[idx]["id"] = tc.id
+        if tc.function and tc.function.name:
+            merged[idx]["name"] = tc.function.name
+        if tc.function and tc.function.arguments:
+            merged[idx]["arguments"] += tc.function.arguments
+    return [
+        {
+            "id": v["id"],
+            "type": "function",
+            "function": {"name": v["name"], "arguments": v["arguments"]},
+        }
+        for v in merged.values()
+    ]
 
 
 def build_litellm_router(

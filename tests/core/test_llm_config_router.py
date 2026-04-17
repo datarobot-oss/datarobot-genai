@@ -192,3 +192,75 @@ def test_build_litellm_router_passes_settings() -> None:
     call_kwargs = mock_router_cls.call_args.kwargs
     assert call_kwargs["allowed_fails"] == 5
     assert call_kwargs["cooldown_time"] == 60.0
+
+
+# ---------------------------------------------------------------------------
+# merge_streaming_tool_calls
+# ---------------------------------------------------------------------------
+
+
+def test_merge_streaming_tool_calls_single_fragment() -> None:
+    from types import SimpleNamespace
+
+    from datarobot_genai.core.router import merge_streaming_tool_calls
+
+    tc = SimpleNamespace(
+        index=0,
+        id="call-abc",
+        function=SimpleNamespace(name="my_tool", arguments='{"x": 1}'),
+    )
+    result = merge_streaming_tool_calls([tc])
+    assert result == [
+        {"id": "call-abc", "type": "function", "function": {"name": "my_tool", "arguments": '{"x": 1}'}}
+    ]
+
+
+def test_merge_streaming_tool_calls_merges_argument_fragments() -> None:
+    from types import SimpleNamespace
+
+    from datarobot_genai.core.router import merge_streaming_tool_calls
+
+    frag1 = SimpleNamespace(
+        index=0, id="call-1", function=SimpleNamespace(name="tool_a", arguments='{"x":')
+    )
+    frag2 = SimpleNamespace(
+        index=0, id=None, function=SimpleNamespace(name=None, arguments=' 1}')
+    )
+    result = merge_streaming_tool_calls([frag1, frag2])
+    assert len(result) == 1
+    assert result[0]["function"]["arguments"] == '{"x": 1}'
+    assert result[0]["id"] == "call-1"
+
+
+def test_merge_streaming_tool_calls_multiple_calls() -> None:
+    from types import SimpleNamespace
+
+    from datarobot_genai.core.router import merge_streaming_tool_calls
+
+    tc0 = SimpleNamespace(index=0, id="id-0", function=SimpleNamespace(name="tool_a", arguments="{}"))
+    tc1 = SimpleNamespace(index=1, id="id-1", function=SimpleNamespace(name="tool_b", arguments='{"y": 2}'))
+    result = merge_streaming_tool_calls([tc0, tc1])
+    names = {r["function"]["name"] for r in result}
+    assert names == {"tool_a", "tool_b"}
+
+
+# ---------------------------------------------------------------------------
+# Failover / error-propagation scenario
+# ---------------------------------------------------------------------------
+
+
+def test_router_propagates_exception_when_all_models_fail() -> None:
+    """When litellm.Router exhausts all fallbacks it raises; wrappers must not swallow it."""
+    from datarobot_genai.core.router import build_litellm_router
+
+    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-bad")
+    fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-also-bad")
+
+    mock_router_instance = MagicMock()
+    mock_router_instance.completion.side_effect = RuntimeError("all models failed")
+
+    with patch("litellm.Router", return_value=mock_router_instance):
+        router = build_litellm_router(primary, [fb])
+
+    with pytest.raises(RuntimeError, match="all models failed"):
+        router.completion("primary", messages=[{"role": "user", "content": "hi"}])
