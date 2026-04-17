@@ -15,7 +15,6 @@
 import io
 import json
 import logging
-import uuid
 from datetime import datetime
 from typing import Annotated
 from typing import Any
@@ -24,27 +23,14 @@ import polars as pl
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
 from dateutil import parser as dateutil_parser
-from pydantic import BaseModel
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drtools.core.clients.s3 import get_s3_bucket_info
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.utils import predictions_result_response
 
 logger = logging.getLogger(__name__)
-
-
-class BucketInfo(BaseModel):
-    bucket: str
-    key: str
-
-
-def make_output_settings() -> BucketInfo:
-    bucket_info = get_s3_bucket_info()
-    s3_key = f"{bucket_info['prefix']}{uuid.uuid4()}.csv"
-    return BucketInfo(bucket=bucket_info["bucket"], key=s3_key)
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -64,9 +50,8 @@ async def predict_by_ai_catalog_rt(
     """
     Make real-time predictions using a DataRobot deployment and an AI Catalog dataset using the
     datarobot-predict library.
-    Use this for fast results when your data is not huge (not gigabytes). Results larger than 1MB
-    will be returned as a resource id and S3 URL; smaller results will be returned inline as a CSV
-    string.
+    Use this for fast results when your data is not huge (not gigabytes). Results must fit within
+    the configured inline size limit; otherwise use batch prediction tools for large outputs.
     """
     if not deployment_id or not deployment_id.strip():
         raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
@@ -104,14 +89,7 @@ async def predict_by_ai_catalog_rt(
     deployment = client.Deployment.get(deployment_id=deployment_id)
     result = dr_predict(deployment, df, timeout=timeout or 600)
     predictions = result.dataframe
-    bucket_info = make_output_settings()
-    prediction_results = predictions_result_response(
-        predictions,
-        bucket_info.bucket,
-        bucket_info.key,
-        f"pred_{deployment_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        True,
-    )
+    prediction_results = predictions_result_response(predictions, show_explanations=True)
     content = (
         prediction_results.model_dump()
         if hasattr(prediction_results, "model_dump")
@@ -125,18 +103,12 @@ async def predict_by_ai_catalog_rt(
 @tool_metadata(tags={"predictive", "prediction", "realtime", "read", "scoring"})
 async def predict_realtime(
     deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
-    file_path: Annotated[
-        str,
-        """Path to a CSV file to use as input data. For time series with forecast_point,
-        must have at least 4 historical values within the feature derivation window.""",
-    ]
-    | None = None,
     dataset: Annotated[
         str,
-        """CSV or JSON string representing the input data example: "a,b\\na value,b value\\n".
-        If provided, this takes precedence over file_path.""",
-    ]
-    | None = None,
+        """CSV or JSON string representing the input data, e.g. "a,b\\na value,b value\\n".
+        For time series with forecast_point, include at least enough historical rows within the
+        feature derivation window.""",
+    ],
     forecast_point: Annotated[
         str,
         """Date to start forecasting from (e.g., '2024-06-01').
@@ -212,9 +184,8 @@ async def predict_realtime(
     | None = None,
     timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
 ) -> dict[str, Any]:
-    """
-    Make real-time predictions using a DataRobot deployment and a local CSV file or a dataset
-    string.
+    r"""
+    Make real-time predictions using a DataRobot deployment and inline CSV or JSON data.
 
     This is the unified prediction function that supports:
     - Regular classification/regression predictions
@@ -223,10 +194,10 @@ async def predict_realtime(
     - Text explanations for NLP models
     - Custom thresholds and passthrough columns
 
-    For regular predictions: Just provide deployment_id and file_path or dataset
-    For time series: Add forecast_point OR forecast_range_start/end
-    For explanations: Set max_explanations > 0 and optionally explanation_algorithm
-    For text models: Use max_ngram_explanations for text feature explanations
+    For regular predictions: provide deployment_id and dataset (CSV or JSON string).
+    For time series: add forecast_point OR forecast_range_start/end.
+    For explanations: set max_explanations > 0 and optionally explanation_algorithm.
+    For text models: use max_ngram_explanations for text feature explanations.
 
     When using this tool, always consider feature importance. For features with high importance,
     try to infer or ask for a reasonable value, using frequent values or domain knowledge if
@@ -235,56 +206,45 @@ async def predict_realtime(
 
     Examples
     --------
-        # Regular binary classification
-        predict_realtime(deployment_id="abc123", file_path="data.csv")
+        # Regular binary classification (CSV string)
+        predict_realtime(deployment_id="abc123", dataset="f1,f2\\n0,1\\n1,0")
 
         # With SHAP explanations
-        predict_realtime(deployment_id="abc123", file_path="data.csv",
+        predict_realtime(deployment_id="abc123", dataset="...",
                         max_explanations=10, explanation_algorithm="shap")
 
         # Time series forecasting
-        predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
+        predict_realtime(deployment_id="abc123", dataset="...",
                         forecast_point="2024-06-01")
 
         # Multiseries time series
-        predict_realtime(deployment_id="abc123", file_path="multiseries.csv",
+        predict_realtime(deployment_id="abc123", dataset="...",
                         forecast_point="2024-06-01", series_id_column="store_id")
 
         # Historical time series predictions
-        predict_realtime(deployment_id="abc123", file_path="ts_data.csv",
+        predict_realtime(deployment_id="abc123", dataset="...",
                         forecast_range_start="2024-06-01",
                         forecast_range_end="2024-06-07")
 
         # Text model with explanations and passthrough
-        predict_realtime(deployment_id="abc123", file_path="text_data.csv",
+        predict_realtime(deployment_id="abc123", dataset="...",
                         max_explanations="all", max_ngram_explanations="all",
                         passthrough_columns="document_id,customer_id")
     """
     if not deployment_id or not deployment_id.strip():
         raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
-    if not dataset and not file_path:
-        raise ToolError("Either dataset or file_path must be provided")
-    if dataset is not None and (not dataset or not dataset.strip()):
+    if not dataset or not dataset.strip():
         raise ToolError("Argument validation error: 'dataset' cannot be empty.")
-    if file_path is not None and (not file_path or not file_path.strip()):
-        raise ToolError("Argument validation error: 'file_path' cannot be empty.")
 
-    # Load input data from dataset string or file_path
-    if dataset is not None:
-        # Try CSV first
+    # Load input data from dataset string (CSV or JSON)
+    try:
+        pl_df = pl.read_csv(io.StringIO(dataset))
+    except Exception:
         try:
-            pl_df = pl.read_csv(io.StringIO(dataset))
-        except Exception:
-            # Try JSON
-            try:
-                data = json.loads(dataset)
-                pl_df = pl.DataFrame(data)
-            except Exception as e:
-                raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}") from e
-    elif file_path is not None:
-        pl_df = pl.read_csv(file_path)
-    else:
-        raise ValueError("Either file_path or dataset must be provided.")
+            data = json.loads(dataset)
+            pl_df = pl.DataFrame(data)
+        except Exception as e:
+            raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}") from e
 
     # Normalize column names: strip leading/trailing whitespace
     pl_df = pl_df.rename({c: c.strip() for c in pl_df.columns})
@@ -348,13 +308,8 @@ async def predict_realtime(
     # Run prediction
     result = dr_predict(**predict_kwargs)
     predictions = result.dataframe
-    bucket_info = make_output_settings()
     prediction_results = predictions_result_response(
-        predictions,
-        bucket_info.bucket,
-        bucket_info.key,
-        f"pred_{deployment_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        max_explanations not in {0, "0"},
+        predictions, show_explanations=max_explanations not in {0, "0"}
     )
     content = (
         prediction_results.model_dump()

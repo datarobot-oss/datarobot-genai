@@ -92,7 +92,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "forecast_range_start": "2024-01-31",
                     "forecast_range_end": "2024-02-02",
                     "timeout": 300,
@@ -125,7 +125,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "forecast_point": "2024-01-17",
                     "series_id_column": "store_id",
                     "timeout": 300,
@@ -139,17 +139,11 @@ class TestMCPRealtimePredictToolsIntegration:
             # Parse the response as JSON to get the type and data
             response_dict = json.loads(result_data)
 
-            # Verify multiseries response
-            assert response_dict["type"] in ["inline", "resource"]
-            if response_dict["type"] == "inline":
-                assert len(response_dict["data"]) > 0
-                # Should have predictions for both stores
-                assert "store_A" in response_dict["data"]
-                assert "store_B" in response_dict["data"]
-                # Check for prediction content
-                assert "_PREDICTION" in response_dict["data"] or "sales" in response_dict["data"]
-            else:
-                assert response_dict["s3_url"] is not None
+            assert response_dict["type"] == "inline"
+            assert len(response_dict["data"]) > 0
+            assert "store_A" in response_dict["data"]
+            assert "store_B" in response_dict["data"]
+            assert "_PREDICTION" in response_dict["data"] or "sales" in response_dict["data"]
 
     async def test_regular_realtime_prediction(
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
@@ -164,7 +158,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "timeout": 300,
                 },
             )
@@ -175,12 +169,8 @@ class TestMCPRealtimePredictToolsIntegration:
 
             # Parse the response as JSON to get the type and data
             response_dict = json.loads(result_data)
-            assert response_dict["type"] in ["inline", "resource"]
-            if response_dict["type"] == "inline":
-                assert "_PREDICTION" in response_dict["data"] or len(response_dict["data"]) > 0
-            else:
-                assert response_dict["s3_url"] is not None
-                assert response_dict["resource_id"] is not None
+            assert response_dict["type"] == "inline"
+            assert "_PREDICTION" in response_dict["data"] or len(response_dict["data"]) > 0
 
     async def test_timeseries_regression_error_handling(
         self, timeseries_regression_project: dict[str, Any], test_data_dir: Any
@@ -195,7 +185,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "forecast_point": "2024-02-01",
                     "series_id_column": "invalid_column",
                     "timeout": 300,
@@ -245,7 +235,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "max_explanations": 3,
                     "explanation_algorithm": "shap",
                     "passthrough_columns": "all",
@@ -291,7 +281,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "forecast_point": "2024-02-01",
                     "max_explanations": 2,
                     "explanation_algorithm": "shap",
@@ -342,7 +332,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "timeout": 300,
                 },
             )
@@ -381,7 +371,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "max_explanations": 5,
                     "explanation_algorithm": "shap",
                     "threshold_high": 0.8,
@@ -438,7 +428,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "passthrough_columns": "all",
                     "timeout": 300,
                 },
@@ -486,7 +476,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 "predict_realtime",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(predict_file),
+                    "dataset": predict_file.read_text(),
                     "max_explanations": 3,
                     "max_ngram_explanations": 5,
                     "explanation_algorithm": "shap",

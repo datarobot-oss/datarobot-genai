@@ -118,7 +118,6 @@ drtools = auth + [
     "datarobot>=3.10.0,<4.0.0",
     "datarobot-early-access==3.14.0.2026.3.18.162920",
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
-    "boto3>=1.34.0,<2.0.0",
 ]
 
 # drmcp is standalone set of dependencies for MCP Server only (no core), only depends on drtools.
