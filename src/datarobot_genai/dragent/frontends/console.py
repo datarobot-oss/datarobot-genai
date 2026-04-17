@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 import click
 from colorama import Fore
@@ -26,6 +27,7 @@ from nat.front_ends.console.console_front_end_config import ConsoleFrontEndConfi
 from nat.front_ends.console.console_front_end_plugin import ConsoleFrontEndPlugin
 from nat.front_ends.console.console_front_end_plugin import prompt_for_input_cli
 from nat.runtime.session import SessionManager
+from pydantic import Field
 
 from datarobot_genai.dragent.cli.render import render_object_event
 
@@ -37,7 +39,22 @@ logger = logging.getLogger(__name__)
 # Registered as "dragent_console" so it doesn't conflict with NAT's built-in "console" frontend.
 # Used by `nat dragent run`.
 class DRAgentConsoleFrontEndConfig(ConsoleFrontEndConfig, name="dragent_console"):  # type: ignore
-    """Frontend config for running a dragent workflow from the console."""
+    """Frontend config for running a dragent workflow from the console.
+
+    Overrides CLI flag names to match the cli.py interface so the Taskfile can
+    pass CLI_ARGS straight through without flag translation.
+    """
+
+    input_query: list[str] | None = Field(
+        default=None,
+        alias="user_prompt",
+        description="User prompt string to send to the workflow.",
+    )
+    input_file: Path | None = Field(
+        default=None,
+        alias="completion_json",
+        description="Path to a JSON file containing the chat completion payload.",
+    )
 
 
 class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):

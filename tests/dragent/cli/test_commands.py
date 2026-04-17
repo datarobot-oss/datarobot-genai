@@ -33,7 +33,7 @@ def test_query_local_errors_without_port(monkeypatch):
     # WHEN we invoke query --local
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--local", "--input", "hi"],
+        ["query", "--local", "--user_prompt", "hi"],
     )
     # THEN it errors about missing port
     assert result.exit_code != 0
@@ -46,7 +46,7 @@ def test_query_local_custom_port_flag(mock_stream, monkeypatch):
     monkeypatch.delenv("AGENT_PORT", raising=False)
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--local", "--port", "8842", "--input", "hi"],
+        ["query", "--local", "--port", "8842", "--user_prompt", "hi"],
     )
     # THEN it uses the specified port
     assert result.exit_code == 0
@@ -60,7 +60,7 @@ def test_query_local_custom_port_env(mock_stream, monkeypatch):
     monkeypatch.setenv("AGENT_PORT", "9090")
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--local", "--input", "hi"],
+        ["query", "--local", "--user_prompt", "hi"],
     )
     # THEN it reads port from AGENT_PORT
     assert result.exit_code == 0
@@ -74,7 +74,7 @@ def test_query_local_show_payload(mock_stream, monkeypatch):
     monkeypatch.setenv("AGENT_PORT", "8080")
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--local", "--input", "hi", "--show-payload"],
+        ["query", "--local", "--user_prompt", "hi", "--show-payload"],
     )
     # THEN the JSON payload is printed
     assert result.exit_code == 0
@@ -89,7 +89,7 @@ def test_query_local_no_auth_headers(mock_stream, monkeypatch):
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--local", "--input", "hi"],
+        ["query", "--local", "--user_prompt", "hi"],
     )
     # THEN it succeeds without auth and headers have no Authorization
     assert result.exit_code == 0
@@ -112,9 +112,9 @@ def test_query_deployment_invokes_stream(mock_headers, mock_stream):
             "--base-url",
             "https://app.example.com",
             "query",
-            "--deployment-id",
+            "--deployment_id",
             "dep-1",
-            "--input",
+            "--user_prompt",
             "hi",
         ],
     )
@@ -138,9 +138,9 @@ def test_query_show_payload_prints_json(mock_headers, mock_stream):
             "--base-url",
             "https://app.example.com",
             "query",
-            "--deployment-id",
+            "--deployment_id",
             "dep-1",
-            "--input",
+            "--user_prompt",
             "hi",
             "--show-payload",
         ],
@@ -159,11 +159,11 @@ def test_query_errors_without_local_or_deployment_id():
     # GIVEN neither --local nor --deployment-id
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--input", "hi"],
+        ["query", "--user_prompt", "hi"],
     )
     # THEN it errors
     assert result.exit_code != 0
-    assert "--local" in result.output or "--deployment-id" in result.output
+    assert "--local" in result.output or "--deployment_id" in result.output
 
 
 def test_query_errors_with_both_local_and_deployment_id():
@@ -175,9 +175,9 @@ def test_query_errors_with_both_local_and_deployment_id():
             "tok",
             "query",
             "--local",
-            "--deployment-id",
+            "--deployment_id",
             "dep-1",
-            "--input",
+            "--user_prompt",
             "hi",
         ],
     )
@@ -191,18 +191,36 @@ def test_query_deployment_errors_without_api_token(monkeypatch):
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     result = CliRunner().invoke(
         dragent_command,
-        ["query", "--deployment-id", "dep-1", "--input", "hi"],
+        ["query", "--deployment_id", "dep-1", "--user_prompt", "hi"],
     )
     # THEN it errors about the missing token
     assert result.exit_code != 0
     assert "API token is required" in result.output
 
 
-def test_query_errors_without_input():
-    # GIVEN no --input
+def test_query_errors_without_input(monkeypatch):
+    # GIVEN no --user_prompt and no --completion_json (port set so we reach input validation)
+    monkeypatch.setenv("AGENT_PORT", "8080")
     result = CliRunner().invoke(
         dragent_command,
         ["query", "--local"],
     )
-    # THEN it errors about the missing option
+    # THEN it errors about the missing input
     assert result.exit_code != 0
+    assert "--user_prompt" in result.output or "--completion_json" in result.output
+
+
+@patch(f"{_COMMANDS}.stream_agui_events")
+def test_query_local_with_completion_json(mock_stream, monkeypatch, tmp_path):
+    # GIVEN a completion JSON file instead of --user_prompt
+    monkeypatch.setenv("AGENT_PORT", "8080")
+    json_file = tmp_path / "completion.json"
+    json_file.write_text("Hello from file")
+    result = CliRunner().invoke(
+        dragent_command,
+        ["query", "--local", "--completion_json", str(json_file)],
+    )
+    # THEN it reads the file content and uses it as the prompt
+    assert result.exit_code == 0
+    call_payload = mock_stream.call_args[0][1]
+    assert call_payload["messages"][0]["content"] == "Hello from file"

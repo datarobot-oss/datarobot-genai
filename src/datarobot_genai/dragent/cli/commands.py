@@ -125,7 +125,7 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
 @click.command(
     name="query",
     help="Query a dragent server. Use --local for localhost (reads AGENT_PORT env var), "
-    "or --deployment-id for a DataRobot deployment.",
+    "or --deployment_id for a DataRobot deployment.",
 )
 @click.option(
     "--local", "local", is_flag=True, help="Query localhost using --port or AGENT_PORT env var."
@@ -138,8 +138,14 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
     envvar="AGENT_PORT",
     help="Port for --local. Falls back to AGENT_PORT env var.",
 )
-@click.option("--deployment-id", "deployment_id", default=None, help="DataRobot deployment ID.")
-@click.option("--input", "input_query", required=True, help="Prompt string.")
+@click.option("--deployment_id", "deployment_id", default=None, help="DataRobot deployment ID.")
+@click.option("--user_prompt", "input_query", default="", help="Prompt string.")
+@click.option(
+    "--completion_json",
+    "completion_json",
+    default="",
+    help="Path to a JSON file containing the chat completion payload.",
+)
 @click.option(
     "--show-payload", "show_payload", is_flag=True, help="Show the request payload sent to the API."
 )
@@ -150,12 +156,19 @@ def query_command(
     port: int | None,
     deployment_id: str | None,
     input_query: str,
+    completion_json: str,
     show_payload: bool,
 ) -> None:
     if local and deployment_id:
-        raise click.UsageError("Specify either --local or --deployment-id, not both.")
+        raise click.UsageError("Specify either --local or --deployment_id, not both.")
     if not local and not deployment_id:
-        raise click.UsageError("Specify --local or --deployment-id.")
+        raise click.UsageError("Specify --local or --deployment_id.")
+    if not input_query and not completion_json:
+        raise click.UsageError("Specify --user_prompt or --completion_json.")
+
+    if completion_json:
+        with open(completion_json, encoding="utf-8") as f:
+            input_query = f.read()
 
     if deployment_id:
         api_token, base_url = require_auth(ctx)
