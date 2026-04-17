@@ -176,7 +176,6 @@ class RouterChatModel(BaseChatModel):
         if stop:
             call_kwargs["stop"] = stop
         call_kwargs.update(kwargs)
-        tool_call_chunks: dict[int, dict] = {}
         for chunk in self.router.completion("primary", messages=litellm_messages, **call_kwargs):
             delta = chunk.choices[0].delta
             content = delta.content or ""
@@ -184,14 +183,6 @@ class RouterChatModel(BaseChatModel):
             if getattr(delta, "tool_calls", None):
                 for tc in delta.tool_calls:
                     idx = tc.index
-                    if idx not in tool_call_chunks:
-                        tool_call_chunks[idx] = {"id": "", "name": "", "args": ""}
-                    if tc.id:
-                        tool_call_chunks[idx]["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        tool_call_chunks[idx]["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        tool_call_chunks[idx]["args"] += tc.function.arguments
                     tc_chunks.append(
                         {
                             "index": idx,
@@ -217,7 +208,6 @@ class RouterChatModel(BaseChatModel):
         if stop:
             call_kwargs["stop"] = stop
         call_kwargs.update(kwargs)
-        tool_call_chunks: dict[int, dict] = {}
         response = await self.router.acompletion(
             "primary", messages=litellm_messages, **call_kwargs
         )
@@ -228,14 +218,6 @@ class RouterChatModel(BaseChatModel):
             if getattr(delta, "tool_calls", None):
                 for tc in delta.tool_calls:
                     idx = tc.index
-                    if idx not in tool_call_chunks:
-                        tool_call_chunks[idx] = {"id": "", "name": "", "args": ""}
-                    if tc.id:
-                        tool_call_chunks[idx]["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        tool_call_chunks[idx]["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        tool_call_chunks[idx]["args"] += tc.function.arguments
                     tc_chunks.append(
                         {
                             "index": idx,
