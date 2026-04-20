@@ -188,7 +188,26 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 # Output content
                 resp = getattr(event, "response", None)
                 if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                    logger.info(f"Output: {getattr(resp, 'content')}")
+                    content_str = str(getattr(resp, "content"))
+                    logger.info(f"Output: {content_str}")
+                    if not text_started:
+                        yield (
+                            TextMessageStartEvent(
+                                type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        text_started = True
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message_id,
+                                delta=content_str,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -289,8 +308,26 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         except (AttributeError, TypeError):
             state = None
 
-        # Run subclass-defined response extraction (not streamed) for completeness
-        _ = self.extract_response_text(state, events)
+        # Use subclass-defined response extraction as final fallback when no text was streamed
+        fallback_text = self.extract_response_text(state, events)
+        if not text_started and fallback_text:
+            yield (
+                TextMessageStartEvent(
+                    type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                ),
+                None,
+                usage_metrics,
+            )
+            yield (
+                TextMessageContentEvent(
+                    type=EventType.TEXT_MESSAGE_CONTENT,
+                    message_id=message_id,
+                    delta=fallback_text,
+                ),
+                None,
+                usage_metrics,
+            )
+            text_started = True
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
         if uses_memory:

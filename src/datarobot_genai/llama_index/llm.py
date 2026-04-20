@@ -233,14 +233,13 @@ def get_router_llm(
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
 
             message_dicts = to_openai_message_dicts(messages)
-            accumulated = []
-            tool_calls_seen: list[Any] = []
-            response = await router.acompletion(
-                "primary", messages=message_dicts, stream=True, **kwargs
-            )
 
             async def gen() -> Any:
-                async for chunk in response:
+                accumulated: list[str] = []
+                tool_calls_seen: list[Any] = []
+                async for chunk in await router.acompletion(
+                    "primary", messages=message_dicts, stream=True, **kwargs
+                ):
                     delta = chunk.choices[0].delta
                     content = delta.content or ""
                     if content:
