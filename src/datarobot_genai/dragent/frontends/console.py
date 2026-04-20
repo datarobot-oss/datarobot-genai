@@ -54,8 +54,8 @@ class DRAgentConsoleFrontEndConfig(ConsoleFrontEndConfig, name="dragent_console"
     )
     input_file: Path | None = Field(
         default=None,
-        alias="completion_json",
-        description="Path to a JSON file containing the chat completion payload.",
+        alias="input_file",
+        description="Path to a text file whose contents are used as the prompt.",
     )
 
 

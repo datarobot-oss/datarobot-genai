@@ -41,7 +41,7 @@ Key options:
 | Flag | Alias | Description |
 |---|---|---|
 | `--input` | `--user_prompt` | Prompt string to send to the workflow. |
-| `--completion-json` | `--completion_json` | Path to a JSON file containing the chat completion payload. |
+| `--file` | `--input-file` | Path to a text file whose contents are used as the prompt. |
 | `--config_file` | | Path to the workflow YAML config. Falls back to `DRAGENT_CONFIG_FILE` env var. |
 | `--override` | | Override config values using dot notation. |
 
@@ -56,8 +56,8 @@ nat dragent query --local --input "What is AI?"
 # Query a DataRobot deployment
 nat dragent query --deployment-id DEPLOYMENT_ID --input "What is AI?"
 
-# Query with chat history from a completion JSON file
-nat dragent query --local --completion-json completion.json
+# Query with a prompt from a text file
+nat dragent query --local --file prompt.txt
 ```
 
 Key options:
@@ -68,26 +68,8 @@ Key options:
 | `--port` | | Port for `--local`. Falls back to `AGENT_PORT` env var. |
 | `--deployment-id` | `--deployment_id` | DataRobot deployment ID (mutually exclusive with `--local`). |
 | `--input` | `--user_prompt` | Prompt string. |
-| `--completion-json` | `--completion_json` | Path to a JSON file containing the chat completion payload. Messages are extracted into an AG-UI payload. |
+| `--file` | `--input-file` | Path to a text file whose contents are used as the prompt. |
 | `--show-payload` | | Print the AG-UI request payload before sending. |
-
-## Completion JSON format
-
-The `--completion-json` flag accepts a JSON file with an OpenAI-compatible chat completion structure. Messages are extracted and forwarded as an AG-UI payload:
-
-```json
-{
-  "model": "datarobot-deployed-llm",
-  "messages": [
-    {"role": "system", "content": "You are a helpful assistant"},
-    {"role": "user", "content": "What is AI?"},
-    {"role": "assistant", "content": "AI is..."},
-    {"role": "user", "content": "Tell me more"}
-  ]
-}
-```
-
-Only the `messages` array is used. Each message must have `role` and `content` keys.
 
 ## Authentication
 

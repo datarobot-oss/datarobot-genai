@@ -118,18 +118,6 @@ def normalize_base_url(base_url: str) -> str:
 
 def build_agui_payload(user_prompt: str) -> dict[str, typing.Any]:
     """Build an AG-UI RunAgentInput payload from a single prompt string."""
-    return build_agui_payload_from_messages([{"role": "user", "content": user_prompt}])
-
-
-def build_agui_payload_from_messages(messages: list[dict[str, str]]) -> dict[str, typing.Any]:
-    """Build an AG-UI RunAgentInput payload from a list of messages."""
-    agui_messages = []
-    for i, m in enumerate(messages):
-        if "role" not in m or "content" not in m:
-            raise click.UsageError(
-                f"Message at index {i} is missing required 'role' or 'content' key."
-            )
-        agui_messages.append({"id": str(uuid4()), **m})
     return {
         "threadId": str(uuid4()),
         "runId": str(uuid4()),
@@ -137,7 +125,13 @@ def build_agui_payload_from_messages(messages: list[dict[str, str]]) -> dict[str
         "tools": [],
         "context": [],
         "forwardedProps": {},
-        "messages": agui_messages,
+        "messages": [
+            {
+                "id": str(uuid4()),
+                "role": "user",
+                "content": user_prompt,
+            }
+        ],
     }
 
 

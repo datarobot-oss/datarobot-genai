@@ -21,7 +21,6 @@ from nat.cli.commands.start import StartCommandGroup
 from nat.cli.type_registry import RegisteredFrontEndInfo
 
 from .remote import build_agui_payload
-from .remote import build_agui_payload_from_messages
 from .remote import get_auth_context_headers
 from .remote import get_local_auth_context_headers
 from .remote import normalize_base_url
@@ -49,8 +48,8 @@ class DRAgentCommandGroup(StartCommandGroup):
                 param.envvar = "AGENT_PORT"
             elif "--user_prompt" in param.opts:
                 param.opts.insert(0, "--input")
-            elif "--completion_json" in param.opts:
-                param.opts.insert(0, "--completion-json")
+            elif "--input_file" in param.opts:
+                param.opts.insert(0, "--file")
         return params
 
     def invoke_subcommand(  # type: ignore[override]
@@ -154,11 +153,11 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
 )
 @click.option("--input", "--user_prompt", "input_query", default=None, help="Prompt string.")
 @click.option(
-    "--completion-json",
-    "--completion_json",
-    "completion_json",
+    "--file",
+    "--input-file",
+    "input_file",
     default=None,
-    help="Path to a JSON file containing the chat completion payload.",
+    help="Path to a text file whose contents are used as the prompt.",
 )
 @click.option(
     "--show-payload", "show_payload", is_flag=True, help="Show the request payload sent to the API."
@@ -170,36 +169,29 @@ def query_command(
     port: int | None,
     deployment_id: str | None,
     input_query: str | None,
-    completion_json: str | None,
+    input_file: str | None,
     show_payload: bool,
 ) -> None:
     if local and deployment_id:
         raise click.UsageError("Specify either --local or --deployment-id, not both.")
     if not local and not deployment_id:
         raise click.UsageError("Specify --local or --deployment-id.")
-    if input_query is None and completion_json is None:
-        raise click.UsageError("Specify --input or --completion-json.")
-    if input_query is not None and completion_json is not None:
-        raise click.UsageError("Specify --input or --completion-json, not both.")
+    if input_query is None and input_file is None:
+        raise click.UsageError("Specify --input or --file.")
+    if input_query is not None and input_file is not None:
+        raise click.UsageError("Specify --input or --file, not both.")
 
-    if completion_json is not None:
+    if input_file is not None:
         try:
-            with open(completion_json, encoding="utf-8") as f:
-                data = json.load(f)
+            with open(input_file, encoding="utf-8") as f:
+                prompt_text = f.read()
         except FileNotFoundError:
-            raise click.ClickException(f"Completion JSON file not found: {completion_json}")
+            raise click.ClickException(f"File not found: {input_file}")
         except OSError as exc:
-            raise click.ClickException(f"Cannot read {completion_json}: {exc}")
-        except json.JSONDecodeError as exc:
-            raise click.ClickException(f"Invalid JSON in {completion_json}: {exc}")
-        if not isinstance(data, dict):
-            raise click.ClickException(
-                f"Expected a JSON object in {completion_json}, got {type(data).__name__}."
-            )
-        messages = data.get("messages", [])
-        if not messages:
-            raise click.UsageError("No messages found in completion JSON file.")
-        payload = build_agui_payload_from_messages(messages)
+            raise click.ClickException(f"Cannot read {input_file}: {exc}")
+        if not prompt_text.strip():
+            raise click.UsageError("Input file is empty.")
+        payload = build_agui_payload(prompt_text)
     else:
         assert input_query is not None
         payload = build_agui_payload(input_query)
