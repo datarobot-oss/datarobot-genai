@@ -224,10 +224,11 @@ def get_router_llm(
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import update_tool_calls  # noqa: PLC0415
 
             message_dicts = to_openai_message_dicts(messages)
-            accumulated = []
-            tool_calls_seen: list[Any] = []
+            accumulated: list[str] = []
+            tool_calls: list[dict] = []
             for chunk in router.completion(
                 "primary", messages=message_dicts, stream=True, **kwargs
             ):
@@ -235,11 +236,12 @@ def get_router_llm(
                 content = delta.content or ""
                 if content:
                     accumulated.append(content)
-                if getattr(delta, "tool_calls", None):
-                    tool_calls_seen.extend(delta.tool_calls)
+                tool_call_delta = getattr(delta, "tool_calls", None)
+                if tool_call_delta:
+                    tool_calls = update_tool_calls(tool_calls, tool_call_delta)
                 additional_kwargs: dict = {}
-                if tool_calls_seen:
-                    additional_kwargs["tool_calls_delta"] = delta.tool_calls
+                if tool_calls:
+                    additional_kwargs["tool_calls"] = tool_calls
                 yield ChatResponse(
                     message=ChatMessage(
                         role="assistant",
@@ -254,12 +256,13 @@ def get_router_llm(
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
+            from llama_index.llms.litellm.utils import update_tool_calls  # noqa: PLC0415
 
             message_dicts = to_openai_message_dicts(messages)
 
             async def gen() -> Any:
                 accumulated: list[str] = []
-                tool_calls_seen: list[Any] = []
+                tool_calls: list[dict] = []
                 async for chunk in await router.acompletion(
                     "primary", messages=message_dicts, stream=True, **kwargs
                 ):
@@ -267,11 +270,12 @@ def get_router_llm(
                     content = delta.content or ""
                     if content:
                         accumulated.append(content)
-                    if getattr(delta, "tool_calls", None):
-                        tool_calls_seen.extend(delta.tool_calls)
+                    tool_call_delta = getattr(delta, "tool_calls", None)
+                    if tool_call_delta:
+                        tool_calls = update_tool_calls(tool_calls, tool_call_delta)
                     additional_kwargs: dict = {}
-                    if tool_calls_seen:
-                        additional_kwargs["tool_calls_delta"] = delta.tool_calls
+                    if tool_calls:
+                        additional_kwargs["tool_calls"] = tool_calls
                     yield ChatResponse(
                         message=ChatMessage(
                             role="assistant",
