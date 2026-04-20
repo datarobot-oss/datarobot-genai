@@ -188,6 +188,10 @@ def query_command(
             raise click.ClickException(f"Completion JSON file not found: {completion_json}")
         except json.JSONDecodeError as exc:
             raise click.ClickException(f"Invalid JSON in {completion_json}: {exc}")
+        if not isinstance(data, dict):
+            raise click.ClickException(
+                f"Expected a JSON object in {completion_json}, got {type(data).__name__}."
+            )
         messages = data.get("messages", [])
         if not messages:
             raise click.UsageError("No messages found in completion JSON file.")
