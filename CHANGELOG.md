@@ -4,8 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.3
+## 0.15.5
 - Added README.md and standalone documentation
+- Documented AG-UI integration, multi-agent patterns, and the unified DataRobot-compatible LLM layer (`get_llm()`, shared `Config` / environment) in the root and docs READMEs
 
 ## 0.15.2
 - Removed the dedicated S3 client module from `drtools.core.clients` (S3 is no longer exposed as a first-class tool client here).

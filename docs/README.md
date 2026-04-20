@@ -16,11 +16,17 @@
 </p>
 
 Build AI agents with your favorite framework and run them on the DataRobot platform.
-`datarobot-genai` provides thin integration layers for **LangGraph**, **LlamaIndex**, and **CrewAI** so you can:
+`datarobot-genai` provides thin integration layers for **LangGraph**, **LlamaIndex**, and **CrewAI**.
 
-* Use the **DataRobot LLM Gateway** as the model backend (no API keys to manage).
-* Wrap your agent graph/workflow into a **DataRobot-compatible agent class** with one function call.
-* Stream AG-UI events (text, tool calls, steps) back to the DataRobot frontend.
+**AG-UI** — The library is built around the **Agent UI (AG-UI) protocol**: your agent’s `invoke()` takes `RunAgentInput` and **streams AG-UI events** (run lifecycle, streaming text, tool calls, steps/reasoning where applicable). That gives you a **single contract** for chat UIs, observability, and DataRobot-hosted frontends—no per-framework wire-up.
+
+**Multi-agent, out of the box** — You are not limited to a single LLM turn. The same wrappers support **multi-step and multi-role workflows** from day one: LangGraph graphs with several nodes, LlamaIndex `AgentWorkflow` with handoffs, and CrewAI crews with sequential tasks—each mapped to the same AG-UI stream.
+
+**Unified LLM layer** — Regardless of framework, you use the same pattern: **`get_llm()`** in `datarobot_genai.langgraph`, `llama_index`, or `crewai` returns that stack’s native client, but **routing is unified**: **LiteLLM** to the **DataRobot LLM Gateway**, a **deployment**, **NIM**, or an external model—selected from one **`Config`** / environment (`DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`, `USE_DATAROBOT_LLM_GATEWAY`, `LLM_DEPLOYMENT_ID`, and related vars). All agent components therefore share a **single DataRobot-compatible LLM story** instead of ad hoc endpoints per integration.
+
+You also get:
+
+* **One-call wrapping** — `datarobot_agent_class_from_*` turns your graph, workflow, or crew into a **DataRobot-compatible agent class**.
 
 ## Prerequisites
 
@@ -56,11 +62,11 @@ pip install "datarobot-genai[langgraph,llamaindex,crewai]"
 
 ## Quick overview
 
-Every framework integration follows the same three-step pattern:
+Every framework integration follows the same pattern—**one unified LLM setup, multi-agent optional, AG-UI always**:
 
-1. **Get an LLM** — call `get_llm()` from the framework sub-package. It reads your DataRobot credentials from the environment and returns a framework-native LLM object.
-2. **Define your agent** — build your graph / workflow / crew using the framework's own API.
-3. **Wrap it** — call the `datarobot_agent_class_from_*` helper to produce a `BaseAgent` subclass that streams AG-UI events.
+1. **Get an LLM** — call `get_llm()` from `datarobot_genai.langgraph`, `llama_index`, or `crewai`. The same **DataRobot-aligned configuration** applies everywhere; you receive a **framework-native** chat client wired through the **unified LiteLLM layer**.
+2. **Define your agent** — one agent or many: build a **LangGraph** `StateGraph`, a **LlamaIndex** `AgentWorkflow`, or a **CrewAI** `Crew` using the framework’s native APIs.
+3. **Wrap it** — call `datarobot_agent_class_from_*` to get a `BaseAgent` subclass whose **`invoke()` streams AG-UI events** (text, tools, steps) to any compatible UI or platform.
 
 ## Framework guides
 
@@ -97,15 +103,16 @@ The library reads configuration from environment variables (via `datarobot-genai
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Your agent code (LangGraph / LlamaIndex /  │
-│  CrewAI graph definition)                   │
+│  Multi-agent graph / workflow / crew        │  ← LangGraph, LlamaIndex, CrewAI
 ├─────────────────────────────────────────────┤
 │  datarobot_agent_class_from_*()             │  ← thin wrapper
-│  BaseAgent.invoke() → AG-UI event stream    │
+│  BaseAgent.invoke(RunAgentInput)            │
+│       → async stream of AG-UI Events        │  ← AG-UI protocol
 ├─────────────────────────────────────────────┤
-│  get_llm() → framework-native LLM client   │  ← LiteLLM under the hood
+│  Unified LLM layer: get_llm() per stack      │  ← same Config / env for all
+│       → framework-native LLM client         │  ← LiteLLM
 ├─────────────────────────────────────────────┤
-│  DataRobot LLM Gateway / Deployment / NIM   │
+│  DataRobot Gateway / Deployment / NIM / ext  │  ← DataRobot-compatible routing
 └─────────────────────────────────────────────┘
 ```
 

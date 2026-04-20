@@ -24,8 +24,14 @@
 
 
 ## Features
-- Utilities for common GenAI workflows
-- Integrations: CrewAI, LangGraph, LlamaIndex, NAT, MCP
+
+- **AG-UI integration** — Agents expose a standard **AG-UI** event stream (`RunAgentInput` in, lifecycle + text + tool-call events out), so UIs and the DataRobot platform can render runs consistently without bespoke adapters per framework.
+- **Multi-agent systems out of the box** — First-class patterns for **planner/writer crews**, **LangGraph** multi-node graphs, and **LlamaIndex** `AgentWorkflow` handoffs; wrap them with one helper and keep the same streaming contract.
+- **Unified LLM layer (DataRobot-compatible)** — One **`get_llm()`** entry point per integration (**LangGraph**, **LlamaIndex**, **CrewAI**), all backed by the same **LiteLLM**-based routing to the **DataRobot LLM Gateway**, **LLM deployments**, **NIM**, or external providers—driven by the same environment and `Config`, so every component speaks to DataRobot consistently.
+- Utilities for common GenAI workflows.
+- **Integrations:** CrewAI, LangGraph, LlamaIndex, NAT, MCP.
+
+User-facing walkthrough: [docs/README.md](docs/README.md).
 
 ## Installation
 - Requires Python 3.11–3.13.
