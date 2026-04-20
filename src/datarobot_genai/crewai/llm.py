@@ -136,6 +136,12 @@ def get_router_llm(
             available_tools: list[dict] | None = None,
             **kwargs: Any,
         ) -> str:
+            import uuid  # noqa: PLC0415
+
+            from crewai.events import crewai_event_bus  # noqa: PLC0415
+            from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
+
+            call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
             for chunk in self._llm_router.completion(
@@ -147,6 +153,11 @@ def get_router_llm(
                 delta = chunk.choices[0].delta
                 if delta.content:
                     accumulated.append(delta.content)
+                    # Emit chunk event so CrewAI's CrewStreamingOutput receives tokens.
+                    crewai_event_bus.emit(
+                        self,
+                        event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
+                    )
                     if callbacks:
                         for cb in callbacks:
                             if hasattr(cb, "on_llm_new_token"):
