@@ -129,7 +129,7 @@ def build_agui_payload_from_messages(messages: list[dict[str, str]]) -> dict[str
             raise click.UsageError(
                 f"Message at index {i} is missing required 'role' or 'content' key."
             )
-        agui_messages.append({"id": str(uuid4()), "role": m["role"], "content": m["content"]})
+        agui_messages.append({"id": str(uuid4()), **m})
     return {
         "threadId": str(uuid4()),
         "runId": str(uuid4()),

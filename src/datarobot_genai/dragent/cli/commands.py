@@ -152,12 +152,12 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
     default=None,
     help="DataRobot deployment ID.",
 )
-@click.option("--input", "--user_prompt", "input_query", default="", help="Prompt string.")
+@click.option("--input", "--user_prompt", "input_query", default=None, help="Prompt string.")
 @click.option(
     "--completion-json",
     "--completion_json",
     "completion_json",
-    default="",
+    default=None,
     help="Path to a JSON file containing the chat completion payload.",
 )
 @click.option(
@@ -169,18 +169,18 @@ def query_command(
     local: bool,
     port: int | None,
     deployment_id: str | None,
-    input_query: str,
-    completion_json: str,
+    input_query: str | None,
+    completion_json: str | None,
     show_payload: bool,
 ) -> None:
     if local and deployment_id:
         raise click.UsageError("Specify either --local or --deployment-id, not both.")
     if not local and not deployment_id:
         raise click.UsageError("Specify --local or --deployment-id.")
-    if not input_query and not completion_json:
+    if input_query is None and completion_json is None:
         raise click.UsageError("Specify --input or --completion-json.")
 
-    if completion_json:
+    if completion_json is not None:
         try:
             with open(completion_json, encoding="utf-8") as f:
                 data = json.load(f)
@@ -193,6 +193,7 @@ def query_command(
             raise click.UsageError("No messages found in completion JSON file.")
         payload = build_agui_payload_from_messages(messages)
     else:
+        assert input_query is not None
         payload = build_agui_payload(input_query)
 
     if deployment_id:
