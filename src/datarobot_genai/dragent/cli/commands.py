@@ -181,8 +181,13 @@ def query_command(
         raise click.UsageError("Specify --input or --completion-json.")
 
     if completion_json:
-        with open(completion_json, encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with open(completion_json, encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            raise click.ClickException(f"Completion JSON file not found: {completion_json}")
+        except json.JSONDecodeError as exc:
+            raise click.ClickException(f"Invalid JSON in {completion_json}: {exc}")
         messages = data.get("messages", [])
         if not messages:
             raise click.UsageError("No messages found in completion JSON file.")
