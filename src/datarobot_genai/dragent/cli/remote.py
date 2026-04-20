@@ -117,7 +117,12 @@ def normalize_base_url(base_url: str) -> str:
 
 
 def build_agui_payload(user_prompt: str) -> dict[str, typing.Any]:
-    """Build an AG-UI RunAgentInput payload."""
+    """Build an AG-UI RunAgentInput payload from a single prompt string."""
+    return build_agui_payload_from_messages([{"role": "user", "content": user_prompt}])
+
+
+def build_agui_payload_from_messages(messages: list[dict[str, str]]) -> dict[str, typing.Any]:
+    """Build an AG-UI RunAgentInput payload from a list of messages."""
     return {
         "threadId": str(uuid4()),
         "runId": str(uuid4()),
@@ -126,11 +131,7 @@ def build_agui_payload(user_prompt: str) -> dict[str, typing.Any]:
         "context": [],
         "forwardedProps": {},
         "messages": [
-            {
-                "id": str(uuid4()),
-                "role": "user",
-                "content": user_prompt,
-            }
+            {"id": str(uuid4()), "role": m["role"], "content": m["content"]} for m in messages
         ],
     }
 

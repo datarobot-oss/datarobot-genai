@@ -21,6 +21,7 @@ from nat.cli.commands.start import StartCommandGroup
 from nat.cli.type_registry import RegisteredFrontEndInfo
 
 from .remote import build_agui_payload
+from .remote import build_agui_payload_from_messages
 from .remote import get_auth_context_headers
 from .remote import get_local_auth_context_headers
 from .remote import normalize_base_url
@@ -39,11 +40,17 @@ class DRAgentCommandGroup(StartCommandGroup):
     def _build_params(self, front_end: RegisteredFrontEndInfo) -> list[click.Parameter]:
         params = super()._build_params(front_end)
         for param in params:
-            if isinstance(param, click.Option) and "--config_file" in param.opts:
+            if not isinstance(param, click.Option):
+                continue
+            if "--config_file" in param.opts:
                 param.required = False
                 param.envvar = "DRAGENT_CONFIG_FILE"
-            elif isinstance(param, click.Option) and "--port" in param.opts:
+            elif "--port" in param.opts:
                 param.envvar = "AGENT_PORT"
+            elif "--user_prompt" in param.opts:
+                param.opts.insert(0, "--input")
+            elif "--completion_json" in param.opts:
+                param.opts.insert(0, "--completion-json")
         return params
 
     def invoke_subcommand(  # type: ignore[override]
@@ -125,7 +132,7 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
 @click.command(
     name="query",
     help="Query a dragent server. Use --local for localhost (reads AGENT_PORT env var), "
-    "or --deployment_id for a DataRobot deployment.",
+    "or --deployment-id for a DataRobot deployment.",
 )
 @click.option(
     "--local", "local", is_flag=True, help="Query localhost using --port or AGENT_PORT env var."
@@ -138,9 +145,16 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
     envvar="AGENT_PORT",
     help="Port for --local. Falls back to AGENT_PORT env var.",
 )
-@click.option("--deployment_id", "deployment_id", default=None, help="DataRobot deployment ID.")
-@click.option("--user_prompt", "input_query", default="", help="Prompt string.")
 @click.option(
+    "--deployment-id",
+    "--deployment_id",
+    "deployment_id",
+    default=None,
+    help="DataRobot deployment ID.",
+)
+@click.option("--input", "--user_prompt", "input_query", default="", help="Prompt string.")
+@click.option(
+    "--completion-json",
     "--completion_json",
     "completion_json",
     default="",
@@ -160,15 +174,21 @@ def query_command(
     show_payload: bool,
 ) -> None:
     if local and deployment_id:
-        raise click.UsageError("Specify either --local or --deployment_id, not both.")
+        raise click.UsageError("Specify either --local or --deployment-id, not both.")
     if not local and not deployment_id:
-        raise click.UsageError("Specify --local or --deployment_id.")
+        raise click.UsageError("Specify --local or --deployment-id.")
     if not input_query and not completion_json:
-        raise click.UsageError("Specify --user_prompt or --completion_json.")
+        raise click.UsageError("Specify --input or --completion-json.")
 
     if completion_json:
         with open(completion_json, encoding="utf-8") as f:
-            input_query = f.read()
+            data = json.load(f)
+        messages = data.get("messages", [])
+        if not messages:
+            raise click.UsageError("No messages found in completion JSON file.")
+        payload = build_agui_payload_from_messages(messages)
+    else:
+        payload = build_agui_payload(input_query)
 
     if deployment_id:
         api_token, base_url = require_auth(ctx)
@@ -190,7 +210,6 @@ def query_command(
             **get_local_auth_context_headers(),
         }
 
-    payload = build_agui_payload(input_query)
     if show_payload:
         click.echo(json.dumps(payload, indent=2))
     stream_agui_events(target_url, payload, headers)
