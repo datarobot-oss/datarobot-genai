@@ -47,6 +47,30 @@ def _make_resp_chunk(content: str) -> Any:
     return SimpleNamespace(choices=[choice])
 
 
+def _make_tool_call_chunks() -> list[Any]:
+    """Return three streaming chunks that together form one complete tool call."""
+    # chunk 1: tool call header with id and function name
+    tc1 = SimpleNamespace(
+        id="call_abc",
+        type="function",
+        index=0,
+        function=SimpleNamespace(name="my_tool", arguments=None),
+    )
+    # chunk 2: arguments start
+    tc2 = SimpleNamespace(
+        id=None, type=None, index=0, function=SimpleNamespace(name=None, arguments='{"x":')
+    )
+    # chunk 3: arguments end
+    tc3 = SimpleNamespace(
+        id=None, type=None, index=0, function=SimpleNamespace(name=None, arguments='"val"}')
+    )
+    return [
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc1]))]),
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc2]))]),
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc3]))]),
+    ]
+
+
 def test_get_router_llm_returns_litellm_instance() -> None:
     from datarobot_genai.llama_index.llm import get_router_llm
 
@@ -80,6 +104,68 @@ def test_get_router_llm_stream_chat_yields_chunks() -> None:
     assert len(responses) == 2
     assert "Hello" in responses[0].delta or responses[0].delta == "Hello"
     assert mock_router.completion.call_args.kwargs.get("stream") is True
+
+
+def test_get_router_llm_stream_chat_accumulates_tool_calls() -> None:
+    """_stream_chat must populate additional_kwargs['tool_calls'] (not 'tool_calls_delta')."""
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    mock_router = MagicMock()
+    mock_router.completion.return_value = iter(_make_tool_call_chunks())
+
+    with patch("litellm.Router", return_value=mock_router):
+        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [fb])
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    responses = list(llm._stream_chat([ChatMessage(role="user", content="hi")]))
+    last = responses[-1]
+
+    assert "tool_calls_delta" not in last.message.additional_kwargs, (
+        "tool_calls_delta should not appear; use 'tool_calls'"
+    )
+    tool_calls = last.message.additional_kwargs.get("tool_calls", [])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "my_tool"
+    assert tool_calls[0]["function"]["arguments"] == '{"x":"val"}'
+
+
+@pytest.mark.asyncio
+async def test_get_router_llm_astream_chat_accumulates_tool_calls() -> None:
+    """_astream_chat must populate additional_kwargs['tool_calls'] (not 'tool_calls_delta')."""
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    chunks = _make_tool_call_chunks()
+
+    async def fake_acompletion(*args: Any, **kwargs: Any) -> Any:
+        async def gen() -> Any:
+            for c in chunks:
+                yield c
+        return gen()
+
+    mock_router = MagicMock()
+    mock_router.acompletion = fake_acompletion
+
+    with patch("litellm.Router", return_value=mock_router):
+        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [fb])
+
+    from llama_index.core.base.llms.types import ChatMessage
+
+    gen = await llm._astream_chat([ChatMessage(role="user", content="hi")])
+    results = [r async for r in gen]
+    last = results[-1]
+
+    assert "tool_calls_delta" not in last.message.additional_kwargs, (
+        "tool_calls_delta should not appear; use 'tool_calls'"
+    )
+    tool_calls = last.message.additional_kwargs.get("tool_calls", [])
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "my_tool"
+    assert tool_calls[0]["function"]["arguments"] == '{"x":"val"}'
 
 
 @pytest.mark.asyncio
