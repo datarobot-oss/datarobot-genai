@@ -179,6 +179,8 @@ def query_command(
         raise click.UsageError("Specify --local or --deployment-id.")
     if input_query is None and completion_json is None:
         raise click.UsageError("Specify --input or --completion-json.")
+    if input_query is not None and completion_json is not None:
+        raise click.UsageError("Specify --input or --completion-json, not both.")
 
     if completion_json is not None:
         try:
@@ -186,6 +188,8 @@ def query_command(
                 data = json.load(f)
         except FileNotFoundError:
             raise click.ClickException(f"Completion JSON file not found: {completion_json}")
+        except OSError as exc:
+            raise click.ClickException(f"Cannot read {completion_json}: {exc}")
         except json.JSONDecodeError as exc:
             raise click.ClickException(f"Invalid JSON in {completion_json}: {exc}")
         if not isinstance(data, dict):
