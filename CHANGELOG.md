@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.4
+- Added README.md and standalone documentation
+- Documented AG-UI integration, multi-agent patterns, and the unified DataRobot-compatible LLM layer (`get_llm()`, shared `Config` / environment) in the root and docs READMEs
+
 ## 0.15.3
 - Wired `LangchainProfilerHandler` into LangGraph agent config so `nat dragent run` streams intermediate LLM events to the console frontend.
 - Broadened CrewAI MCP exception handling to catch all exceptions on connection failure, so `nat dragent run` continues without MCP tools instead of crashing.
