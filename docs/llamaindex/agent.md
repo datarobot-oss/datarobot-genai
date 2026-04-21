@@ -22,7 +22,7 @@ Aligned with [`e2e-tests/dragent/llamaindex/`](../../e2e-tests/dragent/llamainde
 
 | Piece | What you see |
 |---|---|
-| **`llms:`** + **`datarobot-llm-component`** | Named LLM for the app; see [llm.md](llm.md). |
+| **`llms:`** + **`datarobot-llm-component`** | Named LLM for the app; see [LLM configuration](../llm.md). |
 | **`workflow._type: llamaindex_agent`** | DRAgent uses the LlamaIndex integration. |
 | **`workflow.llm_name`** | Must match **`llms`**. |
 

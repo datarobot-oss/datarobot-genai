@@ -16,4 +16,4 @@
 
 # Caveats
 
-- **MCP tools together with a non-gateway LLM** (external provider or a fixed deployment id instead of the default DataRobot LLM Gateway path) is a **weak combination** today—prefer the gateway-backed setup if you need MCP + CrewAI.
+- **MCP tools together with a non-gateway LLM** (external provider or a fixed deployment id instead of the default DataRobot LLM Gateway path) is a **weak combination** today&mdash;prefer the gateway-backed setup if you need MCP + CrewAI.

@@ -14,7 +14,7 @@
   ~ limitations under the License.
 -->
 
-# NAT 1.6 Streaming Architecture in DRAgent
+# NAT 1.6 streaming architecture in DRAgent
 
 ## Background
 
@@ -48,7 +48,7 @@ Upstream exceptions (e.g., LLM provider errors, network failures) are caught by 
 
 If the client disconnects mid-stream (`GeneratorExit`), end events are skipped (the client is gone) and the generator exits cleanly.
 
-Note: the step adaptor path (`StepAdaptor.process()`) handles errors differently. A single step failing to process (bad payload, serialization error) returns `None` and logs the exception. It does **not** emit `RunErrorEvent`, because a step-level error does not mean the entire run has failed -- the agent continues and subsequent steps will follow.
+**Note:** The step adaptor path (`StepAdaptor.process()`) handles errors differently. A single step failing to process (bad payload, serialization error) returns `None` and logs the exception. It does **not** emit `RunErrorEvent`, because a step-level error does not mean the entire run has failed&mdash;the agent continues and subsequent steps follow.
 
 ## Where the wrapping happens
 

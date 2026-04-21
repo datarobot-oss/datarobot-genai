@@ -20,8 +20,8 @@ pip install "datarobot-genai[llamaindex]"
 ## Run the e2e sample
 
 ```bash
-export DATAROBOT_API_TOKEN="<token>"
-export DATAROBOT_ENDPOINT="https://app.datarobot.com/api/v2"
+export DATAROBOT_API_TOKEN=YOUR_DATAROBOT_API_TOKEN
+export DATAROBOT_ENDPOINT=https://app.datarobot.com/api/v2
 uv sync --group dragent-llamaindex
 uv run --group dragent-llamaindex nat dragent run \
   --config_file dragent/llamaindex/workflow.yaml \

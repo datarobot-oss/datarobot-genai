@@ -28,6 +28,7 @@ from nat.data_models.config import GeneralConfig
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
+from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
@@ -112,17 +113,26 @@ def mock_a2a_worker():
 
 @pytest.fixture
 def patch_super_add_routes():
-    with patch(
-        "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
-        new_callable=AsyncMock,
+    """Mock parent add_routes (append a session manager) and skip chat registration."""
+
+    async def mock_super_add_routes(self, app, builder):
+        self._session_managers.append(MagicMock())
+
+    with (
+        patch(
+            "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
+            mock_super_add_routes,
+        ),
+        patch(
+            "datarobot_genai.dragent.frontends.fastapi.DRAgentFastApiFrontEndPluginWorker._add_chat_completion_route",
+            new_callable=AsyncMock,
+        ),
     ):
         yield
 
 
 class TestDRAgentFastApiFrontEndPluginWorker:
-    EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
-
-    @pytest.mark.parametrize("path", EXPECTED_HEALTH_ROUTES)
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
     def test_health_routes_return_healthy_status(self, app_with_health, path):
         with TestClient(app_with_health) as client:
             response = client.get(path)
@@ -186,10 +196,23 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 worker._get_a2a_endpoint_url(cfg)
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
-        self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
+        self, dragent_worker, mock_builder, mock_a2a_worker
     ):
         app = FastAPI()
+        nat_session_from_parent = MagicMock()
+
+        async def mock_super_add_routes(self, _app, _builder):
+            self._session_managers.append(nat_session_from_parent)
+
         with (
+            patch(
+                "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
+                mock_super_add_routes,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.add_v1_chat_completions_route",
+                new_callable=AsyncMock,
+            ) as mock_chat_route,
             patch(
                 "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
@@ -201,6 +224,18 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             ),
         ):
             await dragent_worker.add_routes(app, mock_builder)
+
+        mock_chat_route.assert_awaited_once()
+        chat_call = mock_chat_route.await_args
+        assert chat_call.args[0] is dragent_worker
+        assert chat_call.args[1] is app
+        assert chat_call.kwargs == {
+            "path": "/chat/completions",
+            "method": "POST",
+            "description": "OpenAI Chat Completions API compatible",
+            "session_manager": nat_session_from_parent,
+            "enable_interactive": False,
+        }
 
         a2a_config_used = mock_a2a_worker_cls.call_args[0][0].general.front_end
         assert a2a_config_used.host == dragent_worker.front_end_config.host

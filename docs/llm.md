@@ -28,7 +28,7 @@ Values are read from the process environment (and `.env` in the working director
 | `DATAROBOT_API_TOKEN` | Token for DataRobot-hosted LLM routes. |
 | `USE_DATAROBOT_LLM_GATEWAY` | When `true` (default), use the **DataRobot LLM Gateway**. |
 | `LLM_DEPLOYMENT_ID` | When the gateway is off, use this **LLM deployment** chat endpoint. |
-| `NIM_DEPLOYMENT_ID` | When the gateway is off and no LLM deployment id, use this **NIM** deployment. |
+| `NIM_DEPLOYMENT_ID` | When the gateway is off and no LLM deployment id is set, use this **NIM** deployment. |
 | `LLM_DEFAULT_MODEL` | Default model id (often `datarobot-deployed-llm`). |
 | `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` | How many prior chat turns to include in history summaries. |
 
@@ -36,10 +36,10 @@ Values are read from the process environment (and `.env` in the working director
 
 What you get depends on flags and ids:
 
-1. **Gateway** — `USE_DATAROBOT_LLM_GATEWAY=true` (default): calls go through the DataRobot LLM Gateway derived from `DATAROBOT_ENDPOINT`.
-2. **Deployment** — Gateway off **and** `LLM_DEPLOYMENT_ID` set: calls go to that deployment’s chat completions URL.
-3. **NIM** — Gateway off, no LLM deployment id, **and** `NIM_DEPLOYMENT_ID` set: same URL style as a deployment, using the NIM id.
-4. **External** — Gateway off and neither deployment id set: LiteLLM talks to external providers using **their** env vars (for example `OPENAI_API_KEY`). Model names should not rely on the `datarobot/` prefix in that mode.
+1. **Gateway**&mdash;`USE_DATAROBOT_LLM_GATEWAY=true` (default): calls go through the DataRobot LLM Gateway derived from `DATAROBOT_ENDPOINT`.
+2. **Deployment**&mdash;gateway off **and** `LLM_DEPLOYMENT_ID` set: calls go to that deployment’s chat completions URL.
+3. **NIM**&mdash;gateway off, no LLM deployment id, **and** `NIM_DEPLOYMENT_ID` set: same URL style as a deployment, using the NIM id.
+4. **External**&mdash;gateway off and neither deployment id set: LiteLLM talks to external providers using **their** env vars (for example `OPENAI_API_KEY`). Model names should not rely on the `datarobot/` prefix in that mode.
 
 If both `LLM_DEPLOYMENT_ID` and `NIM_DEPLOYMENT_ID` are set with the gateway off, **deployment wins**.
 
@@ -53,4 +53,4 @@ llms:
     _type: datarobot-llm-component
 ```
 
-That component follows the same four outcomes using fields on the block (gateway flag, deployment ids, etc.) and the environment above. Per-stack notes: [nat/llm.md](nat/llm.md), [langgraph/llm.md](langgraph/llm.md), [llamaindex/llm.md](llamaindex/llm.md), [crewai/llm.md](crewai/llm.md).
+That component follows the same four outcomes using fields on the block (gateway flag, deployment ids, etc.) and the environment above. NAT-specific YAML details live in [nat/llm.md](nat/llm.md). LangGraph, LlamaIndex, and CrewAI samples use the same environment-driven routing described on this page.

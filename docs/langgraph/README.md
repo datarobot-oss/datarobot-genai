@@ -22,8 +22,8 @@ Env reference: [LLM configuration (shared)](../llm.md).
 From [`e2e-tests/`](../../e2e-tests/):
 
 ```bash
-export DATAROBOT_API_TOKEN="<token>"
-export DATAROBOT_ENDPOINT="https://app.datarobot.com/api/v2"
+export DATAROBOT_API_TOKEN=YOUR_DATAROBOT_API_TOKEN
+export DATAROBOT_ENDPOINT=https://app.datarobot.com/api/v2
 uv sync --group dragent-langgraph
 uv run --group dragent-langgraph nat dragent run \
   --config_file dragent/langgraph/workflow.yaml \
