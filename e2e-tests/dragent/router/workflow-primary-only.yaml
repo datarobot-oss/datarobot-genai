@@ -21,7 +21,11 @@ functions:
 
 llms:
   datarobot_llm:
-    _type: datarobot-llm-component
+    _type: datarobot-llm-router
+    primary:
+      use_datarobot_llm_gateway: true
+      llm_default_model: azure/gpt-4o-2024-11-20
+    allowed_fails: 0
 
 workflow:
   _type: per_user_tool_calling_agent
