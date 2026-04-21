@@ -130,7 +130,9 @@ def get_router_llm(
     fallbacks: list[Any],
     router_settings: dict | None = None,
 ) -> BaseChatModel:
-    """Return a :class:`~datarobot_genai.langgraph.router_llm.RouterChatModel` backed by a ``litellm.Router``.
+    """Return a :class:`~datarobot_genai.langgraph.router_llm.RouterChatModel`.
+
+    Backed by a ``litellm.Router``.
 
     Args:
         primary: ``LLMConfig`` for the primary model.
