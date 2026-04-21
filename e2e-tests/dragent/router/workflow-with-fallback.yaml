@@ -12,13 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-functions:
-  responder:
-    _type: chat_completion
-    llm_name: datarobot_llm
-    system_prompt: "You are a helpful assistant. Reply concisely."
-    description: "Responds to user messages."
-
 llms:
   datarobot_llm:
     _type: datarobot-llm-router
@@ -33,7 +26,6 @@ llms:
 workflow:
   _type: per_user_tool_calling_agent
   llm_name: datarobot_llm
-  tool_names: [responder]
-  return_direct: [responder]
-  system_prompt: "Forward all user requests to the responder."
+  tool_names: []
+  system_prompt: "You are a helpful assistant. Reply concisely."
   verbose: true
