@@ -13,21 +13,18 @@
 # limitations under the License.
 
 import json
-from typing import TYPE_CHECKING
 from typing import Any
 
 from crewai import LLM
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-
-if TYPE_CHECKING:
-    from datarobot_genai.core.config import LLMConfig
 
 
 def _crewai_model_factory(config: dict) -> LLM:
