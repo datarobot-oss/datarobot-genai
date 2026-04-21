@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import TYPE_CHECKING
 from typing import Any
 
 from llama_index.llms.litellm import LiteLLM
@@ -23,6 +24,9 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+
+if TYPE_CHECKING:
+    from datarobot_genai.core.config import LLMConfig
 
 
 def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
@@ -138,8 +142,8 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
 
 
 def get_router_llm(
-    primary: Any,
-    fallbacks: list[Any],
+    primary: LLMConfig,
+    fallbacks: list[LLMConfig],
     router_settings: dict | None = None,
 ) -> LiteLLM:
     """Return a LlamaIndex ``LiteLLM`` whose calls are routed through a ``litellm.Router``.
