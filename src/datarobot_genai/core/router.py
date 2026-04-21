@@ -65,7 +65,8 @@ def build_litellm_router(
         router_settings: Extra keyword arguments forwarded to ``litellm.Router``
             (e.g. ``allowed_fails``, ``cooldown_time``, ``retry_policy``).
 
-    Returns:
+    Returns
+    -------
         A configured ``litellm.Router`` that tries ``primary`` first and
         cascades through ``fallback_0``, ``fallback_1``, … on failure.
     """
