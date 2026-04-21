@@ -11,6 +11,15 @@ on:
       - "e2e-tests/dragent/router/**"
       - "e2e-tests/dragent_tests/test_router.py"
       - ".github/workflows/e2e-router.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/datarobot_genai/core/**"
+      - "src/datarobot_genai/nat/**"
+      - "src/datarobot_genai/langgraph/router_llm.py"
+      - "e2e-tests/dragent/router/**"
+      - "e2e-tests/dragent_tests/test_router.py"
+      - ".github/workflows/e2e-router.yml"
 
 env:
   TASK_VERSION: 3.48.0
