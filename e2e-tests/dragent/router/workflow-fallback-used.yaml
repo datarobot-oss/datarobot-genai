@@ -23,10 +23,11 @@ llms:
   datarobot_llm:
     _type: datarobot-llm-router
     primary:
-      use_datarobot_llm_gateway: false
-      llm_deployment_id: "asdf-invalid-deployment-id"
+      use_datarobot_llm_gateway: true
+      llm_default_model: invalid-model-that-does-not-exist
     fallbacks:
       - use_datarobot_llm_gateway: true
+        llm_default_model: azure/gpt-4o-2024-11-20
     allowed_fails: 1
 
 workflow:

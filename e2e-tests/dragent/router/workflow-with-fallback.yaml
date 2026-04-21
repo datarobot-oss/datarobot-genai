@@ -24,8 +24,10 @@ llms:
     _type: datarobot-llm-router
     primary:
       use_datarobot_llm_gateway: true
+      llm_default_model: azure/gpt-4o-2024-11-20
     fallbacks:
       - use_datarobot_llm_gateway: true
+        llm_default_model: azure/gpt-4o-2024-11-20
     allowed_fails: 1
 
 workflow:
