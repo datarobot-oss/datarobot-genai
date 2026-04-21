@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 import click
 from colorama import Fore
@@ -26,6 +27,7 @@ from nat.front_ends.console.console_front_end_config import ConsoleFrontEndConfi
 from nat.front_ends.console.console_front_end_plugin import ConsoleFrontEndPlugin
 from nat.front_ends.console.console_front_end_plugin import prompt_for_input_cli
 from nat.runtime.session import SessionManager
+from pydantic import Field
 
 from datarobot_genai.dragent.cli.render import render_object_event
 
@@ -37,7 +39,24 @@ logger = logging.getLogger(__name__)
 # Registered as "dragent_console" so it doesn't conflict with NAT's built-in "console" frontend.
 # Used by `nat dragent run`.
 class DRAgentConsoleFrontEndConfig(ConsoleFrontEndConfig, name="dragent_console"):  # type: ignore
-    """Frontend config for running a dragent workflow from the console."""
+    """Frontend config for running a dragent workflow from the console.
+
+    Overrides CLI flag names to match the cli.py interface so the Taskfile can
+    pass CLI_ARGS straight through without flag translation.
+    """
+
+    model_config = {"populate_by_name": True}
+
+    input_query: list[str] | None = Field(
+        default=None,
+        alias="user_prompt",
+        description="User prompt string to send to the workflow.",
+    )
+    input_file: Path | None = Field(
+        default=None,
+        alias="input_file",
+        description="Path to a text file whose contents are used as the prompt.",
+    )
 
 
 class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
@@ -101,7 +120,7 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
         runner_outputs = None
         streamed_output: list[bool] = [False]
 
-        # --- BEGIN COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.4.1) ---
+        # --- BEGIN COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.6.0) ---
         # Only change: self._subscribe_intermediate_steps() injected inside
         # each session.run() block. Output formatting delegated to super().
         if self.front_end_config.input_query is not None:
@@ -135,7 +154,7 @@ class DRAgentConsoleFrontEndPlugin(ConsoleFrontEndPlugin):
                     runner_outputs = await runner.result(to_type=str)
         else:
             raise RuntimeError("No input provided. Should have been caught by pre_run.")
-        # --- END COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.4.1) ---
+        # --- END COPY from nat.front_ends.console.console_front_end_plugin (nvidia-nat 1.6.0) ---
 
         if streamed_output[0]:
             click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}", err=True)
