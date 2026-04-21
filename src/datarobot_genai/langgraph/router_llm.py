@@ -24,6 +24,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import BaseMessage
+from langchain_core.messages import FunctionMessage
+from langchain_core.messages import HumanMessage
+from langchain_core.messages import SystemMessage
+from langchain_core.messages import ToolMessage
 from langchain_core.outputs import ChatGeneration
 from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.outputs import ChatResult
@@ -36,11 +40,6 @@ if TYPE_CHECKING:
 
 def _lc_messages_to_litellm(messages: list[BaseMessage]) -> list[dict]:
     """Convert LangChain messages to litellm/OpenAI message dicts."""
-    from langchain_core.messages import FunctionMessage  # noqa: PLC0415
-    from langchain_core.messages import HumanMessage  # noqa: PLC0415
-    from langchain_core.messages import SystemMessage  # noqa: PLC0415
-    from langchain_core.messages import ToolMessage  # noqa: PLC0415
-
     result: list[dict] = []
     for msg in messages:
         if isinstance(msg, HumanMessage):
@@ -75,6 +74,21 @@ def _lc_messages_to_litellm(messages: list[BaseMessage]) -> list[dict]:
         else:
             result.append({"role": "user", "content": str(msg.content)})
     return result
+
+
+def _delta_to_tc_chunks(delta: Any) -> list[dict]:
+    if not getattr(delta, "tool_calls", None):
+        return []
+    return [
+        {
+            "index": tc.index,
+            "id": tc.id or "",
+            "name": tc.function.name if tc.function else "",
+            "args": tc.function.arguments if tc.function else "",
+            "type": "tool_call_chunk",
+        }
+        for tc in delta.tool_calls
+    ]
 
 
 def _litellm_response_to_chat_result(response: Any) -> ChatResult:
@@ -178,22 +192,10 @@ class RouterChatModel(BaseChatModel):
         call_kwargs.update(kwargs)
         for chunk in self.router.completion("primary", messages=litellm_messages, **call_kwargs):
             delta = chunk.choices[0].delta
-            content = delta.content or ""
-            tc_chunks = []
-            if getattr(delta, "tool_calls", None):
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    tc_chunks.append(
-                        {
-                            "index": idx,
-                            "id": tc.id or "",
-                            "name": tc.function.name if tc.function else "",
-                            "args": tc.function.arguments if tc.function else "",
-                            "type": "tool_call_chunk",
-                        }
-                    )
             yield ChatGenerationChunk(
-                message=AIMessageChunk(content=content, tool_call_chunks=tc_chunks)
+                message=AIMessageChunk(
+                    content=delta.content or "", tool_call_chunks=_delta_to_tc_chunks(delta)
+                )
             )
 
     async def _astream(
@@ -213,20 +215,8 @@ class RouterChatModel(BaseChatModel):
         )
         async for chunk in response:
             delta = chunk.choices[0].delta
-            content = delta.content or ""
-            tc_chunks = []
-            if getattr(delta, "tool_calls", None):
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    tc_chunks.append(
-                        {
-                            "index": idx,
-                            "id": tc.id or "",
-                            "name": tc.function.name if tc.function else "",
-                            "args": tc.function.arguments if tc.function else "",
-                            "type": "tool_call_chunk",
-                        }
-                    )
             yield ChatGenerationChunk(
-                message=AIMessageChunk(content=content, tool_call_chunks=tc_chunks)
+                message=AIMessageChunk(
+                    content=delta.content or "", tool_call_chunks=_delta_to_tc_chunks(delta)
+                )
             )

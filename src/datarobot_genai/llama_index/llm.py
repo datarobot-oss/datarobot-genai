@@ -155,6 +155,20 @@ def get_router_llm(
 
     router = build_litellm_router(primary, fallbacks, router_settings)
 
+    def _tool_calls_kwargs(message: Any) -> dict:
+        if not message.tool_calls:
+            return {}
+        return {
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in message.tool_calls
+            ]
+        }
+
     class RouterDataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
         """LlamaIndex LiteLLM subclass that delegates to a litellm.Router with streaming."""
 
@@ -173,23 +187,13 @@ def get_router_llm(
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
 
-            message_dicts = to_openai_message_dicts(messages)
-            resp = router.completion("primary", messages=message_dicts, **kwargs)
+            resp = router.completion("primary", messages=to_openai_message_dicts(messages), **kwargs)
             message = resp.choices[0].message
-            content = message.content or ""
-            additional_kwargs: dict = {}
-            if message.tool_calls:
-                additional_kwargs["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in message.tool_calls
-                ]
             return ChatResponse(
                 message=ChatMessage(
-                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                    role="assistant",
+                    content=message.content or "",
+                    additional_kwargs=_tool_calls_kwargs(message),
                 ),
                 raw=resp,
             )
@@ -199,23 +203,15 @@ def get_router_llm(
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
 
-            message_dicts = to_openai_message_dicts(messages)
-            resp = await router.acompletion("primary", messages=message_dicts, **kwargs)
+            resp = await router.acompletion(
+                "primary", messages=to_openai_message_dicts(messages), **kwargs
+            )
             message = resp.choices[0].message
-            content = message.content or ""
-            additional_kwargs: dict = {}
-            if message.tool_calls:
-                additional_kwargs["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in message.tool_calls
-                ]
             return ChatResponse(
                 message=ChatMessage(
-                    role="assistant", content=content, additional_kwargs=additional_kwargs
+                    role="assistant",
+                    content=message.content or "",
+                    additional_kwargs=_tool_calls_kwargs(message),
                 ),
                 raw=resp,
             )

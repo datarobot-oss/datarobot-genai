@@ -42,7 +42,6 @@ class DataRobotLLMComponentModelConfig(LLMConfig, OpenAIModelConfig, name="datar
         ),
         default=None,
     )
-    # Override inherited fields to read from env via factory functions.
     use_datarobot_llm_gateway: bool = Field(
         default_factory=default_use_datarobot_llm_gateway,
         description="Whether to use the DataRobot LLM gateway.",
@@ -59,7 +58,6 @@ class DataRobotLLMComponentModelConfig(LLMConfig, OpenAIModelConfig, name="datar
         description="Additional headers send to LLM deployment.",
         default=None,
     )
-    # get_llm_type() is inherited from LLMConfig.
 
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
