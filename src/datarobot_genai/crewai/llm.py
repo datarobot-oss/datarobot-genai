@@ -137,15 +137,16 @@ def get_router_llm(
         fallbacks: Ordered list of ``LLMConfig`` fallback configs.
         router_settings: Extra kwargs forwarded to ``litellm.Router``.
     """
+    import uuid  # noqa: PLC0415
+
+    from crewai.events import crewai_event_bus  # noqa: PLC0415
+    from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
 
     class RouterLitellmOnlyLLM(LLM):
-        def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
-            return object.__new__(cls)
-
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self.is_litellm = True
@@ -159,11 +160,6 @@ def get_router_llm(
             available_tools: list[dict] | None = None,
             **kwargs: Any,
         ) -> str:
-            import uuid  # noqa: PLC0415
-
-            from crewai.events import crewai_event_bus  # noqa: PLC0415
-            from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
-
             call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
@@ -176,7 +172,6 @@ def get_router_llm(
                 delta = chunk.choices[0].delta
                 if delta.content:
                     accumulated.append(delta.content)
-                    # Emit chunk event so CrewAI's CrewStreamingOutput receives tokens.
                     crewai_event_bus.emit(
                         self,
                         event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
