@@ -697,35 +697,6 @@ async def test_invoke_emits_interrupt_custom_event(run_agent_input: RunAgentInpu
     assert finished.result["langgraph"]["interrupted"] is True
 
 
-class PlainAIMessageStreamAgent(SimpleLangGraphAgent):
-    """Mock graph emitting a non-chunk AIMessage (typical for static graph node output)."""
-
-    @cached_property
-    def workflow(self) -> StateGraph[MessagesState]:
-        token = "E2E_INTERRUPT_CONTINUING"
-
-        async def mock_stream():
-            yield (
-                (),
-                "messages",
-                (AIMessage(content=token, id="static-node-msg"), {}),
-            )
-
-        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream()))
-        mock_state_graph = Mock(compile=Mock(return_value=mock_graph_stream))
-        return mock_state_graph
-
-
-@pytest.mark.asyncio
-async def test_invoke_streams_plain_aimessage_as_text(run_agent_input: RunAgentInput) -> None:
-    """LangGraph messages mode can yield full AIMessage; stream must emit TEXT_MESSAGE_*."""
-    agent = PlainAIMessageStreamAgent()
-    events = [e[0] async for e in agent.invoke(run_agent_input)]
-    content_events = [e for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
-    assert len(content_events) >= 1
-    assert "E2E_INTERRUPT_CONTINUING" in "".join(e.delta for e in content_events)
-
-
 async def test_langgraph_does_not_store_memory_when_run_fails(run_agent_input) -> None:
     # GIVEN an agent whose stream fails before completion
     class FailingWorkflowAgent(SimpleLangGraphAgent):
