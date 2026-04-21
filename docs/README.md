@@ -25,6 +25,8 @@ Build agents with **LangGraph**, **LlamaIndex**, or **CrewAI**, or define them i
 
 **AG-UI** — Chat UIs and tests consume a stream of **AG-UI events** (run lifecycle, text, tools, steps). DRAgent serves that over SSE; the examples show end-to-end behavior.
 
+**Notebook** — [`Example.ipynb`](Example.ipynb) is an optional Jupyter walkthrough (credentials, listing gateway models, a **LangGraph** graph + `datarobot_agent_class_from_langgraph`, AG-UI `invoke`).
+
 ## Prerequisites
 
 | Requirement | Details |

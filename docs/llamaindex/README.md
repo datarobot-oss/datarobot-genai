@@ -13,7 +13,6 @@ pip install "datarobot-genai[llamaindex]"
 | Doc | Focus |
 |---|---|
 | [agent.md](agent.md) | YAML + `myagent.py` in the sample |
-| [llm.md](llm.md) | Env + `llms:` |
 | [mcp.md](mcp.md) | Injected tools vs per-agent tools |
 
 [LLM configuration (shared)](../llm.md).

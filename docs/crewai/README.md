@@ -13,7 +13,6 @@ pip install "datarobot-genai[crewai]"
 | Doc | Focus |
 |---|---|
 | [agent.md](agent.md) | YAML + `myagent.py` |
-| [llm.md](llm.md) | Env + `llms:` |
 | [mcp.md](mcp.md) | Injected tools on agents |
 | [caveats.md](caveats.md) | Interface caveats |
 

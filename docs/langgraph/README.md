@@ -13,7 +13,6 @@ pip install "datarobot-genai[langgraph]"
 | Doc | Focus |
 |---|---|
 | [agent.md](agent.md) | `workflow.yaml` + what `myagent.py` defines |
-| [llm.md](llm.md) | Env vars + `llms:` in YAML |
 | [mcp.md](mcp.md) | Extra tools merged into your graph (when MCP is enabled) |
 
 Env reference: [LLM configuration (shared)](../llm.md).
