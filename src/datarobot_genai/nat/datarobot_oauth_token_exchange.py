@@ -89,7 +89,9 @@ class OAuth2TokenExchangeConfig(AuthProviderBaseConfig, name="oauth2_token_excha
 
     audience: str | None = Field(
         default=None,
-        description="Logical name or URI of the target service the exchanged token is intended for.",
+        description=(
+            "Logical name or URI of the target service the exchanged token is intended for."
+        ),
     )
     scopes: list[str] = Field(
         default_factory=list,
