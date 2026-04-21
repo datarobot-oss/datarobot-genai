@@ -15,6 +15,7 @@ pip install "datarobot-genai[crewai]"
 | [agent.md](agent.md) | YAML + `myagent.py` |
 | [llm.md](llm.md) | Env + `llms:` |
 | [mcp.md](mcp.md) | Injected tools on agents |
+| [caveats.md](caveats.md) | Interface caveats |
 
 [LLM configuration (shared)](../llm.md).
 

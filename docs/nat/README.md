@@ -17,8 +17,9 @@ pip install "datarobot-genai[dragent]"
 | [agent.md](agent.md) | Top-level **`workflow.yaml`**: `functions`, `workflow`, `llms`, how they connect |
 | [llm.md](llm.md) | The **`llms:`** block and `_type` values (e.g. `datarobot-llm-component`) |
 | [mcp.md](mcp.md) | **`function_groups`**, **`authentication`**, MCP tools in **`tool_names`** |
+| [caveats.md](caveats.md) | Interface caveats |
 
-Shared env vars: [LLM configuration (shared)](../llm.md). Streaming behavior (NAT ≥ 1.6): [NAT 1.6 streaming in DRAgent](../nat-1.6-streaming.md).
+Shared env vars: [LLM configuration (shared)](../llm.md). Streaming behavior (NAT ≥ 1.6): [NAT 1.6 streaming in DRAgent](../design/nat-1.6-streaming.md).
 
 ## Run the example
 

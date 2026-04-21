@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 from openai import OpenAI
 
+from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import BASE_URL
 
@@ -30,6 +31,12 @@ if not ALL_TEST_CASES:
 @pytest.mark.parametrize("stream", [True, False])
 def test_chat_completions_openai_client(authorization_context_encoded: str, stream: bool) -> None:
     """Call OpenAI-compatible `POST /v1/chat/completions` via the official OpenAI Python client."""
+    if AGENT == "nat" and stream:
+        pytest.skip(
+            "NAT does not support chat completions with streaming: its output is not in the Chat "
+            "Completions format"
+        )
+
     # GIVEN: an OpenAI client pointed at the agent's base endpoint with DataRobot auth headers
     client = OpenAI(
         base_url=BASE_URL,
@@ -52,8 +59,9 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         for chunk in response:
             assert chunk.choices
             content = chunk.choices[0].delta.content
-            full_response += content
             assert content is not None
+            full_response += content
+
         assert len(full_response) > 0, "Expected non-empty assistant message content"
     else:
         # THEN: the response follows the Chat Completions shape with non-empty assistant text

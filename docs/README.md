@@ -53,12 +53,12 @@ pip install "datarobot-genai[dragent]"
 
 Each guide explains the **interfaces you see in the repo**: `workflow.yaml` keys, env vars, and the Python file the sample ships with.
 
-| Integration | Overview | Agent & workflow surface | LLM options | Tools & MCP |
-|---|---|---|---|---|
-| LangGraph | [langgraph/](langgraph/) | [langgraph/agent.md](langgraph/agent.md) | [langgraph/llm.md](langgraph/llm.md) | [langgraph/mcp.md](langgraph/mcp.md) |
-| LlamaIndex | [llamaindex/](llamaindex/) | [llamaindex/agent.md](llamaindex/agent.md) | [llamaindex/llm.md](llamaindex/llm.md) | [llamaindex/mcp.md](llamaindex/mcp.md) |
-| CrewAI | [crewai/](crewai/) | [crewai/agent.md](crewai/agent.md) | [crewai/llm.md](crewai/llm.md) | [crewai/mcp.md](crewai/mcp.md) |
-| NAT + DRAgent | [nat/](nat/) | [nat/agent.md](nat/agent.md) | [nat/llm.md](nat/llm.md) | [nat/mcp.md](nat/mcp.md) |
+| Integration | Overview | Agent & workflow surface | LLM options | Tools & MCP | Caveats |
+|---|---|---|---|---|---|
+| LangGraph | [langgraph/](langgraph/) | [langgraph/agent.md](langgraph/agent.md) | [langgraph/llm.md](langgraph/llm.md) | [langgraph/mcp.md](langgraph/mcp.md) | [langgraph/caveats.md](langgraph/caveats.md) |
+| LlamaIndex | [llamaindex/](llamaindex/) | [llamaindex/agent.md](llamaindex/agent.md) | [llamaindex/llm.md](llamaindex/llm.md) | [llamaindex/mcp.md](llamaindex/mcp.md) | [llamaindex/caveats.md](llamaindex/caveats.md) |
+| CrewAI | [crewai/](crewai/) | [crewai/agent.md](crewai/agent.md) | [crewai/llm.md](crewai/llm.md) | [crewai/mcp.md](crewai/mcp.md) | [crewai/caveats.md](crewai/caveats.md) |
+| NAT + DRAgent | [nat/](nat/) | [nat/agent.md](nat/agent.md) | [nat/llm.md](nat/llm.md) | [nat/mcp.md](nat/mcp.md) | [nat/caveats.md](nat/caveats.md) |
 
 Shared **LLM routing** (gateway vs deployment vs NIM vs external): [LLM configuration](llm.md).
 

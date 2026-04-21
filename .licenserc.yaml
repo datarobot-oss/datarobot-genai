@@ -89,5 +89,6 @@ header:
     - '**/*.json'
     - '.cursor/**'
     - '**/.env*'
+    - '**/*.ipynb'
 
   comment: on-failure
