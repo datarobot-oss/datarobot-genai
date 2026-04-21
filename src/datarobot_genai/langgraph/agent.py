@@ -36,7 +36,6 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
-from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -308,7 +307,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         tool_call_id = ""
         async for _, mode, event in graph_stream:
             if mode == "messages":
-                message_event: tuple[AIMessage | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
+                message_event: tuple[AIMessageChunk | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
                 message = message_event[0]
                 if isinstance(message, ToolMessage):
                     tool_message_id = (
