@@ -51,11 +51,11 @@ def test_get_router_llm_returns_llm_instance() -> None:
     from datarobot_genai.crewai.llm import get_router_llm
 
     primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    _fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
-        llm = get_router_llm(primary, [fallback])
+        llm = get_router_llm(primary, [_fallback])
 
     assert isinstance(llm, LLM)
     assert llm.is_litellm is True
@@ -71,8 +71,8 @@ def test_router_llm_call_streams_and_accumulates() -> None:
 
     with patch("litellm.Router", return_value=mock_router):
         primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
-        llm = get_router_llm(primary, [fb])
+        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [_fb])
 
     result = llm.call(messages=[{"role": "user", "content": "hi"}])
     assert result == "Hello world"
@@ -90,8 +90,8 @@ def test_router_llm_call_invokes_callbacks_per_chunk() -> None:
 
     with patch("litellm.Router", return_value=mock_router):
         primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
-        llm = get_router_llm(primary, [fb])
+        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [_fb])
 
     callback = MagicMock()
     callback.on_llm_new_token = MagicMock()
@@ -112,8 +112,8 @@ def test_router_llm_call_emits_llm_stream_chunk_events() -> None:
 
     with patch("litellm.Router", return_value=mock_router):
         primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
-        llm = get_router_llm(primary, [fb])
+        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [_fb])
 
     emitted: list[LLMStreamChunkEvent] = []
 

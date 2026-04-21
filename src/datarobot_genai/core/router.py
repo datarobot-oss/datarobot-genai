@@ -40,7 +40,7 @@ def merge_streaming_tool_calls(tool_calls_seen: list[Any]) -> list[dict]:
             merged[idx]["id"] = tc.id
         if tc.function and tc.function.name:
             merged[idx]["name"] = tc.function.name
-        if tc.function and tc.function.arguments:
+        if tc.function and tc.function.arguments is not None:
             merged[idx]["arguments"] += tc.function.arguments
     return [
         {

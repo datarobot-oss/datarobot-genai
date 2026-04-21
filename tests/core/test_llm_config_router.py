@@ -179,6 +179,30 @@ def test_build_litellm_router_fallbacks_chain() -> None:
     assert call_kwargs["fallbacks"] == [{"primary": ["fallback_0", "fallback_1"]}]
 
 
+def test_build_litellm_router_multiple_fallbacks() -> None:
+    from datarobot_genai.core.router import build_litellm_router
+
+    primary = LLMConfig(use_datarobot_llm_gateway=True)
+    fb0 = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    fb1 = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    fb2 = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="gpt-4")
+
+    with patch("litellm.Router") as mock_router_cls:
+        mock_router_cls.return_value = MagicMock()
+        build_litellm_router(primary, [fb0, fb1, fb2])
+
+    call_kwargs = mock_router_cls.call_args.kwargs
+    model_list = call_kwargs["model_list"]
+    assert len(model_list) == 4
+    assert model_list[0]["model_name"] == "primary"
+    assert model_list[1]["model_name"] == "fallback_0"
+    assert model_list[2]["model_name"] == "fallback_1"
+    assert model_list[3]["model_name"] == "fallback_2"
+    assert call_kwargs["fallbacks"] == [
+        {"primary": ["fallback_0", "fallback_1", "fallback_2"]}
+    ]
+
+
 def test_build_litellm_router_passes_settings() -> None:
     from datarobot_genai.core.router import build_litellm_router
 
@@ -248,6 +272,25 @@ def test_merge_streaming_tool_calls_multiple_calls() -> None:
     result = merge_streaming_tool_calls([tc0, tc1])
     names = {r["function"]["name"] for r in result}
     assert names == {"tool_a", "tool_b"}
+
+
+def test_merge_streaming_tool_calls_skips_none_arguments() -> None:
+    from types import SimpleNamespace
+
+    from datarobot_genai.core.router import merge_streaming_tool_calls
+
+    frag1 = SimpleNamespace(
+        index=0, id="call-1", function=SimpleNamespace(name="tool_a", arguments='{"x":')
+    )
+    frag2 = SimpleNamespace(
+        index=0, id=None, function=SimpleNamespace(name=None, arguments=None)
+    )
+    frag3 = SimpleNamespace(
+        index=0, id=None, function=SimpleNamespace(name=None, arguments=" 1}")
+    )
+    result = merge_streaming_tool_calls([frag1, frag2, frag3])
+    assert len(result) == 1
+    assert result[0]["function"]["arguments"] == '{"x": 1}'
 
 
 # ---------------------------------------------------------------------------

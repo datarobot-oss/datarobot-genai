@@ -106,11 +106,11 @@ def test_get_router_llm_returns_base_chat_model() -> None:
     from datarobot_genai.langgraph.llm import get_router_llm
 
     primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    _fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
-        llm = get_router_llm(primary, [fallback])
+        llm = get_router_llm(primary, [_fallback])
 
     assert isinstance(llm, BaseChatModel)
     assert llm._llm_type == "datarobot-router"
