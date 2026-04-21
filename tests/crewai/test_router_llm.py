@@ -142,6 +142,7 @@ async def test_router_llm_acall_streams_and_accumulates() -> None:
         async def gen() -> Any:
             for c in chunks:
                 yield c
+
         return gen()
 
     mock_router = MagicMock()

@@ -21,6 +21,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytest.importorskip("litellm")
+
 from datarobot_genai.core import config as config_mod
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
@@ -185,9 +187,7 @@ def test_build_litellm_router_passes_settings() -> None:
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
-        build_litellm_router(
-            primary, [fb], {"allowed_fails": 5, "cooldown_time": 60.0}
-        )
+        build_litellm_router(primary, [fb], {"allowed_fails": 5, "cooldown_time": 60.0})
 
     call_kwargs = mock_router_cls.call_args.kwargs
     assert call_kwargs["allowed_fails"] == 5
@@ -211,7 +211,11 @@ def test_merge_streaming_tool_calls_single_fragment() -> None:
     )
     result = merge_streaming_tool_calls([tc])
     assert result == [
-        {"id": "call-abc", "type": "function", "function": {"name": "my_tool", "arguments": '{"x": 1}'}}
+        {
+            "id": "call-abc",
+            "type": "function",
+            "function": {"name": "my_tool", "arguments": '{"x": 1}'},
+        }
     ]
 
 
@@ -223,9 +227,7 @@ def test_merge_streaming_tool_calls_merges_argument_fragments() -> None:
     frag1 = SimpleNamespace(
         index=0, id="call-1", function=SimpleNamespace(name="tool_a", arguments='{"x":')
     )
-    frag2 = SimpleNamespace(
-        index=0, id=None, function=SimpleNamespace(name=None, arguments=' 1}')
-    )
+    frag2 = SimpleNamespace(index=0, id=None, function=SimpleNamespace(name=None, arguments=" 1}"))
     result = merge_streaming_tool_calls([frag1, frag2])
     assert len(result) == 1
     assert result[0]["function"]["arguments"] == '{"x": 1}'
@@ -237,8 +239,12 @@ def test_merge_streaming_tool_calls_multiple_calls() -> None:
 
     from datarobot_genai.core.router import merge_streaming_tool_calls
 
-    tc0 = SimpleNamespace(index=0, id="id-0", function=SimpleNamespace(name="tool_a", arguments="{}"))
-    tc1 = SimpleNamespace(index=1, id="id-1", function=SimpleNamespace(name="tool_b", arguments='{"y": 2}'))
+    tc0 = SimpleNamespace(
+        index=0, id="id-0", function=SimpleNamespace(name="tool_a", arguments="{}")
+    )
+    tc1 = SimpleNamespace(
+        index=1, id="id-1", function=SimpleNamespace(name="tool_b", arguments='{"y": 2}')
+    )
     result = merge_streaming_tool_calls([tc0, tc1])
     names = {r["function"]["name"] for r in result}
     assert names == {"tool_a", "tool_b"}

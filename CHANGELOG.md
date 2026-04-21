@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.13
+- Added `DataRobotLLMRouterConfig` (`datarobot-llm-router`) to NAT: configure primary + fallback LLM providers via `litellm.Router` for automatic failover.
+- Added `get_router_llm` for CrewAI and `RouterLLM` for LangGraph and LlamaIndex to expose the same litellm-backed router to each framework's agent.
+- Added E2E tests for the router fallback scenarios across all frameworks (NAT, CrewAI, LlamaIndex).
+
 ## 0.15.12
 - Updated documentation for agents: added quickstart guide
 - Updated documentation for LLMs: getting models for LLM GW, and additional details for each route

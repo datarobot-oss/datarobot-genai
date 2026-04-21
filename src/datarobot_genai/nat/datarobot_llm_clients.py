@@ -477,9 +477,7 @@ def _router_settings_from_config(llm_config: DataRobotLLMRouterConfig) -> dict:
     return settings
 
 
-@register_llm_client(
-    config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN
-)
+@register_llm_client(config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 async def datarobot_llm_router_langchain(
     llm_config: DataRobotLLMRouterConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
@@ -499,9 +497,7 @@ async def datarobot_llm_router_langchain(
     yield langchain_patch_llm_based_on_config(client, llm_config)
 
 
-@register_llm_client(
-    config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.CREWAI
-)
+@register_llm_client(config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.CREWAI)
 async def datarobot_llm_router_crewai(
     llm_config: DataRobotLLMRouterConfig, builder: Builder
 ) -> AsyncGenerator[LLM]:

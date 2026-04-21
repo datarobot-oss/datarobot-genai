@@ -141,12 +141,16 @@ def get_router_llm(
 
     from crewai.events import crewai_event_bus  # noqa: PLC0415
     from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
+
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
 
     class RouterLitellmOnlyLLM(LLM):
+        def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
+            return object.__new__(cls)
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self.is_litellm = True

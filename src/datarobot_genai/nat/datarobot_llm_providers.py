@@ -31,7 +31,9 @@ from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 
 
-class DataRobotLLMComponentModelConfig(LLMConfig, OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
+class DataRobotLLMComponentModelConfig(
+    LLMConfig, OpenAIModelConfig, name="datarobot-llm-component"
+):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     model_name: str | None = Field(
@@ -172,9 +174,7 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
         description="Placeholder model name (not used for routing; each sub-config has its own).",
         default="datarobot-router",
     )
-    primary: LLMConfig = Field(
-        description="Primary LLM configuration."
-    )
+    primary: LLMConfig = Field(description="Primary LLM configuration.")
     fallbacks: list[LLMConfig] = Field(
         description="Ordered list of fallback LLM configurations (at least one required).",
         min_length=1,
