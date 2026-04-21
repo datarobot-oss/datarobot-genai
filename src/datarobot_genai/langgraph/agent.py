@@ -399,68 +399,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                             None,
                             usage_metrics,
                         )
-                elif isinstance(message, AIMessage):
-                    # Non-chunk AIMessage (e.g. graph nodes that add a full AIMessage without
-                    # streaming). AIMessageChunk is handled above; chunks subclass AIMessage.
-                    if message.tool_calls:
-                        for tc in message.tool_calls:
-                            if not isinstance(tc, dict):
-                                continue
-                            tcid = tc.get("id")
-                            tool_call_id = str(tcid) if tcid else ""
-                            name = tc.get("name")
-                            if name:
-                                yield (
-                                    ToolCallStartEvent(
-                                        type=EventType.TOOL_CALL_START,
-                                        tool_call_id=tool_call_id,
-                                        tool_call_name=name,
-                                        parent_message_id=str(message.id or ""),
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                            args = tc.get("args")
-                            if args is not None:
-                                yield (
-                                    ToolCallArgsEvent(
-                                        type=EventType.TOOL_CALL_ARGS,
-                                        tool_call_id=tool_call_id,
-                                        delta=args,
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                    elif message.content:
-                        if message.id != current_message_id:
-                            if current_message_id:
-                                yield (
-                                    TextMessageEndEvent(
-                                        type=EventType.TEXT_MESSAGE_END,
-                                        message_id=current_message_id,
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                            current_message_id = str(message.id or "")
-                            yield (
-                                TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
-                                    message_id=current_message_id,
-                                    role="assistant",
-                                ),
-                                None,
-                                usage_metrics,
-                            )
-                        yield (
-                            TextMessageContentEvent(
-                                type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=current_message_id,
-                                delta=str(message.content),
-                            ),
-                            None,
-                            usage_metrics,
-                        )
                 else:
                     raise ValueError(f"Invalid message event: {message_event}")
             elif mode == "updates":

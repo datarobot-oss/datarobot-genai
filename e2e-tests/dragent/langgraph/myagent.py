@@ -17,7 +17,7 @@ from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 from langchain.agents import create_agent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessageChunk
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -79,7 +79,7 @@ def graph_factory(
             reply = E2E_INTERRUPT_CANCELLED
         else:
             reply = E2E_INTERRUPT_CONTINUING
-        return {"messages": prior + [AIMessage(content=reply)]}
+        return {"messages": prior + [AIMessageChunk(content=reply)]}
 
     def route_after_human_review(state: MessagesState) -> str:
         """Return the next node: END or writer_node.
