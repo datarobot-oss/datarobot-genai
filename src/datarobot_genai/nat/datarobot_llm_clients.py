@@ -462,8 +462,6 @@ async def litellm_llamaindex_internal(
 
 def _router_settings_from_config(llm_config: DataRobotLLMRouterConfig) -> dict:
     settings: dict = {"allowed_fails": llm_config.allowed_fails}
-    if llm_config.retry_policy is not None:
-        settings["retry_policy"] = llm_config.retry_policy
     if llm_config.cooldown_time is not None:
         settings["cooldown_time"] = llm_config.cooldown_time
     return settings
