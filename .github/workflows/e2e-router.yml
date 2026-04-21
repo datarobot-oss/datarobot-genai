@@ -5,17 +5,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "src/datarobot_genai/core/router.py"
-      - "src/datarobot_genai/core/config.py"
-      - "src/datarobot_genai/nat/datarobot_llm_providers.py"
-      - "src/datarobot_genai/nat/datarobot_llm_clients.py"
+      - "src/datarobot_genai/core/**"
+      - "src/datarobot_genai/nat/**"
       - "src/datarobot_genai/langgraph/router_llm.py"
-      - "src/datarobot_genai/langgraph/llm.py"
       - "e2e-tests/dragent/router/**"
       - "e2e-tests/dragent_tests/test_router.py"
-      - "e2e-tests/dragent/Taskfile.yaml"
-      - "e2e-tests/Taskfile.yaml"
-      - "e2e-tests/pyproject.toml"
       - ".github/workflows/e2e-router.yml"
 
 env:
@@ -29,14 +23,12 @@ jobs:
       fail-fast: false
       matrix:
         router_scenario: [primary-only, with-fallback, fallback-used]
-        python-version: ["3.12"]
     permissions:
       contents: read
     env:
       DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
       DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
       DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-      MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
       AGENT: router
@@ -53,7 +45,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
       - name: Setup Task
         uses: arduino/setup-task@v2
@@ -70,9 +62,9 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-router-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.router_scenario }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          key: e2e-router-uv-${{ runner.os }}-${{ hashFiles('e2e-tests/uv.lock') }}
           restore-keys: |
-            e2e-router-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.router_scenario }}-
+            e2e-router-uv-${{ runner.os }}-
 
       - name: Install dependencies
         working-directory: e2e-tests
@@ -88,8 +80,6 @@ jobs:
 
       - name: Run router e2e tests
         working-directory: e2e-tests
-        env:
-          LLM_DEFAULT_MODEL: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
         run: |
           uv run pytest dragent_tests/test_router.py -vv -s --timeout=60 --tb=short --reruns=2 --reruns-delay=5 --junitxml=test_results/results.xml
 
@@ -97,6 +87,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-router-results-${{ matrix.router_scenario }}-py${{ matrix.python-version }}
+          name: e2e-router-results-${{ matrix.router_scenario }}
           path: e2e-tests/test_results/
           if-no-files-found: ignore
