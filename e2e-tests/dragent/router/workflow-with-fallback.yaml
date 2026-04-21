@@ -23,9 +23,17 @@ llms:
         llm_default_model: azure/gpt-4o-2024-11-20
     allowed_fails: 1
 
+functions:
+  responder:
+    _type: chat_completion
+    llm_name: datarobot_llm
+    system_prompt: "You are a helpful assistant. Reply concisely."
+    description: "Responds to user messages."
+
 workflow:
   _type: per_user_tool_calling_agent
   llm_name: datarobot_llm
-  tool_names: []
-  system_prompt: "You are a helpful assistant. Reply concisely."
+  tool_names: [responder]
+  max_iterations: 1
+  system_prompt: "Use the responder tool to answer the user's message, then return its response."
   verbose: true
