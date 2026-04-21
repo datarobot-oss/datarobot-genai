@@ -27,9 +27,10 @@
 
 - **AG-UI integration** — Agents expose a standard **AG-UI** event stream (`RunAgentInput` in, lifecycle + text + tool-call events out), so UIs and the DataRobot platform can render runs consistently without bespoke adapters per framework.
 - **Multi-agent systems out of the box** — First-class patterns for **planner/writer crews**, **LangGraph** multi-node graphs, and **LlamaIndex** `AgentWorkflow` handoffs; wrap them with one helper and keep the same streaming contract.
-- **Unified LLM layer (DataRobot-compatible)** — One **`get_llm()`** entry point per integration (**LangGraph**, **LlamaIndex**, **CrewAI**), all backed by the same **LiteLLM**-based routing to the **DataRobot LLM Gateway**, **LLM deployments**, **NIM**, or external providers—driven by the same environment and `Config`, so every component speaks to DataRobot consistently.
+- **Unified LLM layer (DataRobot-compatible)** — One **`get_llm()`** entry point per integration (**LangGraph**, **LlamaIndex**, **CrewAI**, **NAT**), all backed by the same **LiteLLM**-based routing to the **DataRobot LLM Gateway**, **LLM deployments**, **NIM**, or external providers—driven by the same environment and `Config`, so every component speaks to DataRobot consistently.
 - Utilities for common GenAI workflows.
-- **Integrations:** CrewAI, LangGraph, LlamaIndex, NAT, MCP.
+- **Orchestration:** — Build your agents from universal pieces in low-code `workflow.yaml` interface. Combine and re-use LLMs, tools, agents, and evaluators. Compatible and inspired by [NeMo Agentic Toolkit](https://github.com/NVIDIA/NeMo-Agent-Toolkit)
+- **Evaluating and serving with DRAgent:** — A frontend server which lets you seamlessly plug-in your agent into a real world application. Supports distributed tracing, generation and evaluation endpoints, async generations, two-way communication with WebSockets.
 
 User-facing walkthrough: [docs/README.md](docs/README.md).
 
