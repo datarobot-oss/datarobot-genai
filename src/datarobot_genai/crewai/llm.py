@@ -26,6 +26,9 @@ from datarobot_genai.core.config import default_model_name
 
 def _crewai_model_factory(config: dict) -> LLM:
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
+    # Strip NAT-internal keys that cause "extra inputs" errors in litellm.
+    # Multiple config types (Deployment, Component, Litellm) flow through here.
+    config.pop("verify_ssl", None)
 
     # This class is used to override all the magic LLM tries to pull on using
     # native LLM clients. We don't want to use native LLM clients, we want to use

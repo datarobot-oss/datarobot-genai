@@ -4,8 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.14.7
+## 0.15.6
 - Added LangGraph human-in-the-loop support.
+
+## 0.15.5
+- **Security**: Raised minimum `pypdf` to `>=6.10.1` for CVE-2026-40260 (fixed in 6.10.0) and GHSA-jj6c-8h6c-hppx (fixed in 6.10.1).
+
+## 0.15.4
+- Added README.md and standalone documentation
+- Documented AG-UI integration, multi-agent patterns, and the unified DataRobot-compatible LLM layer (`get_llm()`, shared `Config` / environment) in the root and docs READMEs
+
+## 0.15.3
+- Wired `LangchainProfilerHandler` into LangGraph agent config so `nat dragent run` streams intermediate LLM events to the console frontend.
+- Broadened CrewAI MCP exception handling to catch all exceptions on connection failure, so `nat dragent run` continues without MCP tools instead of crashing.
+
+## 0.15.2
+- Removed the dedicated S3 client module from `drtools.core.clients` (S3 is no longer exposed as a first-class tool client here).
+- Removed the `predict_by_file_path` predictive tool; use catalog or dataset-based prediction flows instead.
+- `predict_realtime` now accepts inline prediction payload data only (for example CSV/JSON text via `dataset`); local `file_path` is no longer supported.
+- `validate_prediction_data` now takes inline CSV content (`csv_string`) only; local file paths are no longer supported.
+- `upload_dataset_to_ai_catalog` uploads via `file_content_base64` and `dataset_filename`, or `file_url`; local filesystem paths are no longer accepted for remote-safe MCP usage.
+- `score_dataset_with_model` takes an AI Catalog `dataset_id`, copies it into the project with `Project.upload_dataset_from_catalog`, then runs `Model.request_predictions` on the prediction dataset (catalog datasets are not valid for `request_predictions` alone; `Model.score` does not exist); dataset URL parameters were removed.
+- Refactored deployment helper logic into `drtools.core.deployment_utils` and trimmed `deployment.py` to orchestration on top of it.
+- Adjusted the DataRobot SDK client wrapper, shared constants, and tool error messaging in `utils.py` to align with the updated prediction and upload flows.
+- Updated tests to align with the changes.
+
+## 0.15.1
+- Added opt-in memory retrieval and storage to the NAT base agent when prompts declare `{memory}`.
+
+## 0.15.0
+- Migrated NAT dependencies from 1.4.1 to 1.6.0
+    - Updated import path for tool_calling_agent (nat.agent -> nat.plugins.langchain.agent)
+    - Monkey-patched UserManager.extract_user_from_connection for DR auth context user_id resolution
+    - Registered health routes in build_app() for NAT 1.6 compatibility
+    - Stripped internal NAT params (verify_ssl) from crewai LLM config
+    - Wrapped tool_calling_agent stream_fn for AG-UI event conversion
+    - Removed CrewAI callback handler compatibility patch (fixed upstream in NAT 1.6)
+    - Excluded flask transitive dependency from nvidia-nat-core 1.6.0
 
 ## 0.14.6
 - Fixed MCP tool calls to deployments silently swallowing HTTP error responses instead of surfacing them as tool errors.

@@ -77,11 +77,6 @@ def model_id(classification_project: dict[str, Any]) -> str:
 
 
 @pytest.fixture(scope="session")
-def dataset_url() -> str:
-    return "https://s3.amazonaws.com/datarobot_public_datasets/10k_diabetes_scoring_small.csv"
-
-
-@pytest.fixture(scope="session")
 def nonexistent_model_id() -> str:
     return "nonexistent_model_id"
 

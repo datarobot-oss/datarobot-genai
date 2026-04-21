@@ -120,6 +120,9 @@ def _check_dict_params_match(
                 return False
             if not _check_dict_params_match(value, actual[key], current_path):
                 return False
+        elif isinstance(value, str) and isinstance(actual[key], str):
+            if actual[key].strip() != value.strip():
+                return False
         elif actual[key] != value:
             return False
     return True

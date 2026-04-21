@@ -23,7 +23,7 @@ from unittest.mock import patch
 import pytest
 from dotenv import load_dotenv
 
-from datarobot_genai.drtools.core.clients.datarobot import deploy_custom_model_impl
+from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import deployment
 

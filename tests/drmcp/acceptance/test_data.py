@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 import inspect
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,16 +23,21 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
 
+# Tiny CSV for base64 upload E2E: model must pass this exact base64 string to the tool.
+_TINY_UPLOAD_CSV = "col_a,col_b\n1,2\n"
+TINY_UPLOAD_CSV_BASE64 = base64.b64encode(_TINY_UPLOAD_CSV.encode("utf-8")).decode("ascii")
+
 
 @pytest.fixture(scope="session")
-def expectations_for_upload_dataset_to_ai_catalog_success(
-    diabetes_scoring_small_file_path: Path,
-) -> ETETestExpectations:
+def expectations_for_upload_dataset_to_ai_catalog_success_from_base64() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
                 name="upload_dataset_to_ai_catalog",
-                parameters={"file_path": str(diabetes_scoring_small_file_path)},
+                parameters={
+                    "file_content_base64": TINY_UPLOAD_CSV_BASE64,
+                    "dataset_filename": "ete_tiny.csv",
+                },
                 result={"dataset_id": "", "dataset_version_id": "", "dataset_name": ""},
             ),
         ],
@@ -67,29 +72,6 @@ def expectations_for_upload_dataset_to_ai_catalog_success_from_url() -> ETETestE
 
 
 @pytest.fixture(scope="session")
-def expectations_for_upload_dataset_to_ai_catalog_failure(
-    nonexistent_file_path: str,
-) -> ETETestExpectations:
-    return ETETestExpectations(
-        potential_no_tool_calls=True,
-        tool_calls_expected=[
-            ToolCallTestExpectations(
-                name="upload_dataset_to_ai_catalog",
-                parameters={"file_path": nonexistent_file_path},
-                result=f"File not found: {nonexistent_file_path}",
-            ),
-        ],
-        llm_response_content_contains_expectations=[
-            "File not found",
-            "cannot be found",
-            "not found",
-            "does not exist",
-            nonexistent_file_path,
-        ],
-    )
-
-
-@pytest.fixture(scope="session")
 def expectations_for_list_ai_catalog_items_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
@@ -110,38 +92,6 @@ def expectations_for_list_ai_catalog_items_success() -> ETETestExpectations:
 @pytest.mark.asyncio
 class TestDataE2E(ToolBaseE2E):
     """End-to-end tests for data-related functionality."""
-
-    # Note: keep this test to run first, so that list datasets test can run after it
-    # for the sake of asserts
-    @pytest.mark.parametrize(
-        "prompt_template",
-        [
-            """
-        I'm working on a machine learning project and I need to upload a dataset to the
-        DataRobot AI Catalog. Can you help me upload the dataset at {file_path}?
-        """
-        ],
-    )
-    async def test_upload_dataset_to_ai_catalog_success(
-        self,
-        llm_client: Any,
-        expectations_for_upload_dataset_to_ai_catalog_success: ETETestExpectations,
-        prompt_template: str,
-        diabetes_scoring_small_file_path: str,
-    ) -> None:
-        prompt = prompt_template.format(file_path=diabetes_scoring_small_file_path)
-        async with ete_test_mcp_session() as session:
-            await self._run_test_with_expectations(
-                prompt,
-                expectations_for_upload_dataset_to_ai_catalog_success,
-                llm_client,
-                session,
-                (
-                    inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
-                    if inspect.currentframe()
-                    else "test_upload_dataset_to_ai_catalog_success"
-                ),
-            )
 
     @pytest.mark.parametrize(
         "prompt_template",
@@ -178,29 +128,31 @@ class TestDataE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        I'm working on a machine learning project and I need to upload a dataset to the
-        DataRobot AI Catalog. Can you help me upload the dataset at {file_path}?
+        Upload a dataset to the DataRobot AI Catalog using the upload_dataset_to_ai_catalog tool.
+        Use file_content_base64 with this exact value (copy it character for character, no spaces
+        added or removed): {b64}
+        Use dataset_filename exactly: ete_tiny.csv
+        Do not use file_url or a local file path.
         """
         ],
     )
-    async def test_upload_dataset_to_ai_catalog_failure(
+    async def test_upload_dataset_to_ai_catalog_success_from_base64(
         self,
         llm_client: Any,
-        expectations_for_upload_dataset_to_ai_catalog_failure: ETETestExpectations,
+        expectations_for_upload_dataset_to_ai_catalog_success_from_base64: ETETestExpectations,
         prompt_template: str,
-        nonexistent_file_path: str,
     ) -> None:
-        prompt = prompt_template.format(file_path=nonexistent_file_path)
+        prompt = prompt_template.format(b64=TINY_UPLOAD_CSV_BASE64)
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_upload_dataset_to_ai_catalog_failure,
+                expectations_for_upload_dataset_to_ai_catalog_success_from_base64,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_upload_dataset_to_ai_catalog_failure"
+                    else "test_upload_dataset_to_ai_catalog_success_from_base64"
                 ),
             )
 

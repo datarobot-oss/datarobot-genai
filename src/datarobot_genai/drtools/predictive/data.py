@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
+import binascii
+import io
 import logging
-import os
 from typing import Annotated
 from typing import Any
 
@@ -43,28 +45,49 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
 @tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
 async def upload_dataset_to_ai_catalog(
     *,
-    file_path: Annotated[str, "The path to the dataset file to upload."] | None = None,
-    file_url: Annotated[str, "The URL to the dataset file to upload."] | None = None,
+    file_content_base64: Annotated[
+        str,
+        (
+            "Base64-encoded file bytes (e.g. CSV). For remote clients; "
+            "mutually exclusive with file_url."
+        ),
+    ]
+    | None = None,
+    dataset_filename: Annotated[
+        str,
+        "Filename for base64 upload; include extension (e.g. data.csv).",
+    ] = "data.csv",
+    file_url: Annotated[str, "HTTPS URL of a dataset file to register in the catalog."]
+    | None = None,
 ) -> dict[str, Any]:
-    """Upload a dataset to the DataRobot AI Catalog / Data Registry."""
-    if not file_path and not file_url:
-        raise ToolError("Either file_path or file_url must be provided.")
-    if file_path and file_url:
-        raise ToolError("Please provide either file_path or file_url, not both.")
+    """Upload a dataset to the DataRobot AI Catalog / Data Registry from bytes or URL."""
+    if not file_content_base64 and not file_url:
+        raise ToolError("Either file_content_base64 or file_url must be provided.")
+    if file_content_base64 and file_url:
+        raise ToolError("Please provide either file_content_base64 or file_url, not both.")
 
-    # Get client
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     catalog_item = None
-    # If file path is provided, create dataset from file.
-    if file_path:
-        # Does file exist?
-        if not os.path.exists(file_path):
-            logger.error("File not found: %s", file_path)
-            raise ToolError(f"File not found: {file_path}")
-        catalog_item = client.Dataset.create_from_file(file_path)
+    if file_content_base64 is not None:
+        raw_b64 = file_content_base64.strip()
+        if not raw_b64:
+            raise ToolError("Argument validation error: 'file_content_base64' cannot be empty.")
+        try:
+            raw = base64.b64decode(raw_b64)
+        except binascii.Error as e:
+            raise ToolError("Invalid base64 in file_content_base64.") from e
+        if not raw:
+            raise ToolError("Decoded file content is empty.")
+        fname = (
+            dataset_filename.strip()
+            if dataset_filename and dataset_filename.strip()
+            else "data.csv"
+        )
+        buffer = io.BytesIO(raw)
+        buffer.name = fname
+        catalog_item = client.Dataset.create_from_file(filelike=buffer)
     else:
-        # Does URL exist?
         if file_url is None or not is_valid_url(file_url):
             logger.error("Invalid file URL: %s", file_url)
             raise ToolError(f"Invalid file URL: {file_url}")

@@ -45,6 +45,7 @@ from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Checkpointer
 from langgraph.types import Command
+from nat.plugins.langchain.callback_handler import LangchainProfilerHandler
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
@@ -85,6 +86,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def langgraph_config(self) -> dict[str, Any]:
         return {
             "recursion_limit": 150,  # Maximum number of steps to take in the graph
+            "callbacks": [LangchainProfilerHandler()],
         }
 
     @cached_property
