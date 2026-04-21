@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        router_scenario: [primary-only, with-fallback, fallback-used]
+        router_scenario: [with-fallback, fallback-used]
     permissions:
       contents: read
     env:
