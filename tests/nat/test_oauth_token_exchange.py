@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import httpx
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
+from pydantic import ValidationError
 
-from datarobot_genai.nat.datarobot_oauth_token_exchange import (
-    GRANT_TYPE_TOKEN_EXCHANGE,
-    SUBJECT_TOKEN_TYPE_ACCESS_TOKEN,
-    OAuth2TokenExchangeConfig,
-    OAuth2TokenExchangeProvider,
-)
+from datarobot_genai.nat.datarobot_oauth_token_exchange import GRANT_TYPE_TOKEN_EXCHANGE
+from datarobot_genai.nat.datarobot_oauth_token_exchange import SUBJECT_TOKEN_TYPE_ACCESS_TOKEN
+from datarobot_genai.nat.datarobot_oauth_token_exchange import OAuth2TokenExchangeConfig
+from datarobot_genai.nat.datarobot_oauth_token_exchange import OAuth2TokenExchangeProvider
 
 _PATCH_TARGET = "datarobot_genai.nat.datarobot_oauth_token_exchange.httpx.AsyncClient"
 
@@ -33,6 +33,7 @@ def _response(json: dict) -> httpx.Response:
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def base_config_kwargs():
@@ -55,7 +56,7 @@ def provider(config):
 
 @pytest.fixture
 def mock_http(token_response):
-    """Yields a mock AsyncClient pre-configured with a successful exchange response."""
+    """Yield a mock AsyncClient pre-configured with a successful exchange response."""
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
@@ -71,6 +72,7 @@ def token_response():
 
 # ── Config tests ──────────────────────────────────────────────────────────────
 
+
 class TestOAuth2TokenExchangeConfig:
     def test_valid_minimal(self, config):
         assert config.token_url == "https://auth.example.com/oauth2/token"
@@ -84,13 +86,15 @@ class TestOAuth2TokenExchangeConfig:
     def test_rejects_http_non_localhost(self, field):
         with pytest.raises(ValidationError, match="must be HTTPS"):
             OAuth2TokenExchangeConfig(
-                client_id="c", client_secret=SecretStr("s"),
+                client_id="c",
+                client_secret=SecretStr("s"),
                 **{field: "http://remote.example.com/token"},
             )
 
     def test_allows_http_localhost(self):
         cfg = OAuth2TokenExchangeConfig(
-            client_id="c", client_secret=SecretStr("s"),
+            client_id="c",
+            client_secret=SecretStr("s"),
             token_url="http://localhost:8080/token",
         )
         assert cfg.token_url == "http://localhost:8080/token"
@@ -101,6 +105,7 @@ class TestOAuth2TokenExchangeConfig:
 
 
 # ── Provider tests ────────────────────────────────────────────────────────────
+
 
 class TestOAuth2TokenExchangeProvider:
     @pytest.mark.asyncio
@@ -151,13 +156,16 @@ class TestOAuth2TokenExchangeProvider:
     async def test_resolves_token_url_via_oidc_discovery(self):
         """token_url is derived from issuer_url via OIDC discovery."""
         cfg = OAuth2TokenExchangeConfig(
-            client_id="c", client_secret=SecretStr("s"),
+            client_id="c",
+            client_secret=SecretStr("s"),
             issuer_url="https://issuer.example.com",
         )
         client = AsyncMock()
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=False)
-        client.get.return_value = _response({"token_endpoint": "https://issuer.example.com/oauth2/token"})
+        client.get.return_value = _response(
+            {"token_endpoint": "https://issuer.example.com/oauth2/token"}
+        )
         client.post.return_value = _response({"access_token": "new-tok", "token_type": "Bearer"})
 
         with patch(_PATCH_TARGET, return_value=client):
@@ -180,7 +188,7 @@ class TestOAuth2TokenExchangeProvider:
                 "authorization_code",
                 "implicit",
                 "refresh_token",
-                "urn:ietf:params:oauth:grant-type:jwt-bearer"
+                "urn:ietf:params:oauth:grant-type:jwt-bearer",
             ],
             "introspection_endpoint": "https://idp.example.com/oauth2/default/v1/introspect",
         }
@@ -193,10 +201,14 @@ class TestOAuth2TokenExchangeProvider:
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=False)
         client.get.return_value = _response(discovery_response)
-        client.post.return_value = _response({"access_token": "exchanged-token", "token_type": "Bearer"})
+        client.post.return_value = _response(
+            {"access_token": "exchanged-token", "token_type": "Bearer"}
+        )
 
         with patch(_PATCH_TARGET, return_value=client):
-            result = await OAuth2TokenExchangeProvider(config=cfg).authenticate(subject_token="incoming-token")
+            result = await OAuth2TokenExchangeProvider(config=cfg).authenticate(
+                subject_token="incoming-token"
+            )
 
         # Verify discovery was called with derived URL
         client.get.assert_called_once_with(

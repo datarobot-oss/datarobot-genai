@@ -16,7 +16,8 @@
 
 import logging
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,9 +25,14 @@ import httpx
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_auth_provider
-from nat.data_models.authentication import AuthProviderBaseConfig, AuthResult, BearerTokenCred
+from nat.data_models.authentication import AuthProviderBaseConfig
+from nat.data_models.authentication import AuthResult
+from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.common import SerializableSecretStr
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field
+from pydantic import SecretStr
+from pydantic import field_validator
+from pydantic import model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +149,9 @@ class OAuth2TokenExchangeProvider(AuthProviderBase[OAuth2TokenExchangeConfig]):
             discovery_url = f"{self.config.issuer_url.rstrip('/')}/.well-known/openid-configuration"
 
         if not discovery_url:
-            raise ValueError("Cannot resolve token endpoint: no discovery_url or issuer_url configured.")
+            raise ValueError(
+                "Cannot resolve token endpoint: no discovery_url or issuer_url configured."
+            )
 
         async with httpx.AsyncClient() as client:
             resp = await client.get(discovery_url)
@@ -152,7 +160,9 @@ class OAuth2TokenExchangeProvider(AuthProviderBase[OAuth2TokenExchangeConfig]):
 
         token_endpoint = metadata.get("token_endpoint")
         if not token_endpoint:
-            raise ValueError(f"OIDC discovery metadata at {discovery_url} does not contain 'token_endpoint'.")
+            raise ValueError(
+                f"OIDC discovery metadata at {discovery_url} does not contain 'token_endpoint'."
+            )
 
         self._resolved_token_url = token_endpoint
         logger.info("Resolved token_endpoint via OIDC discovery: %s", token_endpoint)
