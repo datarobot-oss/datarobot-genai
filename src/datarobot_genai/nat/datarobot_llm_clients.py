@@ -370,15 +370,7 @@ async def datarobot_llm_component_llamaindex(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
     config = llm_config.model_dump(
-        exclude={
-            "type",
-            "thinking",
-            "headers",
-            "api_type",
-            "llm_deployment_id",
-            "nim_deployment_id",
-            "use_datarobot_llm_gateway",
-        },
+        exclude=EXCLUDE_FIELDS,
         by_alias=True,
         exclude_none=True,
     )

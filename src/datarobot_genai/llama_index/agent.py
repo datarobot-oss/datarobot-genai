@@ -353,6 +353,14 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 None,
                 usage_metrics,
             )
+            yield (
+                TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=message_id,
+                ),
+                None,
+                usage_metrics,
+            )
             text_started = True
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
