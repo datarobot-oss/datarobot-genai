@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.7
-- **Dependencies**: `datarobot-early-access` is no longer declared on the `drtools` extra; it is declared on `drmcp` instead.
+- **Dependencies**: Moved `datarobot-early-access` from the `drtools` extra to `drmcp`. 
 
 ## 0.15.6
 - Added cli.py-compatible aliases (`--user_prompt`, `--deployment_id`) to `nat dragent run` and `query` for Taskfile passthrough.
