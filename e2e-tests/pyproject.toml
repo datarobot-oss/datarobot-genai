@@ -33,6 +33,9 @@ dragent-llamaindex = [
 dragent-base = [
     "datarobot-genai[dragent]",
 ]
+dragent-router = [
+    "datarobot-genai[dragent]"
+]
 lint = [
     "mypy>=1.19.1",
     "ruff>=0.15.2",
