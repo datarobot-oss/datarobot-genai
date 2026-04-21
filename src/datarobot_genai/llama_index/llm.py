@@ -12,21 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TYPE_CHECKING
 from typing import Any
 
 from llama_index.llms.litellm import LiteLLM
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-
-if TYPE_CHECKING:
-    from datarobot_genai.core.config import LLMConfig
 
 
 def _create_datarobot_litellm(config: dict[str, Any]) -> Any:

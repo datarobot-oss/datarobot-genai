@@ -198,9 +198,7 @@ def test_build_litellm_router_multiple_fallbacks() -> None:
     assert model_list[1]["model_name"] == "fallback_0"
     assert model_list[2]["model_name"] == "fallback_1"
     assert model_list[3]["model_name"] == "fallback_2"
-    assert call_kwargs["fallbacks"] == [
-        {"primary": ["fallback_0", "fallback_1", "fallback_2"]}
-    ]
+    assert call_kwargs["fallbacks"] == [{"primary": ["fallback_0", "fallback_1", "fallback_2"]}]
 
 
 def test_build_litellm_router_passes_settings() -> None:
@@ -282,12 +280,8 @@ def test_merge_streaming_tool_calls_skips_none_arguments() -> None:
     frag1 = SimpleNamespace(
         index=0, id="call-1", function=SimpleNamespace(name="tool_a", arguments='{"x":')
     )
-    frag2 = SimpleNamespace(
-        index=0, id=None, function=SimpleNamespace(name=None, arguments=None)
-    )
-    frag3 = SimpleNamespace(
-        index=0, id=None, function=SimpleNamespace(name=None, arguments=" 1}")
-    )
+    frag2 = SimpleNamespace(index=0, id=None, function=SimpleNamespace(name=None, arguments=None))
+    frag3 = SimpleNamespace(index=0, id=None, function=SimpleNamespace(name=None, arguments=" 1}"))
     result = merge_streaming_tool_calls([frag1, frag2, frag3])
     assert len(result) == 1
     assert result[0]["function"]["arguments"] == '{"x": 1}'
