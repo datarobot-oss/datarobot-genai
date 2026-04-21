@@ -76,6 +76,10 @@ Every framework integration follows the same pattern—**one unified LLM setup, 
 | LlamaIndex | [docs/llamaindex/](llamaindex/) | [llamaindex/agent_example.py](llamaindex/agent_example.py) | [llamaindex/AGENTS.md](llamaindex/AGENTS.md) |
 | CrewAI | [docs/crewai/](crewai/) | [crewai/agent_example.py](crewai/agent_example.py) | [crewai/AGENTS.md](crewai/AGENTS.md) |
 
+## DRAgent CLI
+
+Standalone CLI for running and querying DRAgent workflows via NAT. See [docs/dragent/](dragent/) for full usage (`serve`, `run`, `query`, completion JSON, authentication, debugging).
+
 ## Configuration reference
 
 The library reads configuration from environment variables (via `datarobot-genai.core.config.Config`):
