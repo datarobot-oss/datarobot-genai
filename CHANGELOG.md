@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.3
-- Added optional NAT-based e2e coverage for the LLM provider router (`AGENT=router`), including GitHub Actions workflow `e2e-router.yml` and YAML workflows under `e2e-tests/dragent/router/`.
 - Wired `LangchainProfilerHandler` into LangGraph agent config so `nat dragent run` streams intermediate LLM events to the console frontend.
 - Broadened CrewAI MCP exception handling to catch all exceptions on connection failure, so `nat dragent run` continues without MCP tools instead of crashing.
 
