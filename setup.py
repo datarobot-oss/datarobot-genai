@@ -39,7 +39,7 @@ core = [
 ]
 
 memory = [
-    "mem0ai>=1.0.4,<2.0.0; python_version < '3.13'",
+    "mem0ai>=1.0.4,<2.0.0",
 ]
 
 crewai = core + [

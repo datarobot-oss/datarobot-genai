@@ -862,7 +862,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.7"
+version = "0.15.8"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1029,7 +1029,7 @@ requires-dist = [
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.6.0,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
-    { name = "mem0ai", marker = "python_full_version < '3.13' and extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
+    { name = "mem0ai", marker = "extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.6.0" },
     { name = "nvidia-nat", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.6.0" },
