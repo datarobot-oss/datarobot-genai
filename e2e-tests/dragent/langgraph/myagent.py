@@ -17,16 +17,24 @@ from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 from langchain.agents import create_agent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
+from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END
 from langgraph.graph import START
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
+from langgraph.types import Checkpointer
+from langgraph.types import interrupt
 
 from dragent.tool import generate_objectid
 
 generate_objectid_tool = tool(generate_objectid)
+
+# Emitted in assistant text so HTTP e2e can assert without parsing tool payloads.
+E2E_INTERRUPT_CANCELLED = "E2E_INTERRUPT_CANCELLED"
+E2E_INTERRUPT_CONTINUING = "E2E_INTERRUPT_CONTINUING"
 
 prompt_template = ChatPromptTemplate.from_messages(
     [
@@ -64,14 +72,64 @@ def graph_factory(
         debug=verbose,
     )
 
+    def human_review(state: MessagesState) -> MessagesState:
+        decision = interrupt({"e2e_prompt": "approve?", "kind": "e2e_hitl"})
+        prior = list(state.get("messages", []))
+        if decision == "no":
+            reply = E2E_INTERRUPT_CANCELLED
+        else:
+            reply = E2E_INTERRUPT_CONTINUING
+        return {"messages": prior + [AIMessage(content=reply)]}
+
+    def route_after_human_review(state: MessagesState) -> str:
+        """Return the next node: END or writer_node.
+
+        Use graph node names / END directly (no path_map) so the branch does not
+        treat a state dict or other value as a routing key (avoids unhashable dict).
+        """
+        messages = state.get("messages", [])
+        if not messages:
+            return "writer_node"
+        last = messages[-1]
+        text = getattr(last, "content", None)
+        # if isinstance(content, str):
+        #     text = content
+        # elif isinstance(content, list):
+        #     text = "".join(
+        #         block if isinstance(block, str) else str(block.get("text", ""))
+        #         for block in content
+        #         if isinstance(block, (str, dict))
+        #     )
+        # else:
+        #     text = ""
+        if text == E2E_INTERRUPT_CANCELLED:
+            return END
+        return "writer_node"
+
     graph = StateGraph(MessagesState)
     graph.add_node("planner_node", agent_planner)
     graph.add_node("writer_node", agent_writer)
+    graph.add_node("human_review", human_review)
     graph.add_edge(START, "planner_node")
-    graph.add_edge("planner_node", "writer_node")
+    graph.add_edge("planner_node", "human_review")
+    graph.add_conditional_edges("human_review", route_after_human_review)
     graph.add_edge("writer_node", END)
-
     return graph
 
 
-MyAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)
+# MyAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)
+
+# NAT constructs a new agent per HTTP request; a fresh InMemorySaver per instance would
+# drop checkpoint state between the interrupt request and the resume request. One
+# shared saver keeps thread state for this E2E workflow only (not for production).
+_HITL_E2E_CHECKPOINTER = InMemorySaver()
+
+_BaseHitlAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)
+
+
+class HitlMyAgent(_BaseHitlAgent):
+    """Same graph as the factory-built agent, with a process-wide checkpointer for E2E."""
+
+    @property
+    def langgraph_checkpointer(self) -> Checkpointer | None:
+        return _HITL_E2E_CHECKPOINTER

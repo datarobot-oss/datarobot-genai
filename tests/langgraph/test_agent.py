@@ -279,8 +279,13 @@ class LangGraphAgentWithMemory(SimpleLangGraphAgent):
 
 
 class LegacyOverrideLangGraphAgent(SimpleLangGraphAgent):
-    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
-        return await super().convert_input_message(run_agent_input)
+    async def convert_input_message(
+        self,
+        run_agent_input: RunAgentInput,
+        *,
+        compiled_graph: Any | None = None,
+    ) -> Command:
+        return await super().convert_input_message(run_agent_input, compiled_graph=compiled_graph)
 
 
 class FakeMemoryClient(BaseMemoryClient):

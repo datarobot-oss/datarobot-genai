@@ -4,11 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.14.8
-- LangGraph agents now default to `InMemorySaver` for checkpointing so graph state and HITL interrupts persist per `thread_id` without subclassing.
-
 ## 0.14.7
-- Added LangGraph human-in-the-loop support: optional checkpointer on `LangGraphAgent`, `thread_id` in runnable config, resume via `state["langgraph_resume"]`, and AG-UI `CustomEvent` (`langgraph.interrupt`) when the graph pauses on `interrupt()`.
+- Added LangGraph human-in-the-loop support.
 
 ## 0.14.6
 - Fixed MCP tool calls to deployments silently swallowing HTTP error responses instead of surfacing them as tool errors.

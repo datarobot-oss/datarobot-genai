@@ -23,22 +23,21 @@ from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.agent import AgentBaseConfig
 
 
-class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
-    """NAT config for the LangGraph agent.
-
-    Extends AgentBaseConfig which provides: llm_name, description, verbose.
-    The LLM is managed by NAT and accessed via builder.get_llm().
-    """
+class LanggraphHitlAgentConfig(AgentBaseConfig, name="langgraph_hitl_agent"):
+    """NAT config for the LangGraph interrupt/resume E2E agent."""
 
 
 @register_per_user_function(
-    config_type=LanggraphAgentConfig,
+    config_type=LanggraphHitlAgentConfig,
     input_type=RunAgentInput,  # noqa: F821
     single_output_type=DRAgentEventResponse,
     streaming_output_type=DRAgentEventResponse,
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )
-async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
+async def langgraph_hitl_agent(
+    config: LanggraphHitlAgentConfig,
+    builder: Builder,
+) -> AsyncGenerator:
     from datarobot_genai.core.mcp import MCPConfig
     from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
     from datarobot_genai.langgraph.mcp import mcp_tools_context
@@ -47,20 +46,16 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
     from nat.builder.function_info import FunctionInfo
     from nat.data_models.streaming import Streaming
 
-    from dragent.langgraph.myagent import HitlMyAgent
+    from dragent.langgraph_hitl.myagent import HitlMyAgent
 
     async def _response_fn(
         input_message: RunAgentInput,
     ) -> Annotated[
         AsyncGenerator[DRAgentEventResponse, None],
-        # Streaming tells NAT how to go from a list of streaming events to a single response
-        # object for non-streaming routes.
         Streaming(convert=aggregate_dragent_event_responses),
     ]:
-        # LLM might contain user-specific headers
         llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 
-        # Agent contains user-specific headers and authorization context
         forwarded_headers = extract_datarobot_headers_from_context()
         authorization_context = extract_authorization_from_context()
         mcp_config = MCPConfig(

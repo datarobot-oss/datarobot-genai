@@ -36,6 +36,7 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
+from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -116,7 +117,36 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             return self.workflow.compile(checkpointer=ckpt)
         return self.workflow.compile()
 
-    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+    async def _command_for_pending_interrupt(
+        self,
+        compiled_graph: Any,
+        run_agent_input: RunAgentInput,
+    ) -> Command | None:
+        """When the thread is paused on ``interrupt()``, map the user message to ``resume``."""
+        if self.langgraph_checkpointer is None:
+            return None
+        config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
+        ag = getattr(compiled_graph, "aget_state", None)
+        if ag is None:
+            return None
+        try:
+            snap = await ag(config)
+        except (TypeError, ValueError):
+            return None
+        interrupts = getattr(snap, "interrupts", None)
+        if not interrupts:
+            return None
+        user_reply = extract_user_prompt_content(run_agent_input)
+        if len(interrupts) == 1:
+            return Command(resume=user_reply)
+        return Command(resume={intr.id: user_reply for intr in interrupts})
+
+    async def convert_input_message(
+        self,
+        run_agent_input: RunAgentInput,
+        *,
+        compiled_graph: Any | None = None,
+    ) -> Command:
         """Convert AG-UI input into a LangGraph `Command`.
 
         By default this:
@@ -128,10 +158,18 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         For human-in-the-loop continuations, if ``run_agent_input.state`` (or
         ``forwarded_props``) contains ``langgraph_resume``, returns
         ``Command(resume=...)`` and skips prompt formatting.
+        If *compiled_graph* is passed and the checkpoint has a pending interrupt,
+        the latest user message is sent as ``Command(resume=...)`` (plain replies
+        like "no" without ``state.langgraph_resume``).
         """
         resume_payload = extract_langgraph_resume(run_agent_input)
         if resume_payload is not None:
             return Command(resume=resume_payload)
+
+        if compiled_graph is not None:
+            pending = await self._command_for_pending_interrupt(compiled_graph, run_agent_input)
+            if pending is not None:
+                return pending
 
         user_prompt = extract_user_prompt_content(run_agent_input)
 
@@ -219,13 +257,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 raise
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        input_command = await self.convert_input_message(run_agent_input)
+        langgraph_execution_graph = self._compile_workflow()
+        input_command = await self.convert_input_message(
+            run_agent_input, compiled_graph=langgraph_execution_graph
+        )
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
         )
-
-        # Create and invoke the Langgraph Agentic Workflow with the inputs
-        langgraph_execution_graph = self._compile_workflow()
 
         graph_stream = cast(
             AsyncGenerator[tuple[Any, str, Any], None],
@@ -267,7 +305,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         tool_call_id = ""
         async for _, mode, event in graph_stream:
             if mode == "messages":
-                message_event: tuple[AIMessageChunk | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
+                message_event: tuple[AIMessage | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
                 message = message_event[0]
                 if isinstance(message, ToolMessage):
                     tool_message_id = (
@@ -294,8 +332,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     tool_call_id = ""
-                elif isinstance(message, AIMessageChunk):
-                    if message.tool_call_chunks:
+                elif isinstance(message, AIMessage):
+                    if isinstance(message, AIMessageChunk) and message.tool_call_chunks:
                         # This is a tool call message
                         for tool_call_chunk in message.tool_call_chunks:
                             if name := tool_call_chunk.get("name"):
