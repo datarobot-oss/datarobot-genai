@@ -144,27 +144,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             return Command(resume=user_reply)
         return Command(resume={intr.id: user_reply for intr in interrupts})
 
-    async def convert_input_message(
+    async def _build_input_command(
         self,
         run_agent_input: RunAgentInput,
-        *,
-        compiled_graph: Any | None = None,
+        compiled_graph: Any,
     ) -> Command:
-        """Convert AG-UI input into a LangGraph `Command`.
-
-        By default this:
-        - Extracts the last user message content via `extract_user_prompt_content`
-          and feeds it through `prompt_template` to build the current turn.
-        - Includes prior turns only when the prompt template opts in via a
-          `{chat_history}` variable.
-
-        For human-in-the-loop continuations, if `run_agent_input.state` (or
-        `forwarded_props`) contains `langgraph_resume`, returns
-        `Command(resume=...)` and skips prompt formatting.
-        If *compiled_graph* is passed and the checkpoint has a pending interrupt,
-        the latest user message is sent as `Command(resume=...)` (plain replies
-        like "no" without `state.langgraph_resume`).
-        """
+        """Resolve LangGraph input: explicit resume, pending interrupt, or normal prompt."""
         state = run_agent_input.state
         resume_payload: Any | None = None
         if isinstance(state, Mapping) and LANGGRAPH_RESUME_STATE_KEY in state:
@@ -176,11 +161,25 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         if resume_payload is not None:
             return Command(resume=resume_payload)
 
-        if compiled_graph is not None:
-            pending = await self._command_for_pending_interrupt(compiled_graph, run_agent_input)
-            if pending is not None:
-                return pending
+        pending = await self._command_for_pending_interrupt(compiled_graph, run_agent_input)
+        if pending is not None:
+            return pending
 
+        return await self.convert_input_message(run_agent_input)
+
+    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+        """Convert AG-UI input into a LangGraph `Command` for a normal (non-resume) turn.
+
+        Subclasses typically override this to customize how user input maps to graph
+        state. Explicit ``langgraph_resume`` and automatic resume for pending
+        interrupts are handled in :meth:`_build_input_command` (used by :meth:`_invoke`).
+
+        By default this:
+        - Extracts the last user message content via `extract_user_prompt_content`
+          and feeds it through `prompt_template` to build the current turn.
+        - Includes prior turns only when the prompt template opts in via a
+          `{chat_history}` variable.
+        """
         user_prompt = extract_user_prompt_content(run_agent_input)
 
         # Chat history is opt-in: the model only sees history when the prompt
@@ -268,9 +267,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         langgraph_execution_graph = self._compile_workflow()
-        input_command = await self.convert_input_message(
-            run_agent_input, compiled_graph=langgraph_execution_graph
-        )
+        input_command = await self._build_input_command(run_agent_input, langgraph_execution_graph)
         logger.info(
             f"Running a langgraph agent with a command: {input_command}",
         )
@@ -342,8 +339,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     tool_call_id = ""
-                elif isinstance(message, AIMessage):
-                    if isinstance(message, AIMessageChunk) and message.tool_call_chunks:
+                elif isinstance(message, AIMessageChunk):
+                    if message.tool_call_chunks:
                         # This is a tool call message
                         for tool_call_chunk in message.tool_call_chunks:
                             if name := tool_call_chunk.get("name"):
@@ -377,6 +374,68 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     elif message.content:
                         # Its a text message
                         # Handle the start and end of the text message
+                        if message.id != current_message_id:
+                            if current_message_id:
+                                yield (
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=current_message_id,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                            current_message_id = str(message.id or "")
+                            yield (
+                                TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START,
+                                    message_id=current_message_id,
+                                    role="assistant",
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=current_message_id,
+                                delta=str(message.content),
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                elif isinstance(message, AIMessage):
+                    # Non-chunk AIMessage (e.g. graph nodes that add a full AIMessage without
+                    # streaming). AIMessageChunk is handled above; chunks subclass AIMessage.
+                    if message.tool_calls:
+                        for tc in message.tool_calls:
+                            if not isinstance(tc, dict):
+                                continue
+                            tcid = tc.get("id")
+                            tool_call_id = str(tcid) if tcid else ""
+                            name = tc.get("name")
+                            if name:
+                                yield (
+                                    ToolCallStartEvent(
+                                        type=EventType.TOOL_CALL_START,
+                                        tool_call_id=tool_call_id,
+                                        tool_call_name=name,
+                                        parent_message_id=str(message.id or ""),
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                            args = tc.get("args")
+                            if args is not None:
+                                yield (
+                                    ToolCallArgsEvent(
+                                        type=EventType.TOOL_CALL_ARGS,
+                                        tool_call_id=tool_call_id,
+                                        delta=args,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                    elif message.content:
                         if message.id != current_message_id:
                             if current_message_id:
                                 yield (
