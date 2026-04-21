@@ -862,7 +862,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.3"
+version = "0.15.6"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1163,6 +1163,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },
     { name = "httpx" },
+    { name = "openai" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
@@ -1197,6 +1198,7 @@ lint = [
 requires-dist = [
     { name = "ag-ui-protocol", git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
+    { name = "openai", specifier = ">=2.0.0,<3.0.0" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },

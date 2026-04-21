@@ -19,8 +19,11 @@ from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
+BASE_URL = "http://localhost:8080"
+
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
+
 AGENT = os.environ.get("AGENT")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
 AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"]

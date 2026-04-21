@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from .converters import convert_chat_request_to_run_agent_input
+from .converters import convert_dragent_event_response_to_chat_response_chunk
 from .converters import convert_dragent_event_response_to_str
 from .converters import convert_dragent_run_agent_input_to_chat_request
 from .converters import convert_dragent_run_agent_input_to_chat_request_or_message
@@ -91,3 +92,4 @@ GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_r
 GlobalTypeConverter.register_converter(convert_tool_message_to_str)
 GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
 GlobalTypeConverter.register_converter(convert_dragent_event_response_to_str)
+GlobalTypeConverter.register_converter(convert_dragent_event_response_to_chat_response_chunk)

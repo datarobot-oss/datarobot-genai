@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import logging
+import uuid
 
 from ag_ui.core import CustomEvent
 from ag_ui.core import RunAgentInput
@@ -21,6 +23,9 @@ from ag_ui.core import TextMessageContentEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponseChunk
+from nat.data_models.api_server import ChatResponseChunkChoice
+from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import Message
 
 from datarobot_genai.core.agents import default_usage_metrics
@@ -64,6 +69,23 @@ def convert_dragent_run_agent_input_to_chat_request_or_message(
 ) -> ChatRequestOrMessage:
     chat_request = convert_dragent_run_agent_input_to_chat_request(input)
     return ChatRequestOrMessage.model_validate(chat_request.model_dump())
+
+
+def convert_dragent_event_response_to_chat_response_chunk(
+    response: DRAgentEventResponse,
+) -> ChatResponseChunk:
+    if response.original_chunk is None:
+        content = ""
+        for event in response.events:
+            if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+                content += event.delta
+        return ChatResponseChunk(
+            id=uuid.uuid4().hex,
+            choices=[ChatResponseChunkChoice(index=0, delta=ChoiceDelta(content=content))],
+            created=datetime.datetime.now(datetime.UTC),
+        )
+    else:
+        return response.original_chunk
 
 
 ## --- dragent Chat Completions -> AG-UI ---
