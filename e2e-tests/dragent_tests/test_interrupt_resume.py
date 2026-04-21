@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""E2E tests for LangGraph human-in-the-loop (interrupt + resume via user message)."""
-
 from __future__ import annotations
 
 import uuid

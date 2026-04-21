@@ -93,16 +93,16 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def langgraph_checkpointer(self) -> Checkpointer | None:
         """Checkpointer for LangGraph compilation.
 
-        Defaults to :class:`~langgraph.checkpoint.memory.InMemorySaver` so state is
-        persisted per ``configurable.thread_id`` (including human-in-the-loop flows
-        that use :func:`langgraph.types.interrupt`). Override this property to use a
-        different saver (e.g. Postgres), or return ``None`` to compile without a
+        Defaults to `langgraph.checkpoint.memory.InMemorySaver` so state is
+        persisted per `configurable.thread_id` (including human-in-the-loop flows
+        that use `langgraph.types.interrupt`). Override this property to use a
+        different saver (e.g. Postgres), or return `None` to compile without a
         checkpointer.
         """
         return InMemorySaver()
 
     def build_langgraph_runnable_config(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
-        """Merge :attr:`langgraph_config` with per-run ``thread_id`` for checkpointing."""
+        """Merge `langgraph_config` with per-run `thread_id` for checkpointing."""
         cfg: dict[str, Any] = dict(self.langgraph_config)
         existing = cfg.get("configurable")
         if isinstance(existing, dict):
@@ -113,7 +113,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         return cfg
 
     def _compile_workflow(self) -> Any:
-        """Compile the workflow graph, attaching :attr:`langgraph_checkpointer` when set."""
+        """Compile the workflow graph, attaching `langgraph_checkpointer` when set."""
         ckpt = self.langgraph_checkpointer
         if ckpt is not None:
             return self.workflow.compile(checkpointer=ckpt)
@@ -124,7 +124,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         compiled_graph: Any,
         run_agent_input: RunAgentInput,
     ) -> Command | None:
-        """When the thread is paused on ``interrupt()``, map the user message to ``resume``."""
+        """When the thread is paused on `interrupt()`, map the user message to `resume`."""
         if self.langgraph_checkpointer is None:
             return None
         config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
@@ -157,12 +157,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         - Includes prior turns only when the prompt template opts in via a
           `{chat_history}` variable.
 
-        For human-in-the-loop continuations, if ``run_agent_input.state`` (or
-        ``forwarded_props``) contains ``langgraph_resume``, returns
-        ``Command(resume=...)`` and skips prompt formatting.
+        For human-in-the-loop continuations, if `run_agent_input.state` (or
+        `forwarded_props`) contains `langgraph_resume`, returns
+        `Command(resume=...)` and skips prompt formatting.
         If *compiled_graph* is passed and the checkpoint has a pending interrupt,
-        the latest user message is sent as ``Command(resume=...)`` (plain replies
-        like "no" without ``state.langgraph_resume``).
+        the latest user message is sent as `Command(resume=...)` (plain replies
+        like "no" without `state.langgraph_resume`).
         """
         resume_payload = extract_langgraph_resume(run_agent_input)
         if resume_payload is not None:
@@ -403,7 +403,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             elif mode == "updates":
                 update_event: dict[str, Any] = event  # type: ignore[assignment]
                 if "__interrupt__" in update_event:
-                    # breakpoint()
                     intr_tuple = update_event["__interrupt__"]
                     custom_value = interrupts_to_ag_ui_value(intr_tuple)
                     yield (

@@ -92,16 +92,7 @@ def graph_factory(
             return "writer_node"
         last = messages[-1]
         text = getattr(last, "content", None)
-        # if isinstance(content, str):
-        #     text = content
-        # elif isinstance(content, list):
-        #     text = "".join(
-        #         block if isinstance(block, str) else str(block.get("text", ""))
-        #         for block in content
-        #         if isinstance(block, (str, dict))
-        #     )
-        # else:
-        #     text = ""
+
         if text == E2E_INTERRUPT_CANCELLED:
             return END
         return "writer_node"
@@ -116,8 +107,6 @@ def graph_factory(
     graph.add_edge("writer_node", END)
     return graph
 
-
-# MyAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)
 
 # NAT constructs a new agent per HTTP request; a fresh InMemorySaver per instance would
 # drop checkpoint state between the interrupt request and the resume request. One
