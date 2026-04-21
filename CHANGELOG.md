@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.6
+## 0.15.7
 - Added LangGraph human-in-the-loop support.
 
 ## 0.15.5

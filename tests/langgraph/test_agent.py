@@ -35,9 +35,9 @@ from langgraph.graph.state import StateGraph
 from langgraph.types import Interrupt
 
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
-from datarobot_genai.langgraph.hitl import LANGGRAPH_RESUME_STATE_KEY
 
 
 @pytest.fixture

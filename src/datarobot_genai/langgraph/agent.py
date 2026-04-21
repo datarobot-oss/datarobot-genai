@@ -51,13 +51,14 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.langgraph.hitl import extract_langgraph_resume
-from datarobot_genai.langgraph.hitl import interrupts_to_ag_ui_value
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
 
 logger = logging.getLogger(__name__)
+
+# RunAgentInput.state / forwarded_props key for Command(resume=...).
+LANGGRAPH_RESUME_STATE_KEY = "langgraph_resume"
 
 
 class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
@@ -164,7 +165,14 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         the latest user message is sent as `Command(resume=...)` (plain replies
         like "no" without `state.langgraph_resume`).
         """
-        resume_payload = extract_langgraph_resume(run_agent_input)
+        state = run_agent_input.state
+        resume_payload: Any | None = None
+        if isinstance(state, Mapping) and LANGGRAPH_RESUME_STATE_KEY in state:
+            resume_payload = state[LANGGRAPH_RESUME_STATE_KEY]
+        else:
+            forwarded = run_agent_input.forwarded_props
+            if isinstance(forwarded, Mapping) and LANGGRAPH_RESUME_STATE_KEY in forwarded:
+                resume_payload = forwarded[LANGGRAPH_RESUME_STATE_KEY]
         if resume_payload is not None:
             return Command(resume=resume_payload)
 
@@ -404,7 +412,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 update_event: dict[str, Any] = event  # type: ignore[assignment]
                 if "__interrupt__" in update_event:
                     intr_tuple = update_event["__interrupt__"]
-                    custom_value = interrupts_to_ag_ui_value(intr_tuple)
+                    serialized: list[dict[str, Any]] = []
+                    for intr in intr_tuple:
+                        serialized.append({"id": intr.id, "value": intr.value})
+                    custom_value = {
+                        "kind": "langgraph_interrupt",
+                        "interrupts": serialized,
+                    }
                     yield (
                         CustomEvent(
                             type=EventType.CUSTOM,
