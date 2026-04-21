@@ -340,9 +340,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         fallback_text = self.extract_response_text(state, events)
         if not text_started and fallback_text:
             yield (
-                TextMessageStartEvent(
-                    type=EventType.TEXT_MESSAGE_START, message_id=message_id
-                ),
+                TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
                 None,
                 usage_metrics,
             )

@@ -187,7 +187,9 @@ def get_router_llm(
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
             from llama_index.llms.litellm.utils import to_openai_message_dicts  # noqa: PLC0415
 
-            resp = router.completion("primary", messages=to_openai_message_dicts(messages), **kwargs)
+            resp = router.completion(
+                "primary", messages=to_openai_message_dicts(messages), **kwargs
+            )
             message = resp.choices[0].message
             return ChatResponse(
                 message=ChatMessage(

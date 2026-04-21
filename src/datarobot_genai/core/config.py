@@ -68,8 +68,16 @@ class LLMConfig(BaseModel):
         when they are not set on this instance directly.
         """
         env = Config()
-        api_key = self.datarobot_api_token if self.datarobot_api_token is not None else env.datarobot_api_token
-        endpoint = self.datarobot_endpoint if self.datarobot_endpoint is not None else env.datarobot_endpoint
+        api_key = (
+            self.datarobot_api_token
+            if self.datarobot_api_token is not None
+            else env.datarobot_api_token
+        )
+        endpoint = (
+            self.datarobot_endpoint
+            if self.datarobot_endpoint is not None
+            else env.datarobot_endpoint
+        )
         model_name = (
             getattr(self, "model_name", None)
             or self.llm_default_model

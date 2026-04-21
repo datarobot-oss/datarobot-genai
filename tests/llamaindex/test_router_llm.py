@@ -65,9 +65,15 @@ def _make_tool_call_chunks() -> list[Any]:
         id=None, type=None, index=0, function=SimpleNamespace(name=None, arguments='"val"}')
     )
     return [
-        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc1]))]),
-        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc2]))]),
-        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc3]))]),
+        SimpleNamespace(
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc1]))]
+        ),
+        SimpleNamespace(
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc2]))]
+        ),
+        SimpleNamespace(
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc3]))]
+        ),
     ]
 
 
@@ -143,6 +149,7 @@ async def test_get_router_llm_astream_chat_accumulates_tool_calls() -> None:
         async def gen() -> Any:
             for c in chunks:
                 yield c
+
         return gen()
 
     mock_router = MagicMock()
@@ -178,6 +185,7 @@ async def test_get_router_llm_astream_chat_yields_chunks() -> None:
         async def gen() -> Any:
             for c in chunks:
                 yield c
+
         return gen()
 
     mock_router = MagicMock()

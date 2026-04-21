@@ -85,6 +85,7 @@ async def test_router_chat_model_astream_yields_chunks() -> None:
         async def gen() -> Any:
             for c in ["Hello", " world"]:
                 yield _make_chunk(c)
+
         return gen()
 
     router = MagicMock()
