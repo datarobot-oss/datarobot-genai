@@ -30,6 +30,10 @@ class LLMType(StrEnum):
     EXTERNAL = "external"
 
 
+def _with_datarobot_prefix(model_name: str) -> str:
+    return model_name if model_name.startswith("datarobot/") else "datarobot/" + model_name
+
+
 class LLMConfig(BaseModel):
     """Pure LLM connection parameters — no env-var machinery, no NAT base class.
 
@@ -65,7 +69,6 @@ class LLMConfig(BaseModel):
         env = Config()
         api_key = self.datarobot_api_token if self.datarobot_api_token is not None else env.datarobot_api_token
         endpoint = self.datarobot_endpoint if self.datarobot_endpoint is not None else env.datarobot_endpoint
-        # Prefer model_name attr (DataRobotLLMComponentModelConfig) over llm_default_model
         model_name = (
             getattr(self, "model_name", None)
             or self.llm_default_model
@@ -75,33 +78,26 @@ class LLMConfig(BaseModel):
         llm_type = self.get_llm_type()
 
         if llm_type == LLMType.GATEWAY:
-            if not model_name.startswith("datarobot/"):
-                model_name = "datarobot/" + model_name
             return {
-                "model": model_name,
+                "model": _with_datarobot_prefix(model_name),
                 "api_base": llm_gateway_url(endpoint),
                 "api_key": api_key,
             }
         elif llm_type == LLMType.DEPLOYMENT:
-            if not model_name.startswith("datarobot/"):
-                model_name = "datarobot/" + model_name
             return {
-                "model": model_name,
+                "model": _with_datarobot_prefix(model_name),
                 "api_base": deployment_url(self.llm_deployment_id, endpoint),  # type: ignore[arg-type]
                 "api_key": api_key,
             }
         elif llm_type == LLMType.NIM:
-            if not model_name.startswith("datarobot/"):
-                model_name = "datarobot/" + model_name
             return {
-                "model": model_name,
+                "model": _with_datarobot_prefix(model_name),
                 "api_base": deployment_url(self.nim_deployment_id, endpoint),  # type: ignore[arg-type]
                 "api_key": api_key,
             }
         else:  # EXTERNAL
-            model_name = model_name.removeprefix("datarobot/")
             return {
-                "model": model_name,
+                "model": model_name.removeprefix("datarobot/"),
                 "api_key": api_key,
             }
 
