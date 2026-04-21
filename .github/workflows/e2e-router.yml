@@ -44,7 +44,7 @@ jobs:
       LLM: llmgw
       ROUTER_SCENARIO: ${{ matrix.router_scenario }}
 
-      LLM_DEFAULT_MODEL: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+      LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-2024-11-20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
