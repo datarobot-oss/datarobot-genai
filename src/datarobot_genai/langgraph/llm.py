@@ -138,7 +138,7 @@ def get_router_llm(
         primary: ``LLMConfig`` for the primary model.
         fallbacks: Ordered list of ``LLMConfig`` fallback configs.
         router_settings: Extra kwargs forwarded to ``litellm.Router``
-            (e.g. ``allowed_fails``, ``cooldown_time``, ``retry_policy``).
+            (e.g. ``allowed_fails``, ``cooldown_time``).
     """
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
     from datarobot_genai.langgraph.router_llm import RouterChatModel  # noqa: PLC0415

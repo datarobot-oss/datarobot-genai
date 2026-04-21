@@ -166,6 +166,7 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
             - llm_deployment_id: "def456"
               use_datarobot_llm_gateway: false
           allowed_fails: 3
+          cooldown_time: 60.0
     """
 
     model_name: str = Field(
@@ -182,10 +183,6 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
     allowed_fails: int = Field(
         default=3,
         description="Number of failures allowed before a deployment enters cooldown.",
-    )
-    retry_policy: dict[str, int] | None = Field(
-        default=None,
-        description="Per-exception retry counts, e.g. {'RateLimitErrorRetries': 2}.",
     )
     cooldown_time: float | None = Field(
         default=None,
