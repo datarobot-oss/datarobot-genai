@@ -168,11 +168,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         return await self.convert_input_message(run_agent_input)
 
     async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
-        """Convert AG-UI input into a LangGraph `Command` for a normal (non-resume) turn.
-
-        Subclasses typically override this to customize how user input maps to graph
-        state. Explicit ``langgraph_resume`` and automatic resume for pending
-        interrupts are handled in :meth:`_build_input_command` (used by :meth:`_invoke`).
+        """Convert AG-UI input into a LangGraph `Command`.
 
         By default this:
         - Extracts the last user message content via `extract_user_prompt_content`
