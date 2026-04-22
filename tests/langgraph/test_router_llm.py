@@ -16,11 +16,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessageChunk
 
 from datarobot_genai.core import config as config_mod
 from datarobot_genai.core.config import LLMConfig
@@ -71,3 +73,50 @@ def test_get_router_llm_supports_bind_tools() -> None:
 
     bound = llm.bind_tools([dummy_tool])
     assert bound is not None
+
+
+@pytest.mark.asyncio
+async def test_get_router_llm_strips_tool_calls_from_additional_kwargs() -> None:
+    """Streaming chunks must not carry raw tool-call deltas in additional_kwargs."""
+    from datarobot_genai.langgraph.llm import get_router_llm
+
+    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+
+    fake_chunk = {
+        "choices": [
+            {
+                "delta": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": "call_1",
+                            "function": {"name": "my_tool", "arguments": '{"x":'},
+                        }
+                    ],
+                }
+            }
+        ],
+    }
+
+    async def _fake_acompletion(**kwargs):  # noqa: ARG001
+        yield fake_chunk
+
+    with patch("litellm.Router") as mock_router_cls:
+        mock_router = MagicMock(model_list=[{"model_name": "primary"}])
+        mock_router.acompletion = AsyncMock(side_effect=_fake_acompletion)
+        mock_router_cls.return_value = mock_router
+        llm = get_router_llm(primary, [fallback])
+
+    mock_router.acompletion = AsyncMock(side_effect=_fake_acompletion)
+
+    chunks: list[AIMessageChunk] = []
+    async for event in llm._astream([]):
+        chunks.append(event.message)
+
+    assert len(chunks) == 1
+    assert "tool_calls" not in chunks[0].additional_kwargs
+    assert len(chunks[0].tool_call_chunks) == 1
+    assert chunks[0].tool_call_chunks[0]["name"] == "my_tool"
