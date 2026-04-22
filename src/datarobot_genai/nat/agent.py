@@ -60,7 +60,7 @@ def _extract_text(result: Any) -> str:
         return result.choices[0].message.content or ""
     if hasattr(result, "events"):
         return "".join(
-            event.delta
+            event.delta or ""
             for event in result.events
             if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent))
         )
