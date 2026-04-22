@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import AsyncIterator
+from collections.abc import Iterator
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
@@ -142,8 +145,30 @@ def get_router_llm(
 
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
 
+    class _CleanStreamRouter(ChatLiteLLMRouter):
+        """Strip raw tool-call deltas from streaming ``additional_kwargs``.
+
+        ``ChatLiteLLMRouter`` puts raw streaming tool-call delta objects into
+        ``additional_kwargs["tool_calls"]``.  When chunks accumulate these become
+        a flat list of partial deltas with fragmentary JSON arguments.  The
+        correct data already lives in ``tool_call_chunks``; stripping the extra
+        key lets downstream code use that path instead.
+        """
+
+        def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
+            for chunk in super()._stream(*args, **kwargs):
+                chunk.message.additional_kwargs.pop("tool_calls", None)
+                yield chunk
+
+        async def _astream(
+            self, *args: Any, **kwargs: Any
+        ) -> AsyncIterator[ChatGenerationChunk]:
+            async for chunk in super()._astream(*args, **kwargs):
+                chunk.message.additional_kwargs.pop("tool_calls", None)
+                yield chunk
+
     router = build_litellm_router(primary, fallbacks, router_settings)
-    return ChatLiteLLMRouter(router=router, model="primary", streaming=True)
+    return _CleanStreamRouter(router=router, model="primary", streaming=True)
 
 
 def get_llm(
