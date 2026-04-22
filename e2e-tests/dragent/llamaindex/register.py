@@ -31,6 +31,8 @@ class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
     The LLM is managed by NAT and accessed via builder.get_llm().
     """
 
+    allow_parallel_tool_calls: bool = True
+
 
 @register_per_user_function(
     config_type=LlamaindexAgentConfig,
@@ -70,7 +72,9 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
                 llm=llm,
                 forwarded_headers=forwarded_headers,
                 tools=tools,
+                verbose=config.verbose,
             )
+            agent.set_allow_parallel_tool_calls(config.allow_parallel_tool_calls)
 
             async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
                 yield DRAgentEventResponse(
