@@ -39,7 +39,6 @@ tasks:
           - langgraph
           - llamaindex
           - base
-          - router
     cmds:
       - echo "🔧 Installing dependencies for {{.AGENT}}"
       - uv sync --group dragent-{{.AGENT}} --group lint
@@ -59,7 +58,6 @@ tasks:
           - langgraph
           - llamaindex
           - base
-          - router
     cmds:
       - echo "🧪 Running tests for dragent"
       - uv run pytest dragent_tests -vv -s
@@ -90,7 +88,6 @@ tasks:
           - langgraph
           - llamaindex
           - base
-          - router
     cmds:
       - echo "🔨 Running dragent"
       - task: install
