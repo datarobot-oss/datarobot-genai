@@ -160,9 +160,7 @@ def get_router_llm(
                 chunk.message.additional_kwargs.pop("tool_calls", None)
                 yield chunk
 
-        async def _astream(
-            self, *args: Any, **kwargs: Any
-        ) -> AsyncIterator[ChatGenerationChunk]:
+        async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
             async for chunk in super()._astream(*args, **kwargs):
                 chunk.message.additional_kwargs.pop("tool_calls", None)
                 yield chunk
