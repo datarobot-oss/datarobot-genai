@@ -23,6 +23,7 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -59,7 +60,9 @@ def _extract_text(result: Any) -> str:
         return result.choices[0].message.content or ""
     if hasattr(result, "events"):
         return "".join(
-            event.delta for event in result.events if isinstance(event, TextMessageContentEvent)
+            event.delta
+            for event in result.events
+            if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent))
         )
     return str(result)
 
