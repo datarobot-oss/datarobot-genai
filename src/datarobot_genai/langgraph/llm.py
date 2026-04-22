@@ -130,9 +130,7 @@ def get_router_llm(
     fallbacks: list[Any],
     router_settings: dict | None = None,
 ) -> BaseChatModel:
-    """Return a :class:`~datarobot_genai.langgraph.router_llm.RouterChatModel`.
-
-    Backed by a ``litellm.Router``.
+    """Return a ``ChatLiteLLMRouter`` backed by a ``litellm.Router``.
 
     Args:
         primary: ``LLMConfig`` for the primary model.
@@ -140,11 +138,12 @@ def get_router_llm(
         router_settings: Extra kwargs forwarded to ``litellm.Router``
             (e.g. ``allowed_fails``, ``cooldown_time``).
     """
+    from langchain_litellm import ChatLiteLLMRouter  # noqa: PLC0415
+
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
-    from datarobot_genai.langgraph.router_llm import RouterChatModel  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
-    return RouterChatModel(router=router)
+    return ChatLiteLLMRouter(router=router, streaming=True)
 
 
 def get_llm(
