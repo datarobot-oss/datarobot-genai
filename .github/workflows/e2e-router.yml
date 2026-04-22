@@ -7,7 +7,7 @@ on:
     paths:
       - "src/datarobot_genai/core/**"
       - "src/datarobot_genai/nat/**"
-      - "src/datarobot_genai/langgraph/router_llm.py"
+      - "src/datarobot_genai/langgraph/llm.py"
       - "e2e-tests/dragent/nat/workflow-router-*.yaml"
       - ".github/workflows/e2e-router.yml"
   pull_request:
@@ -15,7 +15,7 @@ on:
     paths:
       - "src/datarobot_genai/core/**"
       - "src/datarobot_genai/nat/**"
-      - "src/datarobot_genai/langgraph/router_llm.py"
+      - "src/datarobot_genai/langgraph/llm.py"
       - "e2e-tests/dragent/nat/workflow-router-*.yaml"
       - ".github/workflows/e2e-router.yml"
 
