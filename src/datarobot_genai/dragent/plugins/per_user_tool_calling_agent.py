@@ -29,8 +29,6 @@ using ``DRAgentNestedReasoningStepAdaptor.process_chunks()`` to produce
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from ag_ui.core import RunFinishedEvent
-from ag_ui.core import StepFinishedEvent
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
@@ -39,7 +37,6 @@ from nat.data_models.api_server import ChatResponse
 from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling_agent_workflow
 
-from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
 
@@ -76,21 +73,6 @@ async def _per_user_tool_calling_agent(
                 original_stream_fn(chat_request_or_message)
             ):
                 yield event
-            # Emit lifecycle events so the DRAgent server's SSE stream closes.
-            # NAT's step adaptor emits these on WORKFLOW_END, but when tool calls
-            # are involved the WORKFLOW_END intermediate step arrives after the
-            # stream_fn has already returned and the SSE connection has stalled.
-            # The recipe's DRAgentAGUIAgent filters RunFinishedEvent and emits
-            # its own with the correct thread/run IDs, so the empty IDs here
-            # are harmless.
-            step_name = config.name or "per_user_tool_calling_agent"
-            yield DRAgentEventResponse(
-                events=[
-                    StepFinishedEvent(step_name=step_name),
-                    RunFinishedEvent(run_id="", thread_id=""),
-                ],
-                usage_metrics=default_usage_metrics(),
-            )
 
         yield FunctionInfo.create(
             single_fn=fn_info.single_fn,

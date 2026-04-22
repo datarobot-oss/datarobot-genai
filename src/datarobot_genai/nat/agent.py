@@ -48,6 +48,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _extract_text(result: Any) -> str:
+    """Pull plain text from a stream result.
+
+    ``ChatResponse`` → ``choices[0].message.content``
+    ``DRAgentEventResponse`` (has *events*) → joined text deltas
+    Anything else → ``str(result)``
+    """
+    if isinstance(result, ChatResponse):
+        return result.choices[0].message.content or ""
+    if hasattr(result, "events"):
+        return "".join(
+            event.delta for event in result.events if isinstance(event, TextMessageContentEvent)
+        )
+    return str(result)
+
+
 def convert_to_ragas_messages(
     steps: list[IntermediateStep],
 ) -> list[HumanMessage | AIMessage | ToolMessage]:
@@ -205,16 +221,13 @@ class NatAgent(BaseAgent[None]):
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
                     async for result in runner.result_stream():
-                        if isinstance(result, ChatResponse):
-                            result_text = result.choices[0].message.content
-                        else:
-                            result_text = str(result)
-
+                        result_text = _extract_text(result)
                         if result_text:
                             if not text_started:
                                 yield (
                                     TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=message_id,
                                     ),
                                     None,
                                     zero_metrics,
