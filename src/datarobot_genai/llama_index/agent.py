@@ -38,6 +38,7 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import BaseWorkflowAgent
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -48,6 +49,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.memory.base import BaseMemoryClient
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -72,6 +74,32 @@ class DataRobotLiteLLM(LiteLLM):
 
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[BaseTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+        allow_parallel_tool_calls: bool = True,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            llm=llm,
+            tools=tools,
+            verbose=verbose,
+            timeout=timeout,
+            forwarded_headers=forwarded_headers,
+            max_history_messages=max_history_messages,
+            memory_client=memory_client,
+        )
+        self.allow_parallel_tool_calls = allow_parallel_tool_calls
 
     @abc.abstractmethod
     async def build_workflow(self) -> Any:
@@ -364,6 +392,35 @@ def datarobot_agent_class_from_llamaindex(
     original_agent_tools = {agent.name: agent.tools for agent in agents}
 
     class DataRobotLlamaIndexAgent(LlamaIndexAgent):
+        def __init__(
+            self,
+            api_key: str | None = None,
+            api_base: str | None = None,
+            llm: Any | None = None,
+            tools: list[BaseTool] | None = None,
+            verbose: bool = True,
+            timeout: int = 90,
+            forwarded_headers: dict[str, str] | None = None,
+            max_history_messages: int | None = None,
+            memory_client: BaseMemoryClient | None = None,
+            allow_parallel_tool_calls: bool = True,
+        ) -> None:
+            super().__init__(
+                api_key=api_key,
+                api_base=api_base,
+                llm=llm,
+                tools=tools,
+                verbose=verbose,
+                timeout=timeout,
+                forwarded_headers=forwarded_headers,
+                max_history_messages=max_history_messages,
+                memory_client=memory_client,
+                allow_parallel_tool_calls=allow_parallel_tool_calls,
+            )
+            for agent in agents:
+                if isinstance(agent, FunctionAgent):
+                    agent.allow_parallel_tool_calls = allow_parallel_tool_calls
+
         def set_llm(self, llm: Any) -> None:
             super().set_llm(llm)
             for agent in agents:
@@ -373,6 +430,12 @@ def datarobot_agent_class_from_llamaindex(
             super().set_tools(tools)
             for agent in agents:
                 agent.tools = original_agent_tools[agent.name] + tools
+
+        def set_allow_parallel_tool_calls(self, allow_parallel_tool_calls: bool) -> None:
+            self.allow_parallel_tool_calls = allow_parallel_tool_calls
+            for agent in agents:
+                if isinstance(agent, FunctionAgent):
+                    agent.allow_parallel_tool_calls = allow_parallel_tool_calls
 
         async def build_workflow(self) -> AgentWorkflow:
             return workflow

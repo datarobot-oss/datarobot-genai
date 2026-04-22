@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.9
+- Adding parameters to Crew AI and LlamaIndex Agents
+
 ## 0.15.8
 - **Dependencies**: Removed the python<3.13 restriction from mem0ai when including the memory dependency.
 
