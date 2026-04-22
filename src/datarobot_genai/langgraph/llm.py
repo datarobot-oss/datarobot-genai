@@ -143,7 +143,7 @@ def get_router_llm(
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
-    return ChatLiteLLMRouter(router=router, streaming=True)
+    return ChatLiteLLMRouter(router=router, model="primary", streaming=True)
 
 
 def get_llm(

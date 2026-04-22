@@ -62,7 +62,7 @@ def test_get_router_llm_supports_bind_tools() -> None:
 
     @tool
     def dummy_tool(x: str) -> str:
-        """A dummy tool."""
+        """Return x as-is."""
         return x
 
     with patch("litellm.Router") as mock_router_cls:
