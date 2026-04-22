@@ -101,6 +101,11 @@ auth = [
   "pydantic>=2.6.1,<3.0.0",
 ]
 
+# auth-okta adds Okta AI SDK support for cross-app token exchange (ID-JAG flow)
+auth_okta = auth + [
+    "okta-ai-sdk-proto>=1.0.1,<2.0.0",
+]
+
 # drtools: no subpackages dependencies other than auth.
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
 drtools = auth + [
@@ -148,6 +153,7 @@ extras_require = {
     "llamaindex": llamaindex,
     "nat": nat,
     "auth": auth,
+    "auth-okta": auth_okta,
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,

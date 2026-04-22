@@ -11,7 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import base64
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -160,3 +161,53 @@ def extract_authorization_from_context(secret_key: str | None = None) -> dict[st
         return None
 
     return get_authorization_context_from_headers(headers, secret_key=secret_key)
+
+
+def parse_private_jwk(raw_value: str) -> dict:
+    """Parse a private JWK from either base64-encoded or plain JSON format.
+
+    The value may arrive in several serialisation forms depending on how
+    infrastructure (e.g. Pulumi) stores it:
+
+    1. Base64-encoded JSON (preferred).
+    2. Plain JSON with double quotes.
+    3. Legacy format with single quotes (Pulumi serialisation artefact).
+
+    Parameters
+    ----------
+    raw_value : str
+        The raw JWK string in one of the supported formats.
+
+    Returns
+    -------
+    dict
+        The parsed JWK as a dictionary.
+
+    Raises
+    ------
+    ValueError
+        If the value cannot be parsed from any supported format.
+    """
+    if not isinstance(raw_value, str):
+        raise TypeError(f"Expected str, got {type(raw_value).__name__}")
+
+    # Try base64 decode first (new format)
+    try:
+        decoded = base64.b64decode(raw_value).decode()
+        return json.loads(decoded)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Try direct JSON parse (proper JSON with double quotes)
+    try:
+        return json.loads(raw_value)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Try fixing single quotes (legacy format from Pulumi serialisation bug)
+    try:
+        return json.loads(raw_value.replace("'", '"'))
+    except Exception:  # noqa: BLE001
+        pass
+
+    raise ValueError("Could not parse private JWK — not valid base64 or JSON")
