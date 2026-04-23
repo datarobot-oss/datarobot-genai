@@ -44,11 +44,12 @@ logger = logging.getLogger(__name__)
 def convert_dragent_run_agent_input_to_chat_request(input: DRAgentRunAgentInput) -> ChatRequest:
     # NAT's Message model only accepts user/assistant/system roles.
     # Convert tool results to assistant messages to preserve context.
-    # Skip empty assistant messages (tool-calling turns without content)
-    # and reasoning messages.
+    # Skip unsupported roles (e.g. tool, reasoning).
     messages = []
     for message in input.messages:
         if message.role in ("user", "assistant", "system"):
+            if message.role == "assistant" and not message.content:
+                continue
             messages.append(Message(role=message.role, content=message.content))
         elif message.role == "tool" and message.content:
             messages.append(Message(role="assistant", content=message.content))
