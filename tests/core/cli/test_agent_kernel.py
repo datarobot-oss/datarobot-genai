@@ -40,7 +40,7 @@ class TestAgentKernel:
         result_dict = kernel.construct_prompt(user_prompt, verbose=True)
 
         # Assert
-        assert result_dict["model"] == "datarobot-deployed-llm"
+        assert result_dict["model"] == "unknown"
         assert len(result_dict["messages"]) == 2
         assert result_dict["messages"][0]["content"] == "You are a helpful assistant"
         assert result_dict["messages"][0]["role"] == "system"
@@ -62,7 +62,7 @@ class TestAgentKernel:
         result_dict = kernel.construct_prompt(user_prompt, verbose=False)
 
         # Assert
-        assert result_dict["model"] == "datarobot-deployed-llm"
+        assert result_dict["model"] == "unknown"
         assert len(result_dict["messages"]) == 2
         assert result_dict["messages"][0]["content"] == "You are a helpful assistant"
         assert result_dict["messages"][0]["role"] == "system"
@@ -109,7 +109,7 @@ class TestAgentKernel:
 
         # Verify chat.completions.create was called with correct parameters
         mock_completions.create.assert_called_once_with(
-            model="datarobot-deployed-llm",
+            model="unknown",
             messages=[
                 {"content": "You are a helpful assistant", "role": "system"},
                 {"content": "Hello, assistant!", "role": "user"},
@@ -161,7 +161,7 @@ class TestAgentKernel:
 
         # Verify chat.completions.create was called with correct parameters
         mock_completions.create.assert_called_once_with(
-            model="datarobot-deployed-llm",
+            model="unknown",
             messages=[
                 {"content": "You are a helpful assistant", "role": "system"},
                 {"content": "Hello, assistant!", "role": "user"},
@@ -261,7 +261,7 @@ class TestAgentKernel:
 
         # Verify chat.completions.create was called with correct parameters
         mock_completions.create.assert_called_once_with(
-            model="datarobot-deployed-llm",
+            model="unknown",
             messages=[
                 {"content": "You are a helpful assistant", "role": "system"},
                 {"content": "Hello, assistant!", "role": "user"},
@@ -312,7 +312,7 @@ class TestAgentKernel:
 
         # Verify chat.completions.create was called with correct parameters
         mock_completions.create.assert_called_once_with(
-            model="datarobot-deployed-llm",
+            model="unknown",
             messages=[
                 {"content": "You are a helpful assistant", "role": "system"},
                 {"content": "Hello, assistant!", "role": "user"},
