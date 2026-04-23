@@ -21,9 +21,9 @@ from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
 from pydantic import Field
 
+from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_llm_deployment_id
-from datarobot_genai.core.config import default_model_name
 from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 
@@ -31,11 +31,13 @@ from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
-    model_name: str = Field(
+    model_name: str | None = Field(
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
-        description="The model name.",
-        default_factory=default_model_name,
+        description=(
+            "The model name (required for gateway, NIM, and external; optional for deployment)."
+        ),
+        default=None,
     )
     use_datarobot_llm_gateway: bool = Field(
         default_factory=default_use_datarobot_llm_gateway,
@@ -94,7 +96,7 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
         description="The model name to pass through to the deployment.",
-        default="datarobot-deployed-llm",
+        default=DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM,
     )
     llm_deployment_id: str = Field(
         description="The LLM deployment ID.",
@@ -118,11 +120,11 @@ async def datarobot_llm_deployment(
 class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
     """A DataRobot NIM LLM provider to be used with an LLM client."""
 
-    model_name: str = Field(
+    model_name: str | None = Field(
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
-        description="The model name to pass through to the deployment.",
-        default="datarobot-deployed-llm",
+        description="The model name to pass through to the NIM deployment.",
+        default=None,
     )
     nim_deployment_id: str = Field(
         description="The LLM deployment ID.",
@@ -140,11 +142,11 @@ async def datarobot_nim(config: DataRobotNIMModelConfig, _builder: Builder) -> L
 class DataRobotLitellmConfig(LiteLlmModelConfig, name="datarobot-litellm"):  # type: ignore[call-arg]
     """A DataRobot Litellm provider to be used with an LLM client."""
 
-    model_name: str = Field(
+    model_name: str | None = Field(
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
         description="The model name.",
-        default_factory=default_model_name,
+        default=None,
     )
 
 

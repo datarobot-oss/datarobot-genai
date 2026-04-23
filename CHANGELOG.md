@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.19
+
+## 0.15.14
 - Added option to configure OAuth2 token exchange flow for server
+
+## 0.15.13
+- Changed CLI model placeholder to `unknown` so the agent resolves the model from config (LLM_DEFAULT_MODEL)
+
+## 0.15.12
+- Updated documentation for agents: added quickstart guide
+- Updated documentation for LLMs: getting models for LLM GW, and additional details for each route
+- Fixed an issue with `datarobot-deployed-llm`: this one should only be the default for the deployment case
 
 ## 0.15.11
 - Added backward compatible route `/chat/completions` route to `dragent`
