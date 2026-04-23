@@ -16,6 +16,7 @@ from typing import Any
 
 from crewai import LLM
 
+from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
@@ -54,6 +55,9 @@ def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | 
         config.update(parameters)
 
     model_name = model_name or default_model_name()
+    if model_name is None:
+        raise ValueError("Model name is required")
+
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
@@ -73,7 +77,7 @@ def get_datarobot_deployment_llm(
     if parameters:
         config.update(parameters)
 
-    model_name = model_name or default_model_name()
+    model_name = model_name or default_model_name() or DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
@@ -84,7 +88,23 @@ def get_datarobot_deployment_llm(
 def get_datarobot_nim_llm(
     nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None
 ) -> LLM:
-    return get_datarobot_deployment_llm(nim_deployment_id, model_name, parameters)
+    config = {
+        "api_key": default_api_key(),
+        "api_base": default_deployment_url(nim_deployment_id),
+    }
+
+    if parameters:
+        config.update(parameters)
+
+    model_name = model_name or default_model_name()
+    if model_name is None:
+        raise ValueError("Model name is required")
+
+    if not model_name.startswith("datarobot/"):
+        model_name = "datarobot/" + model_name
+
+    config["model"] = model_name
+    return _crewai_model_factory(config)
 
 
 def get_external_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
@@ -95,6 +115,9 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
     if parameters:
         config.update(parameters)
     model_name = model_name or default_model_name()
+    if model_name is None:
+        raise ValueError("Model name is required")
+
     model_name = model_name.removeprefix("datarobot/")
     config["model"] = model_name
 

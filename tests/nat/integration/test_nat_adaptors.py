@@ -161,7 +161,7 @@ async def test_datarobot_llm_deployment_llamaindex():
 async def test_datarobot_nim_langchain():
     prompt = ChatPromptTemplate.from_messages([("human", "{input}")])
 
-    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+    llm_config = DataRobotNIMModelConfig(temperature=0.0, model_name="azure/gpt-4o-2024-11-20")
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -178,7 +178,7 @@ async def test_datarobot_nim_crewai():
     input = "What is 1+2?"
     messages = [{"role": "user", "content": f"{input}"}]
 
-    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+    llm_config = DataRobotNIMModelConfig(temperature=0.0, model_name="azure/gpt-4o-2024-11-20")
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -195,7 +195,7 @@ async def test_datarobot_nim_llamaindex():
         ChatMessage.from_str(input, "user"),
     ]
 
-    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+    llm_config = DataRobotNIMModelConfig(temperature=0.0, model_name="azure/gpt-4o-2024-11-20")
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)

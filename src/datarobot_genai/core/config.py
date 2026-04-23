@@ -20,6 +20,7 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
+DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
 
 
 class LLMType(StrEnum):
@@ -74,9 +75,9 @@ def default_api_key() -> str | None:
     return config.datarobot_api_token if config.datarobot_api_token else None
 
 
-def default_model_name() -> str:
+def default_model_name() -> str | None:
     config = Config()
-    return config.llm_default_model or "datarobot-deployed-llm"
+    return config.llm_default_model
 
 
 def default_use_datarobot_llm_gateway() -> bool:
