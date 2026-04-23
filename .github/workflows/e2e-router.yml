@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        framework: [nat, crewai, llamaindex]
+        framework: [nat, langgraph, crewai, llamaindex]
     permissions:
       contents: read
     env:
