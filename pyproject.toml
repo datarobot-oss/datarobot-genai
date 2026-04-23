@@ -68,14 +68,6 @@ exclude-dependencies = [
   # mem0ai bloat
   "posthog",                  # analytics/telemetry pulled in by mem0ai; not used
   "qdrant-client",            # optional vector DB pulled in by mem0ai; not used
-
-  # These are not ACTUALLY used, but they have imports in unnecessary functions.
-  # "chromadb",                 # optional vector DB backend pulled in by crewai; not used
-  # "docker",                   # container client pulled in by crewai-tools; not used
-  # "sqlalchemy",               # SQL ORM optional backend pulled in by llama-index, ragas, mem0ai; not used
-  # "datasets",                 # HuggingFace datasets pulled in by ragas; not used
-  # "gitpython",                # Git operations pulled in by ragas; not used
-  # "protobuf",                 # pulled in by qdrant-client; not used
 ]
 
 [dependency-groups]
