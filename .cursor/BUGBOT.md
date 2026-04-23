@@ -130,3 +130,15 @@ Current exclusions:
 | `langchain-milvus` | langchain ecosystem | Unused vector store integration |
 | `pymilvus` | langchain-milvus | Transitive dep of langchain-milvus |
 | `flask` | nvidia-nat-core 1.6.0 | Only used in NAT examples, not core library code |
+
+---
+
+# Repo-specific: datarobot-genai
+
+The numbered sections above (A*, B*) come from the shared “review before commit” guideline. The following applies **only to this repository** (`datarobot-oss/datarobot-genai`).
+
+## E2E exceptions and `docs/*/caveats.md`
+
+Any **exception** in end-to-end testing—`pytest.skip`, `pytest.mark.skipif`, `allow_module_level=True` skips, conditional test branches that document a **known limitation** or **unsupported combination**—must have a matching **user-facing** note in the appropriate **`docs/<integration>/caveats.md`** (LangGraph, LlamaIndex, CrewAI, NAT). Caveats should describe **interface behavior** (APIs, responses, env combinations), not CI harness details.
+
+When reviewing: if a PR changes e2e skips, narrowings, or skip reasons, flag missing or stale caveats updates.

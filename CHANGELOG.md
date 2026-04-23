@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.11
+- Added backward compatible route `/chat/completions` route to `dragent`
+- Revised documentation based on feedback
+- Added example Jupyter Notebook walktrough of setting a LangGraph agent in DataRobot
+
 ## 0.15.10
 - Fixed `NatAgent` text extraction for `DRAgentEventResponse` objects.
 

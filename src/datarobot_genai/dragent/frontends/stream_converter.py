@@ -98,7 +98,7 @@ async def convert_chunks_to_agui_events(
                         events.append(ToolCallArgsEvent(tool_call_id=tc_id, delta=arguments))
 
             if events:
-                yield DRAgentEventResponse(events=events, usage_metrics=zero)
+                yield DRAgentEventResponse(events=events, usage_metrics=zero, original_chunk=chunk)
     except Exception as exc:
         error = exc
     finally:

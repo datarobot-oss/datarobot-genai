@@ -14,6 +14,7 @@
 
 
 from ag_ui.core import Event
+from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ResponseBaseModelOutput
 
 
@@ -21,3 +22,4 @@ class DRAgentEventResponse(ResponseBaseModelOutput):
     events: list[Event] = []
     model: str | None = None
     usage_metrics: dict[str, int] | None = None
+    original_chunk: ChatResponseChunk | None = None

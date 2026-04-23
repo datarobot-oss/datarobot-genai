@@ -26,6 +26,7 @@ from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
+from nat.front_ends.fastapi.routes.chat import add_v1_chat_completions_route
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
@@ -165,7 +166,25 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
+        await self._add_chat_completion_route(app, self._session_managers[-1])
+        await self._add_a2a_routes(app, builder)
 
+    async def _add_chat_completion_route(
+        self, app: FastAPI, session_manager: SessionManager
+    ) -> None:
+        openai_v1_path = "/chat/completions"
+        description = "OpenAI Chat Completions API compatible"
+        await add_v1_chat_completions_route(
+            self,
+            app,
+            path=openai_v1_path,
+            method="POST",
+            description=description,
+            session_manager=session_manager,
+            enable_interactive=False,
+        )
+
+    async def _add_a2a_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         if self.front_end_config.a2a is None:
             logger.info("A2A server endpoints are disabled")
             return
