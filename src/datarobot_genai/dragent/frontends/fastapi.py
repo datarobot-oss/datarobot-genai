@@ -29,13 +29,13 @@ from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from fastapi import FastAPI
+from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.routes.chat import add_v1_chat_completions_route
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
-from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
