@@ -22,7 +22,7 @@ This page describes how **interrupt / resume** works when you use LangGraph insi
 
 LangGraph only **remembers** a paused run if the compiled graph was built with a [`Checkpointer`](https://langchain-ai.github.io/langgraph/reference/checkpoints/). The `LangGraphAgent` constructor accepts **`checkpointer=...`** and passes it to `StateGraph.compile(...)`.
 
-If `checkpointer` is `None`, the agent cannot detect a **pending interrupt** for a thread and will not turn a follow-up user message into `Command(resume=...)` (see `_command_for_pending_interrupt` in [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)).
+If `checkpointer` is `None`, the agent cannot resume from an interrupt and will not turn a follow-up user message into `Command(resume=...)` (see `_command_for_pending_interrupt` in [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)).
 
 ## What clients see in the event stream
 
