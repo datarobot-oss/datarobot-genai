@@ -126,7 +126,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         * ``server_auth_token_exchange`` (OAuth2TokenExchangeConfig) → client_credentials flow.
           Used for RFC 8693 second-phase token acquisition.
 
-        Returns:
+        Returns
+        -------
             Tuple of (security_schemes, security requirements, capability extensions),
             all ``None`` when neither auth source is configured.
         """
@@ -148,9 +149,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         if has_server_auth:
             server_auth = frontend_config.server_auth
             auth_url, token_url = await self._resolve_oauth_endpoints(server_auth)
-            scope_descriptions = {
-                scope: f"Permission: {scope}" for scope in server_auth.scopes
-            }
+            scope_descriptions = {scope: f"Permission: {scope}" for scope in server_auth.scopes}
             authorization_code_flow = AuthorizationCodeOAuthFlow(
                 authorization_url=auth_url,
                 token_url=token_url,
@@ -161,9 +160,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         # (2) oauth_token_exchange → client_credentials flow
         if has_token_exchange:
             auth_config = frontend_config.server_auth_token_exchange
-            scope_descriptions = {
-                scope: f"Permission: {scope}" for scope in auth_config.scopes
-            }
+            scope_descriptions = {scope: f"Permission: {scope}" for scope in auth_config.scopes}
             client_credentials_flow = ClientCredentialsOAuthFlow(
                 token_url=auth_config.token_url,
                 scopes=scope_descriptions,
@@ -173,7 +170,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 extensions = [
                     AgentExtension(
                         uri="urn:ietf:params:oauth:grant-type:token-exchange",
-                        description="RFC 8693 Token Exchange parameters for second-phase token acquisition",
+                        description="RFC 8693 Token Exchange parameters for token acquisition",
                         params={"audience": auth_config.audience},
                     )
                 ]
@@ -208,9 +205,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         if getattr(server_auth_config, "discovery_url", None):
             try:
                 async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        server_auth_config.discovery_url, timeout=5.0
-                    )
+                    response = await client.get(server_auth_config.discovery_url, timeout=5.0)
                     response.raise_for_status()
                     metadata = response.json()
                     auth_url = metadata.get("authorization_endpoint")
@@ -231,9 +226,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         return auth_url, token_url
 
     async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
-        security_schemes, security, extensions = await self._build_security_schemes(
-            frontend_config
-        )
+        security_schemes, security, extensions = await self._build_security_schemes(frontend_config)
 
         if self.front_end_config.a2a.skills:
             skills = self.front_end_config.a2a.skills

@@ -32,10 +32,10 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
-from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
 from datarobot_genai.dragent.frontends.register import DRA2AFrontEndConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
+from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
@@ -59,7 +59,7 @@ def dragent_worker():
                             token_url="https://example.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
                             audience="api://dr-blog-writer",
                             scopes=["blog:write"],
-                        )
+                        ),
                     )
                 ),
             )
@@ -443,8 +443,14 @@ class TestCreateAgentCard:
         oauth_scheme = card.security_schemes["oauth2"].root
         # Only authorization_code flow, no client_credentials
         assert oauth_scheme.flows.authorization_code is not None
-        assert oauth_scheme.flows.authorization_code.authorization_url == "https://issuer.example.com/oauth/authorize"
-        assert oauth_scheme.flows.authorization_code.token_url == "https://issuer.example.com/oauth/token"
+        assert (
+            oauth_scheme.flows.authorization_code.authorization_url
+            == "https://issuer.example.com/oauth/authorize"
+        )
+        assert (
+            oauth_scheme.flows.authorization_code.token_url
+            == "https://issuer.example.com/oauth/token"
+        )
         assert oauth_scheme.flows.client_credentials is None
         assert card.security == [{"oauth2": ["read"]}]
 
@@ -472,10 +478,16 @@ class TestCreateAgentCard:
         oauth_scheme = card.security_schemes["oauth2"].root
 
         assert oauth_scheme.flows.authorization_code is not None
-        assert oauth_scheme.flows.authorization_code.authorization_url == "https://issuer.example.com/oauth/authorize"
+        assert (
+            oauth_scheme.flows.authorization_code.authorization_url
+            == "https://issuer.example.com/oauth/authorize"
+        )
 
         assert oauth_scheme.flows.client_credentials is not None
-        assert oauth_scheme.flows.client_credentials.token_url == "https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
+        assert (
+            oauth_scheme.flows.client_credentials.token_url
+            == "https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
+        )
 
         # Merged scopes (deduplicated)
         assert card.security == [{"oauth2": ["read", "blog:write"]}]

@@ -17,6 +17,7 @@ from __future__ import annotations
 from nat.data_models.authentication import AuthProviderBaseConfig
 from pydantic import Field
 
+
 class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
     """OAuth2 Server-side authentication configuration for token exchange.
 
@@ -36,11 +37,11 @@ class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
     )
     audience: str | None = Field(
         default=None,
-        description=(
-            "Expected audience (`aud`) claim for this API."
-        ),
+        description=("Expected audience (`aud`) claim for this API."),
     )
     scopes: list[str] = Field(
         default=["read_data"],
-        description="Scopes required by this API. Validation ensures the token grants all listed scopes.",
+        description=(
+            "Scopes required by this API. Validation ensures the token grants all listed scopes."
+        ),
     )
