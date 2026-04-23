@@ -32,7 +32,7 @@ from .converters import convert_dragent_run_agent_input_to_chat_request
 from .converters import convert_dragent_run_agent_input_to_chat_request_or_message
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
-from .server_auth import TokenExchangeConfig
+from .server_auth import OAuth2TokenExchangeConfig
 from .logging import logging_handler_setup
 
 # Suppress specific non-actionable NAT warning messages by content.
@@ -46,7 +46,7 @@ warnings.filterwarnings("ignore", message=".*stream_options is not default param
 
 class DRA2AFrontEndConfig(A2AFrontEndConfig):
 
-    server_auth_token_exchange: TokenExchangeConfig | None = Field(
+    server_auth_token_exchange: OAuth2TokenExchangeConfig | None = Field(
         default=None,
         description=(
             "Configuration for agent authorization using Token Exchange (RFC 8693). "

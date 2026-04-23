@@ -32,7 +32,7 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
-from datarobot_genai.dragent.frontends.server_auth import TokenExchangeConfig
+from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
 from datarobot_genai.dragent.frontends.register import DRA2AFrontEndConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
@@ -55,7 +55,7 @@ def dragent_worker():
                     server=DRA2AFrontEndConfig(
                         name="Test Agent",
                         description="A test agent",
-                        server_auth_token_exchange=TokenExchangeConfig(
+                        server_auth_token_exchange=OAuth2TokenExchangeConfig(
                             token_url="https://example.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
                             audience="api://dr-blog-writer",
                             scopes=["blog:write"],
@@ -404,7 +404,7 @@ class TestCreateAgentCard:
     async def test_security_schemes_set_when_oauth_token_exchange_present(
         self, dragent_worker_with_a2a, a2a_frontend_config
     ):
-        a2a_frontend_config.server_auth_token_exchange = TokenExchangeConfig(
+        a2a_frontend_config.server_auth_token_exchange = OAuth2TokenExchangeConfig(
             token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
             audience="https://app.datarobot.com/dr_org_id/my_agent",
             scopes=["blog:write"],
@@ -459,7 +459,7 @@ class TestCreateAgentCard:
         )
 
         # Token exchange → client_credentials flow
-        a2a_frontend_config.server_auth_token_exchange = TokenExchangeConfig(
+        a2a_frontend_config.server_auth_token_exchange = OAuth2TokenExchangeConfig(
             token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
             audience="https://app.datarobot.com/dr_org_id/my_agent",
             scopes=["blog:write"],

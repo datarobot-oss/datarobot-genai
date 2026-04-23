@@ -17,8 +17,8 @@ from __future__ import annotations
 from nat.data_models.authentication import AuthProviderBaseConfig
 from pydantic import Field
 
-class TokenExchangeConfig(AuthProviderBaseConfig):
-    """NAT A2A server-side authentication configuration.
+class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
+    """OAuth2 Server-side authentication configuration for token exchange.
 
     This configuration is surfaced in the agent's AgentCard, specifically in the
     `securitySchemes` section. It should expose the information needed to mint the token

@@ -123,7 +123,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         * ``server_auth`` (OAuth2ResourceServerConfig) → authorization_code flow.
           Endpoint URLs are resolved via OIDC discovery or derived from the issuer URL.
-        * ``oauth_token_exchange`` (OktaTokenExchangeConfig) → client_credentials flow.
+        * ``server_auth_token_exchange`` (OAuth2TokenExchangeConfig) → client_credentials flow.
           Used for RFC 8693 second-phase token acquisition.
 
         Returns:
