@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.14
+- Added LangGraph human-in-the-loop support and parameterization of LangGraph agent.
+
 ## 0.15.13
 - Changed CLI model placeholder to `unknown` so the agent resolves the model from config (LLM_DEFAULT_MODEL)
 
