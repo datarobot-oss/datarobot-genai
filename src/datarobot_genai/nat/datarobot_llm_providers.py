@@ -35,7 +35,7 @@ class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-co
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
         description=(
-            "The model name (required for gateway, NIM, and external; optional for deployment).",
+            "The model name (required for gateway, NIM, and external; optional for deployment)."
         ),
         default=None,
     )
