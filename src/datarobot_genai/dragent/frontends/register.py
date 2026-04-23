@@ -32,6 +32,7 @@ from .converters import convert_dragent_run_agent_input_to_chat_request
 from .converters import convert_dragent_run_agent_input_to_chat_request_or_message
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
+from .okta_auth import OktaA2AServerAuthConfig
 from .logging import logging_handler_setup
 
 # Suppress specific non-actionable NAT warning messages by content.
@@ -43,10 +44,22 @@ logging_handler_setup()
 warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
 
 
+class DRA2AFrontEndConfig(A2AFrontEndConfig):
+
+    server_auth: OktaA2AServerAuthConfig | None = Field(
+        default=None,
+        description=("Configuration about authorization requirements for the agent."
+                     "Provided information about token_url, audience and scopes should"
+                     "be used for Okta Token Exchange (RFC 8693) process, where client "
+                     "dynamically negotiates a final, scoped JWT during the second phase "
+                     "Token Exchange."),
+    )
+
+
 class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
-    server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
+    server: DRA2AFrontEndConfig = Field(description="NAT A2A server configuration.")
     skills: list[AgentSkill] = Field(
         default=[],
         description="Skills to advertise in the A2A agent card. "
