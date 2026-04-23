@@ -17,22 +17,22 @@ from __future__ import annotations
 from nat.data_models.authentication import AuthProviderBaseConfig
 from pydantic import Field
 
-class OktaA2AServerAuthConfig(AuthProviderBaseConfig, name="okta_server_auth"):
+class TokenExchangeConfig(AuthProviderBaseConfig):
     """NAT A2A server-side authentication configuration.
 
     This configuration is surfaced in the agent's AgentCard, specifically in the
-    `authSchemes` section. It should expose the information needed to mint the token
+    `securitySchemes` section. It should expose the information needed to mint the token
     used to communicate with this agent (`token_url`, `audience`, and `scopes`)
     during the second step of the two-step token exchange, where the ID-JAG token is
     exchanged for the downstream scoped token required to call the agent.
     """
 
-    okta_domain: str = Field(
-        description="Okta organisation URL (e.g. https://your-org.okta.com).",
-    )
-    authorization_server_id: str = Field(
-        default="default",
-        description="Custom authorisation server ID (e.g. 'ausscimnps4vnh9zE1d7').",
+    token_url: str = Field(
+        description=(
+            "Token URL for Token Exchange (RFC 8693). This is the endpoint to which "
+            "the client will send the token exchange request to obtain a scoped token "
+            "for this agent."
+        )
     )
     audience: str | None = Field(
         default=None,
@@ -44,7 +44,3 @@ class OktaA2AServerAuthConfig(AuthProviderBaseConfig, name="okta_server_auth"):
         default=["read_data"],
         description="Scopes required by this API. Validation ensures the token grants all listed scopes.",
     )
-
-    @property
-    def token_url(self) -> str:
-        return f"{self.okta_domain}/oauth2/{self.authorization_server_id}/v1/token"

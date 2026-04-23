@@ -21,7 +21,13 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
+from a2a.types import AgentExtension
 from a2a.types import AgentSkill
+from a2a.types import AuthorizationCodeOAuthFlow
+from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import OAuth2SecurityScheme
+from a2a.types import OAuthFlows
+from a2a.types import SecurityScheme
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
@@ -103,14 +109,132 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
-    async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
-        assert self._a2a_worker is not None
-        security_schemes = None
-        security = None
-        if frontend_config.server_auth:
-            security_schemes, security = await self._a2a_worker._generate_security_schemes(
-                frontend_config.server_auth
+    async def _build_security_schemes(
+        self, frontend_config: A2AFrontEndConfig
+    ) -> tuple[
+        dict[str, SecurityScheme] | None,
+        list[dict[str, list[str]]] | None,
+        list[AgentExtension] | None,
+    ]:
+        """Build A2A security schemes from the frontend configuration.
+
+        Supports two independent auth sources that are merged into a single
+        ``oauth2`` security scheme with separate flows:
+
+        * ``server_auth`` (OAuth2ResourceServerConfig) → authorization_code flow.
+          Endpoint URLs are resolved via OIDC discovery or derived from the issuer URL.
+        * ``oauth_token_exchange`` (OktaTokenExchangeConfig) → client_credentials flow.
+          Used for RFC 8693 second-phase token acquisition.
+
+        Returns:
+            Tuple of (security_schemes, security requirements, capability extensions),
+            all ``None`` when neither auth source is configured.
+        """
+        has_server_auth = frontend_config.server_auth is not None
+        has_token_exchange = (
+            hasattr(frontend_config, "server_auth_token_exchange")
+            and frontend_config.server_auth_token_exchange is not None
+        )
+
+        if not has_server_auth and not has_token_exchange:
+            return None, None, None
+
+        authorization_code_flow = None
+        client_credentials_flow = None
+        all_scopes: list[str] = []
+        extensions: list[AgentExtension] | None = None
+
+        # (1) server_auth → authorization_code flow
+        if has_server_auth:
+            server_auth = frontend_config.server_auth
+            auth_url, token_url = await self._resolve_oauth_endpoints(server_auth)
+            scope_descriptions = {
+                scope: f"Permission: {scope}" for scope in server_auth.scopes
+            }
+            authorization_code_flow = AuthorizationCodeOAuthFlow(
+                authorization_url=auth_url,
+                token_url=token_url,
+                scopes=scope_descriptions,
             )
+            all_scopes.extend(server_auth.scopes)
+
+        # (2) oauth_token_exchange → client_credentials flow
+        if has_token_exchange:
+            auth_config = frontend_config.server_auth_token_exchange
+            scope_descriptions = {
+                scope: f"Permission: {scope}" for scope in auth_config.scopes
+            }
+            client_credentials_flow = ClientCredentialsOAuthFlow(
+                token_url=auth_config.token_url,
+                scopes=scope_descriptions,
+            )
+            all_scopes.extend(auth_config.scopes)
+            if auth_config.audience:
+                extensions = [
+                    AgentExtension(
+                        uri="urn:ietf:params:oauth:grant-type:token-exchange",
+                        description="RFC 8693 Token Exchange parameters for second-phase token acquisition",
+                        params={"audience": auth_config.audience},
+                    )
+                ]
+
+        security_schemes = {
+            "oauth2": SecurityScheme(
+                root=OAuth2SecurityScheme(
+                    type="oauth2",
+                    description="OAuth 2.0 authentication required to access this agent",
+                    flows=OAuthFlows(
+                        authorization_code=authorization_code_flow,
+                        client_credentials=client_credentials_flow,
+                    ),
+                )
+            )
+        }
+        unique_scopes = list(dict.fromkeys(all_scopes))
+        security = [{"oauth2": unique_scopes}]
+
+        return security_schemes, security, extensions
+
+    @staticmethod
+    async def _resolve_oauth_endpoints(
+        server_auth_config: object,
+    ) -> tuple[str, str]:
+        """Resolve authorization and token URLs from OAuth2ResourceServerConfig.
+
+        Uses OIDC discovery when available, otherwise derives URLs from issuer_url.
+        """
+        import httpx
+
+        if getattr(server_auth_config, "discovery_url", None):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        server_auth_config.discovery_url, timeout=5.0
+                    )
+                    response.raise_for_status()
+                    metadata = response.json()
+                    auth_url = metadata.get("authorization_endpoint")
+                    token_url = metadata.get("token_endpoint")
+                    if auth_url and token_url:
+                        logger.info(
+                            "Resolved OAuth endpoints via discovery: %s",
+                            server_auth_config.discovery_url,
+                        )
+                        return auth_url, token_url
+            except Exception as e:
+                logger.warning("Failed to discover OAuth endpoints: %s", e)
+
+        issuer = server_auth_config.issuer_url.rstrip("/")
+        auth_url = f"{issuer}/oauth/authorize"
+        token_url = f"{issuer}/oauth/token"
+        logger.info("Using derived OAuth endpoints from issuer: %s", issuer)
+        return auth_url, token_url
+
+    async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
+        security_schemes, security, extensions = await self._build_security_schemes(
+            frontend_config
+        )
+
         if self.front_end_config.a2a.skills:
             skills = self.front_end_config.a2a.skills
         else:
@@ -133,10 +257,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             capabilities=AgentCapabilities(
                 streaming=frontend_config.capabilities.streaming,
                 push_notifications=frontend_config.capabilities.push_notifications,
+                extensions=extensions,
             ),
             skills=skills,
-            security_schemes=security_schemes,
-            security=security,
+            security_schemes=security_schemes or None,
+            security=security or None,
         )
         return agent_card
 
