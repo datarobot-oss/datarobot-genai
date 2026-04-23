@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.12
+- Updating documentation for agents: quickstart guide
+
 ## 0.15.11
 - Added backward compatible route `/chat/completions` route to `dragent`
 - Revised documentation based on feedback
