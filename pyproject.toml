@@ -54,8 +54,6 @@ exclude-dependencies = [
   "flask",                    # web framework pulled in by nvidia-nat 1.6.0; not used
   # crewai / crewai-tools bloat
   "build",                    # Python build system pulled in by crewai; runtime unnecessary
-  "chromadb",                 # optional vector DB backend pulled in by crewai; not used
-  "docker",                   # container client pulled in by crewai-tools; not used
   "kubernetes",               # K8s client pulled in by crewai-tools; not used
   "stagehand",                # Playwright web automation pulled in by crewai-tools; not used
   "pytube",                   # YouTube downloader pulled in by crewai-tools; not used
@@ -64,16 +62,20 @@ exclude-dependencies = [
   "openpyxl",                 # Excel parser pulled in by crewai-tools; not used
   "python-docx",              # Word doc parser pulled in by crewai-tools; not used
   # llama-index / ragas / mem0ai bloat
-  "sqlalchemy",               # SQL ORM optional backend pulled in by llama-index, ragas, mem0ai; not used
   "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
-  "datasets",                 # HuggingFace datasets pulled in by ragas; not used
   "diskcache",                # disk caching pulled in by ragas; not used
-  "gitpython",                # Git operations pulled in by ragas; not used
   "scikit-network",           # graph analysis pulled in by ragas; not used
   # mem0ai bloat
   "posthog",                  # analytics/telemetry pulled in by mem0ai; not used
   "qdrant-client",            # optional vector DB pulled in by mem0ai; not used
-  "protobuf",                 # pulled in by qdrant-client; not used
+
+  # These are not ACTUALLY used, but they have imports in unnecessary functions.
+  # "chromadb",                 # optional vector DB backend pulled in by crewai; not used
+  # "docker",                   # container client pulled in by crewai-tools; not used
+  # "sqlalchemy",               # SQL ORM optional backend pulled in by llama-index, ragas, mem0ai; not used
+  # "datasets",                 # HuggingFace datasets pulled in by ragas; not used
+  # "gitpython",                # Git operations pulled in by ragas; not used
+  # "protobuf",                 # pulled in by qdrant-client; not used
 ]
 
 [dependency-groups]
