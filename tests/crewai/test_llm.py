@@ -22,6 +22,7 @@ from unittest.mock import patch
 import pytest
 from crewai import LLM
 
+from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.crewai import llm as crewai_llm
 
@@ -102,16 +103,36 @@ def test_get_datarobot_deployment_llm_merges_parameters() -> None:
     assert llm.temperature == 0.4
 
 
-def test_get_datarobot_nim_llm_delegates_to_deployment_llm() -> None:
-    with patch.object(
-        crewai_llm,
-        "get_datarobot_deployment_llm",
-        wraps=crewai_llm.get_datarobot_deployment_llm,
-    ) as spy:
-        llm = crewai_llm.get_datarobot_nim_llm("nim-1", "m", {"max_tokens": 10})
-    spy.assert_called_once_with("nim-1", "m", {"max_tokens": 10})
+def test_get_datarobot_deployment_llm_uses_deployed_placeholder_when_default_model_unset() -> None:
+    with patch.object(crewai_llm, "default_model_name", return_value=None):
+        llm = crewai_llm.get_datarobot_deployment_llm("dep-abc-123")
+    assert llm.model == DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
+
+
+def test_get_datarobot_gateway_llm_raises_when_model_unset() -> None:
+    with patch.object(crewai_llm, "default_model_name", return_value=None):
+        with pytest.raises(ValueError, match="Model name is required"):
+            crewai_llm.get_datarobot_gateway_llm()
+
+
+def test_get_datarobot_nim_llm_builds_nim_endpoint_and_model() -> None:
+    llm = crewai_llm.get_datarobot_nim_llm("nim-1", "m", {"max_tokens": 10})
     assert isinstance(llm, LLM)
     assert llm.is_litellm is True
+    assert llm.api_base == "https://example.test/deployments/nim-1/chat/completions"
+    assert llm.model == "datarobot/m"
+
+
+def test_get_datarobot_nim_llm_raises_when_model_unset() -> None:
+    with patch.object(crewai_llm, "default_model_name", return_value=None):
+        with pytest.raises(ValueError, match="Model name is required"):
+            crewai_llm.get_datarobot_nim_llm("nim-1")
+
+
+def test_get_external_llm_raises_when_model_unset() -> None:
+    with patch.object(crewai_llm, "default_model_name", return_value=None):
+        with pytest.raises(ValueError, match="Model name is required"):
+            crewai_llm.get_external_llm()
 
 
 def test_get_external_llm_returns_crewai_llm() -> None:

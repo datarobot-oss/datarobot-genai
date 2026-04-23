@@ -26,3 +26,10 @@ workflow:
   _type: crewai_agent
   llm_name: datarobot_llm
   description: CrewAI planner/writer agent
+  max_iter: 20
+  max_rpm: 30
+  max_execution_time: 600
+  allow_delegation: false
+  max_retry_limit: 2
+  reasoning: false
+  max_reasoning_attempts: 1

@@ -7,6 +7,7 @@ authors = [{ name = "DataRobot, Inc." }]
 
 dependencies = [
     "httpx>=0.28.1,<1.0.0",
+    "openai>=2.0.0,<3.0.0",
     "pytest",
     "pytest-rerunfailures",
     "pytest-timeout",

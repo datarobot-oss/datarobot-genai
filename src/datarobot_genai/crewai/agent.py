@@ -27,6 +27,7 @@ import abc
 import logging
 import uuid
 from collections.abc import Callable
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -76,7 +77,50 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
     Subclasses should define the ``agents`` and ``tasks`` properties
     and may override ``crew`` to customize the workflow construction.
+
+    Optional keyword arguments may be passed to :meth:`__init__` after
+    ``BaseAgent`` parameters:
+
+    - ``roles``, ``goals``, ``backstories``: sequences with length
+      ``len(agents)`` for CrewAI identity; omitted or ``None`` leaves agents
+      unchanged.
+    - ``max_iter``, ``max_rpm``, ``max_execution_time``, ``allow_delegation``,
+      ``max_retry_limit``, ``reasoning``, ``max_reasoning_attempts``: forwarded
+      to the corresponding ``set_*`` methods; omitted or ``None`` skips.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        roles = kwargs.pop("roles", None)
+        goals = kwargs.pop("goals", None)
+        backstories = kwargs.pop("backstories", None)
+        max_iter = kwargs.pop("max_iter", None)
+        max_rpm = kwargs.pop("max_rpm", None)
+        max_execution_time = kwargs.pop("max_execution_time", None)
+        allow_delegation = kwargs.pop("allow_delegation", None)
+        max_retry_limit = kwargs.pop("max_retry_limit", None)
+        reasoning = kwargs.pop("reasoning", None)
+        max_reasoning_attempts = kwargs.pop("max_reasoning_attempts", None)
+        super().__init__(*args, **kwargs)
+        if roles is not None:
+            self.set_roles(roles)
+        if goals is not None:
+            self.set_goals(goals)
+        if backstories is not None:
+            self.set_backstories(backstories)
+        if max_iter is not None:
+            self.set_max_iter(max_iter)
+        if max_rpm is not None:
+            self.set_max_rpm(max_rpm)
+        if max_execution_time is not None:
+            self.set_max_execution_time(max_execution_time)
+        if allow_delegation is not None:
+            self.set_allow_delegation(allow_delegation)
+        if max_retry_limit is not None:
+            self.set_max_retry_limit(max_retry_limit)
+        if reasoning is not None:
+            self.set_reasoning(reasoning)
+        if max_reasoning_attempts is not None:
+            self.set_max_reasoning_attempts(max_reasoning_attempts)
 
     def set_llm(self, llm: LLM | None) -> None:
         super().set_llm(llm)
@@ -97,6 +141,117 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             agent.verbose = verbose
 
         self.crew.verbose = verbose
+
+    def set_roles(self, roles: Sequence[str]) -> None:
+        """Set each agent's ``role``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(roles) != len(agents):
+            raise ValueError(
+                f"roles length ({len(roles)}) must match number of agents ({len(agents)})"
+            )
+        for agent, role in zip(agents, roles, strict=True):
+            agent.role = role
+
+    def set_goals(self, goals: Sequence[str]) -> None:
+        """Set each agent's ``goal``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(goals) != len(agents):
+            raise ValueError(
+                f"goals length ({len(goals)}) must match number of agents ({len(agents)})"
+            )
+        for agent, goal in zip(agents, goals, strict=True):
+            agent.goal = goal
+
+    def set_backstories(self, backstories: Sequence[str]) -> None:
+        """Set each agent's ``backstory``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(backstories) != len(agents):
+            raise ValueError(
+                f"backstories ({len(backstories)}) must match number of agents ({len(agents)})"
+            )
+        for agent, backstory in zip(agents, backstories, strict=True):
+            agent.backstory = backstory
+
+    def set_role(self, role: str, *, agent_index: int | None = None) -> None:
+        """Set ``role`` on one agent.
+
+        With multiple agents, pass ``agent_index`` (0-based). If omitted and there is
+        exactly one agent, that agent is updated. With multiple agents and no index,
+        use :meth:`set_roles` instead.
+        """
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_role(role) without agent_index requires exactly one agent; "
+                    "use set_roles() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].role = role
+
+    def set_goal(self, goal: str, *, agent_index: int | None = None) -> None:
+        """Set ``goal`` on one agent. See :meth:`set_role`."""
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_goal(goal) without agent_index requires exactly one agent; "
+                    "use set_goals() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].goal = goal
+
+    def set_backstory(self, backstory: str, *, agent_index: int | None = None) -> None:
+        """Set ``backstory`` on one agent. See :meth:`set_role`."""
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_backstory(backstory) without agent_index requires exactly one agent; "
+                    "use set_backstories() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].backstory = backstory
+
+    def set_max_iter(self, max_iter: int) -> None:
+        for agent in self.agents:
+            agent.max_iter = max_iter
+
+    def set_max_rpm(self, max_rpm: int) -> None:
+        for agent in self.agents:
+            agent.max_rpm = max_rpm
+
+    def set_max_execution_time(self, max_execution_time: int | None) -> None:
+        for agent in self.agents:
+            agent.max_execution_time = max_execution_time
+
+    def set_allow_delegation(self, allow_delegation: bool) -> None:
+        for agent in self.agents:
+            agent.allow_delegation = allow_delegation
+
+    def set_max_retry_limit(self, max_retry_limit: int) -> None:
+        for agent in self.agents:
+            agent.max_retry_limit = max_retry_limit
+
+    def set_reasoning(self, reasoning: bool) -> None:
+        for agent in self.agents:
+            agent.reasoning = reasoning
+
+    def set_max_reasoning_attempts(self, max_reasoning_attempts: int | None) -> None:
+        for agent in self.agents:
+            agent.max_reasoning_attempts = max_reasoning_attempts
 
     @property
     @abc.abstractmethod
@@ -451,6 +606,9 @@ def datarobot_agent_class_from_crew(
         should match placeholder names used in task descriptions and agent
         configurations (e.g. ``{topic}``). Include a ``"chat_history"`` key
         with an empty string value to opt into automatic history injection.
+
+    The returned class accepts optional ``roles``, ``goals``, and ``backstories``
+    keyword arguments on instantiation (see :class:`CrewAIAgent`).
 
     Returns
     -------

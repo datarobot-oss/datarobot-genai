@@ -28,7 +28,20 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
 
     Extends AgentBaseConfig which provides: llm_name, description, verbose.
     The LLM is managed by NAT and accessed via builder.get_llm().
+
+    Optional execution settings mirror :class:`~datarobot_genai.crewai.agent.CrewAIAgent`
+    ``set_max_iter``, ``set_max_rpm``, ``set_max_execution_time``,
+    ``set_allow_delegation``, ``set_max_retry_limit``, ``set_reasoning``, and
+    ``set_max_reasoning_attempts``. Omitted or ``null`` leaves CrewAI defaults.
     """
+
+    max_iter: int | None = None
+    max_rpm: int | None = None
+    max_execution_time: int | None = None
+    allow_delegation: bool | None = None
+    max_retry_limit: int | None = None
+    reasoning: bool | None = None
+    max_reasoning_attempts: int | None = None
 
 
 @register_per_user_function(
@@ -71,6 +84,13 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
                 forwarded_headers=forwarded_headers,
                 tools=tools,
                 verbose=config.verbose,
+                max_iter=config.max_iter,
+                max_rpm=config.max_rpm,
+                max_execution_time=config.max_execution_time,
+                allow_delegation=config.allow_delegation,
+                max_retry_limit=config.max_retry_limit,
+                reasoning=config.reasoning,
+                max_reasoning_attempts=config.max_reasoning_attempts,
             )
 
             async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):

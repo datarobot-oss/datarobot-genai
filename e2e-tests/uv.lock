@@ -1000,7 +1000,6 @@ requires-dist = [
     { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'dragent'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'drmcp'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'drtools'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
@@ -1030,7 +1029,7 @@ requires-dist = [
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.6.0,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
-    { name = "mem0ai", marker = "python_full_version < '3.13' and extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
+    { name = "mem0ai", marker = "extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.6.0" },
     { name = "nvidia-nat", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.6.0" },
@@ -1163,6 +1162,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },
     { name = "httpx" },
+    { name = "openai" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
@@ -1197,6 +1197,7 @@ lint = [
 requires-dist = [
     { name = "ag-ui-protocol", git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
+    { name = "openai", specifier = ">=2.0.0,<3.0.0" },
     { name = "pytest" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },

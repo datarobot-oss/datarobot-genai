@@ -1,8 +1,5 @@
 version: '3'
 
-env:
-  PYTHONWARNINGS: "ignore::UserWarning,ignore::RuntimeWarning"
-
 tasks:
   test:
     desc: "Run repo unit tests via pytest"
