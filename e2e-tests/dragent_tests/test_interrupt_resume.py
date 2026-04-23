@@ -66,7 +66,7 @@ def test_stream_interrupt_then_resume_plain_user_message_no(http_client: httpx.C
 
     events_1 = collect_ag_ui_events(sse_1)
     custom_names = [getattr(e, "name", None) for e in events_1 if e.type == EventType.CUSTOM]
-    assert "langgraph.interrupt" in custom_names
+    assert "on_interrupt" in custom_names
 
     finished_1 = [e for e in events_1 if e.type == EventType.RUN_FINISHED][-1]
     assert finished_1.result is not None
@@ -115,7 +115,7 @@ def test_stream_interrupt_then_resume_plain_user_message_yes(http_client: httpx.
 
     events_1 = collect_ag_ui_events(sse_1)
     custom_names = [getattr(e, "name", None) for e in events_1 if e.type == EventType.CUSTOM]
-    assert "langgraph.interrupt" in custom_names
+    assert "on_interrupt" in custom_names
 
     finished_1 = [e for e in events_1 if e.type == EventType.RUN_FINISHED][-1]
     assert finished_1.result is not None
@@ -141,4 +141,4 @@ def test_stream_interrupt_then_resume_plain_user_message_yes(http_client: httpx.
     assert E2E_INTERRUPT_CONTINUING in text
     # Resume completed the graph (writer ran); no second interrupt on this run.
     custom_names_2 = [getattr(e, "name", None) for e in events_2 if e.type == EventType.CUSTOM]
-    assert "langgraph.interrupt" not in custom_names_2
+    assert "on_interrupt" not in custom_names_2

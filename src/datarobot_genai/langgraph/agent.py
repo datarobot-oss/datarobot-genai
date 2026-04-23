@@ -419,13 +419,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     for intr in intr_tuple:
                         serialized.append({"id": intr.id, "value": intr.value})
                     custom_value = {
-                        "kind": "langgraph_interrupt",
+                        "kind": "on_interrupt",
                         "interrupts": serialized,
                     }
                     yield (
                         CustomEvent(
                             type=EventType.CUSTOM,
-                            name="langgraph.interrupt",
+                            name="on_interrupt",
                             value=custom_value,
                         ),
                         None,
