@@ -25,7 +25,6 @@ from pydantic import Field
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMConfig
-from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
