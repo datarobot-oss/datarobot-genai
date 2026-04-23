@@ -25,14 +25,41 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(tags={"predictive", "project", "read", "management", "list"})
-async def list_projects() -> dict[str, Any]:
-    """List all DataRobot projects for the authenticated user."""
+async def list_projects(
+    *,
+    offset: Annotated[
+        int | None,
+        "Projects to skip (0-based). Use with limit for a page of results.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Maximum projects to return. Omit to use the API default (up to 1000 results).",
+    ] = None,
+) -> dict[str, Any]:
+    """List DataRobot projects. Pass offset/limit to page results."""
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
+
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    projects = client.Project.list()
-    projects = {p.id: p.project_name for p in projects}
+    list_kwargs: dict[str, int] = {}
+    if offset is not None:
+        list_kwargs["offset"] = offset
+    if limit is not None:
+        list_kwargs["limit"] = limit
+    projects = client.Project.list(**list_kwargs) if list_kwargs else client.Project.list()
+    projects_dict = {p.id: p.project_name for p in projects}
 
-    return projects
+    if list_kwargs:
+        return {
+            "projects": projects_dict,
+            "offset": list_kwargs.get("offset", 0),
+            "limit": list_kwargs.get("limit"),
+            "returned_count": len(projects),
+        }
+    return projects_dict
 
 
 @tool_metadata(tags={"predictive", "project", "read", "data", "info"})

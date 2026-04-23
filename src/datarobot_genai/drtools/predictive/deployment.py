@@ -30,10 +30,40 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(tags={"predictive", "deployment", "read", "management", "list", "daria"})
-async def list_deployments() -> dict[str, Any]:
-    """List all DataRobot deployments for the authenticated user."""
+async def list_deployments(
+    *,
+    offset: Annotated[
+        int | None,
+        "Deployments to skip (0-based). Use with limit; max 100 deployments per page.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Max deployments this call (1–100). Omit to fetch all (multiple API pages).",
+    ] = None,
+) -> dict[str, Any]:
+    """List deployments. Use offset/limit for API pagination (limit at most 100)."""
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
+    if limit is not None and limit > 100:
+        raise ToolError("limit cannot exceed 100 for deployment listing")
+
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
+
+    if offset is not None or limit is not None:
+        eff_offset = 0 if offset is None else offset
+        eff_limit = limit if limit is not None else 100
+        deployments = client.Deployment.list(offset=eff_offset, limit=eff_limit)
+        deployments_dict = {d.id: d.label for d in deployments} if deployments else {}
+        return {
+            "deployments": deployments_dict,
+            "offset": eff_offset,
+            "limit": eff_limit,
+            "returned_count": len(deployments),
+        }
+
     deployments = client.Deployment.list()
     if not deployments:
         return {"deployments": []}

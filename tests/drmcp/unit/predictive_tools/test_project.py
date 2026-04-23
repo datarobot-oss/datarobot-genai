@@ -47,6 +47,28 @@ async def test_list_projects_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_projects_paged_success() -> None:
+    mock_client = MagicMock()
+    mock_proj = MagicMock(id="p1", project_name="one")
+    mock_client.Project.list.return_value = [mock_proj]
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await project.list_projects(offset=10, limit=5)
+    mock_client.Project.list.assert_called_once_with(offset=10, limit=5)
+    assert result["projects"]["p1"] == "one"
+    assert result["offset"] == 10
+    assert result["limit"] == 5
+    assert result["returned_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_list_projects_empty() -> None:
     mock_client = MagicMock()
     mock_client.Project.list.return_value = []

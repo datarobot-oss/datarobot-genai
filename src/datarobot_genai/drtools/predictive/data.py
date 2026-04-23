@@ -42,6 +42,37 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
     return {}
 
 
+def _datastore_entry(ds: Any) -> dict[str, Any]:
+    """Shape one datastore for list_datastores responses."""
+    return {
+        "id": ds.id,
+        "canonical_name": getattr(ds, "canonical_name", ""),
+        "creator_id": getattr(ds, "creator_id", ""),
+        "params": _serialize_datastore_params(getattr(ds, "params", None)),
+    }
+
+
+def _list_datastores_paged(dr: Any, *, offset: int, limit: int) -> dict[str, Any]:
+    """One page of external data stores via offset/limit (not exposed on DataStore.list())."""
+    params: dict[str, Any] = {"offset": offset, "limit": limit}
+    resp = dr.DataStore._client.get(dr.DataStore._path, params=params).json()
+    raw_items = resp.get("data") or []
+    datastores = [dr.DataStore.from_server_data(item) for item in raw_items]
+    out: dict[str, Any] = {
+        "datastores": [_datastore_entry(ds) for ds in datastores],
+        "count": len(datastores),
+        "offset": offset,
+        "limit": limit,
+        "next": resp.get("next"),
+        "previous": resp.get("previous"),
+    }
+    for key in ("total_count", "total"):
+        if key in resp and resp[key] is not None:
+            out["total_count"] = resp[key]
+            break
+    return out
+
+
 @tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
 async def upload_dataset_to_ai_catalog(
     *,
@@ -103,19 +134,61 @@ async def upload_dataset_to_ai_catalog(
     }
 
 
-@tool_metadata(tags={"predictive", "data", "read", "list", "catalog", "daria"})
-async def list_ai_catalog_items() -> dict[str, Any]:
-    """List all AI Catalog items (datasets) for the authenticated user."""
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    datasets = client.Dataset.list()
+def _list_ai_catalog_paged(dr: Any, *, offset: int, limit: int) -> dict[str, Any]:
+    """One page of AI Catalog datasets via api/v2/datasets (offset/limit)."""
+    params: dict[str, Any] = {"offset": offset, "limit": limit}
+    resp = dr.Dataset._client.get(dr.Dataset._path, params=params).json()
+    raw_items = resp.get("data") or []
+    datasets = [dr.Dataset.from_server_data(item) for item in raw_items]
+    datasets_dict = {ds.id: ds.name for ds in datasets}
+    out: dict[str, Any] = {
+        "datasets": datasets_dict,
+        "count": len(datasets),
+        "offset": offset,
+        "limit": limit,
+        "next": resp.get("next"),
+        "previous": resp.get("previous"),
+    }
+    for key in ("total_count", "total"):
+        if key in resp and resp[key] is not None:
+            out["total_count"] = resp[key]
+            break
+    return out
 
+
+@tool_metadata(tags={"predictive", "data", "read", "list", "catalog", "daria"})
+async def list_ai_catalog_items(
+    *,
+    offset: Annotated[
+        int | None,
+        "Skip this many catalog items (0-based). Use with limit for paged listing; omit for all.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Max datasets to return in this call (server page size). Omit to list the full catalog.",
+    ] = None,
+) -> dict[str, Any]:
+    """List AI Catalog items (datasets). Omit offset and limit to fetch the full catalog."""
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
+
+    token = await get_datarobot_access_token()
+    dr = DataRobotClient(token).get_client()
+
+    if offset is not None or limit is not None:
+        eff_offset = 0 if offset is None else offset
+        if limit is None:
+            raise ToolError("limit is required when offset is set for paged AI Catalog listing")
+        return _list_ai_catalog_paged(dr, offset=eff_offset, limit=limit)
+
+    datasets = dr.Dataset.list()
     if not datasets:
         logger.info("No AI Catalog items found")
         return {"datasets": []}
 
     datasets_dict = {ds.id: ds.name for ds in datasets}
-
     return {
         "datasets": datasets_dict,
         "count": len(datasets),
@@ -155,22 +228,39 @@ async def get_dataset_details(
 
 
 @tool_metadata(tags={"predictive", "data", "read", "datastore", "list", "daria"})
-async def list_datastores() -> dict[str, Any]:
-    """List available DataRobot data connections (datastores)."""
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    datastores = client.DataStore.list()
+async def list_datastores(
+    *,
+    offset: Annotated[
+        int | None,
+        "Datastores to skip (0-based). Use with limit for one API page.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Max datastores this call. Omit to use DataStore.list() (one server page of results).",
+    ] = None,
+) -> dict[str, Any]:
+    """List DataRobot data connections (datastores).
 
+    The SDK's ``DataStore.list()`` does not accept offset/limit and returns a single response
+    page. Pass offset and limit to request an explicit page via the API.
+    """
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
+
+    token = await get_datarobot_access_token()
+    dr = DataRobotClient(token).get_client()
+
+    if offset is not None or limit is not None:
+        eff_offset = 0 if offset is None else offset
+        if limit is None:
+            raise ToolError("limit is required when offset is set for paged datastore listing")
+        return _list_datastores_paged(dr, offset=eff_offset, limit=limit)
+
+    datastores = dr.DataStore.list()
     return {
-        "datastores": [
-            {
-                "id": ds.id,
-                "canonical_name": getattr(ds, "canonical_name", ""),
-                "creator_id": getattr(ds, "creator_id", ""),
-                "params": _serialize_datastore_params(getattr(ds, "params", None)),
-            }
-            for ds in datastores
-        ],
+        "datastores": [_datastore_entry(ds) for ds in datastores],
         "count": len(datastores),
     }
 

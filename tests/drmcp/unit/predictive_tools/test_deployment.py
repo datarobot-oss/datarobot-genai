@@ -53,6 +53,42 @@ async def test_list_deployments_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_deployments_paged_success() -> None:
+    mock_client = MagicMock()
+    mock_dep = MagicMock(id="d1", label="dep1")
+    mock_client.Deployment.list.return_value = [mock_dep]
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await deployment.list_deployments(offset=0, limit=20)
+    mock_client.Deployment.list.assert_called_once_with(offset=0, limit=20)
+    assert result["deployments"]["d1"] == "dep1"
+    assert result["offset"] == 0
+    assert result["limit"] == 20
+    assert result["returned_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_deployments_limit_over_100() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient"),
+    ):
+        with pytest.raises(ToolError, match="cannot exceed 100"):
+            await deployment.list_deployments(offset=0, limit=101)
+
+
+@pytest.mark.asyncio
 async def test_list_deployments_empty() -> None:
     mock_client = MagicMock()
     mock_client.Deployment.list.return_value = []

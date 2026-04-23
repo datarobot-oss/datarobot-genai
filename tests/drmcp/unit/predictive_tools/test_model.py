@@ -134,6 +134,43 @@ async def test_score_dataset_with_model_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_models_uses_get_models_by_default() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_m = MagicMock(id="m1", model_type="XGB", metrics={"AUC": {"validation": 0.9}})
+    mock_project.get_models.return_value = [mock_m]
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.list_models(project_id="pid")
+    mock_project.get_models.assert_called_once_with()
+    mock_project.get_model_records.assert_not_called()
+    assert result["project_id"] == "pid"
+    assert len(result["models"]) == 1
+    assert result["models"][0]["id"] == "m1"
+    assert "offset" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_models_paged_uses_get_model_records() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_m = MagicMock(id="m2", model_type="RF", metrics={"LogLoss": {"validation": 0.5}})
+    mock_project.get_model_records.return_value = [mock_m]
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.list_models(project_id="pid", offset=10, limit=25)
+    mock_project.get_model_records.assert_called_once_with(limit=25, offset=10)
+    mock_project.get_models.assert_not_called()
+    assert result["offset"] == 10
+    assert result["limit"] == 25
+    assert result["returned_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_score_dataset_with_model_empty_dataset_id() -> None:
     with pytest.raises(ToolError, match="Dataset ID must be provided"):
         await model.score_dataset_with_model(

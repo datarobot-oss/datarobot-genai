@@ -171,20 +171,45 @@ async def score_dataset_with_model(
 async def list_models(
     *,
     project_id: Annotated[str, "The DataRobot project ID"],
+    offset: Annotated[
+        int | None,
+        "Models to skip (0-based). Use with limit for paginated modelRecords.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Max models (modelRecords). Omit to use the classic full leaderboard list.",
+    ] = None,
 ) -> dict[str, Any]:
-    """List all models in a project."""
+    """List models. Optional offset/limit use paginated modelRecords (score-sorted)."""
     if not project_id:
         raise ToolError("Project ID must be provided")
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     project = client.Project.get(project_id)
-    models = project.get_models()
+    use_pages = limit is not None or offset is not None
+    if use_pages:
+        eff_offset = 0 if offset is None else offset
+        eff_limit = limit if limit is not None else 100
+        models = project.get_model_records(limit=eff_limit, offset=eff_offset)
+    else:
+        models = project.get_models()
+        eff_limit = None
+        eff_offset = None
 
-    return {
+    out: dict[str, Any] = {
         "project_id": project_id,
         "models": [model_to_dict(model) for model in models],
     }
+    if use_pages:
+        out["offset"] = eff_offset
+        out["limit"] = eff_limit
+        out["returned_count"] = len(models)
+    return out
 
 
 @tool_metadata(tags={"predictive", "model", "read", "details", "info", "daria"})
