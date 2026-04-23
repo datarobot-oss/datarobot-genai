@@ -26,9 +26,6 @@ from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
 from ag_ui.core import StepStartedEvent
-from ag_ui.core import TextMessageContentEvent
-from ag_ui.core import TextMessageEndEvent
-from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
@@ -136,12 +133,16 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_llm(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
-        # Find the start in the history with matching run_id
+        # At root function level (level 1), the stream converter
+        # (convert_chunks_to_agui_events) already emits TextMessage* events
+        # from the LLM's ChatResponseChunk stream. Emitting them here too
+        # creates duplicate text events with different message IDs, which
+        # causes the frontserver storage to create extra messages that
+        # interfere with tool call tracking.
+        if self.function_level <= 1:
+            return DRAgentEventResponse(events=[])
 
-        if self.function_level == 1:
-            events = self._handle_llm_primary_function(payload)
-        else:
-            events = self._handle_llm_nested_function(payload)
+        events = self._handle_llm_nested_function(payload)
 
         response = DRAgentEventResponse(
             events=events,
@@ -150,32 +151,6 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             model=payload.name,
         )
         return response
-
-    def _handle_llm_primary_function(self, payload: IntermediateStepPayload) -> list[Event]:
-        events = []
-
-        if payload.event_type == IntermediateStepType.LLM_START:
-            events.append(TextMessageStartEvent(message_id=payload.UUID))
-            self.seen_llm_new_token = False
-        # Text might be sent in both LLM_END and LLM_NEW_TOKEN steps
-        # we need to send content only once
-        elif payload.event_type == IntermediateStepType.LLM_END:
-            if not self.seen_llm_new_token:
-                text = self._extract_payload_text(payload)
-                if text:
-                    events.append(TextMessageContentEvent(message_id=payload.UUID, delta=text))
-
-            events.append(TextMessageEndEvent(message_id=payload.UUID))
-        elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
-            self.seen_llm_new_token = True
-            if payload.data.chunk != "":
-                events.append(
-                    TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-                )
-        else:
-            raise self._unknown_step_type(payload)
-
-        return events
 
     def _handle_llm_nested_function(self, payload: IntermediateStepPayload) -> list[Event]:
         events = []
@@ -258,6 +233,14 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_tool(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
+        # At root function level (level 1), the stream converter
+        # (convert_chunks_to_agui_events) already emits ToolCall* events
+        # from the LLM's ChatResponseChunk stream. Emitting them here too
+        # creates duplicate tool calls with different IDs, which causes
+        # the frontserver storage to store some with name="UNKNOWN".
+        if self.function_level <= 1:
+            return DRAgentEventResponse(events=[])
+
         events = []
 
         # run id and thread id are set on the API level, should not be set here
@@ -295,7 +278,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         else:
             raise self._unknown_step_type(payload)
 
-        return None
+        return DRAgentEventResponse(events=[])
 
     def _handle_custom(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
