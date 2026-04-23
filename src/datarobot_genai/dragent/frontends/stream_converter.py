@@ -77,6 +77,7 @@ async def convert_chunks_to_agui_events(
                     for tc_id in active_tool_calls:
                         events.append(ToolCallEndEvent(tool_call_id=tc_id))
                     active_tool_calls.clear()
+                    tool_call_message_id = None
 
                 if active_message_id is None:
                     # After a tool call cycle, the LLM response is a new turn
