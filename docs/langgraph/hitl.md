@@ -49,8 +49,6 @@ Env reference for the LLM: [LLM configuration (shared)](../llm.md).
 
 ## Sequence Diagram
 ```mermaid
-
-```mermaid
 sequenceDiagram
     participant UI as AG-UI
     participant LGA as LangGraph Agent
