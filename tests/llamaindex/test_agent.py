@@ -32,11 +32,13 @@ from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
 from llama_index.core.agent.workflow import AgentStream
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.agent.workflow import ToolCall
 from llama_index.core.agent.workflow import ToolCallResult
 from llama_index.core.agent.workflow.workflow_events import AgentWorkflowStartEvent
 from llama_index.core.llms import ChatMessage
 from llama_index.core.llms import MessageRole
+from llama_index.core.llms.mock import MockLLM
 from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
@@ -210,6 +212,18 @@ def test_datarobot_agent_class_from_llamaindex_set_llm_propagates_to_agents() ->
     _ = cls(llm=llm)
     assert a1.llm is llm
     assert a2.llm is llm
+
+
+def test_datarobot_agent_class_from_llamaindex_allow_parallel_tool_calls_on_function_agents() -> (
+    None
+):
+    planner = FunctionAgent(name="planner", llm=MockLLM(), tools=[])
+    writer = FunctionAgent(name="writer", llm=MockLLM(), tools=[])
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [planner, writer], lambda _s, _e: "")
+    agent = cls(allow_parallel_tool_calls=False)
+    assert agent.allow_parallel_tool_calls is False
+    assert planner.allow_parallel_tool_calls is False
+    assert writer.allow_parallel_tool_calls is False
 
 
 def test_datarobot_agent_class_from_llamaindex_set_tools_merges_original_plus_mcp() -> None:

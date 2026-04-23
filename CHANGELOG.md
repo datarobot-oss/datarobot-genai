@@ -4,10 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.6
+## 0.15.11
 - Added backward compatible route `/chat/completions` route to `dragent`
 - Revised documentation based on feedback
 - Added example Jupyter Notebook walktrough of setting a LangGraph agent in DataRobot
+
+## 0.15.10
+- Fixed `NatAgent` text extraction for `DRAgentEventResponse` objects.
+
+## 0.15.9
+- Adding parameters to Crew AI and LlamaIndex Agents
+
+## 0.15.8
+- **Dependencies**: Removed the python<3.13 restriction from mem0ai when including the memory dependency.
+
+## 0.15.7
+- **Dependencies**: Moved `datarobot-early-access` from the `drtools` extra to `drmcp`.
+
+## 0.15.6
+- Added cli.py-compatible aliases (`--user_prompt`, `--deployment_id`) to `nat dragent run` and `query` for Taskfile passthrough.
+- Added `--file` / `--input-file` option to `nat dragent run` and `query`: reads a text file and uses its contents as the prompt.
 
 ## 0.15.5
 - **Security**: Raised minimum `pypdf` to `>=6.10.1` for CVE-2026-40260 (fixed in 6.10.0) and GHSA-jj6c-8h6c-hppx (fixed in 6.10.1).

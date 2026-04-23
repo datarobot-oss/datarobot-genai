@@ -71,6 +71,10 @@ Shared **LLM routing** (gateway vs deployment vs NIM vs external): [LLM configur
 
 Minimal custom agent without a framework wrapper: [`e2e-tests/dragent/base/myagent.py`](../e2e-tests/dragent/base/myagent.py) and its [`workflow.yaml`](../e2e-tests/dragent/base/workflow.yaml).
 
+## DRAgent CLI
+
+Standalone CLI for running and querying DRAgent workflows via NAT. See [docs/dragent/](dragent/) for full usage (`serve`, `run`, `query`, completion JSON, authentication, debugging).
+
 ## Configuration reference
 
 Environment variables the examples and `workflow.yaml` assume (full table): [LLM configuration](llm.md).

@@ -23,6 +23,7 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -46,6 +47,24 @@ if TYPE_CHECKING:
     from ragas.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_text(result: Any) -> str:
+    """Pull plain text from a stream result.
+
+    ``ChatResponse`` → ``choices[0].message.content``
+    ``DRAgentEventResponse`` (has *events*) → joined text deltas
+    Anything else → ``str(result)``
+    """
+    if isinstance(result, ChatResponse):
+        return result.choices[0].message.content or ""
+    if hasattr(result, "events"):
+        return "".join(
+            event.delta or ""
+            for event in result.events
+            if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent))
+        )
+    return str(result)
 
 
 def convert_to_ragas_messages(
@@ -205,16 +224,13 @@ class NatAgent(BaseAgent[None]):
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
                     async for result in runner.result_stream():
-                        if isinstance(result, ChatResponse):
-                            result_text = result.choices[0].message.content
-                        else:
-                            result_text = str(result)
-
+                        result_text = _extract_text(result)
                         if result_text:
                             if not text_started:
                                 yield (
                                     TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=message_id,
                                     ),
                                     None,
                                     zero_metrics,
