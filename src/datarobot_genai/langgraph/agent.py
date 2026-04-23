@@ -11,15 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import abc
 import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from collections.abc import Mapping
-from functools import cached_property
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Optional
 from typing import cast
 
 from ag_ui.core import CustomEvent
@@ -39,10 +39,8 @@ from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
-from langgraph.types import Checkpointer
 from langgraph.types import Command
 from nat.plugins.langchain.callback_handler import LangchainProfilerHandler
 
@@ -72,6 +70,28 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     not use `{chat_history}`, no chat history is passed to the model.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Forward ``*args`` / ``**kwargs`` to :class:`BaseAgent` after setting LangGraph fields.
+
+        The following keyword arguments are handled here and are not passed to
+        :meth:`BaseAgent.__init__`: ``checkpointer``, ``interrupt_before``,
+        ``interrupt_after``, ``debug``, ``name``.
+
+        - ``checkpointer``: if set, :attr:`langgraph_checkpointer` returns it;
+          otherwise a :class:`~langgraph.checkpoint.memory.InMemorySaver` is used.
+        - ``interrupt_before`` / ``interrupt_after``: passed to
+          :meth:`langgraph.graph.state.StateGraph.compile`.
+        - ``debug``: if provided, passed to ``compile(debug=...)``; for ``astream``,
+          when omitted, ``debug`` follows ``verbose`` (previous behavior).
+        - ``name``: optional graph name for ``compile(name=...)``.
+        """
+        self.checkpointer = kwargs.pop("checkpointer", None)
+        self.interrupt_before = kwargs.pop("interrupt_before", None)
+        self.interrupt_after = kwargs.pop("interrupt_after", None)
+        self.debug = kwargs.pop("debug", False)
+        self.name = kwargs.pop("name", None)
+        super().__init__(*args, **kwargs)
+
     @property
     @abc.abstractmethod
     def workflow(self) -> StateGraph[MessagesState]:
@@ -89,18 +109,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "callbacks": [LangchainProfilerHandler()],
         }
 
-    @cached_property
-    def langgraph_checkpointer(self) -> Checkpointer | None:
-        """Checkpointer for LangGraph compilation.
-
-        Defaults to `langgraph.checkpoint.memory.InMemorySaver` so state is
-        persisted per `configurable.thread_id` (including human-in-the-loop flows
-        that use `langgraph.types.interrupt`). Override this property to use a
-        different saver (e.g. Postgres), or return `None` to compile without a
-        checkpointer.
-        """
-        return InMemorySaver()
-
     def build_langgraph_runnable_config(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
         """Merge `langgraph_config` with per-run `thread_id` for checkpointing."""
         cfg: dict[str, Any] = dict(self.langgraph_config)
@@ -114,10 +122,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     def _compile_workflow(self) -> Any:
         """Compile the workflow graph, attaching `langgraph_checkpointer` when set."""
-        ckpt = self.langgraph_checkpointer
-        if ckpt is not None:
-            return self.workflow.compile(checkpointer=ckpt)
-        return self.workflow.compile()
+        return self.workflow.compile(
+            checkpointer=self.checkpointer,
+            interrupt_before=self.interrupt_before,
+            interrupt_after=self.interrupt_after,
+            debug=self.debug,
+            name=self.name,
+        )
 
     async def _command_for_pending_interrupt(
         self,
@@ -125,7 +136,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         run_agent_input: RunAgentInput,
     ) -> Command | None:
         """When the thread is paused on `interrupt()`, map the user message to `resume`."""
-        if self.langgraph_checkpointer is None:
+        if self.checkpointer is None:
             return None
         config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
         ag = getattr(compiled_graph, "aget_state", None)
@@ -291,7 +302,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     async def _stream_generator(
         self,
-        graph_stream: AsyncGenerator[tuple[Any, str, Any], None],
+        graph_stream: AsyncGenerator[tuple[Any, str, Any]],
         usage_metrics: UsageMetrics,
         run_agent_input: RunAgentInput,
     ) -> InvokeReturn:
@@ -471,7 +482,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def create_pipeline_interactions_from_events(
         cls,
         events: list[dict[str, Any]] | None,
-    ) -> Optional["MultiTurnSample"]:
+    ) -> MultiTurnSample | None:
         """Convert a list of LangGraph events into Ragas MultiTurnSample."""
         if not events:
             return None

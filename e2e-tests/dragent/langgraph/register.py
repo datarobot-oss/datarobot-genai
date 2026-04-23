@@ -47,7 +47,8 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
     from nat.builder.function_info import FunctionInfo
     from nat.data_models.streaming import Streaming
 
-    from dragent.langgraph.myagent import HitlMyAgent
+    from dragent.langgraph.myagent import HITL_E2E_CHECKPOINTER
+    from dragent.langgraph.myagent import MyAgent
 
     async def _response_fn(
         input_message: RunAgentInput,
@@ -67,11 +68,12 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
             forwarded_headers=forwarded_headers, authorization_context=authorization_context
         )
         async with mcp_tools_context(mcp_config) as tools:
-            agent = HitlMyAgent(
+            agent = MyAgent(
                 llm=llm,
                 forwarded_headers=forwarded_headers,
                 tools=tools,
                 verbose=config.verbose,
+                checkpointer=HITL_E2E_CHECKPOINTER,
             )
 
             async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):

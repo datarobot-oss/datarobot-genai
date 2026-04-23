@@ -25,7 +25,6 @@ from langgraph.graph import END
 from langgraph.graph import START
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
-from langgraph.types import Checkpointer
 from langgraph.types import interrupt
 
 from dragent.tool import generate_objectid
@@ -111,14 +110,6 @@ def graph_factory(
 # NAT constructs a new agent per HTTP request; a fresh InMemorySaver per instance would
 # drop checkpoint state between the interrupt request and the resume request. One
 # shared saver keeps thread state for this E2E workflow only (not for production).
-_HITL_E2E_CHECKPOINTER = InMemorySaver()
+HITL_E2E_CHECKPOINTER = InMemorySaver()
 
-_BaseHitlAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)
-
-
-class HitlMyAgent(_BaseHitlAgent):
-    """Same graph as the factory-built agent, with a process-wide checkpointer for E2E."""
-
-    @property
-    def langgraph_checkpointer(self) -> Checkpointer | None:
-        return _HITL_E2E_CHECKPOINTER
+MyAgent = datarobot_agent_class_from_langgraph(graph_factory, prompt_template)
