@@ -8,7 +8,9 @@ on:
       - "src/datarobot_genai/core/**"
       - "src/datarobot_genai/nat/**"
       - "src/datarobot_genai/langgraph/llm.py"
-      - "e2e-tests/dragent/nat/workflow-router-*.yaml"
+      - "src/datarobot_genai/crewai/llm.py"
+      - "src/datarobot_genai/llama_index/llm.py"
+      - "e2e-tests/dragent/*/workflow-router-*.yaml"
       - ".github/workflows/e2e-router.yml"
   pull_request:
     branches: [main]
@@ -16,7 +18,9 @@ on:
       - "src/datarobot_genai/core/**"
       - "src/datarobot_genai/nat/**"
       - "src/datarobot_genai/langgraph/llm.py"
-      - "e2e-tests/dragent/nat/workflow-router-*.yaml"
+      - "src/datarobot_genai/crewai/llm.py"
+      - "src/datarobot_genai/llama_index/llm.py"
+      - "e2e-tests/dragent/*/workflow-router-*.yaml"
       - ".github/workflows/e2e-router.yml"
 
 env:
@@ -29,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        router_scenario: [with-fallback, fallback-used]
+        framework: [nat, crewai, llamaindex]
     permissions:
       contents: read
     env:
@@ -38,9 +42,8 @@ jobs:
       DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
-      AGENT: nat
+      AGENT: ${{ matrix.framework }}
       LLM: llmgw
-      ROUTER_SCENARIO: ${{ matrix.router_scenario }}
 
       LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-2024-11-20
     steps:
@@ -69,19 +72,19 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-router-uv-${{ runner.os }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          key: e2e-router-uv-${{ runner.os }}-${{ matrix.framework }}-${{ hashFiles('e2e-tests/uv.lock') }}
           restore-keys: |
-            e2e-router-uv-${{ runner.os }}-
+            e2e-router-uv-${{ runner.os }}-${{ matrix.framework }}-
 
       - name: Install dependencies
         working-directory: e2e-tests
-        run: uv sync --group dragent-nat
+        run: uv sync --group dragent-${{ matrix.framework }}
 
       - name: Run router dragent in background
         uses: JarvusInnovations/background-action@v1
         with:
           working-directory: e2e-tests
-          run: task dragent:run-nat-router &
+          run: task dragent:run-router &
           wait-on: http-get://localhost:8080/health
           wait-for: 30s
 
@@ -94,6 +97,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-router-results-${{ matrix.router_scenario }}
+          name: e2e-router-results-${{ matrix.framework }}
           path: e2e-tests/test_results/
           if-no-files-found: ignore
