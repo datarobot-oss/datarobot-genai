@@ -42,3 +42,8 @@ tasks:
     cmds:
       - echo "🔨 Running base agent via NAT"
       - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
+  run-router:
+    desc: "🔨 Running {{.AGENT}} agent with router LLM backend"
+    dir: ./{{.AGENT}}
+    cmds:
+      - uv run nat dragent serve --config_file workflow-router-fallback-used.yaml --port {{.AGENT_PORT}}

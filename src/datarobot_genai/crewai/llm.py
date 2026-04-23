@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from typing import Any
 
 from crewai import LLM
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
@@ -122,6 +124,104 @@ def get_external_llm(model_name: str | None = None, parameters: dict | None = No
     config["model"] = model_name
 
     return _crewai_model_factory(config)
+
+
+def get_router_llm(
+    primary: LLMConfig,
+    fallbacks: list[LLMConfig],
+    router_settings: dict | None = None,
+) -> LLM:
+    """Return a CrewAI ``LLM`` whose calls are routed through a ``litellm.Router``.
+
+    Args:
+        primary: ``LLMConfig`` for the primary model.
+        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
+        router_settings: Extra kwargs forwarded to ``litellm.Router``.
+    """
+    import uuid  # noqa: PLC0415
+
+    from crewai.events import crewai_event_bus  # noqa: PLC0415
+    from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
+
+    from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
+    from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
+
+    router = build_litellm_router(primary, fallbacks, router_settings)
+
+    class RouterLitellmOnlyLLM(LLM):
+        def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
+            return object.__new__(cls)
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.is_litellm = True
+            self._llm_router = router
+
+        def call(
+            self,
+            messages: list[dict],
+            tools: list[dict] | None = None,
+            callbacks: list | None = None,
+            available_tools: list[dict] | None = None,
+            **kwargs: Any,
+        ) -> str:
+            call_id = str(uuid.uuid4())
+            accumulated = []
+            tool_calls_seen: list[Any] = []
+            for chunk in self._llm_router.completion(
+                "primary",
+                messages=messages,
+                stream=True,
+                **({"tools": tools} if tools else {}),
+            ):
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    accumulated.append(delta.content)
+                    crewai_event_bus.emit(
+                        self,
+                        event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
+                    )
+                    if callbacks:
+                        for cb in callbacks:
+                            if hasattr(cb, "on_llm_new_token"):
+                                cb.on_llm_new_token(delta.content)
+                if getattr(delta, "tool_calls", None):
+                    tool_calls_seen.extend(delta.tool_calls)
+            if tool_calls_seen:
+                return json.dumps({"tool_calls": merge_streaming_tool_calls(tool_calls_seen)})
+            return "".join(accumulated)
+
+        async def acall(
+            self,
+            messages: list[dict],
+            tools: list[dict] | None = None,
+            callbacks: list | None = None,
+            available_tools: list[dict] | None = None,
+            **kwargs: Any,
+        ) -> str:
+            accumulated = []
+            tool_calls_seen: list[Any] = []
+            response = await self._llm_router.acompletion(
+                "primary",
+                messages=messages,
+                stream=True,
+                **({"tools": tools} if tools else {}),
+            )
+            async for chunk in response:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    accumulated.append(delta.content)
+                    if callbacks:
+                        for cb in callbacks:
+                            if hasattr(cb, "on_llm_new_token"):
+                                cb.on_llm_new_token(delta.content)
+                if getattr(delta, "tool_calls", None):
+                    tool_calls_seen.extend(delta.tool_calls)
+            if tool_calls_seen:
+                return json.dumps({"tool_calls": merge_streaming_tool_calls(tool_calls_seen)})
+            return "".join(accumulated)
+
+    return RouterLitellmOnlyLLM(model="datarobot-router")
 
 
 def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:

@@ -1,0 +1,102 @@
+name: E2E Router (optional)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/datarobot_genai/core/**"
+      - "src/datarobot_genai/nat/**"
+      - "src/datarobot_genai/langgraph/llm.py"
+      - "src/datarobot_genai/crewai/llm.py"
+      - "src/datarobot_genai/llama_index/llm.py"
+      - "e2e-tests/dragent/*/workflow-router-*.yaml"
+      - ".github/workflows/e2e-router.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/datarobot_genai/core/**"
+      - "src/datarobot_genai/nat/**"
+      - "src/datarobot_genai/langgraph/llm.py"
+      - "src/datarobot_genai/crewai/llm.py"
+      - "src/datarobot_genai/llama_index/llm.py"
+      - "e2e-tests/dragent/*/workflow-router-*.yaml"
+      - ".github/workflows/e2e-router.yml"
+
+env:
+  TASK_VERSION: 3.48.0
+
+jobs:
+  e2e-router:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [langgraph, crewai, llamaindex]
+    permissions:
+      contents: read
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
+      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
+
+      AGENT: ${{ matrix.framework }}
+      LLM: llmgw
+
+      LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-2024-11-20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            e2e-tests/.venv
+            ~/.cache/uv
+          key: e2e-router-uv-${{ runner.os }}-${{ matrix.framework }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          restore-keys: |
+            e2e-router-uv-${{ runner.os }}-${{ matrix.framework }}-
+
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: uv sync --group dragent-${{ matrix.framework }}
+
+      - name: Run router dragent in background
+        uses: JarvusInnovations/background-action@v1
+        with:
+          working-directory: e2e-tests
+          run: task dragent:run-router &
+          wait-on: http-get://localhost:8080/health
+          wait-for: 30s
+
+      - name: Run router e2e tests
+        working-directory: e2e-tests
+        run: |
+          uv run pytest dragent_tests/test_streaming.py -vv -s --timeout=60 --tb=short --reruns=2 --reruns-delay=5 --junitxml=test_results/results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-router-results-${{ matrix.framework }}
+          path: e2e-tests/test_results/
+          if-no-files-found: ignore
