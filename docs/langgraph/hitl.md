@@ -46,3 +46,29 @@ A **new** `InMemorySaver()` on every request would **drop** checkpoint state, so
 | [`datarobot_genai.langgraph.agent`](../../src/datarobot_genai/langgraph/agent.py) | `LANGGRAPH_RESUME_STATE_KEY`, input resolution, and AG-UI events. |
 
 Env reference for the LLM: [LLM configuration (shared)](../llm.md).
+
+## Sequence Diagram
+```mermaid
+
+```mermaid
+sequenceDiagram
+    participant UI as AG-UI
+    participant LGA as LangGraph Agent
+
+    UI->>LGA: invoke(RunAgentInput)
+    LGA-->>UI: RunStartedEvent
+
+    Note over LGA: Working Agent Progression<br/>until user defined conditional edge
+
+    LGA-->>UI: Interrupt: CustomEvent (on_interrupt)
+    LGA-->>UI: RunFinishedEvent (interrupted = true)
+
+    Note over UI: Display prompt approval to User<br/>(Implementation Required)
+
+    UI->>LGA: invoke (same thread_id, resume state)
+    LGA-->>UI: RunStartedEvent
+
+    Note over LGA: Conditional logic to<br/>continue, halt, etc.
+
+    LGA-->>UI: RunFinishedEvent
+```
