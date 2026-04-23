@@ -15,7 +15,6 @@
 import json
 import uuid
 from types import SimpleNamespace
-from unittest import mock
 
 import pytest
 from ag_ui.core import CustomEvent
@@ -28,9 +27,6 @@ from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
 from ag_ui.core import StepStartedEvent
-from ag_ui.core import TextMessageContentEvent
-from ag_ui.core import TextMessageEndEvent
-from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
@@ -124,39 +120,15 @@ def expected_responses(intermediate_steps_ids, payloads):
                 StepStartedEvent(step_name="tool_calling_agent"),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
-        DRAgentEventResponse(
-            events=[TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"])],
-            model="vertex_ai/claude-3-5-haiku@20241022",
-        ),
-        DRAgentEventResponse(
-            events=[
-                TextMessageContentEvent(
-                    message_id=intermediate_steps_ids["agent_message_id"],
-                    delta=payloads["agent_llm_text"],
-                ),
-                TextMessageEndEvent(message_id=intermediate_steps_ids["agent_message_id"]),
-            ],
-            model="claude-3-5-haiku@20241022",
-            usage_metrics={
-                "prompt_tokens": 100,
-                "completion_tokens": 200,
-                "total_tokens": 300,
-            },
-        ),
-        DRAgentEventResponse(
-            events=[
-                ToolCallStartEvent(
-                    tool_call_name="content_writer_pipeline",
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"],
-                ),
-                ToolCallArgsEvent(
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"],
-                    delta=payloads["tool_args_content_writer"],
-                ),
-            ]
-        ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # FUNCTION_START at root level (function_level 0->1): empty (no CustomEvent fallthrough)
+        DRAgentEventResponse(events=[]),
+        # Root-level LLM events suppressed (stream converter handles these)
+        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[]),
+        # Root-level TOOL_START suppressed (stream converter handles these)
+        DRAgentEventResponse(events=[]),
+        # FUNCTION_START at level 1->2: empty (no CustomEvent fallthrough)
+        DRAgentEventResponse(events=[]),
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
@@ -169,7 +141,8 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # FUNCTION_START (planner, level 2->3): empty
+        DRAgentEventResponse(events=[]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["planner_message_id"]),
@@ -195,7 +168,8 @@ def expected_responses(intermediate_steps_ids, payloads):
             ],
             model="claude-3-5-haiku@20241022",
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # FUNCTION_END (planner, level 3->2): empty
+        DRAgentEventResponse(events=[]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["planner_tool_call_id"]),
@@ -219,7 +193,8 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
+        # FUNCTION_START (writer, level 2->3): empty
+        DRAgentEventResponse(events=[]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["writer_message_id"]),
@@ -245,7 +220,8 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 700,
             },
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # FUNCTION_END (writer, level 3->2): empty
+        DRAgentEventResponse(events=[]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["writer_tool_call_id"]),
@@ -257,21 +233,12 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
-        DRAgentEventResponse(
-            events=[
-                ToolCallEndEvent(
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"]
-                ),
-                ToolCallResultEvent(
-                    message_id=intermediate_steps_ids["content_writer_tool_call_id"],
-                    tool_call_id=intermediate_steps_ids["content_writer_tool_call_id"],
-                    content=payloads["writer_content"],
-                    role="tool",
-                ),
-            ]
-        ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
+        # FUNCTION_END (content_writer_pipeline, level 2->1): empty
+        DRAgentEventResponse(events=[]),
+        # Root-level TOOL_END (content_writer_pipeline) suppressed
+        DRAgentEventResponse(events=[]),
+        # FUNCTION_END (tool_calling_agent, level 1->0): empty
+        DRAgentEventResponse(events=[]),
         DRAgentEventResponse(
             events=[
                 StepFinishedEvent(step_name="tool_calling_agent"),
@@ -708,6 +675,11 @@ def _make_tool_start_step(
 
 class TestHandleToolArgsEncoding:
     """Tests for the tool_inputs / data.input fallback logic in _handle_tool."""
+
+    @pytest.fixture(autouse=True)
+    def _set_nested_level(self, step_adaptor):
+        """Set function_level > 1 so root-level tool suppression is bypassed."""
+        step_adaptor.function_level = 2
 
     def test_tool_inputs_dict_used_when_present(self, step_adaptor):
         """metadata.tool_inputs (dict) takes precedence; result must be valid JSON."""
