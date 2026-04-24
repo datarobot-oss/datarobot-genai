@@ -221,7 +221,7 @@ async def test_list_ai_catalog_items_success() -> None:
         mock_ds2 = MagicMock()
         mock_ds2.id = "2"
         mock_ds2.name = "ds2"
-        mock_client.Dataset.list.return_value = [mock_ds1, mock_ds2]
+        mock_client.Dataset.iterate.return_value = iter([mock_ds1, mock_ds2])
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
@@ -229,6 +229,36 @@ async def test_list_ai_catalog_items_success() -> None:
         # datasets is now a dict mapping id to name
         assert result["datasets"]["1"] == "ds1"
         assert result["datasets"]["2"] == "ds2"
+        mock_client.Dataset.iterate.assert_called_once_with(offset=None, limit=None)
+
+
+@pytest.mark.asyncio
+async def test_list_ai_catalog_items_pagination_respects_limit() -> None:
+    """``limit`` caps items per call even if the iterator would yield more (SDK pages)."""
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        row_mocks = []
+        for i in range(5):
+            m = MagicMock()
+            m.id = str(i)
+            m.name = f"ds{i}"
+            row_mocks.append(m)
+        mock_client = MagicMock()
+        # Simulate a generator that would keep going (e.g. multiple server pages)
+        mock_client.Dataset.iterate.return_value = iter(row_mocks[1:])
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.list_ai_catalog_items(offset=1, limit=3)
+
+        assert result["count"] == 3
+        assert set(result["datasets"].keys()) == {"1", "2", "3"}
+        mock_client.Dataset.iterate.assert_called_once_with(offset=1, limit=3)
 
 
 @pytest.mark.asyncio
@@ -242,7 +272,7 @@ async def test_list_ai_catalog_items_empty() -> None:
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
-        mock_client.Dataset.list.return_value = []
+        mock_client.Dataset.iterate.return_value = iter([])
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
@@ -446,7 +476,7 @@ async def test_list_ai_catalog_items_error() -> None:
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
         mock_client = MagicMock()
-        mock_client.Dataset.list.side_effect = Exception("fail")
+        mock_client.Dataset.iterate.side_effect = Exception("fail")
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         with pytest.raises(Exception) as exc_info:

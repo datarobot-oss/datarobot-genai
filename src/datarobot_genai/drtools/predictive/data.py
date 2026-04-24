@@ -15,6 +15,7 @@
 import base64
 import binascii
 import io
+import itertools
 import logging
 from typing import Annotated
 from typing import Any
@@ -104,11 +105,36 @@ async def upload_dataset_to_ai_catalog(
 
 
 @tool_metadata(tags={"predictive", "data", "read", "list", "catalog", "daria"})
-async def list_ai_catalog_items() -> dict[str, Any]:
-    """List all AI Catalog items (datasets) for the authenticated user."""
+async def list_ai_catalog_items(
+    offset: Annotated[
+        int | None,
+        "Skip this many catalog items (0-based). Example: page 2 with page size 3 uses offset=3.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Max datasets to return in this call. Use with offset to page (e.g. 3 items per page). "
+        "Omit to return the full catalog.",
+    ] = None,
+) -> dict[str, Any]:
+    """List AI Catalog items (datasets) for the authenticated user.
+
+    Pagination: the DataRobot SDK's ``Dataset.iterate`` uses ``limit`` as the API page size and
+    the iterator can walk every page. When ``limit`` is set, this tool only returns up to
+    ``limit`` items after ``offset`` (one page of results). When ``limit`` is omitted, all
+    items from ``offset`` through the end of the catalog are returned.
+    """
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
+
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    datasets = client.Dataset.list()
+    gen = client.Dataset.iterate(offset=offset, limit=limit)
+    if limit is not None:
+        datasets = list(itertools.islice(gen, limit))
+    else:
+        datasets = list(gen)
 
     if not datasets:
         logger.info("No AI Catalog items found")
@@ -155,23 +181,45 @@ async def get_dataset_details(
 
 
 @tool_metadata(tags={"predictive", "data", "read", "datastore", "list", "daria"})
-async def list_datastores() -> dict[str, Any]:
+async def list_datastores(
+    offset: Annotated[
+        int | None,
+        "Skip this many datastores (0-based). Use with limit for paged listing; omit for all.",
+    ] = None,
+    limit: Annotated[
+        int | None,
+        "Max datastores to return in this call (server page size). Omit to list all.",
+    ] = None,
+) -> dict[str, Any]:
     """List available DataRobot data connections (datastores)."""
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be at least 1 when provided")
+
     token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    datastores = client.DataStore.list()
+    dr_module = DataRobotClient(token).get_client()
+    rest_client = dr_module.client.get_client()
+
+    params: dict = {}
+    if offset is not None:
+        params["offset"] = offset
+    if limit is not None:
+        params["limit"] = limit
+    response = rest_client.get("externalDataStores/", params=params)
+    items = response.json().get("data", [])
 
     return {
         "datastores": [
             {
-                "id": ds.id,
-                "canonical_name": getattr(ds, "canonical_name", ""),
-                "creator_id": getattr(ds, "creator_id", ""),
-                "params": _serialize_datastore_params(getattr(ds, "params", None)),
+                "id": ds.get("id", ""),
+                "canonical_name": ds.get("canonicalName", ""),
+                "creator_id": ds.get("creatorId", ""),
+                "params": ds.get("params", {}),
             }
-            for ds in datastores
+            for ds in items
         ],
-        "count": len(datastores),
+        "count": len(items),
     }
 
 
@@ -216,6 +264,7 @@ async def query_datastore(
     *,
     datastore_id: Annotated[str, "The ID of the datastore to query"] | None = None,
     sql: Annotated[str, "The SQL query to execute"] | None = None,
+    offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[int, "Maximum number of rows to return"] = 1000,
 ) -> dict[str, Any]:
     """Execute a SQL query against a DataRobot datastore connection.
@@ -227,12 +276,16 @@ async def query_datastore(
         raise ToolError("Datastore ID must be provided")
     if not sql:
         raise ToolError("SQL query must be provided")
+    if offset < 0:
+        raise ToolError("offset must be non-negative")
+    if limit < 1:
+        raise ToolError("limit must be at least 1")
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
 
-    payload = {"query": sql, "limit": limit}
+    payload = {"query": sql, "offset": offset, "limit": limit}
     response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
     data = response.json()
 
@@ -240,6 +293,7 @@ async def query_datastore(
         "rows": data.get("data", []),
         "row_count": len(data.get("data", [])),
         "columns": data.get("columns", []),
+        "offset": offset,
     }
 
 
