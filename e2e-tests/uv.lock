@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 overrides = [
+    { name = "ag-ui-protocol", specifier = ">=0.1.14,<0.2.0" },
     { name = "crewai", extras = ["litellm"], specifier = ">=1.11.0" },
     { name = "litellm", specifier = ">=1.83.0,<2.0.0" },
 ]
@@ -62,9 +63,13 @@ http-server = [
 [[package]]
 name = "ag-ui-protocol"
 version = "0.1.14"
-source = { git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence#2eca856589f48118323b941d06f1780c69fefdd7" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/53/ee/319d189343e1dc67b1109c950a0d1091fe32498104b5917fbbd806ff58dd/ag_ui_protocol-0.1.14.tar.gz", hash = "sha256:d8e86b308f86a6cf6a5e18ca7154d7642895de2fe94cd2cece57723cdbba6406", size = 5687, upload-time = "2026-03-18T00:43:13.358Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/99/eaa83816924791fc25ebb44ac7987196b687a3fdf597b1e7a62c69306a8d/ag_ui_protocol-0.1.14-py3-none-any.whl", hash = "sha256:ec072e6a45e0d45b8714e6d54919cc9bde3d097fdc36f7e82953b2f21f1cdbef", size = 8069, upload-time = "2026-03-18T00:43:12.1Z" },
 ]
 
 [[package]]
@@ -1037,12 +1042,12 @@ llamaindex = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = "==0.1.15" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.13.3,<4.0.0" },
