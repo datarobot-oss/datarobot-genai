@@ -32,7 +32,6 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
-from datarobot_genai.dragent.frontends.register import DRA2AFrontEndConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
@@ -52,14 +51,9 @@ def dragent_worker():
         general=GeneralConfig(
             front_end=DRAgentFastApiFrontEndConfig(
                 a2a=DRAgentA2AConfig(
-                    server=DRA2AFrontEndConfig(
+                    server=A2AFrontEndConfig(
                         name="Test Agent",
                         description="A test agent",
-                        server_auth_token_exchange=OAuth2TokenExchangeConfig(
-                            token_url="https://example.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-                            audience="api://dr-blog-writer",
-                            scopes=["blog:write"],
-                        ),
                     )
                 ),
             )
@@ -77,7 +71,7 @@ def dragent_worker_with_a2a(dragent_worker, mock_a2a_worker):
 
 @pytest.fixture
 def a2a_frontend_config():
-    return DRA2AFrontEndConfig(
+    return A2AFrontEndConfig(
         name="My Agent", description="Does things", host="localhost", port=8000
     )
 
@@ -388,7 +382,7 @@ class TestCreateAgentCard:
         assert card.skills[0].id == "summarize"
 
     async def test_agent_card_fields_from_frontend_config(self, dragent_worker_with_a2a):
-        cfg = DRA2AFrontEndConfig(
+        cfg = A2AFrontEndConfig(
             name="My Agent",
             description="Does things",
             version="2.0.0",
@@ -404,10 +398,13 @@ class TestCreateAgentCard:
     async def test_security_schemes_set_when_oauth_token_exchange_present(
         self, dragent_worker_with_a2a, a2a_frontend_config
     ):
-        a2a_frontend_config.server_auth_token_exchange = OAuth2TokenExchangeConfig(
-            token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-            audience="https://app.datarobot.com/dr_org_id/my_agent",
-            scopes=["blog:write"],
+        assert dragent_worker_with_a2a.front_end_config.a2a is not None
+        dragent_worker_with_a2a.front_end_config.a2a.oauth_token_exchange = (
+            OAuth2TokenExchangeConfig(
+                token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent",
+                scopes=["blog:write"],
+            )
         )
         card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
 
@@ -465,10 +462,13 @@ class TestCreateAgentCard:
         )
 
         # Token exchange → client_credentials flow
-        a2a_frontend_config.server_auth_token_exchange = OAuth2TokenExchangeConfig(
-            token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-            audience="https://app.datarobot.com/dr_org_id/my_agent",
-            scopes=["blog:write"],
+        assert dragent_worker_with_a2a.front_end_config.a2a is not None
+        dragent_worker_with_a2a.front_end_config.a2a.oauth_token_exchange = (
+            OAuth2TokenExchangeConfig(
+                token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent",
+                scopes=["blog:write"],
+            )
         )
 
         card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
@@ -515,25 +515,32 @@ class TestDRAgentFastApiFrontEndConfig:
         assert config.a2a is None
 
     def test_custom_a2a_fields(self):
+        oauth = OAuth2TokenExchangeConfig(
+            token_url="https://idp.example.com/oauth2/v1/token",
+            audience="api://my-agent",
+            scopes=["agent:use"],
+        )
         config = DRAgentFastApiFrontEndConfig(
             a2a=DRAgentA2AConfig(
-                server=DRA2AFrontEndConfig(
+                server=A2AFrontEndConfig(
                     name="My Agent",
                     description="Does things",
                     version="2.0.0",
-                )
+                ),
+                oauth_token_exchange=oauth,
             )
         )
         assert config.a2a.server.name == "My Agent"
         assert config.a2a.server.description == "Does things"
         assert config.a2a.server.version == "2.0.0"
+        assert config.a2a.oauth_token_exchange == oauth
 
     def test_is_not_a2a_front_end_config(self):
         config = DRAgentFastApiFrontEndConfig()
-        assert not isinstance(config, DRA2AFrontEndConfig)
+        assert not isinstance(config, A2AFrontEndConfig)
 
     def test_a2a_enables_endpoints(self):
-        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=DRA2AFrontEndConfig()))
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
         assert config.a2a is not None
 
 

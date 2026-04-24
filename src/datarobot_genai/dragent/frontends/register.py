@@ -44,8 +44,11 @@ logging_handler_setup()
 warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
 
 
-class DRA2AFrontEndConfig(A2AFrontEndConfig):
-    server_auth_token_exchange: OAuth2TokenExchangeConfig | None = Field(
+class DRAgentA2AConfig(BaseModel):
+    """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
+
+    server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
+    oauth_token_exchange: OAuth2TokenExchangeConfig | None = Field(
         default=None,
         description=(
             "Configuration for agent authorization using Token Exchange (RFC 8693). "
@@ -54,12 +57,6 @@ class DRA2AFrontEndConfig(A2AFrontEndConfig):
             "the second phase of authentication."
         ),
     )
-
-
-class DRAgentA2AConfig(BaseModel):
-    """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
-
-    server: DRA2AFrontEndConfig = Field(description="NAT A2A server configuration.")
     skills: list[AgentSkill] = Field(
         default=[],
         description="Skills to advertise in the A2A agent card. "

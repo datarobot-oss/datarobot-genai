@@ -124,8 +124,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         * ``server_auth`` (OAuth2ResourceServerConfig) → authorization_code flow.
           Endpoint URLs are resolved via OIDC discovery or derived from the issuer URL.
-        * ``server_auth_token_exchange`` (OAuth2TokenExchangeConfig) → client_credentials flow.
-          Used for RFC 8693 second-phase token acquisition.
+        * ``a2a.oauth_token_exchange`` (OAuth2TokenExchangeConfig) → client_credentials flow.
+          Used for RFC 8693 second-phase token acquisition. Configured on the DataRobot
+          ``a2a`` block, not on NAT's A2A frontend model, so it stays stable if NAT's
+          config types change.
 
         Returns
         -------
@@ -133,10 +135,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             all ``None`` when neither auth source is configured.
         """
         has_server_auth = frontend_config.server_auth is not None
-        has_token_exchange = (
-            hasattr(frontend_config, "server_auth_token_exchange")
-            and frontend_config.server_auth_token_exchange is not None
-        )
+        a2a_cfg = self.front_end_config.a2a
+        has_token_exchange = a2a_cfg is not None and a2a_cfg.oauth_token_exchange is not None
 
         if not has_server_auth and not has_token_exchange:
             return None, None, None
@@ -160,7 +160,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         # (2) oauth_token_exchange → client_credentials flow
         if has_token_exchange:
-            auth_config = frontend_config.server_auth_token_exchange
+            assert a2a_cfg is not None
+            auth_config = a2a_cfg.oauth_token_exchange
             scope_descriptions = {scope: f"Permission: {scope}" for scope in auth_config.scopes}
             client_credentials_flow = ClientCredentialsOAuthFlow(
                 token_url=auth_config.token_url,
