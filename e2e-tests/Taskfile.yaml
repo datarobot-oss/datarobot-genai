@@ -71,6 +71,11 @@ tasks:
     cmds:
       - echo "🧪 Running tests for {{.TARGET}}"
       - uv run pytest {{.CLI_ARGS}} -vv -s
+  test-examples:
+    desc: "🧪 Run examples"
+    cmds:
+      - echo "🧪 Running examples"
+      - uv run pytest --nbmake "examples" -n auto -vv -s
 
   run-dragent:
     desc: "🔨 Run dragent"
