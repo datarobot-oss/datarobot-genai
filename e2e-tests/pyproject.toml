@@ -13,6 +13,8 @@ dependencies = [
     "pytest-timeout",
     "python-dotenv",
     "ag-ui-protocol @ git+https://github.com/cavitcakir/ag-ui@feat/python-validate-sequence#egg=ag-ui&subdirectory=sdks/python",
+    "nbmake>=1.5.5",
+    "pytest-xdist>=3.8.0",
 ]
 
 [dependency-groups]
@@ -37,6 +39,7 @@ lint = [
 ]
 dev = [
     "ipdb>=0.13.13",
+    "jupyter>=1.1.1",
 ]
 
 [project.entry-points.'nat.plugins']
