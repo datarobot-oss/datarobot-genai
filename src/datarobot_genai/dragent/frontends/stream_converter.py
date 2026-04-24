@@ -24,6 +24,7 @@ See docs/nat-1.6-streaming.md for the full design.
 
 import logging
 import sys
+import uuid
 from collections.abc import AsyncGenerator
 
 from ag_ui.core import Event
@@ -53,7 +54,9 @@ async def convert_chunks_to_agui_events(
     ``GeneratorExit`` (client disconnect), exits silently.
     """
     active_message_id: str | None = None
+    tool_call_message_id: str | None = None
     active_tool_calls: set[str] = set()
+    seen_tool_calls: bool = False
     tool_index_map: dict[int, str] = {}
     zero = default_usage_metrics()
 
@@ -67,16 +70,40 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
+                # Close any active tool calls before resuming text.
+                # The LLM may stream: text -> tool_call -> (execute) -> more text.
+                # AG-UI expects sequential blocks, not interleaved.
+                if active_tool_calls:
+                    for tc_id in active_tool_calls:
+                        events.append(ToolCallEndEvent(tool_call_id=tc_id))
+                    active_tool_calls.clear()
+                    tool_call_message_id = None
+
                 if active_message_id is None:
-                    active_message_id = chunk.id or ""
+                    # After a tool call cycle, the LLM response is a new turn
+                    # but chunk.id may be reused.  Force a unique messageId.
+                    active_message_id = (
+                        str(uuid.uuid4()) if seen_tool_calls else (chunk.id or str(uuid.uuid4()))
+                    )
                     events.append(TextMessageStartEvent(message_id=active_message_id))
                 events.append(
                     TextMessageContentEvent(message_id=active_message_id, delta=delta.content)
                 )
 
             if delta and delta.tool_calls:
+                # Close any active text message before starting tool calls.
+                if active_message_id is not None:
+                    events.append(TextMessageEndEvent(message_id=active_message_id))
+                    active_message_id = None
+                seen_tool_calls = True
+
+                # Create a dedicated message for tool calls so they don't
+                # merge with the preceding text message in storage.
+                if tool_call_message_id is None:
+                    tool_call_message_id = str(uuid.uuid4())
+
                 for tc in delta.tool_calls:
-                    tc_id = tc.id or tool_index_map.get(tc.index)
+                    tc_id = tc.id or tool_index_map.get(tc.index)  # type: ignore[assignment]
                     if tc_id is None:
                         logger.warning(
                             "Tool call chunk at index %d has no id and no prior mapping; skipping",
@@ -91,6 +118,7 @@ async def convert_chunks_to_agui_events(
                             ToolCallStartEvent(
                                 tool_call_id=tc_id,
                                 tool_call_name=tc.function.name if tc.function else "",
+                                parent_message_id=tool_call_message_id,
                             )
                         )
                     arguments = tc.function.arguments if tc.function else None

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.15
+- Fixed interleaved event ordering in the stream converter to emit sequential text and tool call blocks
+- Fixed input converter to handle tool and reasoning role messages during replay
+
 ## 0.15.14
 - Removed custom chat completions implementations and set the default workflow config to generate it instead
 
