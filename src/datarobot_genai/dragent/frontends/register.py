@@ -61,6 +61,17 @@ class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"
         description="Expose this agent via the Agent2Agent protocol. "
         "A2A server endpoints are mounted under /a2a/.",
     )
+    workflow: typing.Annotated[
+        FastApiFrontEndConfig.EndpointBase,
+        Field(description="Endpoint for the default workflow."),
+    ] = FastApiFrontEndConfig.EndpointBase(
+        method="POST",
+        path="/v1/workflow",
+        openai_api_v1_path="/chat/completions",
+        legacy_path="/generate",
+        legacy_openai_api_path="/chat",
+        description="Executes the default NAT workflow from the loaded configuration ",
+    )
 
 
 @register_front_end(config_type=DRAgentFastApiFrontEndConfig)

@@ -113,20 +113,14 @@ def mock_a2a_worker():
 
 @pytest.fixture
 def patch_super_add_routes():
-    """Mock parent add_routes (append a session manager) and skip chat registration."""
+    """Mock parent add_routes so it appends a session manager (mirrors NAT behavior)."""
 
     async def mock_super_add_routes(self, app, builder):
         self._session_managers.append(MagicMock())
 
-    with (
-        patch(
-            "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
-            mock_super_add_routes,
-        ),
-        patch(
-            "datarobot_genai.dragent.frontends.fastapi.DRAgentFastApiFrontEndPluginWorker._add_chat_completion_route",
-            new_callable=AsyncMock,
-        ),
+    with patch(
+        "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
+        mock_super_add_routes,
     ):
         yield
 
@@ -210,10 +204,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 mock_super_add_routes,
             ),
             patch(
-                "datarobot_genai.dragent.frontends.fastapi.add_v1_chat_completions_route",
-                new_callable=AsyncMock,
-            ) as mock_chat_route,
-            patch(
                 "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
             ) as mock_a2a_worker_cls,
@@ -224,18 +214,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             ),
         ):
             await dragent_worker.add_routes(app, mock_builder)
-
-        mock_chat_route.assert_awaited_once()
-        chat_call = mock_chat_route.await_args
-        assert chat_call.args[0] is dragent_worker
-        assert chat_call.args[1] is app
-        assert chat_call.kwargs == {
-            "path": "/chat/completions",
-            "method": "POST",
-            "description": "OpenAI Chat Completions API compatible",
-            "session_manager": nat_session_from_parent,
-            "enable_interactive": False,
-        }
 
         a2a_config_used = mock_a2a_worker_cls.call_args[0][0].general.front_end
         assert a2a_config_used.host == dragent_worker.front_end_config.host
