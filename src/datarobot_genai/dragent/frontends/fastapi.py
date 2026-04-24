@@ -44,6 +44,7 @@ from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
 
+from .server_auth import OAuth2TokenExchangeConfig
 from .session import DRAgentAGUISessionManager
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -110,6 +111,47 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
+    async def _oauth_flow_from_server_auth(
+        self, server_auth: OAuth2ResourceServerConfig
+    ) -> tuple[AuthorizationCodeOAuthFlow, list[str]]:
+        """Build the authorization_code OAuth2 flow and scopes for NAT ``server_auth``."""
+        auth_url, token_url = await self._resolve_oauth_endpoints(server_auth)
+        scope_descriptions = {scope: f"Permission: {scope}" for scope in server_auth.scopes}
+        flow = AuthorizationCodeOAuthFlow(
+            authorization_url=auth_url,
+            token_url=token_url,
+            scopes=scope_descriptions,
+        )
+        return flow, list(server_auth.scopes)
+
+    def _oauth_flow_from_token_exchange(
+        self, config: OAuth2TokenExchangeConfig
+    ) -> tuple[ClientCredentialsOAuthFlow, list[str], list[AgentExtension] | None]:
+        """Build the client_credentials flow, scopes, and optional RFC 8693 extensions.
+
+        DataRobot ``a2a.oauth_token_exchange``; not part of the NAT A2A frontend model.
+        """
+        scope_descriptions = {scope: f"Permission: {scope}" for scope in config.scopes}
+        flow = ClientCredentialsOAuthFlow(
+            token_url=config.token_url,
+            scopes=scope_descriptions,
+        )
+
+        # Extensions are reserved for metadata the A2A spec lacks (e.g., audience).
+        # Scopes are excluded here to maintain a single source of truth in 'flows'.
+        # This prevents configuration drift and keeps the A2A Agent Card clean for
+        # both RFC 8693 and standard OpenAPI clients.
+        extensions: list[AgentExtension] | None = None
+        if config.audience:
+            extensions = [
+                AgentExtension(
+                    uri="urn:ietf:params:oauth:grant-type:token-exchange",
+                    description="RFC 8693 Token Exchange parameters for token acquisition",
+                    params={"audience": config.audience},
+                )
+            ]
+        return flow, list(config.scopes), extensions
+
     async def _build_security_schemes(
         self, frontend_config: A2AFrontEndConfig
     ) -> tuple[
@@ -134,49 +176,23 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             Tuple of (security_schemes, security requirements, capability extensions),
             all ``None`` when neither auth source is configured.
         """
-        has_server_auth = frontend_config.server_auth is not None
+        server_auth = frontend_config.server_auth
         a2a_cfg = self.front_end_config.a2a
-        has_token_exchange = a2a_cfg is not None and a2a_cfg.oauth_token_exchange is not None
+        token_exchange = a2a_cfg.oauth_token_exchange if a2a_cfg else None
 
-        if not has_server_auth and not has_token_exchange:
+        if not server_auth and not token_exchange:
             return None, None, None
 
-        authorization_code_flow = None
-        client_credentials_flow = None
-        all_scopes: list[str] = []
-        extensions: list[AgentExtension] | None = None
+        authorization_code_flow, server_auth_scopes = (
+            await self._oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
+        )
+        client_credentials_flow, token_exchange_scopes, extensions = (
+            self._oauth_flow_from_token_exchange(token_exchange)
+            if token_exchange
+            else (None, [], None)
+        )
 
-        # (1) server_auth → authorization_code flow
-        if has_server_auth:
-            server_auth = frontend_config.server_auth
-            auth_url, token_url = await self._resolve_oauth_endpoints(server_auth)
-            scope_descriptions = {scope: f"Permission: {scope}" for scope in server_auth.scopes}
-            authorization_code_flow = AuthorizationCodeOAuthFlow(
-                authorization_url=auth_url,
-                token_url=token_url,
-                scopes=scope_descriptions,
-            )
-            all_scopes.extend(server_auth.scopes)
-
-        # (2) oauth_token_exchange → client_credentials flow
-        if has_token_exchange:
-            assert a2a_cfg is not None
-            auth_config = a2a_cfg.oauth_token_exchange
-            scope_descriptions = {scope: f"Permission: {scope}" for scope in auth_config.scopes}
-            client_credentials_flow = ClientCredentialsOAuthFlow(
-                token_url=auth_config.token_url,
-                scopes=scope_descriptions,
-            )
-            all_scopes.extend(auth_config.scopes)
-            if auth_config.audience:
-                extensions = [
-                    AgentExtension(
-                        uri="urn:ietf:params:oauth:grant-type:token-exchange",
-                        description="RFC 8693 Token Exchange parameters for token acquisition",
-                        params={"audience": auth_config.audience},
-                    )
-                ]
-
+        all_scopes = list(dict.fromkeys(server_auth_scopes + token_exchange_scopes))
         security_schemes = {
             "oauth2": SecurityScheme(
                 root=OAuth2SecurityScheme(
@@ -189,10 +205,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 )
             )
         }
-        unique_scopes = list(dict.fromkeys(all_scopes))
-        security = [{"oauth2": unique_scopes}]
-
-        return security_schemes, security, extensions
+        return security_schemes, [{"oauth2": all_scopes}], extensions
 
     @staticmethod
     async def _resolve_oauth_endpoints(
