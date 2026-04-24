@@ -1280,12 +1280,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = "==0.1.15" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.13.3,<4.0.0" },
