@@ -53,12 +53,18 @@ A2A_MOUNT_PATH = "a2a"
 
 
 OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
-    "Authorization using Okta and Token Exchange (RFC 8693)."
+    "OAuth 2.0 with RFC 8693 Token Exchange. "
+    "Requires an internal passport JWT as the subject_token. "
+    "See capabilities.extensions for RFC 8693 Token Exchange override details."
 )
-OAUTH2_SECURITY_DESCRIPTION_DEFAULT = "OAuth 2.0 authentication required to access this agent"
+
+# The extension explicitly references the security scheme key so SDKs can resolve
+# the RFC 8693 Token Exchange override without ambiguity.
 RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
+RFC8693_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+RFC8693_SECURITY_SCHEME_REF = "oauth2"  # match the key used in securitySchemes
 RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
-    "RFC 8693 Token Exchange parameters for second-phase token acquisition"
+    "Overrides the referenced security scheme with RFC 8693 Token Exchange requirements."
 )
 
 
@@ -156,16 +162,24 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def _token_exchange_capability_extension(
         config: OAuth2TokenExchangeConfig,
     ) -> list[AgentExtension]:
-        """Mark RFC 8693 token exchange on the agent card (only when this flow is configured).
+        """Build the RFC 8693 binder extension for the agent card.
 
-        Single source of truth for scopes: `flows.clientCredentials.scopes` only.
-        Extensions carry metadata the OpenAPI model lacks (e.g. audience for RFC 8693).
+        Binds the extension to the named security scheme (``security_scheme_ref``) so SDKs
+        can unambiguously resolve which OAuth2 flow requires the token exchange override.
+        Scopes are the single source of truth: they stay under ``flows.clientCredentials``
+        and are never duplicated here.
         """
+        params: dict[str, str] = {
+            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
+        }
+        if config.audience is not None:
+            params["audience"] = config.audience
         return [
             AgentExtension(
                 uri=RFC8693_GRANT_TYPE_URI,
                 description=RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION,
-                params={"audience": config.audience} if config.audience is not None else None,
+                params=params,
             )
         ]
 
@@ -215,11 +229,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             "oauth2": SecurityScheme(
                 root=OAuth2SecurityScheme(
                     type="oauth2",
-                    description=(
-                        OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-                        if token_exchange
-                        else OAUTH2_SECURITY_DESCRIPTION_DEFAULT
-                    ),
+                    description=OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE,
                     flows=OAuthFlows(
                         authorization_code=auth_code_flow,
                         client_credentials=client_creds_flow,
