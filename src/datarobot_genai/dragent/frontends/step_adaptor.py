@@ -295,7 +295,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         else:
             raise self._unknown_step_type(payload)
 
-        return DRAgentEventResponse(events=[])
+        return None
 
     def _handle_custom(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode

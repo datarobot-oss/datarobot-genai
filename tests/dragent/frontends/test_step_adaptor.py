@@ -15,6 +15,7 @@
 import json
 import uuid
 from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 from ag_ui.core import CustomEvent
@@ -123,7 +124,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 StepStartedEvent(step_name="tool_calling_agent"),
             ]
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"])],
             model="vertex_ai/claude-3-5-haiku@20241022",
@@ -155,7 +156,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
@@ -168,7 +169,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["planner_message_id"]),
@@ -194,7 +195,7 @@ def expected_responses(intermediate_steps_ids, payloads):
             ],
             model="claude-3-5-haiku@20241022",
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["planner_tool_call_id"]),
@@ -218,7 +219,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["writer_message_id"]),
@@ -244,7 +245,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 700,
             },
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["writer_tool_call_id"]),
@@ -256,7 +257,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(
@@ -270,7 +271,7 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[]),
+        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 StepFinishedEvent(step_name="tool_calling_agent"),
