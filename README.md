@@ -57,8 +57,13 @@ export DATAROBOT_API_TOKEN=YOUR_DATAROBOT_API_TOKEN
 export DATAROBOT_ENDPOINT=https://app.datarobot.com/api/v2
 ```
 
-## Standalone end-to-end example
-Follow [docs/example.ipynb](docs/example.ipynb) to walk through a LangGraph agent on DataRobot: LLM Gateway, `drtools`, conversion to DataRobot agent format, and running the agent with an AG-UI interface.
+## Standalone end-to-end examples
+Follow [quickstart.ipynb](e2e-tests/examples/quickstart.ipynb) to walk through an experience of setting a LangGraph agent with DataRobot:
+* LLM Gateway
+* `drtools`
+* Prompt Management
+* Conversion to DataRobot agent format
+* Running the agent with an AG-UI interface.
 
 ## In-depth documentation
 See [docs/README.md](docs/README.md) for guides on every framework and feature in `datarobot-genai`.
