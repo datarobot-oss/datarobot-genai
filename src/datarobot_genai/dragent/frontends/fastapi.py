@@ -52,16 +52,18 @@ A2A_MOUNT_PATH = "a2a"
 
 
 OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
-    "OAuth 2.0 with RFC 8693 Token Exchange. "
-    "Requires an internal passport JWT as the subject_token. "
-    "See capabilities.extensions for RFC 8693 Token Exchange override details."
+    "OAuth 2.0 authorization utilizing RFC 8693 Token Exchange. Clients must "
+    "supply a valid internal passport JWT as the subject token. Refer to the "
+    "capabilities.extensions block for strict token exchange parameters and "
+    "audience specifications."
 )
 
 # The extension explicitly references the security scheme key so SDKs can resolve
 # the RFC 8693 Token Exchange override without ambiguity.
 RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
 RFC8693_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
-RFC8693_SECURITY_SCHEME_REF = "oauth2"  # match the key used in securitySchemes
+RFC8693_SECURITY_SCHEME_REF = "oauth2"  # The key in securitySchemes
+RFC8693_SECURITY_SCHEME_FLOW_REF = "clientCredentials"  # The exact flow being overridden
 RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
     "Overrides the referenced security scheme with RFC 8693 Token Exchange requirements."
 )
@@ -170,6 +172,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         """
         params: dict[str, str] = {
             "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
             "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
         }
         if config.audience is not None:

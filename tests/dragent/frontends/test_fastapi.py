@@ -33,6 +33,7 @@ from datarobot_genai.dragent.frontends.fastapi import (
     OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE,
 )
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_GRANT_TYPE_URI
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_SECURITY_SCHEME_REF
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_SUBJECT_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
@@ -414,6 +415,7 @@ class TestCreateAgentCard:
         assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
         assert ext.params == {
             "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
             "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
             "audience": "https://app.datarobot.com/dr_org_id/my_agent",
         }
@@ -492,6 +494,7 @@ class TestCreateAgentCard:
         assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
         assert ext.params == {
             "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
             "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
             "audience": "https://app.datarobot.com/dr_org_id/my_agent",
         }
