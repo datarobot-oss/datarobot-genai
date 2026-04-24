@@ -29,6 +29,12 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
+from datarobot_genai.dragent.frontends.fastapi import OAUTH2_SECURITY_DESCRIPTION_DEFAULT
+from datarobot_genai.dragent.frontends.fastapi import (
+    OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE,
+)
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_GRANT_TYPE_URI
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
@@ -411,6 +417,7 @@ class TestCreateAgentCard:
         assert "oauth2" in card.security_schemes
         oauth_scheme = card.security_schemes["oauth2"].root
         assert oauth_scheme.type == "oauth2"
+        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
 
         # Only client_credentials flow, no authorization_code
         assert oauth_scheme.flows.authorization_code is None
@@ -420,11 +427,12 @@ class TestCreateAgentCard:
 
         assert card.security == [{"oauth2": ["blog:write"]}]
 
-        # audience exposed via A2A capabilities extension
+        # audience exposed via A2A capabilities extension (RFC 8693; scopes only in flows)
         assert card.capabilities.extensions is not None
         assert len(card.capabilities.extensions) == 1
         ext = card.capabilities.extensions[0]
-        assert ext.uri == "urn:ietf:params:oauth:grant-type:token-exchange"
+        assert ext.uri == RFC8693_GRANT_TYPE_URI
+        assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
         assert ext.params == {"audience": "https://app.datarobot.com/dr_org_id/my_agent"}
 
     async def test_security_schemes_from_server_auth(
@@ -438,6 +446,7 @@ class TestCreateAgentCard:
         card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
 
         oauth_scheme = card.security_schemes["oauth2"].root
+        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_DEFAULT
         # Only authorization_code flow, no client_credentials
         assert oauth_scheme.flows.authorization_code is not None
         assert (
@@ -476,6 +485,7 @@ class TestCreateAgentCard:
         # Single oauth2 scheme with both flows
         assert len(card.security_schemes) == 1
         oauth_scheme = card.security_schemes["oauth2"].root
+        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
 
         assert oauth_scheme.flows.authorization_code is not None
         assert (
@@ -492,11 +502,12 @@ class TestCreateAgentCard:
         # Merged scopes (deduplicated)
         assert card.security == [{"oauth2": ["read", "blog:write"]}]
 
-        # Extension for audience
+        # RFC 8693 extension: audience in params only, scopes only under flows
         assert card.capabilities.extensions is not None
-        assert card.capabilities.extensions[0].params == {
-            "audience": "https://app.datarobot.com/dr_org_id/my_agent"
-        }
+        ext = card.capabilities.extensions[0]
+        assert ext.uri == RFC8693_GRANT_TYPE_URI
+        assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
+        assert ext.params == {"audience": "https://app.datarobot.com/dr_org_id/my_agent"}
 
     async def test_no_security_when_server_auth_absent(
         self, dragent_worker_with_a2a, a2a_frontend_config

@@ -51,6 +51,17 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 A2A_MOUNT_PATH = "a2a"
 
+
+OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
+    "Authorization using Okta and Token Exchange (RFC 8693)."
+)
+OAUTH2_SECURITY_DESCRIPTION_DEFAULT = "OAuth 2.0 authentication required to access this agent"
+RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
+RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
+    "RFC 8693 Token Exchange parameters for second-phase token acquisition"
+)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,46 +122,52 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
+    @staticmethod
     async def _oauth_flow_from_server_auth(
-        self, server_auth: OAuth2ResourceServerConfig
+        server_auth: OAuth2ResourceServerConfig,
     ) -> tuple[AuthorizationCodeOAuthFlow, list[str]]:
         """Build the authorization_code OAuth2 flow and scopes for NAT ``server_auth``."""
-        auth_url, token_url = await self._resolve_oauth_endpoints(server_auth)
-        scope_descriptions = {scope: f"Permission: {scope}" for scope in server_auth.scopes}
+        auth_url, token_url = await DRAgentFastApiFrontEndPluginWorker._resolve_oauth_endpoints(
+            server_auth
+        )
         flow = AuthorizationCodeOAuthFlow(
             authorization_url=auth_url,
             token_url=token_url,
-            scopes=scope_descriptions,
+            scopes={scope: f"Permission: {scope}" for scope in server_auth.scopes},
         )
         return flow, list(server_auth.scopes)
 
+    @staticmethod
     def _oauth_flow_from_token_exchange(
-        self, config: OAuth2TokenExchangeConfig
-    ) -> tuple[ClientCredentialsOAuthFlow, list[str], list[AgentExtension] | None]:
-        """Build the client_credentials flow, scopes, and optional RFC 8693 extensions.
+        config: OAuth2TokenExchangeConfig,
+    ) -> tuple[ClientCredentialsOAuthFlow, list[str]]:
+        """Build the client_credentials flow and scopes for ``a2a.oauth_token_exchange``.
 
-        DataRobot ``a2a.oauth_token_exchange``; not part of the NAT A2A frontend model.
+        Token URL and scopes live only here (OpenAPI-compatible). RFC 8693 second-phase
+        requirements are signaled separately via :meth:`_token_exchange_capability_extension`.
         """
-        scope_descriptions = {scope: f"Permission: {scope}" for scope in config.scopes}
         flow = ClientCredentialsOAuthFlow(
             token_url=config.token_url,
-            scopes=scope_descriptions,
+            scopes={scope: f"Permission: {scope}" for scope in config.scopes},
         )
+        return flow, list(config.scopes)
 
-        # Extensions are reserved for metadata the A2A spec lacks (e.g., audience).
-        # Scopes are excluded here to maintain a single source of truth in 'flows'.
-        # This prevents configuration drift and keeps the A2A Agent Card clean for
-        # both RFC 8693 and standard OpenAPI clients.
-        extensions: list[AgentExtension] | None = None
-        if config.audience:
-            extensions = [
-                AgentExtension(
-                    uri="urn:ietf:params:oauth:grant-type:token-exchange",
-                    description="RFC 8693 Token Exchange parameters for token acquisition",
-                    params={"audience": config.audience},
-                )
-            ]
-        return flow, list(config.scopes), extensions
+    @staticmethod
+    def _token_exchange_capability_extension(
+        config: OAuth2TokenExchangeConfig,
+    ) -> list[AgentExtension]:
+        """Mark RFC 8693 token exchange on the agent card (only when this flow is configured).
+
+        Single source of truth for scopes: `flows.clientCredentials.scopes` only.
+        Extensions carry metadata the OpenAPI model lacks (e.g. audience for RFC 8693).
+        """
+        return [
+            AgentExtension(
+                uri=RFC8693_GRANT_TYPE_URI,
+                description=RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION,
+                params={"audience": config.audience} if config.audience is not None else None,
+            )
+        ]
 
     async def _build_security_schemes(
         self, frontend_config: A2AFrontEndConfig
@@ -183,13 +200,14 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         if not server_auth and not token_exchange:
             return None, None, None
 
-        authorization_code_flow, server_auth_scopes = (
+        auth_code_flow, server_auth_scopes = (
             await self._oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
         )
-        client_credentials_flow, token_exchange_scopes, extensions = (
-            self._oauth_flow_from_token_exchange(token_exchange)
-            if token_exchange
-            else (None, [], None)
+        client_creds_flow, token_exchange_scopes = (
+            self._oauth_flow_from_token_exchange(token_exchange) if token_exchange else (None, [])
+        )
+        extensions = (
+            self._token_exchange_capability_extension(token_exchange) if token_exchange else None
         )
 
         all_scopes = list(dict.fromkeys(server_auth_scopes + token_exchange_scopes))
@@ -197,10 +215,14 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             "oauth2": SecurityScheme(
                 root=OAuth2SecurityScheme(
                     type="oauth2",
-                    description="OAuth 2.0 authentication required to access this agent",
+                    description=(
+                        OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
+                        if token_exchange
+                        else OAUTH2_SECURITY_DESCRIPTION_DEFAULT
+                    ),
                     flows=OAuthFlows(
-                        authorization_code=authorization_code_flow,
-                        client_credentials=client_credentials_flow,
+                        authorization_code=auth_code_flow,
+                        client_credentials=client_creds_flow,
                     ),
                 )
             )
