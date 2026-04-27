@@ -166,11 +166,15 @@ async def list_ai_catalog_items(
         return _merge_pagination_metadata(out, {}, offset=offset, limit=limit)
 
     datasets_dict = {ds.id: ds.name for ds in datasets}
-    out = {
-        "datasets": datasets_dict,
-        "count": len(datasets),
-    }
-    _merge_pagination_metadata(out, {}, offset=offset, limit=limit)
+    out = _merge_pagination_metadata(
+        {
+            "datasets": datasets_dict,
+            "count": len(datasets),
+        },
+        {},
+        offset=offset,
+        limit=limit,
+    )
     if limit is not None:
         out["may_have_more"] = len(datasets) == limit
     return out
