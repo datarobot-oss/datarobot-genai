@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 
+from ag_ui.core import Event
 from ag_ui.core.events import EventType
 from colorama import Fore
 from colorama import Style
@@ -25,6 +26,36 @@ from colorama import Style
 logger = logging.getLogger(__name__)
 
 TOOL_RESULT_MAX_LEN = 1000
+
+
+def render_ag_ui_event(event: Event) -> str | None:
+    """Render an AG-UI event.
+
+    Parameters
+    ----------
+    event:
+        The AG-UI event to render.
+    """
+    event_type = event.type
+
+    delta = str(getattr(event, "delta", "") or "")
+    name = str(
+        getattr(event, "tool_call_name", "")
+        or getattr(event, "step_name", "")
+        or getattr(event, "name", "")
+        or ""
+    )
+    content = str(getattr(event, "content", "") or "")
+    message = str(getattr(event, "message", "Unknown error") or "")
+
+    rendered = render_event(
+        event_type,
+        delta=delta,
+        name=name,
+        content=content,
+        message=message,
+    )
+    return rendered
 
 
 def render_event(
@@ -53,7 +84,7 @@ def render_event(
     Returns
     -------
         A terminal friendly string if the event was rendered, otherwise None.
-        Print with click.echo(rendered, nl=False)
+        Print with print(rendered, end='') or click.echo(rendered, nl=False)
     """
     rendered: str | None = None
     if event_type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):

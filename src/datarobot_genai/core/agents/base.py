@@ -29,8 +29,11 @@ from typing import TypeVar
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
+from langgraph.graph.message import uuid
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.agents.render import render_ag_ui_event
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.core.utils.auth import prepare_identity_header
@@ -253,6 +256,35 @@ class BaseAgent(Generic[TTool], abc.ABC):
             app_id=self._memory_app_id(),
             attributes=self._memory_attributes(run_agent_input),
         )
+
+    async def invoke_simple(self, user_message: str) -> AsyncGenerator[str]:
+        """
+        Invoke the agent without chat history with a single user message.
+
+        Parameters
+        ----------
+        user_message: str
+            The user message to invoke the agent with.
+
+        Returns
+        -------
+        AsyncGenerator[str, None]
+            A generator that yields only rendered strings for events which are visible to the user.
+        """
+        # Generate a new thread and run ID
+        run_input = RunAgentInput(
+            thread_id=str(uuid.uuid4()),
+            run_id=str(uuid.uuid4()),
+            messages=[UserMessage(id=str(uuid.uuid4()), role="user", content=user_message)],
+            state=[],
+            tools=[],
+            context=[],
+            forwardedProps=None,
+        )
+        async for event, _, _ in self.invoke(run_input):
+            rendered = render_ag_ui_event(event)
+            if rendered is not None:
+                yield rendered
 
     @classmethod
     def create_pipeline_interactions_from_events(

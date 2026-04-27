@@ -14,9 +14,9 @@
 
 """Shared terminal rendering for AG-UI events.
 
-Both ``remote.py`` (SSE JSON dicts) and ``console.py`` (typed AG-UI objects)
-need identical rendering logic.  Each caller normalises its event into a
-canonical ``(event_type, fields)`` pair and calls :func:`render_event`.
+``remote.py`` (SSE JSON dicts) normalises dicts to fields and calls
+:func:`datarobot_genai.core.agents.render.render_event`. ``console.py`` passes
+typed AG-UI objects to :func:`datarobot_genai.core.agents.render.render_ag_ui_event`.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ import click
 from ag_ui.core import Event
 from ag_ui.core import EventType
 
+from datarobot_genai.core.agents.render import render_ag_ui_event
 from datarobot_genai.core.agents.render import render_event
 
 logger = logging.getLogger(__name__)
@@ -73,26 +74,11 @@ def render_object_event(event: Event) -> bool:
     if event_type in (EventType.RUN_FINISHED, EventType.RUN_ERROR):
         return False
 
-    delta = str(getattr(event, "delta", "") or "")
-    name = str(
-        getattr(event, "tool_call_name", "")
-        or getattr(event, "step_name", "")
-        or getattr(event, "name", "")
-        or ""
-    )
-    content = str(getattr(event, "content", "") or "")
-    message = str(getattr(event, "message", "Unknown error") or "")
-
-    rendered = render_event(
-        event_type,
-        delta=delta,
-        name=name,
-        content=content,
-        message=message,
-    )
+    rendered = render_ag_ui_event(event)
     if rendered is not None:
         click.echo(rendered, nl=False)
 
+    delta = str(getattr(event, "delta", "") or "")
     return event_type in (
         EventType.TEXT_MESSAGE_CONTENT,
         EventType.TEXT_MESSAGE_CHUNK,

@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for :func:`datarobot_genai.core.agents.render.render_event`."""
+"""Unit tests for :func:`datarobot_genai.core.agents.render.render_event` and
+:func:`datarobot_genai.core.agents.render.render_ag_ui_event`.
+"""
 
 from __future__ import annotations
 
@@ -20,11 +22,18 @@ import logging
 from typing import Any
 
 import pytest
+from ag_ui.core.events import CustomEvent
 from ag_ui.core.events import EventType
+from ag_ui.core.events import RunErrorEvent
+from ag_ui.core.events import StepStartedEvent
+from ag_ui.core.events import TextMessageContentEvent
+from ag_ui.core.events import ToolCallResultEvent
+from ag_ui.core.events import ToolCallStartEvent
 from colorama import Fore
 from colorama import Style
 
 from datarobot_genai.core.agents.render import TOOL_RESULT_MAX_LEN
+from datarobot_genai.core.agents.render import render_ag_ui_event
 from datarobot_genai.core.agents.render import render_event
 
 _LOG = "datarobot_genai.core.agents.render"
@@ -273,3 +282,73 @@ def test_render_event_unhandled_event_type_in_enum_logs_and_returns_none(
     assert out is None
     messages = [r.getMessage() for r in caplog.records]
     assert messages == ["Unhandled event type: TOOL_CALL_CHUNK"]
+
+
+def test_render_ag_ui_event_delegates_to_render_event() -> None:
+    # GIVEN a real AG-UI text content event
+    event = TextMessageContentEvent(
+        message_id="msg-1",
+        delta="hello",
+    )
+
+    # WHEN we render through render_ag_ui_event
+    out = render_ag_ui_event(event)
+
+    # THEN the result matches render_event for the same type and delta
+    assert out == render_event(EventType.TEXT_MESSAGE_CONTENT, delta="hello")
+
+
+def test_render_ag_ui_event_uses_tool_call_name_from_tool_call_start() -> None:
+    # GIVEN a real ToolCallStartEvent
+    event = ToolCallStartEvent(
+        tool_call_id="call-1",
+        tool_call_name="primary",
+    )
+
+    # WHEN we render
+    out = render_ag_ui_event(event)
+
+    # THEN the output includes the tool name
+    assert out is not None
+    assert "primary" in out
+    assert out == render_event(EventType.TOOL_CALL_START, name="primary")
+
+
+def test_render_ag_ui_event_uses_step_name_from_step_started() -> None:
+    # GIVEN a real StepStartedEvent
+    event = StepStartedEvent(step_name="my_step")
+
+    # WHEN we render
+    out = render_ag_ui_event(event)
+
+    # THEN the step line uses step_name
+    assert out == render_event(EventType.STEP_STARTED, name="my_step")
+
+
+def test_render_ag_ui_event_uses_name_from_custom_event() -> None:
+    # GIVEN a real CustomEvent (value is required by the schema)
+    event = CustomEvent(name="NotHeartbeat", value=None)
+
+    # WHEN we render
+    out = render_ag_ui_event(event)
+
+    # THEN the bracketed name matches
+    assert out == render_event(EventType.CUSTOM, name="NotHeartbeat")
+
+
+def test_render_ag_ui_event_passes_content_and_message() -> None:
+    # GIVEN real tool result and run error events
+    res_event = ToolCallResultEvent(
+        message_id="m-out",
+        tool_call_id="call-1",
+        content="out",
+    )
+    err_event = RunErrorEvent(message="boom")
+
+    # WHEN we render both
+    out_res = render_ag_ui_event(res_event)
+    out_err = render_ag_ui_event(err_event)
+
+    # THEN they match the lower-level render_event
+    assert out_res == render_event(EventType.TOOL_CALL_RESULT, content="out")
+    assert out_err == render_event(EventType.RUN_ERROR, message="boom")
