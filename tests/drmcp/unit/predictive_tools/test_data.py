@@ -266,7 +266,7 @@ async def test_list_ai_catalog_items_success() -> None:
         assert result["datasets"]["2"] == "ds2"
         assert result["limit"] == 1000
         assert result["may_have_more"] is False
-        mock_client.Dataset.iterate.assert_called_once_with(offset=None, limit=1000)
+        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=1000)
 
 
 @pytest.mark.asyncio
@@ -320,8 +320,8 @@ async def test_list_ai_catalog_items_rejects_limit_above_max() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_ai_catalog_items_omit_limit_uses_default_cap() -> None:
-    """When limit is None, 1000 is passed to iterate and echoed in the result."""
+async def test_list_ai_catalog_items_uses_default_limit() -> None:
+    """Default limit 1000 is passed to iterate and echoed in the result when not overridden."""
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -340,7 +340,7 @@ async def test_list_ai_catalog_items_omit_limit_uses_default_cap() -> None:
         mock_client.Dataset.iterate.return_value = iter(mocks)
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
-        result = await data.list_ai_catalog_items(offset=2, limit=None)
+        result = await data.list_ai_catalog_items(offset=2)
         assert result["count"] == 3
         assert set(result["datasets"].keys()) == {"3", "4", "5"}
         assert result["offset"] == 2
@@ -730,7 +730,7 @@ async def test_browse_datastore_success() -> None:
         assert result["count"] == 2
         assert result["datastore_id"] == "store1"
         assert result["offset"] == 0
-        assert result["limit"] == 100
+        assert result["limit"] == 1000
 
 
 @pytest.mark.asyncio

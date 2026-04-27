@@ -137,38 +137,37 @@ async def list_ai_catalog_items(
         "Skip this many catalog items (0-based). Example: page 2 with page size 3 uses offset=3.",
     ] = None,
     limit: Annotated[
-        int | None,
+        int,
         (
-            "Max datasets to return in this call. Use with offset to page. "
-            "Omit to use 1000; values above 1000 are rejected; use offset to continue."
+            "Max datasets to return in this call (default 1000). Use with offset to page. "
+            "Values above 1000 are rejected; use offset to continue."
         ),
-    ] = None,
+    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
     """List AI Catalog items (datasets) for the authenticated user.
 
     The ``datasets`` value is always a mapping of dataset id to name (empty mapping when none).
 
-    Pagination: the DataRobot SDK's ``Dataset.iterate`` is called with a finite ``limit`` (your
-    argument, or 1000 when omitted) so the gateway and MCP process avoid unbounded
-    responses. Use ``offset`` and additional calls to walk large catalogs. The response echoes the
-    effective limit and may set ``may_have_more`` when the page is full.
+    Pagination: the DataRobot SDK's ``Dataset.iterate`` is called with a finite ``limit`` (default
+    1000) so the gateway and MCP process avoid unbounded responses. Use ``offset`` and additional
+    calls to walk large catalogs. The response echoes the effective limit and may set
+    ``may_have_more`` when the page is full.
     """
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative")
 
     max_per = DR_PREDICTIVE_API_PAGINATION_MAX
-    if limit is not None:
-        if limit < 1:
-            raise ToolError("limit must be at least 1 when provided")
-        if limit > max_per:
-            raise ToolError(
-                f"limit cannot exceed {max_per}; use offset to page through the catalog."
-            )
-    apply_limit = limit if limit is not None else max_per
+    if limit < 1:
+        raise ToolError("limit must be at least 1")
+    if limit > max_per:
+        raise ToolError(f"limit cannot exceed {max_per}; use offset to page through the catalog.")
+    apply_limit = limit
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    gen = client.Dataset.iterate(offset=offset, limit=apply_limit)
+    # DataRobot ``Dataset.iterate`` expects an int; do not pass ``None`` when offset is omitted.
+    iterate_offset = 0 if offset is None else offset
+    gen = client.Dataset.iterate(offset=iterate_offset, limit=apply_limit)
     datasets = list(itertools.islice(gen, apply_limit))
 
     if not datasets:
@@ -271,24 +270,23 @@ async def list_datastores(
         "Skip this many datastores (0-based). Use with limit for paged listing; omit for all.",
     ] = None,
     limit: Annotated[
-        int | None,
+        int,
         (
-            "Max datastores to return. Omit to use 1000; values above 1000 are rejected; "
+            "Max datastores to return (default 1000). Values above 1000 are rejected; "
             "use offset to page."
         ),
-    ] = None,
+    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
     """List available DataRobot data connections (datastores)."""
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative")
 
     max_per = DR_PREDICTIVE_API_PAGINATION_MAX
-    if limit is not None:
-        if limit < 1:
-            raise ToolError("limit must be at least 1 when provided")
-        if limit > max_per:
-            raise ToolError(f"limit cannot exceed {max_per}; use offset to page.")
-    apply_limit = limit if limit is not None else max_per
+    if limit < 1:
+        raise ToolError("limit must be at least 1")
+    if limit > max_per:
+        raise ToolError(f"limit cannot exceed {max_per}; use offset to page.")
+    apply_limit = limit
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -326,8 +324,8 @@ async def browse_datastore(
     offset: Annotated[int, "Pagination offset"] = 0,
     limit: Annotated[
         int,
-        "Maximum items to return; values above 1000 are reduced to 1000.",
-    ] = 100,
+        "Maximum items to return (default 1000); values above 1000 are reduced to 1000.",
+    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
     search: Annotated[str, "Search filter for items"] | None = None,
 ) -> dict[str, Any]:
     """Browse a DataRobot data connection to list catalogs, schemas, and tables."""
@@ -383,8 +381,8 @@ async def query_datastore(
     offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[
         int,
-        "Maximum rows to return; values above 1000 are reduced to 1000.",
-    ] = 1000,
+        "Maximum rows to return (default 1000); values above 1000 are reduced to 1000.",
+    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
     """Execute a SQL query against a DataRobot datastore connection.
 
