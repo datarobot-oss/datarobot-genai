@@ -359,7 +359,6 @@ async def query_datastore(
         "rows": row_data,
         "row_count": len(row_data) if isinstance(row_data, list) else 0,
         "columns": body.get("columns", []),
-        "offset": offset,
     }
     return _merge_pagination_metadata(out, body, offset=offset, limit=limit)
 
