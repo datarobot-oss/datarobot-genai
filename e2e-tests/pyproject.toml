@@ -12,7 +12,6 @@ dependencies = [
     "pytest-rerunfailures",
     "pytest-timeout",
     "python-dotenv",
-    "ag-ui-protocol @ git+https://github.com/cavitcakir/ag-ui@feat/python-validate-sequence#egg=ag-ui&subdirectory=sdks/python",
     "nbmake>=1.5.5",
     "pytest-xdist>=3.8.0",
 ]

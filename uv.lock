@@ -1082,7 +1082,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.17"
+version = "0.15.18"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1093,6 +1093,7 @@ auth = [
 ]
 core = [
     { name = "ag-ui-protocol" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1111,6 +1112,7 @@ crewai = [
     { name = "ag-ui-protocol" },
     { name = "anthropic" },
     { name = "azure-ai-inference" },
+    { name = "colorama" },
     { name = "crewai", extra = ["litellm"] },
     { name = "crewai-tools", extra = ["mcp"] },
     { name = "datarobot" },
@@ -1134,6 +1136,7 @@ crewai = [
 dragent = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1204,6 +1207,7 @@ drtools = [
 ]
 langgraph = [
     { name = "ag-ui-protocol" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1226,6 +1230,7 @@ langgraph = [
 ]
 llamaindex = [
     { name = "ag-ui-protocol" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1256,6 +1261,7 @@ memory = [
 nat = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1311,6 +1317,12 @@ requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
+    { name = "colorama", marker = "extra == 'core'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'crewai'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'dragent'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'langgraph'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'llamaindex'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'nat'", specifier = ">=0.4.6,<1.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
     { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },

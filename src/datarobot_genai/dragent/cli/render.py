@@ -24,217 +24,73 @@ from __future__ import annotations
 import logging
 
 import click
-from colorama import Fore
-from colorama import Style
+from ag_ui.core import Event
+from ag_ui.core import EventType
+
+from datarobot_genai.core.agents.render import render_event
 
 logger = logging.getLogger(__name__)
 
-TOOL_RESULT_MAX_LEN = 1000
-
-# Canonical event type strings (used as the key for rendering).
-TEXT_CONTENT = "TEXT_CONTENT"
-TEXT_END = "TEXT_END"
-TEXT_START = "TEXT_START"
-REASONING_CONTENT = "REASONING_CONTENT"
-REASONING_END = "REASONING_END"
-REASONING_START = "REASONING_START"
-TOOL_CALL_START = "TOOL_CALL_START"
-TOOL_CALL_ARGS = "TOOL_CALL_ARGS"
-TOOL_CALL_END = "TOOL_CALL_END"
-TOOL_CALL_RESULT = "TOOL_CALL_RESULT"
-STEP_STARTED = "STEP_STARTED"
-STEP_FINISHED = "STEP_FINISHED"
-RUN_STARTED = "RUN_STARTED"
-RUN_FINISHED = "RUN_FINISHED"
-RUN_ERROR = "RUN_ERROR"
-CUSTOM = "CUSTOM"
-
-
-def render_event(
-    event_type: str,
-    *,
-    delta: str = "",
-    name: str = "",
-    content: str = "",
-    message: str = "",
-    err: bool = True,
-) -> None:
-    """Render a single AG-UI event to the terminal.
-
-    Parameters
-    ----------
-    event_type:
-        One of the canonical constants defined in this module.
-    delta:
-        Text delta for content/args events.
-    name:
-        Name for tool-call-start, step-started, or custom events.
-    content:
-        Content for tool-call-result events.
-    message:
-        Error message for run-error events.
-    err:
-        If True, write to stderr (default). Set to False to write to stdout.
-    """
-    if event_type == TEXT_CONTENT:
-        click.echo(f"{Fore.CYAN}{delta}{Style.RESET_ALL}", nl=False, err=err)
-    elif event_type == TEXT_END:
-        click.echo("", err=err)
-    elif event_type == TEXT_START:
-        pass
-    elif event_type == REASONING_CONTENT:
-        click.echo(f"{Fore.YELLOW}{delta}{Style.RESET_ALL}", nl=False, err=True)
-    elif event_type == REASONING_END:
-        click.echo("", err=True)
-    elif event_type == REASONING_START:
-        pass
-    elif event_type == TOOL_CALL_START:
-        click.echo(
-            f"\n{Fore.MAGENTA}\u25b6 Tool Call: {Fore.MAGENTA}{Style.DIM}{name}{Style.RESET_ALL}",
-            err=True,
-        )
-        click.echo(
-            f"{Fore.MAGENTA}  Arguments: {Style.RESET_ALL}",
-            nl=False,
-            err=True,
-        )
-    elif event_type == TOOL_CALL_ARGS:
-        click.echo(
-            f"{Fore.MAGENTA}{Style.DIM}{delta}{Style.RESET_ALL}",
-            nl=False,
-            err=True,
-        )
-    elif event_type == TOOL_CALL_END:
-        click.echo("", err=True)
-    elif event_type == TOOL_CALL_RESULT:
-        if len(content) > TOOL_RESULT_MAX_LEN:
-            content = content[:TOOL_RESULT_MAX_LEN] + "\u2026"
-        click.echo(
-            f"{Fore.MAGENTA}  Result: {Fore.MAGENTA}{Style.DIM}{content}{Style.RESET_ALL}\n",
-            err=True,
-        )
-    elif event_type == STEP_STARTED:
-        click.echo(f"{Style.DIM}Step: {name}{Style.RESET_ALL}", err=True)
-    elif event_type == STEP_FINISHED:
-        pass
-    elif event_type == RUN_STARTED:
-        click.echo(f"{Style.DIM}Run started{Style.RESET_ALL}", err=True)
-    elif event_type == RUN_FINISHED:
-        click.echo(f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}", err=err)
-    elif event_type == RUN_ERROR:
-        pass  # Caller handles this (raise ClickException / break loop).
-    elif event_type == CUSTOM:
-        if name != "Heartbeat":
-            click.echo(f"{Style.DIM}[{name}]{Style.RESET_ALL}", err=True)
-    else:
-        logger.debug("Unhandled event type: %s", event_type)
-
-
-# ---------------------------------------------------------------------------
-# Mapping helpers for the two calling conventions
-# ---------------------------------------------------------------------------
-
-# SSE JSON dict "type" string -> canonical event type
-_SSE_TYPE_MAP: dict[str, str] = {
-    "TEXT_MESSAGE_CONTENT": TEXT_CONTENT,
-    "TEXT_MESSAGE_CHUNK": TEXT_CONTENT,
-    "TEXT_MESSAGE_END": TEXT_END,
-    "TEXT_MESSAGE_START": TEXT_START,
-    "REASONING_MESSAGE_CONTENT": REASONING_CONTENT,
-    "REASONING_MESSAGE_END": REASONING_END,
-    "REASONING_START": REASONING_START,
-    "REASONING_MESSAGE_START": REASONING_START,
-    "REASONING_END": REASONING_END,
-    "TOOL_CALL_START": TOOL_CALL_START,
-    "TOOL_CALL_ARGS": TOOL_CALL_ARGS,
-    "TOOL_CALL_END": TOOL_CALL_END,
-    "TOOL_CALL_RESULT": TOOL_CALL_RESULT,
-    "STEP_STARTED": STEP_STARTED,
-    "STEP_FINISHED": STEP_FINISHED,
-    "RUN_STARTED": RUN_STARTED,
-    "RUN_FINISHED": RUN_FINISHED,
-    "RUN_ERROR": RUN_ERROR,
-    "CUSTOM": CUSTOM,
-}
-
-# Typed AG-UI object class name -> canonical event type
-_OBJECT_TYPE_MAP: dict[str, str] = {
-    "TextMessageContentEvent": TEXT_CONTENT,
-    "TextMessageEndEvent": TEXT_END,
-    "TextMessageStartEvent": TEXT_START,
-    "ReasoningMessageContentEvent": REASONING_CONTENT,
-    "ReasoningMessageEndEvent": REASONING_END,
-    "ReasoningStartEvent": REASONING_START,
-    "ReasoningMessageStartEvent": REASONING_START,
-    "ReasoningEndEvent": REASONING_END,
-    "ToolCallStartEvent": TOOL_CALL_START,
-    "ToolCallArgsEvent": TOOL_CALL_ARGS,
-    "ToolCallEndEvent": TOOL_CALL_END,
-    "ToolCallResultEvent": TOOL_CALL_RESULT,
-    "StepStartedEvent": STEP_STARTED,
-    "StepFinishedEvent": STEP_FINISHED,
-    "RunStartedEvent": RUN_STARTED,
-    "RunFinishedEvent": RUN_FINISHED,
-    "RunErrorEvent": RUN_ERROR,
-    "CustomEvent": CUSTOM,
-}
-
 
 def render_sse_event(ev: dict[str, object]) -> str | None:
-    """Render an SSE JSON dict event. Returns the run-error message if RUN_ERROR, else None.
-
-    Text and run-lifecycle events go to stdout; everything else to stderr.
-    This matches the original ``remote.py`` behaviour where the agent's text
-    reply is the primary (pipe-able) output.
-    """
+    """Render an SSE JSON dict event. Returns the run-error message if RUN_ERROR, else None."""
     raw_type = str(ev.get("type", ""))
-    canonical = _SSE_TYPE_MAP.get(raw_type)
-    if canonical is None:
+    if not raw_type:
         logger.debug("Unhandled SSE event type: %s", raw_type)
         return None
 
-    if canonical == RUN_ERROR:
+    if raw_type == EventType.RUN_ERROR:
         return str(ev.get("message", "Unknown error"))
 
-    # Text content and run finished go to stdout (pipe-friendly); rest to stderr.
-    err = canonical not in (TEXT_CONTENT, TEXT_END, TEXT_START, RUN_FINISHED)
-
-    render_event(
-        canonical,
+    rendered = render_event(
+        raw_type,
         delta=str(ev.get("delta", "")),
         name=str(ev.get("tool_call_name", "") or ev.get("step_name", "") or ev.get("name", "")),
         content=str(ev.get("content", "")),
-        err=err,
+        message=str(ev.get("message", "Unknown error")),
     )
+    if rendered is not None:
+        click.echo(rendered, nl=False)
     return None
 
 
-def render_object_event(event: object) -> bool:
-    """Render a typed AG-UI event object. Returns True if text was emitted."""
-    class_name = type(event).__name__
-    canonical = _OBJECT_TYPE_MAP.get(class_name)
-    if canonical is None:
-        logger.debug("Unhandled object event type: %s", class_name)
-        return False
+def render_object_event(event: Event) -> bool:
+    """Render a typed AG-UI event object.
+
+    Returns True only when a streaming assistant text or reasoning content/chunk
+    delta was printed, so the console can tell whether to skip the final result
+    dump (see :meth:`DRAgentConsoleFrontEndPlugin.run_workflow`).
+    """
+    event_type = event.type
 
     # The console frontend prints its own "Run finished" message after the
     # workflow completes, so skip it here to avoid duplicate output.
-    if canonical in (RUN_FINISHED, RUN_ERROR):
+    if event_type in (EventType.RUN_FINISHED, EventType.RUN_ERROR):
         return False
 
-    delta = getattr(event, "delta", "")
-    name = (
+    delta = str(getattr(event, "delta", "") or "")
+    name = str(
         getattr(event, "tool_call_name", "")
         or getattr(event, "step_name", "")
         or getattr(event, "name", "")
+        or ""
     )
-    content = getattr(event, "content", "")
+    content = str(getattr(event, "content", "") or "")
+    message = str(getattr(event, "message", "Unknown error") or "")
 
-    render_event(
-        canonical,
-        delta=str(delta) if delta else "",
-        name=str(name) if name else "",
-        content=str(content) if content else "",
-        err=True,
+    rendered = render_event(
+        event_type,
+        delta=delta,
+        name=name,
+        content=content,
+        message=message,
     )
-    return canonical in (TEXT_CONTENT, REASONING_CONTENT) and bool(delta)
+    if rendered is not None:
+        click.echo(rendered, nl=False)
+
+    return event_type in (
+        EventType.TEXT_MESSAGE_CONTENT,
+        EventType.TEXT_MESSAGE_CHUNK,
+        EventType.REASONING_MESSAGE_CONTENT,
+        EventType.REASONING_MESSAGE_CHUNK,
+    ) and bool(delta)
