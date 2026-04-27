@@ -86,6 +86,22 @@ llm = get_external_llm("gpt-4o-mini")
 
 To reach this route via **`get_llm()`**, turn the gateway off and unset both `LLM_DEPLOYMENT_ID` and `NIM_DEPLOYMENT_ID` (see **get_llm()** below).
 
+## LLM Provider Fallback (Router)
+
+Use router fallback when you want a **primary** model/provider plus an ordered list of **fallback** models/providers. Calls start at primary and fail over automatically when the primary fails.
+
+In `workflow.yaml`, this uses:
+
+```yaml
+llms:
+  datarobot_llm:
+    _type: datarobot-llm-router
+```
+
+In Python, this uses **`get_router_llm(primary, fallbacks, router_settings)`** from the integration module (`datarobot_genai.langgraph.llm`, `datarobot_genai.crewai.llm`, or `datarobot_genai.llama_index.llm`).
+
+For the full agent-component checklist and copy-paste examples, see [LLM provider fallback (router)](fallback.md).
+
 ## `get_llm()` (environment-driven routing)
 
 Prefer the explicit **`get_*`** helpers above when you know the route. Use **`get_llm()`** as a single entry point when you want one code path and you steer behavior entirely with configuration. It inspects settings and delegates to the same underlying helpers as those sections.
