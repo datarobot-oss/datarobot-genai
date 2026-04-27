@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## 0.15.18
+- Improved error handling during MCP lineage feature flag retrieval
+
 ## 0.15.17
 - Added option to configure OAuth2 token exchange flow for server
 
