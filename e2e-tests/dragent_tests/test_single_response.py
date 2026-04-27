@@ -48,7 +48,7 @@ def test_generate_single(http_client: httpx.Client) -> None:
     # THEN: the response contains AG-UI events
     assert len(response_data.events) > 0
 
-    # TODO: re-enable when merged upstream
+    # TODO (BUZZOK-30524): re-enable when merged upstream
     # # THEN: the events are a valid AG-UI sequence
     # validate_sequence(response_data.events)
 
