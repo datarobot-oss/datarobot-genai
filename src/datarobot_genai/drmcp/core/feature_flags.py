@@ -30,10 +30,11 @@ class FeatureFlag:
         flags_json = {"entitlements": [{"name": feature_flag_name}]}
         response = client.post("entitlements/evaluate/", json=flags_json)
 
-        feature_flag_info = response.json()["entitlements"][0]
+        json_response = response.json()
+        has_entitlement_return = "entitlements" in json_response
         return cls(
-            name=feature_flag_info["name"],
-            enabled=bool(feature_flag_info["value"]),
+            name=feature_flag_name,
+            enabled=bool(json_response["entitlements"][0]) if has_entitlement_return else False,
         )
 
     @classmethod

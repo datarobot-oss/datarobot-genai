@@ -55,6 +55,21 @@ class TestFeatureFlags:
             name=expected_feature_flag_name, enabled=bool(expected_feature_status)
         )
 
+    def test_fallback_to_feature_flag_enablement_false(
+        self, mock_get_datarobot_client: Mock
+    ) -> None:
+        mock_datarobot_client = mock_get_datarobot_client.return_value
+        mock_datarobot_client.post.return_value.json.return_value = {}
+
+        expected_feature_flag_name = Mock()
+        output = FeatureFlag.create(expected_feature_flag_name)
+
+        mock_datarobot_client.post.assert_called_once_with(
+            "entitlements/evaluate/",
+            json={"entitlements": [{"name": expected_feature_flag_name}]},
+        )
+        assert output == FeatureFlag(name=expected_feature_flag_name, enabled=False)
+
     def test_is_mcp_tools_gallery_support_enabled(self, mock_feature_flag_create: Mock) -> None:
         output = FeatureFlag.is_mcp_tools_gallery_support_enabled()
 
