@@ -34,7 +34,9 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
-    "ag-ui-protocol>=0.1.14,<0.2.0",
+    # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
+    # agent application template
+    "ag-ui-protocol==0.1.15",
     "pyarrow==21.0.0",
 ]
 

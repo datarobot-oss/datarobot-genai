@@ -29,11 +29,20 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
+from datarobot_genai.dragent.frontends.fastapi import (
+    OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE,
+)
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_GRANT_TYPE_URI
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_SECURITY_SCHEME_FLOW_REF
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_SECURITY_SCHEME_REF
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_SUBJECT_TOKEN_TYPE
+from datarobot_genai.dragent.frontends.fastapi import RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
+from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
@@ -113,20 +122,14 @@ def mock_a2a_worker():
 
 @pytest.fixture
 def patch_super_add_routes():
-    """Mock parent add_routes (append a session manager) and skip chat registration."""
+    """Mock parent add_routes so it appends a session manager (mirrors NAT behavior)."""
 
     async def mock_super_add_routes(self, app, builder):
         self._session_managers.append(MagicMock())
 
-    with (
-        patch(
-            "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
-            mock_super_add_routes,
-        ),
-        patch(
-            "datarobot_genai.dragent.frontends.fastapi.DRAgentFastApiFrontEndPluginWorker._add_chat_completion_route",
-            new_callable=AsyncMock,
-        ),
+    with patch(
+        "nat.front_ends.fastapi.fastapi_front_end_plugin_worker.FastApiFrontEndPluginWorker.add_routes",
+        mock_super_add_routes,
     ):
         yield
 
@@ -210,10 +213,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 mock_super_add_routes,
             ),
             patch(
-                "datarobot_genai.dragent.frontends.fastapi.add_v1_chat_completions_route",
-                new_callable=AsyncMock,
-            ) as mock_chat_route,
-            patch(
                 "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
             ) as mock_a2a_worker_cls,
@@ -224,18 +223,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             ),
         ):
             await dragent_worker.add_routes(app, mock_builder)
-
-        mock_chat_route.assert_awaited_once()
-        chat_call = mock_chat_route.await_args
-        assert chat_call.args[0] is dragent_worker
-        assert chat_call.args[1] is app
-        assert chat_call.kwargs == {
-            "path": "/chat/completions",
-            "method": "POST",
-            "description": "OpenAI Chat Completions API compatible",
-            "session_manager": nat_session_from_parent,
-            "enable_interactive": False,
-        }
 
         a2a_config_used = mock_a2a_worker_cls.call_args[0][0].general.front_end
         assert a2a_config_used.host == dragent_worker.front_end_config.host
@@ -394,23 +381,123 @@ class TestCreateAgentCard:
         assert card.version == "2.0.0"
         assert card.url == "http://localhost:9000/a2a/"
 
-    async def test_security_schemes_set_when_server_auth_present(
-        self, dragent_worker_with_a2a, mock_a2a_worker, a2a_frontend_config
+    async def test_security_schemes_set_when_oauth_token_exchange_present(
+        self, dragent_worker_with_a2a, a2a_frontend_config
     ):
-        mock_schemes = MagicMock()
-        mock_security = MagicMock()
-        mock_a2a_worker._generate_security_schemes = AsyncMock(
-            return_value=(mock_schemes, mock_security)
+        assert dragent_worker_with_a2a.front_end_config.a2a is not None
+        dragent_worker_with_a2a.front_end_config.a2a.oauth_token_exchange = (
+            OAuth2TokenExchangeConfig(
+                token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent",
+                scopes=["blog:write"],
+            )
         )
-        a2a_frontend_config.server_auth = MagicMock()
-        with patch("datarobot_genai.dragent.frontends.fastapi.AgentCard") as mock_agent_card_cls:
-            await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
-        mock_a2a_worker._generate_security_schemes.assert_awaited_once_with(
-            a2a_frontend_config.server_auth
+        card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+
+        assert "oauth2" in card.security_schemes
+        oauth_scheme = card.security_schemes["oauth2"].root
+        assert oauth_scheme.type == "oauth2"
+        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
+
+        # Only client_credentials flow, no authorization_code
+        assert oauth_scheme.flows.authorization_code is None
+        flow = oauth_scheme.flows.client_credentials
+        assert flow.token_url == "https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
+        assert flow.scopes == {"blog:write": "Permission: blog:write"}
+
+        assert card.security == [{"oauth2": ["blog:write"]}]
+
+        # RFC 8693 binder extension (scopes only in flows, never in params)
+        assert card.capabilities.extensions is not None
+        assert len(card.capabilities.extensions) == 1
+        ext = card.capabilities.extensions[0]
+        assert ext.uri == RFC8693_GRANT_TYPE_URI
+        assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
+        assert ext.params == {
+            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
+            "audience": "https://app.datarobot.com/dr_org_id/my_agent",
+        }
+
+    async def test_security_schemes_from_server_auth(
+        self, dragent_worker_with_a2a, a2a_frontend_config
+    ):
+        a2a_frontend_config.server_auth = MagicMock(
+            issuer_url="https://issuer.example.com",
+            discovery_url=None,
+            scopes=["read"],
         )
-        _, kwargs = mock_agent_card_cls.call_args
-        assert kwargs["security_schemes"] is mock_schemes
-        assert kwargs["security"] is mock_security
+        card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+
+        oauth_scheme = card.security_schemes["oauth2"].root
+        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
+        # Only authorization_code flow, no client_credentials
+        assert oauth_scheme.flows.authorization_code is not None
+        assert (
+            oauth_scheme.flows.authorization_code.authorization_url
+            == "https://issuer.example.com/oauth/authorize"
+        )
+        assert (
+            oauth_scheme.flows.authorization_code.token_url
+            == "https://issuer.example.com/oauth/token"
+        )
+        assert oauth_scheme.flows.client_credentials is None
+        assert card.security == [{"oauth2": ["read"]}]
+
+    async def test_both_server_auth_and_token_exchange(
+        self, dragent_worker_with_a2a, a2a_frontend_config
+    ):
+        # server_auth → authorization_code flow
+        a2a_frontend_config.server_auth = MagicMock(
+            issuer_url="https://issuer.example.com",
+            discovery_url=None,
+            scopes=["read"],
+        )
+
+        # Token exchange → client_credentials flow
+        assert dragent_worker_with_a2a.front_end_config.a2a is not None
+        dragent_worker_with_a2a.front_end_config.a2a.oauth_token_exchange = (
+            OAuth2TokenExchangeConfig(
+                token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent",
+                scopes=["blog:write"],
+            )
+        )
+
+        card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
+
+        # Single oauth2 scheme with both flows
+        assert len(card.security_schemes) == 1
+        oauth_scheme = card.security_schemes["oauth2"].root
+        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
+
+        assert oauth_scheme.flows.authorization_code is not None
+        assert (
+            oauth_scheme.flows.authorization_code.authorization_url
+            == "https://issuer.example.com/oauth/authorize"
+        )
+
+        assert oauth_scheme.flows.client_credentials is not None
+        assert (
+            oauth_scheme.flows.client_credentials.token_url
+            == "https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
+        )
+
+        # Merged scopes (deduplicated)
+        assert card.security == [{"oauth2": ["read", "blog:write"]}]
+
+        # RFC 8693 binder extension: audience in params, scopes only under flows
+        assert card.capabilities.extensions is not None
+        ext = card.capabilities.extensions[0]
+        assert ext.uri == RFC8693_GRANT_TYPE_URI
+        assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
+        assert ext.params == {
+            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
+            "audience": "https://app.datarobot.com/dr_org_id/my_agent",
+        }
 
     async def test_no_security_when_server_auth_absent(
         self, dragent_worker_with_a2a, a2a_frontend_config
@@ -429,18 +516,25 @@ class TestDRAgentFastApiFrontEndConfig:
         assert config.a2a is None
 
     def test_custom_a2a_fields(self):
+        oauth = OAuth2TokenExchangeConfig(
+            token_url="https://idp.example.com/oauth2/v1/token",
+            audience="api://my-agent",
+            scopes=["agent:use"],
+        )
         config = DRAgentFastApiFrontEndConfig(
             a2a=DRAgentA2AConfig(
                 server=A2AFrontEndConfig(
                     name="My Agent",
                     description="Does things",
                     version="2.0.0",
-                )
+                ),
+                oauth_token_exchange=oauth,
             )
         )
         assert config.a2a.server.name == "My Agent"
         assert config.a2a.server.description == "Does things"
         assert config.a2a.server.version == "2.0.0"
+        assert config.a2a.oauth_token_exchange == oauth
 
     def test_is_not_a2a_front_end_config(self):
         config = DRAgentFastApiFrontEndConfig()

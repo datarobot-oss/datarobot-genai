@@ -33,6 +33,7 @@ from .converters import convert_dragent_run_agent_input_to_chat_request_or_messa
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
+from .server_auth import OAuth2TokenExchangeConfig
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)
@@ -47,6 +48,15 @@ class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
     server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
+    oauth_token_exchange: OAuth2TokenExchangeConfig | None = Field(
+        default=None,
+        description=(
+            "Configuration for agent authorization using Token Exchange (RFC 8693). "
+            "If provided, the token_url, audience, and scopes will be used to perform a "
+            "token exchange, allowing the client to dynamically obtain a scoped JWT during "
+            "the second phase of authentication."
+        ),
+    )
     skills: list[AgentSkill] = Field(
         default=[],
         description="Skills to advertise in the A2A agent card. "
@@ -60,6 +70,17 @@ class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"
         default=None,
         description="Expose this agent via the Agent2Agent protocol. "
         "A2A server endpoints are mounted under /a2a/.",
+    )
+    workflow: typing.Annotated[
+        FastApiFrontEndConfig.EndpointBase,
+        Field(description="Endpoint for the default workflow."),
+    ] = FastApiFrontEndConfig.EndpointBase(
+        method="POST",
+        path="/v1/workflow",
+        openai_api_v1_path="/chat/completions",
+        legacy_path="/generate",
+        legacy_openai_api_path="/chat",
+        description="Executes the default NAT workflow from the loaded configuration ",
     )
 
 

@@ -1,0 +1,98 @@
+name: E2E Tests for Example Notebooks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      examples: ${{ steps.matrix.outputs.examples }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        # TODO: Add crewai to the filters
+        with:
+          filters: |
+            quickstart:
+              - 'src/datarobot_genai/langgraph/**'
+            core:
+              - 'src/datarobot_genai/core/**'
+              - 'e2e-tests/**'
+              - '.github/workflows/e2e-examples.yml'
+
+      - id: matrix
+        run: |
+          examples='[]'
+          core="${{ steps.filter.outputs.core }}"
+          declare -A changed=( [quickstart]="${{ steps.filter.outputs.quickstart }}" )
+          for fw in quickstart; do
+            if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
+              examples=$(echo "$examples" | jq -c ". + [\"$fw\"]")
+            fi
+          done
+          echo "examples=$examples" >> "$GITHUB_OUTPUT"
+
+  e2e-examples:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.examples != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        example: ${{ fromJson(needs.detect-changes.outputs.examples) }}
+        python-version: ['3.12']
+    permissions:
+      contents: read
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+      EXAMPLE: ${{ matrix.example }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            e2e-tests/.venv
+            ~/.cache/uv
+          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          restore-keys: |
+            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}-
+
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: |
+          uv sync
+
+      - name: Run example e2e
+        working-directory: e2e-tests
+        run: |
+          uv run pytest --nbmake "examples/${EXAMPLE}.ipynb" -vv -s
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.example }}-py${{ matrix.python-version }}
+          path: e2e-tests/test_results/
+          if-no-files-found: ignore
