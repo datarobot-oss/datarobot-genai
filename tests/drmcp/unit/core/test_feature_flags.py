@@ -37,12 +37,12 @@ class TestFeatureFlags:
         with patch.object(FeatureFlag, "create") as mock_func:
             yield mock_func
 
-    def test_create(self, mock_get_datarobot_client: Mock) -> None:
+    @pytest.mark.parametrize("feature_flag_value", [True, False], ids=str)
+    def test_create(self, mock_get_datarobot_client: Mock, feature_flag_value: bool) -> None:
         mock_datarobot_client = mock_get_datarobot_client.return_value
         expected_feature_flag_name = Mock()
-        expected_feature_status = Mock()
         mock_datarobot_client.post.return_value.json.return_value = {
-            "entitlements": [{"name": expected_feature_flag_name, "value": expected_feature_status}]
+            "entitlements": [{"name": expected_feature_flag_name, "value": feature_flag_value}]
         }
 
         output = FeatureFlag.create(expected_feature_flag_name)
@@ -52,7 +52,8 @@ class TestFeatureFlags:
             json={"entitlements": [{"name": expected_feature_flag_name}]},
         )
         assert output == FeatureFlag(
-            name=expected_feature_flag_name, enabled=bool(expected_feature_status)
+            name=expected_feature_flag_name,
+            enabled=feature_flag_value,
         )
 
     def test_fallback_to_feature_flag_enablement_false(

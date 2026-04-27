@@ -34,7 +34,9 @@ class FeatureFlag:
         has_entitlement_return = "entitlements" in json_response
         return cls(
             name=feature_flag_name,
-            enabled=bool(json_response["entitlements"][0]) if has_entitlement_return else False,
+            enabled=bool(json_response["entitlements"][0]["value"])
+            if has_entitlement_return
+            else False,
         )
 
     @classmethod
