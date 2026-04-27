@@ -33,7 +33,7 @@ class FeatureFlag:
         try:
             json_response = response.json()
             feature_enabled = bool(json_response["entitlements"][0]["value"])
-        except (IndexError, KeyError):
+        except (IndexError, KeyError, TypeError):
             feature_enabled = False
         return cls(name=feature_flag_name, enabled=feature_enabled)
 

@@ -59,7 +59,7 @@ class TestFeatureFlags:
 
     @pytest.mark.parametrize(
         "feature_flag_api_response",
-        [{}, {"entitlements": []}, {"entitlements": [{}]}],
+        [{}, {"entitlements": []}, {"entitlements": [{}]}, {"entitlements": None}],
     )
     def test_fallback_to_feature_flag_enablement_false(
         self,
