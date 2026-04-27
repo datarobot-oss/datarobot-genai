@@ -780,28 +780,9 @@ async def test_browse_datastore_missing_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_browse_datastore_clamps_limit_to_pagination_max() -> None:
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"data": []}
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
-    ):
-        mock_rest = MagicMock()
-        mock_rest.get.return_value = mock_response
-        mock_dr = MagicMock()
-        mock_dr.client.get_client.return_value = mock_rest
-        mock_data_robot_client.return_value.get_client.return_value = mock_dr
-
-        result = await data.browse_datastore(datastore_id="s1", limit=2000)
-        assert result["limit"] == 1000
-        mock_rest.get.assert_called_once_with(
-            "externalDataDrivers/s1/tables/", params={"offset": 0, "limit": 1000}
-        )
+async def test_browse_datastore_rejects_limit_above_max() -> None:
+    with pytest.raises(ToolError, match="limit cannot exceed 1000"):
+        await data.browse_datastore(datastore_id="s1", limit=2000)
 
 
 @pytest.mark.asyncio
@@ -834,28 +815,9 @@ async def test_query_datastore_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_query_datastore_clamps_limit_to_pagination_max() -> None:
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"data": [], "columns": []}
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
-    ):
-        mock_rest = MagicMock()
-        mock_rest.post.return_value = mock_response
-        mock_dr = MagicMock()
-        mock_dr.client.get_client.return_value = mock_rest
-        mock_data_robot_client.return_value.get_client.return_value = mock_dr
-
+async def test_query_datastore_rejects_limit_above_max() -> None:
+    with pytest.raises(ToolError, match="limit cannot exceed 1000"):
         await data.query_datastore(datastore_id="ds1", sql="SELECT 1", limit=2000)
-        mock_rest.post.assert_called_once_with(
-            "externalDataDrivers/ds1/execute/",
-            json={"query": "SELECT 1", "offset": 0, "limit": 1000},
-        )
 
 
 @pytest.mark.asyncio

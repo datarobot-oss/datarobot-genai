@@ -47,26 +47,26 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
 
 
 def _merge_pagination_metadata(
-    result: dict[str, Any],
-    body: dict[str, Any] | list,
+    final_results: dict[str, Any],
+    api_response: dict[str, Any] | list,
     *,
     offset: int | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
     """Add offset/limit echo and DataRobot list pagination (next, previous, total) when present."""
     if offset is not None:
-        result["offset"] = offset
+        final_results["offset"] = offset
     if limit is not None:
-        result["limit"] = limit
-    if isinstance(body, dict):
+        final_results["limit"] = limit
+    if isinstance(api_response, dict):
         for key in ("next", "previous"):
-            if key in body and body[key] is not None:
-                result[key] = body[key]
+            if key in api_response and api_response[key] is not None:
+                final_results[key] = api_response[key]
         for total_key in ("total_count", "total"):
-            if total_key in body and body[total_key] is not None:
-                result["total_count"] = body[total_key]
+            if total_key in api_response and api_response[total_key] is not None:
+                final_results["total_count"] = api_response[total_key]
                 break
-    return result
+    return final_results
 
 
 @tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
@@ -324,7 +324,10 @@ async def browse_datastore(
     offset: Annotated[int, "Pagination offset"] = 0,
     limit: Annotated[
         int,
-        "Maximum items to return (default 1000); values above 1000 are reduced to 1000.",
+        (
+            "Maximum items to return (default 1000). Values above 1000 are rejected; "
+            "use offset to page."
+        ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
     search: Annotated[str, "Search filter for items"] | None = None,
 ) -> dict[str, Any]:
@@ -337,14 +340,9 @@ async def browse_datastore(
         raise ToolError("limit must be at least 1")
 
     max_per = DR_PREDICTIVE_API_PAGINATION_MAX
-    apply_limit = min(limit, max_per)
-    if apply_limit < limit:
-        logger.warning(
-            "browse_datastore: limit %s exceeds cap %s, using %s",
-            limit,
-            max_per,
-            apply_limit,
-        )
+    if limit > max_per:
+        raise ToolError(f"limit cannot exceed {max_per}; use offset to page.")
+    apply_limit = limit
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -381,7 +379,10 @@ async def query_datastore(
     offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[
         int,
-        "Maximum rows to return (default 1000); values above 1000 are reduced to 1000.",
+        (
+            "Maximum rows to return (default 1000). Values above 1000 are rejected; "
+            "use offset to page."
+        ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
     """Execute a SQL query against a DataRobot datastore connection.
@@ -399,11 +400,9 @@ async def query_datastore(
         raise ToolError("limit must be at least 1")
 
     max_per = DR_PREDICTIVE_API_PAGINATION_MAX
-    apply_limit = min(limit, max_per)
-    if apply_limit < limit:
-        logger.warning(
-            "query_datastore: limit %s exceeds cap %s, using %s", limit, max_per, apply_limit
-        )
+    if limit > max_per:
+        raise ToolError(f"limit cannot exceed {max_per}; use offset to page.")
+    apply_limit = limit
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
