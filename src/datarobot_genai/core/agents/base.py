@@ -18,6 +18,7 @@ import abc
 import json
 import logging
 import os
+import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
@@ -30,7 +31,6 @@ from typing import TypeVar
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import UserMessage
-from langgraph.graph.message import uuid
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.agents.render import render_ag_ui_event
