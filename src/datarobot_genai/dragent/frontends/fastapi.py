@@ -21,8 +21,15 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
+from a2a.types import AgentExtension
 from a2a.types import AgentSkill
+from a2a.types import AuthorizationCodeOAuthFlow
+from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import OAuth2SecurityScheme
+from a2a.types import OAuthFlows
+from a2a.types import SecurityScheme
 from fastapi import FastAPI
+from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
@@ -36,11 +43,31 @@ from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
 
+from .server_auth import OAuth2TokenExchangeConfig
 from .session import DRAgentAGUISessionManager
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 A2A_MOUNT_PATH = "a2a"
+
+
+OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
+    "OAuth 2.0 authorization utilizing RFC 8693 Token Exchange. Clients must "
+    "supply a valid internal passport JWT as the subject token. Refer to the "
+    "capabilities.extensions block for strict token exchange parameters and "
+    "audience specifications."
+)
+
+# The extension explicitly references the security scheme key so SDKs can resolve
+# the RFC 8693 Token Exchange override without ambiguity.
+RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
+RFC8693_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+RFC8693_SECURITY_SCHEME_REF = "oauth2"  # The key in securitySchemes
+RFC8693_SECURITY_SCHEME_FLOW_REF = "clientCredentials"  # The exact flow being overridden
+RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
+    "Overrides the referenced security scheme with RFC 8693 Token Exchange requirements."
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -102,14 +129,154 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
-    async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
-        assert self._a2a_worker is not None
-        security_schemes = None
-        security = None
-        if frontend_config.server_auth:
-            security_schemes, security = await self._a2a_worker._generate_security_schemes(
-                frontend_config.server_auth
+    @staticmethod
+    async def _oauth_flow_from_server_auth(
+        server_auth: OAuth2ResourceServerConfig,
+    ) -> tuple[AuthorizationCodeOAuthFlow, list[str]]:
+        """Build the authorization_code OAuth2 flow and scopes for NAT ``server_auth``."""
+        auth_url, token_url = await DRAgentFastApiFrontEndPluginWorker._resolve_oauth_endpoints(
+            server_auth
+        )
+        flow = AuthorizationCodeOAuthFlow(
+            authorization_url=auth_url,
+            token_url=token_url,
+            scopes={scope: f"Permission: {scope}" for scope in server_auth.scopes},
+        )
+        return flow, list(server_auth.scopes)
+
+    @staticmethod
+    def _oauth_flow_from_token_exchange(
+        config: OAuth2TokenExchangeConfig,
+    ) -> tuple[ClientCredentialsOAuthFlow, list[str]]:
+        """Build the client_credentials flow and scopes for ``a2a.oauth_token_exchange``.
+
+        Token URL and scopes live only here (OpenAPI-compatible). RFC 8693 second-phase
+        requirements are signaled separately via :meth:`_token_exchange_capability_extension`.
+        """
+        flow = ClientCredentialsOAuthFlow(
+            token_url=config.token_url,
+            scopes={scope: f"Permission: {scope}" for scope in config.scopes},
+        )
+        return flow, list(config.scopes)
+
+    @staticmethod
+    def _token_exchange_capability_extension(
+        config: OAuth2TokenExchangeConfig,
+    ) -> list[AgentExtension]:
+        """Build the RFC 8693 binder extension for the agent card.
+
+        Binds the extension to the named security scheme (``security_scheme_ref``) so SDKs
+        can unambiguously resolve which OAuth2 flow requires the token exchange override.
+        Scopes are the single source of truth: they stay under ``flows.clientCredentials``
+        and are never duplicated here.
+        """
+        params: dict[str, str] = {
+            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
+            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
+        }
+        if config.audience is not None:
+            params["audience"] = config.audience
+        return [
+            AgentExtension(
+                uri=RFC8693_GRANT_TYPE_URI,
+                description=RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION,
+                params=params,
             )
+        ]
+
+    async def _build_security_schemes(
+        self, frontend_config: A2AFrontEndConfig
+    ) -> tuple[
+        dict[str, SecurityScheme] | None,
+        list[dict[str, list[str]]] | None,
+        list[AgentExtension] | None,
+    ]:
+        """Build A2A security schemes from the frontend configuration.
+
+        Supports two independent auth sources that are merged into a single
+        ``oauth2`` security scheme with separate flows:
+
+        * ``server_auth`` (OAuth2ResourceServerConfig) → authorization_code flow.
+          Endpoint URLs are resolved via OIDC discovery or derived from the issuer URL.
+        * ``a2a.oauth_token_exchange`` (OAuth2TokenExchangeConfig) → client_credentials flow.
+          Used for RFC 8693 second-phase token acquisition. Configured on the DataRobot
+          ``a2a`` block, not on NAT's A2A frontend model, so it stays stable if NAT's
+          config types change.
+
+        Returns
+        -------
+            Tuple of (security_schemes, security requirements, capability extensions),
+            all ``None`` when neither auth source is configured.
+        """
+        server_auth = frontend_config.server_auth
+        a2a_cfg = self.front_end_config.a2a
+        token_exchange = a2a_cfg.oauth_token_exchange if a2a_cfg else None
+
+        if not server_auth and not token_exchange:
+            return None, None, None
+
+        auth_code_flow, server_auth_scopes = (
+            await self._oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
+        )
+        client_creds_flow, token_exchange_scopes = (
+            self._oauth_flow_from_token_exchange(token_exchange) if token_exchange else (None, [])
+        )
+        extensions = (
+            self._token_exchange_capability_extension(token_exchange) if token_exchange else None
+        )
+
+        all_scopes = list(dict.fromkeys(server_auth_scopes + token_exchange_scopes))
+        security_schemes = {
+            "oauth2": SecurityScheme(
+                root=OAuth2SecurityScheme(
+                    type="oauth2",
+                    description=OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE,
+                    flows=OAuthFlows(
+                        authorization_code=auth_code_flow,
+                        client_credentials=client_creds_flow,
+                    ),
+                )
+            )
+        }
+        return security_schemes, [{"oauth2": all_scopes}], extensions
+
+    @staticmethod
+    async def _resolve_oauth_endpoints(
+        server_auth_config: OAuth2ResourceServerConfig,
+    ) -> tuple[str, str]:
+        """Resolve authorization and token URLs from OAuth2ResourceServerConfig.
+
+        Uses OIDC discovery when available, otherwise derives URLs from issuer_url.
+        """
+        import httpx
+
+        if server_auth_config.discovery_url:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(server_auth_config.discovery_url, timeout=5.0)
+                    response.raise_for_status()
+                    metadata = response.json()
+                    auth_url = metadata.get("authorization_endpoint")
+                    token_url = metadata.get("token_endpoint")
+                    if auth_url and token_url:
+                        logger.info(
+                            "Resolved OAuth endpoints via discovery: %s",
+                            server_auth_config.discovery_url,
+                        )
+                        return auth_url, token_url
+            except Exception as e:
+                logger.warning("Failed to discover OAuth endpoints: %s", e)
+
+        issuer = server_auth_config.issuer_url.rstrip("/")
+        auth_url = f"{issuer}/oauth/authorize"
+        token_url = f"{issuer}/oauth/token"
+        logger.info("Using derived OAuth endpoints from issuer: %s", issuer)
+        return auth_url, token_url
+
+    async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
+        security_schemes, security, extensions = await self._build_security_schemes(frontend_config)
+
         if self.front_end_config.a2a.skills:
             skills = self.front_end_config.a2a.skills
         else:
@@ -132,10 +299,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             capabilities=AgentCapabilities(
                 streaming=frontend_config.capabilities.streaming,
                 push_notifications=frontend_config.capabilities.push_notifications,
+                extensions=extensions,
             ),
             skills=skills,
-            security_schemes=security_schemes,
-            security=security,
+            security_schemes=security_schemes or None,
+            security=security or None,
         )
         return agent_card
 
