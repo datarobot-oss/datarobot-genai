@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 ## 0.15.18
-- Implement pahination for predictive data MCP tools
+- Implemented pagination for predictive data MCP tools
 
 ## 0.15.17
 - Added option to configure OAuth2 token exchange flow for server
