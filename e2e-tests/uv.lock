@@ -1287,6 +1287,8 @@ dependencies = [
 dev = [
     { name = "ipdb" },
     { name = "jupyter" },
+    { name = "mypy" },
+    { name = "ruff" },
 ]
 dragent-base = [
     { name = "datarobot-genai", extra = ["dragent"] },
@@ -1302,10 +1304,6 @@ dragent-llamaindex = [
 ]
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent"] },
-]
-lint = [
-    { name = "mypy" },
-    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -1324,16 +1322,14 @@ requires-dist = [
 dev = [
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "mypy", specifier = ">=1.19.1" },
+    { name = "ruff", specifier = ">=0.15.2" },
 ]
 dragent-base = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
 dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" }]
 dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
 dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]
 dragent-nat = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
-lint = [
-    { name = "mypy", specifier = ">=1.19.1" },
-    { name = "ruff", specifier = ">=0.15.2" },
-]
 
 [[package]]
 name = "datarobot-predict"

@@ -46,7 +46,7 @@ def render_ag_ui_event(event: Event) -> str | None:
         or ""
     )
     content = str(getattr(event, "content", "") or "")
-    message = str(getattr(event, "message", "Unknown error") or "")
+    message = str(getattr(event, "message", "") or "Unknown error")
 
     rendered = render_event(
         event_type,

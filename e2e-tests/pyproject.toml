@@ -32,13 +32,11 @@ dragent-llamaindex = [
 dragent-base = [
     "datarobot-genai[dragent]",
 ]
-lint = [
-    "mypy>=1.19.1",
-    "ruff>=0.15.2",
-]
 dev = [
     "ipdb>=0.13.13",
     "jupyter>=1.1.1",
+    "mypy>=1.19.1",
+    "ruff>=0.15.2",
 ]
 
 [project.entry-points.'nat.plugins']
