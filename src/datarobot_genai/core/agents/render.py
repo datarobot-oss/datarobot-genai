@@ -28,7 +28,7 @@ TOOL_RESULT_MAX_LEN = 1000
 
 
 def render_event(
-    event_type: str,
+    event_type: EventType,
     *,
     delta: str = "",
     name: str = "",
@@ -40,7 +40,7 @@ def render_event(
     Parameters
     ----------
     event_type:
-        One of the canonical constants defined in this module.
+        The AG-UI :class:`~ag_ui.core.events.EventType` for this event.
     delta:
         Text delta for content/args events.
     name:

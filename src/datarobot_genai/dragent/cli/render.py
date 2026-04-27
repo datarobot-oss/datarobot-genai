@@ -38,12 +38,17 @@ def render_sse_event(ev: dict[str, object]) -> str | None:
     if not raw_type:
         logger.debug("Unhandled SSE event type: %s", raw_type)
         return None
+    try:
+        event_type = EventType(raw_type)
+    except ValueError:
+        logger.debug("Unknown SSE event type: %s", raw_type)
+        return None
 
-    if raw_type == EventType.RUN_ERROR:
+    if event_type == EventType.RUN_ERROR:
         return str(ev.get("message", "Unknown error"))
 
     rendered = render_event(
-        raw_type,
+        event_type,
         delta=str(ev.get("delta", "")),
         name=str(ev.get("tool_call_name", "") or ev.get("step_name", "") or ev.get("name", "")),
         content=str(ev.get("content", "")),
