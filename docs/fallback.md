@@ -52,8 +52,7 @@ llms:
     fallbacks:
       - use_datarobot_llm_gateway: true
         llm_default_model: anthropic/claude-opus-4-20250514
-    allowed_fails: 3
-    cooldown_time: 60.0
+    num_retries: 3
 ```
 
 `workflow.llm_name` stays the same:
@@ -80,8 +79,7 @@ Router-level tuning fields:
 
 | Field | Meaning |
 |---|---|
-| `allowed_fails` | Failures allowed before a route enters cooldown. |
-| `cooldown_time` | Cooldown duration in seconds before retrying a failed route. |
+| `num_retries` | Number of retries before the router surfaces a failure. |
 
 ## Minimal drop-in example for an existing component
 
@@ -97,7 +95,7 @@ llms:
     fallbacks:
       - use_datarobot_llm_gateway: true
         llm_default_model: "your-fallback-model-id"
-    allowed_fails: 1
+    num_retries: 1
 
 workflow:
   llm_name: datarobot_llm
@@ -136,7 +134,7 @@ fallbacks = [
     )
 ]
 
-llm = get_router_llm(primary, fallbacks, {"allowed_fails": 3, "cooldown_time": 60.0})
+llm = get_router_llm(primary, fallbacks, {"num_retries": 3})
 ```
 
 ## What does not need to change

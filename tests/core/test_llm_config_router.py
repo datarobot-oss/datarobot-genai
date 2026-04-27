@@ -209,11 +209,10 @@ def test_build_litellm_router_passes_settings() -> None:
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
-        build_litellm_router(primary, [fb], {"allowed_fails": 5, "cooldown_time": 60.0})
+        build_litellm_router(primary, [fb], {"num_retries": 5})
 
     call_kwargs = mock_router_cls.call_args.kwargs
-    assert call_kwargs["allowed_fails"] == 5
-    assert call_kwargs["cooldown_time"] == 60.0
+    assert call_kwargs["num_retries"] == 5
 
 
 # ---------------------------------------------------------------------------

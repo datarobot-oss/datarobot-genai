@@ -63,7 +63,7 @@ def build_litellm_router(
         primary: ``LLMConfig`` for the primary model.
         fallbacks: Ordered list of ``LLMConfig`` fallback models.
         router_settings: Extra keyword arguments forwarded to ``litellm.Router``
-            (e.g. ``allowed_fails``, ``cooldown_time``).
+            (e.g. ``num_retries``).
 
     Returns
     -------

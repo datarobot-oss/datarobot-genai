@@ -164,8 +164,7 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
           fallbacks:
             - llm_deployment_id: "def456"
               use_datarobot_llm_gateway: false
-          allowed_fails: 3
-          cooldown_time: 60.0
+          num_retries: 3
     """
 
     model_name: str = Field(
@@ -179,13 +178,9 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
         description="Ordered list of fallback LLM configurations (at least one required).",
         min_length=1,
     )
-    allowed_fails: int = Field(
+    num_retries: int = Field(
         default=3,
-        description="Number of failures allowed before a deployment enters cooldown.",
-    )
-    cooldown_time: float | None = Field(
-        default=None,
-        description="Seconds a failed deployment stays in cooldown before being retried.",
+        description="Number of retries for a request before the router surfaces a failure.",
     )
 
 

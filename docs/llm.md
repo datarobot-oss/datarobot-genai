@@ -98,7 +98,7 @@ llms:
     _type: datarobot-llm-router
 ```
 
-In Python, this uses **`get_router_llm(primary, fallbacks, router_settings)`** from the integration module (`datarobot_genai.langgraph.llm`, `datarobot_genai.crewai.llm`, or `datarobot_genai.llama_index.llm`).
+In Python, this uses **`get_router_llm(primary, fallbacks, router_settings)`** from the integration module (`datarobot_genai.langgraph.llm`, `datarobot_genai.crewai.llm`, or `datarobot_genai.llama_index.llm`). Use `router_settings={"num_retries": <int>}` to control retry count.
 
 For the full agent-component checklist and copy-paste examples, see [LLM provider fallback (router)](fallback.md).
 

@@ -27,7 +27,7 @@ llms:
     fallbacks:
       - use_datarobot_llm_gateway: true
         llm_default_model: azure/gpt-4o-2024-11-20
-    allowed_fails: 1
+    num_retries: 1
 
 workflow:
   _type: llamaindex_agent

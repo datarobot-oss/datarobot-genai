@@ -139,7 +139,7 @@ def get_router_llm(
         primary: ``LLMConfig`` for the primary model.
         fallbacks: Ordered list of ``LLMConfig`` fallback configs.
         router_settings: Extra kwargs forwarded to ``litellm.Router``
-            (e.g. ``allowed_fails``, ``cooldown_time``).
+            (e.g. ``num_retries``).
     """
     from langchain_litellm import ChatLiteLLMRouter  # noqa: PLC0415
 
