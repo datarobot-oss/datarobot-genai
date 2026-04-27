@@ -142,6 +142,8 @@ async def list_ai_catalog_items(
 ) -> dict[str, Any]:
     """List AI Catalog items (datasets) for the authenticated user.
 
+    The ``datasets`` value is always a mapping of dataset id to name (empty mapping when none).
+
     Pagination: the DataRobot SDK's ``Dataset.iterate`` uses ``limit`` as the API page size and
     the iterator can walk every page. When ``limit`` is set, this tool only returns up to
     ``limit`` items after ``offset`` (one page of results). When ``limit`` is omitted, all
@@ -160,7 +162,7 @@ async def list_ai_catalog_items(
 
     if not datasets:
         logger.info("No AI Catalog items found")
-        out: dict[str, Any] = {"datasets": [], "count": 0}
+        out: dict[str, Any] = {"datasets": {}, "count": 0}
         return _merge_pagination_metadata(out, {}, offset=offset, limit=limit)
 
     datasets_dict = {ds.id: ds.name for ds in datasets}

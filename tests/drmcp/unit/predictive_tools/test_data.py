@@ -356,7 +356,7 @@ async def test_list_ai_catalog_items_empty() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items()
-        assert result["datasets"] == []
+        assert result["datasets"] == {}
         assert result["count"] == 0
         assert "offset" not in result
         assert "limit" not in result
@@ -377,7 +377,7 @@ async def test_list_ai_catalog_items_empty_paged_includes_count_and_pagination_e
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items(offset=10, limit=5)
-        assert result["datasets"] == []
+        assert result["datasets"] == {}
         assert result["count"] == 0
         assert result["offset"] == 10
         assert result["limit"] == 5
