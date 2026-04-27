@@ -32,12 +32,13 @@ class FeatureFlag:
 
         json_response = response.json()
         has_entitlement_return = "entitlements" in json_response
-        return cls(
-            name=feature_flag_name,
-            enabled=bool(json_response["entitlements"][0]["value"])
-            if has_entitlement_return
-            else False,
-        )
+        try:
+            feature_enabled = (
+                bool(json_response["entitlements"][0]["value"]) if has_entitlement_return else False
+            )
+        except (IndexError, KeyError):
+            feature_enabled = False
+        return cls(name=feature_flag_name, enabled=feature_enabled)
 
     @classmethod
     @lru_cache(maxsize=1)

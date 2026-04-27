@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import Mock
 from unittest.mock import patch
 
@@ -56,11 +57,17 @@ class TestFeatureFlags:
             enabled=feature_flag_value,
         )
 
+    @pytest.mark.parametrize(
+        "feature_flag_api_response",
+        [{}, {"entitlements": []}, {"entitlements": [{}]}],
+    )
     def test_fallback_to_feature_flag_enablement_false(
-        self, mock_get_datarobot_client: Mock
+        self,
+        mock_get_datarobot_client: Mock,
+        feature_flag_api_response: dict[str, Any],
     ) -> None:
         mock_datarobot_client = mock_get_datarobot_client.return_value
-        mock_datarobot_client.post.return_value.json.return_value = {}
+        mock_datarobot_client.post.return_value.json.return_value = feature_flag_api_response
 
         expected_feature_flag_name = Mock()
         output = FeatureFlag.create(expected_feature_flag_name)
