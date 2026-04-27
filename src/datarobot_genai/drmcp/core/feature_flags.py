@@ -30,12 +30,9 @@ class FeatureFlag:
         flags_json = {"entitlements": [{"name": feature_flag_name}]}
         response = client.post("entitlements/evaluate/", json=flags_json)
 
-        json_response = response.json()
-        has_entitlement_return = "entitlements" in json_response
         try:
-            feature_enabled = (
-                bool(json_response["entitlements"][0]["value"]) if has_entitlement_return else False
-            )
+            json_response = response.json()
+            feature_enabled = bool(json_response["entitlements"][0]["value"])
         except (IndexError, KeyError):
             feature_enabled = False
         return cls(name=feature_flag_name, enabled=feature_enabled)
