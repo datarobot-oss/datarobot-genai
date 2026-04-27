@@ -17,6 +17,7 @@ import binascii
 import io
 import itertools
 import logging
+import sys
 from typing import Annotated
 from typing import Any
 
@@ -41,6 +42,29 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
         if isinstance(payload, dict):
             return payload
     return {}
+
+
+def _merge_pagination_metadata(
+    result: dict[str, Any],
+    body: dict[str, Any] | list,
+    *,
+    offset: int | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Add offset/limit echo and DataRobot list pagination (next, previous, total) when present."""
+    if offset is not None:
+        result["offset"] = offset
+    if limit is not None:
+        result["limit"] = limit
+    if isinstance(body, dict):
+        for key in ("next", "previous"):
+            if key in body and body[key] is not None:
+                result[key] = body[key]
+        for total_key in ("total_count", "total"):
+            if total_key in body and body[total_key] is not None:
+                result["total_count"] = body[total_key]
+                break
+    return result
 
 
 @tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
@@ -131,10 +155,8 @@ async def list_ai_catalog_items(
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     gen = client.Dataset.iterate(offset=offset, limit=limit)
-    if limit is not None:
-        datasets = list(itertools.islice(gen, limit))
-    else:
-        datasets = list(gen)
+    slice_stop = limit if limit is not None else sys.maxsize
+    datasets = list(itertools.islice(gen, slice_stop))
 
     if not datasets:
         logger.info("No AI Catalog items found")
@@ -153,11 +175,25 @@ async def get_dataset_details(
     *,
     dataset_id: Annotated[str, "The ID of the DataRobot dataset"] | None = None,
     include_sample: Annotated[bool, "Whether to include sample rows"] = True,
-    sample_rows: Annotated[int, "Number of sample rows to return"] = 10,
+    sample_offset: Annotated[
+        int,
+        (
+            "0-based index of the first sample row to return; use with sample_rows to page "
+            "through data."
+        ),
+    ] = 0,
+    sample_rows: Annotated[int, "Max sample rows to return in this call (page size)"] = 10,
 ) -> dict[str, Any]:
-    """Get DataRobot dataset metadata and optional sample rows."""
+    """Get DataRobot dataset metadata and optional sample rows.
+
+    Paginate the sample with sample_offset and sample_rows.
+    """
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
+    if sample_offset < 0:
+        raise ToolError("sample_offset must be non-negative")
+    if sample_rows < 1:
+        raise ToolError("sample_rows must be at least 1")
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -173,7 +209,22 @@ async def get_dataset_details(
         try:
             df = dataset.get_raw_sample_data()
             result["columns"] = list(df.columns)
-            result["sample"] = df.head(sample_rows).to_dict(orient="records")
+            n = len(df)
+            end = min(sample_offset + sample_rows, n)
+            if sample_offset < n:
+                if hasattr(df, "iloc"):
+                    sample_df = df.iloc[sample_offset:end]
+                else:
+                    sample_df = df[sample_offset:end]
+            elif hasattr(df, "iloc"):
+                sample_df = df.iloc[0:0]
+            else:
+                sample_df = df[0:0]
+            result["sample"] = sample_df.to_dict(orient="records")
+            result["sample_offset"] = sample_offset
+            result["sample_rows"] = sample_rows
+            result["sample_count"] = len(result["sample"])
+            result["sample_total_available"] = n
         except Exception as exc:
             result["sample_error"] = str(exc)
 
@@ -207,20 +258,24 @@ async def list_datastores(
     if limit is not None:
         params["limit"] = limit
     response = rest_client.get("externalDataStores/", params=params)
-    items = response.json().get("data", [])
+    body = response.json()
+    items = body.get("data", [])
+    if not isinstance(items, list):
+        items = []
 
-    return {
+    out: dict[str, Any] = {
         "datastores": [
             {
                 "id": ds.get("id", ""),
                 "canonical_name": ds.get("canonicalName", ""),
                 "creator_id": ds.get("creatorId", ""),
-                "params": ds.get("params", {}),
+                "params": _serialize_datastore_params(ds.get("params", {})),
             }
             for ds in items
         ],
         "count": len(items),
     }
+    return _merge_pagination_metadata(out, body, offset=offset, limit=limit)
 
 
 @tool_metadata(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
@@ -248,13 +303,17 @@ async def browse_datastore(
     response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
     data = response.json()
     items = data.get("data", data) if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        items = [items] if items is not None else []
 
-    return {
+    out: dict[str, Any] = {
         "datastore_id": datastore_id,
         "path": path or "/",
         "items": items,
         "count": len(items),
     }
+    body = data if isinstance(data, dict) else {}
+    return _merge_pagination_metadata(out, body, offset=offset, limit=limit)
 
 
 @tool_metadata(
@@ -287,14 +346,16 @@ async def query_datastore(
 
     payload = {"query": sql, "offset": offset, "limit": limit}
     response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
-    data = response.json()
+    body = response.json()
+    row_data = body.get("data", [])
 
-    return {
-        "rows": data.get("data", []),
-        "row_count": len(data.get("data", [])),
-        "columns": data.get("columns", []),
+    out: dict[str, Any] = {
+        "rows": row_data,
+        "row_count": len(row_data) if isinstance(row_data, list) else 0,
+        "columns": body.get("columns", []),
         "offset": offset,
     }
+    return _merge_pagination_metadata(out, body, offset=offset, limit=limit)
 
 
 # from fastmcp import Context

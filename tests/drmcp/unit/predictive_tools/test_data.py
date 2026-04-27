@@ -25,6 +25,41 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import data
 
 
+def test_merge_pagination_metadata_adds_offset_limit_next_total() -> None:
+    """_merge_pagination_metadata echoes offset/limit and normalizes list API pagination fields."""
+    base: dict = {"datastores": []}
+    body = {
+        "next": "https://example/api?offset=10",
+        "previous": None,
+        "total": 25,
+    }
+    out = data._merge_pagination_metadata(base, body, offset=0, limit=10)
+    assert out is base
+    assert out["offset"] == 0
+    assert out["limit"] == 10
+    assert out["next"] == "https://example/api?offset=10"
+    assert "previous" not in out
+    assert out["total_count"] == 25
+
+
+def test_merge_pagination_metadata_total_count_wins_over_total() -> None:
+    """If both total_count and total are present, total_count is used (first in iteration)."""
+    base: dict = {"x": 1}
+    body = {"total_count": 7, "total": 99}
+    out = data._merge_pagination_metadata(base, body)
+    assert out["total_count"] == 7
+
+
+def test_merge_pagination_metadata_list_body_ignored() -> None:
+    """Non-dict body does not add next/previous/total (browse/query edge cases)."""
+    base: dict = {"k": 1}
+    empty_list: list = []
+    out = data._merge_pagination_metadata(base, empty_list, offset=1, limit=2)
+    assert out["offset"] == 1
+    assert out["limit"] == 2
+    assert "next" not in out
+
+
 @pytest.mark.asyncio
 async def test_upload_dataset_to_ai_catalog_success_from_bytes() -> None:
     raw = b"a,b\n1,2\n"
@@ -262,6 +297,45 @@ async def test_list_ai_catalog_items_pagination_respects_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_ai_catalog_items_rejects_negative_offset() -> None:
+    with pytest.raises(ToolError, match="offset must be non-negative"):
+        await data.list_ai_catalog_items(offset=-1)
+
+
+@pytest.mark.asyncio
+async def test_list_ai_catalog_items_rejects_invalid_limit() -> None:
+    with pytest.raises(ToolError, match="limit must be at least 1"):
+        await data.list_ai_catalog_items(limit=0)
+
+
+@pytest.mark.asyncio
+async def test_list_ai_catalog_items_omit_limit_returns_rest_after_offset() -> None:
+    """When limit is None, islice stop is unbounded; all items from the iterator are returned."""
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mocks = []
+        for i in range(3, 6):
+            m = MagicMock()
+            m.id = str(i)
+            m.name = f"ds{i}"
+            mocks.append(m)
+        mock_client = MagicMock()
+        mock_client.Dataset.iterate.return_value = iter(mocks)
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.list_ai_catalog_items(offset=2, limit=None)
+        assert result["count"] == 3
+        assert set(result["datasets"].keys()) == {"3", "4", "5"}
+        mock_client.Dataset.iterate.assert_called_once_with(offset=2, limit=None)
+
+
+@pytest.mark.asyncio
 async def test_list_ai_catalog_items_empty() -> None:
     with (
         patch(
@@ -307,6 +381,81 @@ async def test_get_dataset_details_success() -> None:
         assert result["name"] == "Test Dataset"
         assert "columns" in result
         assert "sample" in result
+        assert result["sample_offset"] == 0
+        assert result["sample_rows"] == 10
+        assert result["sample_count"] == 2
+        assert result["sample_total_available"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_dataset_details_sample_pagination_offset() -> None:
+    """sample_offset and sample_rows slice the preview frame (paged sample rows)."""
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_dataset = MagicMock()
+        mock_dataset.id = "ds1"
+        mock_dataset.name = "S"
+        mock_dataset.created_at = "2025-01-01"
+        mock_dataset.row_count = 5
+        mock_df = pl.DataFrame({"a": list(range(5)), "b": list(range(5, 10))}).to_pandas()
+        mock_dataset.get_raw_sample_data.return_value = mock_df
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.get_dataset_details(
+            dataset_id="ds1",
+            sample_offset=2,
+            sample_rows=2,
+        )
+        assert result["sample_offset"] == 2
+        assert result["sample_rows"] == 2
+        assert result["sample_total_available"] == 5
+        assert result["sample_count"] == 2
+        assert result["sample"] == [
+            {"a": 2, "b": 7},
+            {"a": 3, "b": 8},
+        ]
+
+
+@pytest.mark.asyncio
+async def test_get_dataset_details_sample_beyond_length_returns_empty() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_dataset = MagicMock()
+        mock_dataset.id = "ds1"
+        mock_dataset.name = "S"
+        mock_dataset.created_at = "2025-01-01"
+        mock_df = pl.DataFrame({"a": [0]}).to_pandas()
+        mock_dataset.get_raw_sample_data.return_value = mock_df
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.get_dataset_details(dataset_id="ds1", sample_offset=5, sample_rows=3)
+        assert result["sample"] == []
+        assert result["sample_count"] == 0
+        assert result["sample_total_available"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_dataset_details_rejects_invalid_sample_pagination() -> None:
+    with pytest.raises(ToolError, match="sample_offset must be non-negative"):
+        await data.get_dataset_details(dataset_id="x", sample_offset=-1)
+    with pytest.raises(ToolError, match="sample_rows must be at least 1"):
+        await data.get_dataset_details(dataset_id="x", sample_rows=0)
 
 
 @pytest.mark.asyncio
@@ -340,6 +489,18 @@ async def test_get_dataset_details_no_sample() -> None:
 
 @pytest.mark.asyncio
 async def test_list_datastores_success() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "store1",
+                "canonicalName": "My Store",
+                "creatorId": "user1",
+                "params": {"type": "jdbc"},
+            }
+        ],
+        "next": "https://app.datarobot.com/api/v2/externalDataStores/?offset=10&limit=10",
+    }
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -348,30 +509,48 @@ async def test_list_datastores_success() -> None:
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
-        mock_client = MagicMock()
-        mock_ds = MagicMock()
-        mock_ds.id = "store1"
-        mock_ds.canonical_name = "My Store"
-        mock_ds.creator_id = "user1"
-        mock_ds.params = {"type": "jdbc"}
-        mock_client.DataStore.list.return_value = [mock_ds]
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
+        mock_rest = MagicMock()
+        mock_rest.get.return_value = mock_response
+        mock_dr = MagicMock()
+        mock_dr.client.get_client.return_value = mock_rest
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr
 
-        result = await data.list_datastores()
+        result = await data.list_datastores(offset=0, limit=10)
         assert isinstance(result, dict)
         assert result["count"] == 1
         assert result["datastores"][0]["id"] == "store1"
+        assert result["offset"] == 0
+        assert result["limit"] == 10
+        assert "next" in result
+        mock_rest.get.assert_called_once_with(
+            "externalDataStores/", params={"offset": 0, "limit": 10}
+        )
 
 
 @pytest.mark.asyncio
-async def test_list_datastores_serializes_sdk_params() -> None:
-    """SDK returns DataStoreParameters objects; tool output must be JSON-serializable."""
+async def test_list_datastores_serializes_params_from_response() -> None:
+    """API `params` may be plain dicts; _serialize_datastore_params keeps output JSON-friendly."""
     params = DataStoreParameters(
         driver_id="pg",
         jdbc_url="jdbc:postgresql://host/db",
         fields=None,
         connector_id=None,
     )
+    expected = {
+        "driver_id": "pg",
+        "jdbc_url": "jdbc:postgresql://host/db",
+    }
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "store1",
+                "canonicalName": "My Store",
+                "creatorId": "user1",
+                "params": expected,
+            }
+        ],
+    }
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -380,20 +559,58 @@ async def test_list_datastores_serializes_sdk_params() -> None:
         ),
         patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
     ):
-        mock_client = MagicMock()
-        mock_ds = MagicMock()
-        mock_ds.id = "store1"
-        mock_ds.canonical_name = "My Store"
-        mock_ds.creator_id = "user1"
-        mock_ds.params = params
-        mock_client.DataStore.list.return_value = [mock_ds]
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
+        mock_rest = MagicMock()
+        mock_rest.get.return_value = mock_response
+        mock_dr = MagicMock()
+        mock_dr.client.get_client.return_value = mock_rest
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr
 
         result = await data.list_datastores()
-        assert result["datastores"][0]["params"] == {
-            "driver_id": "pg",
-            "jdbc_url": "jdbc:postgresql://host/db",
-        }
+        assert data._serialize_datastore_params(params) == expected
+        assert result["datastores"][0]["params"] == expected
+        assert "offset" not in result
+        assert "limit" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_datastores_pagination_total_count_from_api() -> None:
+    """API may return total_count; merge exposes it as total_count on the tool result."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "a",
+                "canonicalName": "A",
+                "creatorId": "c1",
+                "params": {},
+            }
+        ],
+        "total_count": 42,
+        "previous": "https://api/prev",
+    }
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_rest = MagicMock()
+        mock_rest.get.return_value = mock_response
+        mock_dr = MagicMock()
+        mock_dr.client.get_client.return_value = mock_rest
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr
+
+        result = await data.list_datastores(offset=5, limit=1)
+        assert result["count"] == 1
+        assert result["offset"] == 5
+        assert result["limit"] == 1
+        assert result["total_count"] == 42
+        assert result["previous"] == "https://api/prev"
+        mock_rest.get.assert_called_once_with(
+            "externalDataStores/", params={"offset": 5, "limit": 1}
+        )
 
 
 @pytest.mark.asyncio
@@ -418,6 +635,48 @@ async def test_browse_datastore_success() -> None:
         assert isinstance(result, dict)
         assert result["count"] == 2
         assert result["datastore_id"] == "store1"
+        assert result["offset"] == 0
+        assert result["limit"] == 100
+
+
+@pytest.mark.asyncio
+async def test_browse_datastore_pagination_from_api_response() -> None:
+    """Browse passes offset/limit to the API and forwards next/total from the response body."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [{"name": "t1"}],
+        "next": "https://x/tables?offset=20",
+        "total": 100,
+    }
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_rest = MagicMock()
+        mock_rest.get.return_value = mock_response
+        mock_dr = MagicMock()
+        mock_dr.client.get_client.return_value = mock_rest
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr
+
+        result = await data.browse_datastore(
+            datastore_id="store1",
+            path="/s",
+            offset=10,
+            limit=5,
+        )
+        assert result["count"] == 1
+        assert result["offset"] == 10
+        assert result["limit"] == 5
+        assert result["next"] == "https://x/tables?offset=20"
+        assert result["total_count"] == 100
+        mock_rest.get.assert_called_once_with(
+            "externalDataDrivers/store1/tables/",
+            params={"offset": 10, "limit": 5, "path": "/s"},
+        )
 
 
 @pytest.mark.asyncio
@@ -451,6 +710,49 @@ async def test_query_datastore_success() -> None:
         assert isinstance(result, dict)
         assert result["row_count"] == 1
         assert result["columns"] == ["id", "val"]
+        assert result["offset"] == 0
+        assert result["limit"] == 1000
+
+
+@pytest.mark.asyncio
+async def test_query_datastore_pagination_offset_limit_and_response_metadata() -> None:
+    """Query sends offset/limit in the JSON body and merges pagination fields from the response."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [],
+        "columns": ["a"],
+        "next": "https://x/execute?offset=75",
+        "total_count": 200,
+    }
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_rest = MagicMock()
+        mock_rest.post.return_value = mock_response
+        mock_dr = MagicMock()
+        mock_dr.client.get_client.return_value = mock_rest
+        mock_data_robot_client.return_value.get_client.return_value = mock_dr
+
+        result = await data.query_datastore(
+            datastore_id="ds99",
+            sql="SELECT 1",
+            offset=50,
+            limit=25,
+        )
+        assert result["row_count"] == 0
+        assert result["offset"] == 50
+        assert result["limit"] == 25
+        assert result["next"] == "https://x/execute?offset=75"
+        assert result["total_count"] == 200
+        mock_rest.post.assert_called_once_with(
+            "externalDataDrivers/ds99/execute/",
+            json={"query": "SELECT 1", "offset": 50, "limit": 25},
+        )
 
 
 @pytest.mark.asyncio

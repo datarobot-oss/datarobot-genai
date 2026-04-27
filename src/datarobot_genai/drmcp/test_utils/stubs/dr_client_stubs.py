@@ -343,6 +343,20 @@ def test_create_dr_client() -> StubDRClient:
                 for i in range(min(limit, 5))
             ]
             return StubRestResponse({"data": rows, "next": None})
+        if "externalDataStores" in url:
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "id": stub_datastore.id,
+                            "canonicalName": stub_datastore.canonical_name,
+                            "creatorId": stub_datastore.creator_id,
+                            "params": dict(stub_datastore.params),
+                        }
+                    ],
+                    "next": None,
+                }
+            )
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         if "useCases" in url:
