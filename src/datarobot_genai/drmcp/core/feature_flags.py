@@ -11,12 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
 from datarobot_genai.drmcp.core.clients import (
     setup_and_return_dr_api_client_with_static_config_in_container,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -34,6 +37,8 @@ class FeatureFlag:
             json_response = response.json()
             feature_enabled = bool(json_response["entitlements"][0]["value"])
         except (IndexError, KeyError, TypeError):
+            message = f"Feature flag {feature_flag_name} can't be evaluated. It falls back to False"
+            logger.warning(message)
             feature_enabled = False
         return cls(name=feature_flag_name, enabled=feature_enabled)
 
