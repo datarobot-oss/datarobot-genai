@@ -82,7 +82,7 @@ def render_event(
             content = content[:TOOL_RESULT_MAX_LEN] + "\u2026"
         rendered = f"{Fore.MAGENTA}  Result: {Fore.MAGENTA}{Style.DIM}{content}{Style.RESET_ALL}\n"
     elif event_type == EventType.STEP_STARTED:
-        rendered = f"{Style.DIM}Step: {name}{Style.RESET_ALL}"
+        rendered = f"{Style.DIM}Step: {name}{Style.RESET_ALL}\n"
     elif event_type == EventType.STEP_FINISHED:
         rendered = None
     elif event_type == EventType.RUN_STARTED:

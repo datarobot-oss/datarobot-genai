@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.18
-- Refactor event rendering: decouple it from NAT console and make it all go to stdout
-- Agent.invoke_simple: method to simply call an agent class with a single request, and output a stream of rendered colored events
+- Refactored event rendering: decouple it from NAT console and make it all go to stdout
+- Added Agent.invoke_simple: method to simply call an agent class with a single request, and output a stream of rendered colored events
 
 ## 0.15.17
 - Added option to configure OAuth2 token exchange flow for server

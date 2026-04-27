@@ -21,6 +21,8 @@ from typing import Any
 
 import pytest
 from ag_ui.core.events import EventType
+from colorama import Fore
+from colorama import Style
 
 from datarobot_genai.core.agents.render import TOOL_RESULT_MAX_LEN
 from datarobot_genai.core.agents.render import render_event
@@ -33,9 +35,7 @@ _LOG = "datarobot_genai.core.agents.render"
     (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK),
 )
 def test_render_event_text_message_content_and_chunk(event_type: EventType) -> None:
-    out = render_event(event_type, delta="hello")
-    assert out is not None
-    assert "hello" in out
+    assert render_event(event_type, delta="hello") == f"{Fore.CYAN}hello{Style.RESET_ALL}"
 
 
 def test_render_event_text_message_end() -> None:
@@ -51,9 +51,7 @@ def test_render_event_text_message_start() -> None:
     (EventType.REASONING_MESSAGE_CONTENT, EventType.REASONING_MESSAGE_CHUNK),
 )
 def test_render_event_reasoning_message_content_and_chunk(event_type: EventType) -> None:
-    out = render_event(event_type, delta="think")
-    assert out is not None
-    assert "think" in out
+    assert render_event(event_type, delta="think") == f"{Fore.YELLOW}think{Style.RESET_ALL}"
 
 
 @pytest.mark.parametrize(
@@ -73,16 +71,17 @@ def test_render_event_reasoning_start_variants(event_type: EventType) -> None:
 
 
 def test_render_event_tool_call_start() -> None:
-    out = render_event(EventType.TOOL_CALL_START, name="search")
-    assert out is not None
-    assert "search" in out
-    assert "Tool Call" in out
+    assert render_event(EventType.TOOL_CALL_START, name="search") == (
+        f"\n{Fore.MAGENTA}\u25b6 Tool Call: {Fore.MAGENTA}{Style.DIM}search{Style.RESET_ALL}"
+        f"\n{Fore.MAGENTA}  Arguments: {Style.RESET_ALL}"
+    )
 
 
 def test_render_event_tool_call_args() -> None:
-    out = render_event(EventType.TOOL_CALL_ARGS, delta='{"q": 1}')
-    assert out is not None
-    assert '{"q": 1}' in out
+    delta = '{"q": 1}'
+    assert render_event(EventType.TOOL_CALL_ARGS, delta=delta) == (
+        f"{Fore.MAGENTA}{Style.DIM}{delta}{Style.RESET_ALL}"
+    )
 
 
 def test_render_event_tool_call_end() -> None:
@@ -90,23 +89,23 @@ def test_render_event_tool_call_end() -> None:
 
 
 def test_render_event_tool_call_result() -> None:
-    out = render_event(EventType.TOOL_CALL_RESULT, content="ok")
-    assert out is not None
-    assert "ok" in out
+    assert render_event(EventType.TOOL_CALL_RESULT, content="ok") == (
+        f"{Fore.MAGENTA}  Result: {Fore.MAGENTA}{Style.DIM}ok{Style.RESET_ALL}\n"
+    )
 
 
 def test_render_event_tool_call_result_truncates() -> None:
     long_ = "z" * (TOOL_RESULT_MAX_LEN + 5)
-    out = render_event(EventType.TOOL_CALL_RESULT, content=long_)
-    assert out is not None
-    assert "\u2026" in out
-    assert long_ not in out
+    truncated = "z" * TOOL_RESULT_MAX_LEN + "\u2026"
+    assert render_event(EventType.TOOL_CALL_RESULT, content=long_) == (
+        f"{Fore.MAGENTA}  Result: {Fore.MAGENTA}{Style.DIM}{truncated}{Style.RESET_ALL}\n"
+    )
 
 
 def test_render_event_step_started() -> None:
-    out = render_event(EventType.STEP_STARTED, name="my_step")
-    assert out is not None
-    assert "my_step" in out
+    assert render_event(EventType.STEP_STARTED, name="my_step") == (
+        f"{Style.DIM}Step: my_step{Style.RESET_ALL}\n"
+    )
 
 
 def test_render_event_step_finished() -> None:
@@ -114,27 +113,25 @@ def test_render_event_step_finished() -> None:
 
 
 def test_render_event_run_started() -> None:
-    out = render_event(EventType.RUN_STARTED)
-    assert out is not None
-    assert "Run started" in out
+    assert render_event(EventType.RUN_STARTED) == f"{Style.DIM}Run started{Style.RESET_ALL}\n"
 
 
 def test_render_event_run_finished() -> None:
-    out = render_event(EventType.RUN_FINISHED)
-    assert out is not None
-    assert "Run finished" in out
+    assert render_event(EventType.RUN_FINISHED) == (
+        f"\n{Fore.GREEN}\u2705 Run finished.{Style.RESET_ALL}\n"
+    )
 
 
 def test_render_event_run_error() -> None:
-    out = render_event(EventType.RUN_ERROR, message="oops")
-    assert out is not None
-    assert "oops" in out
+    assert render_event(EventType.RUN_ERROR, message="oops") == (
+        f"{Fore.RED}\u274c Run failed: oops{Style.RESET_ALL}\n"
+    )
 
 
 def test_render_event_custom_not_heartbeat() -> None:
-    out = render_event(EventType.CUSTOM, name="MyEvent")
-    assert out is not None
-    assert "MyEvent" in out
+    assert render_event(EventType.CUSTOM, name="MyEvent") == (
+        f"{Style.DIM}[MyEvent]{Style.RESET_ALL}\n"
+    )
 
 
 def test_render_event_custom_heartbeat_suppresses_name() -> None:
@@ -147,6 +144,6 @@ def test_render_event_unhandled_event_type_in_enum_logs_and_returns_none(
     with caplog.at_level(logging.DEBUG, logger=_LOG):
         out = render_event(EventType.TOOL_CALL_CHUNK)
     assert out is None
-    messages = [r.getMessage() for r in caplog.records]
-    assert any("TOOL_CALL_CHUNK" in m for m in messages)
-    assert any("Unhandled" in m for m in messages)
+    assert [r.getMessage() for r in caplog.records] == [
+        "Unhandled event type: EventType.TOOL_CALL_CHUNK",
+    ]
