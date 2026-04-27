@@ -272,4 +272,4 @@ def test_render_event_unhandled_event_type_in_enum_logs_and_returns_none(
     # THEN there is no output string and one debug log names the event type
     assert out is None
     messages = [r.getMessage() for r in caplog.records]
-    assert messages == ["Unhandled event type: EventType.TOOL_CALL_CHUNK"]
+    assert messages == ["Unhandled event type: TOOL_CALL_CHUNK"]

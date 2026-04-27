@@ -95,6 +95,6 @@ def render_event(
         if name != "Heartbeat":
             rendered = f"{Style.DIM}[{name}]{Style.RESET_ALL}\n"
     else:
-        logger.debug("Unhandled event type: %s", event_type)
+        logger.debug(f"Unhandled event type: {event_type.value}")
 
     return rendered
