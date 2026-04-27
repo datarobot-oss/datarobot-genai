@@ -160,14 +160,18 @@ async def list_ai_catalog_items(
 
     if not datasets:
         logger.info("No AI Catalog items found")
-        return {"datasets": []}
+        out: dict[str, Any] = {"datasets": [], "count": 0}
+        return _merge_pagination_metadata(out, {}, offset=offset, limit=limit)
 
     datasets_dict = {ds.id: ds.name for ds in datasets}
-
-    return {
+    out = {
         "datasets": datasets_dict,
         "count": len(datasets),
     }
+    _merge_pagination_metadata(out, {}, offset=offset, limit=limit)
+    if limit is not None:
+        out["may_have_more"] = len(datasets) == limit
+    return out
 
 
 @tool_metadata(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})

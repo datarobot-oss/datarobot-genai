@@ -293,6 +293,9 @@ async def test_list_ai_catalog_items_pagination_respects_limit() -> None:
 
         assert result["count"] == 3
         assert set(result["datasets"].keys()) == {"1", "2", "3"}
+        assert result["offset"] == 1
+        assert result["limit"] == 3
+        assert result["may_have_more"] is True
         mock_client.Dataset.iterate.assert_called_once_with(offset=1, limit=3)
 
 
@@ -332,6 +335,9 @@ async def test_list_ai_catalog_items_omit_limit_returns_rest_after_offset() -> N
         result = await data.list_ai_catalog_items(offset=2, limit=None)
         assert result["count"] == 3
         assert set(result["datasets"].keys()) == {"3", "4", "5"}
+        assert result["offset"] == 2
+        assert "limit" not in result
+        assert "may_have_more" not in result
         mock_client.Dataset.iterate.assert_called_once_with(offset=2, limit=None)
 
 
@@ -351,6 +357,53 @@ async def test_list_ai_catalog_items_empty() -> None:
 
         result = await data.list_ai_catalog_items()
         assert result["datasets"] == []
+        assert result["count"] == 0
+        assert "offset" not in result
+        assert "limit" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_ai_catalog_items_empty_paged_includes_count_and_pagination_echo() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_client.Dataset.iterate.return_value = iter([])
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.list_ai_catalog_items(offset=10, limit=5)
+        assert result["datasets"] == []
+        assert result["count"] == 0
+        assert result["offset"] == 10
+        assert result["limit"] == 5
+        assert "may_have_more" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_ai_catalog_may_have_more_false_when_page_not_full() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        m1, m2 = MagicMock(), MagicMock()
+        m1.id, m1.name = "a", "A"
+        m2.id, m2.name = "b", "B"
+        mock_client = MagicMock()
+        mock_client.Dataset.iterate.return_value = iter([m1, m2])
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        result = await data.list_ai_catalog_items(offset=0, limit=5)
+        assert result["count"] == 2
+        assert result["may_have_more"] is False
 
 
 @pytest.mark.asyncio
