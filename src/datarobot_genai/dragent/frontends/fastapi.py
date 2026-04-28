@@ -58,7 +58,8 @@ OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
     "audience specifications."
 )
 
-# params.ref points at securitySchemes.oauth2 + clientCredentials for SDK binding.
+# The extension explicitly references the security scheme key so SDKs can resolve
+# the RFC 8693 Token Exchange override without ambiguity.
 RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
 RFC8693_SECURITY_SCHEME_REF = "oauth2"  # The key in securitySchemes
 RFC8693_SECURITY_SCHEME_FLOW_REF = "clientCredentials"  # The exact flow being overridden
