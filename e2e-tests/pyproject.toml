@@ -32,6 +32,9 @@ dragent-llamaindex = [
 dragent-base = [
     "datarobot-genai[dragent]",
 ]
+example-quickstart = [
+    "datarobot-genai[langgraph]",
+]
 dev = [
     "ipdb>=0.13.13",
     "jupyter>=1.1.1",

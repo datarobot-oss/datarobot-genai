@@ -75,7 +75,7 @@ tasks:
     desc: "🧪 Run examples"
     cmds:
       - echo "🧪 Running examples"
-      - uv run pytest --nbmake "examples" -n auto -vv -s
+      - uv run pytest --nbmake "examples" -vv -s
 
   run-dragent:
     desc: "🔨 Run dragent"

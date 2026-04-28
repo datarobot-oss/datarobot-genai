@@ -75,19 +75,19 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-uv-examples-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}
+          key: e2e-uv-examples-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}-${{ hashFiles('e2e-tests/uv.lock') }}
           restore-keys: |
             e2e-uv-examples-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}
 
       - name: Install dependencies
         working-directory: e2e-tests
         run: |
-          uv sync
+          uv sync --group example-${{ matrix.example }}
 
       - name: Run example e2e
         working-directory: e2e-tests
         run: |
-          uv run pytest --nbmake "examples/${EXAMPLE}.ipynb" -vv -s
+          uv run pytest --nbmake "examples/${EXAMPLE}.ipynb" -vv -s --junitxml=test_results/results.xml
 
       - name: Upload test results
         if: always()
