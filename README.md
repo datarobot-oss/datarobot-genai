@@ -83,6 +83,31 @@ When you introduce a backward-incompatible change, bump the minor version.
 ### TestPyPI
 Comment `/build` on your PR to build and publish a dev version of the package to TestPyPI.
 
+## Excluded Upstream Dependencies
+
+Several transitive dependencies pulled in by upstream packages are not used by this library at runtime.
+These are explicitly excluded via `[tool.uv] exclude-dependencies` in `pyproject.toml` to reduce install size and CVE surface area.
+
+| Package | Pulled in by | Reason excluded |
+|---------|-------------|-----------------|
+| `build` | `crewai` | Python build system; runtime unnecessary |
+| `diskcache` | `ragas` | Optional disk caching backend; not used |
+| `flask` | `nvidia-nat 1.6.0` | Web framework; not used |
+| `kubernetes` | `crewai-tools` | K8s client; not used |
+| `lancedb` | `crewai` | Optional vector DB backend; not used |
+| `langchain-milvus` | `nvidia-nat-langchain` | Milvus vector DB adapter; not used |
+| `llama-index-cli` | `llama-index` | CLI tool; not needed at runtime |
+| `openpyxl` | `crewai-tools` | Excel parser; not used |
+| `posthog` | `mem0ai` | Analytics/telemetry; not used |
+| `pymilvus` | `langchain-milvus` | Milvus client; not used |
+| `python-docx` | `crewai-tools` | Word doc parser; not used |
+| `pytube` | `crewai-tools` | YouTube downloader; not used |
+| `qdrant-client` | `mem0ai` | Optional vector DB backend; not used |
+| `scikit-network` | `ragas` | Graph analysis library; not used |
+| `stagehand` | `crewai-tools` | Playwright web automation; not used |
+| `uv` | `crewai` | Package manager bundled as a runtime dep; not needed |
+| `youtube-transcript-api` | `crewai-tools` | YouTube transcripts; not used |
+
 ## Publishing
 
 - **Same-repo PRs**&mdash;comment `/build` on your PR to publish dev builds to TestPyPI (`.devN`).
