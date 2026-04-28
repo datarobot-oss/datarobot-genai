@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.21
+- Restored `posthog` and `qdrant-client` as runtime dependencies. Both are imported eagerly at module load by `deepeval/telemetry.py` and `mem0`'s `Memory` class respectively; excluding them broke pytest collection and any memory-enabled agent on startup.
+
 ## 0.15.20
 - Added `DataRobotLLMRouterConfig` (`datarobot-llm-router`) to NAT to configure primary and fallback LLM providers via `litellm.Router`.
 - Added `get_router_llm` for CrewAI and `RouterLLM` support for LangGraph and LlamaIndex to expose the same fallback router behavior across frameworks.
