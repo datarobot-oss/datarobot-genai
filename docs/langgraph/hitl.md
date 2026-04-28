@@ -58,12 +58,19 @@ sequenceDiagram
 
     Note over LGA: Working Agent Progression<br/>until user defined conditional edge
 
-    LGA-->>UI: Interrupt: CustomEvent (on_interrupt)
-    LGA-->>UI: RunFinishedEvent (interrupted = true)
+    LGA-->>UI: Interrupt: ToolCall (name = ui-confirmation)
+    LGA-->>UI: RunFinishedEvent (interrupted = true, kind = on_interrupt)
 
-    Note over UI: Display prompt approval to User<br/>(Implementation Required)
+    Note over UI: Display prompt approval to User<br/>(Implementation Required for AG-UI tool: ui-confirmation)
 
-    UI->>LGA: invoke (same thread_id, resume state)
+    alt Resume with explicit payload
+        UI->>LGA: invoke(state = langgraph_resume)
+        LGA->>LGA: _build_input_command → Command(resume=…, goto=START)
+    else Resume with next user message (default)
+        UI->>LGA: invoke(user message)
+        LGA->>LGA: map user text → Command(resume=…, goto=START)
+    end
+
     LGA-->>UI: RunStartedEvent
 
     Note over LGA: Conditional logic to<br/>continue, halt, etc.
