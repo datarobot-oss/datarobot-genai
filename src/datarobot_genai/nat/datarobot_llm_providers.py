@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc. and its affiliates.
+# Copyright 2026 DataRobot, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 from nat.builder.builder import Builder
 from nat.builder.llm import LLMProviderInfo
 from nat.cli.register_workflow import register_llm_provider
@@ -22,13 +24,15 @@ from pydantic import AliasChoices
 from pydantic import Field
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
-from datarobot_genai.core.config import LLMType
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 
 
-class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-component"):  # type: ignore[call-arg]
+class DataRobotLLMComponentModelConfig(
+    LLMConfig, OpenAIModelConfig, name="datarobot-llm-component"
+):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     model_name: str | None = Field(
@@ -55,16 +59,6 @@ class DataRobotLLMComponentModelConfig(OpenAIModelConfig, name="datarobot-llm-co
         description="Additional headers send to LLM deployment.",
         default=None,
     )
-
-    def get_llm_type(self) -> LLMType:
-        if self.use_datarobot_llm_gateway:
-            return LLMType.GATEWAY
-        elif self.llm_deployment_id:
-            return LLMType.DEPLOYMENT
-        elif self.nim_deployment_id:
-            return LLMType.NIM
-        else:
-            return LLMType.EXTERNAL
 
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
@@ -154,4 +148,47 @@ class DataRobotLitellmConfig(LiteLlmModelConfig, name="datarobot-litellm"):  # t
 async def datarobot_litellm(config: DataRobotLitellmConfig, _builder: Builder) -> LLMProviderInfo:
     yield LLMProviderInfo(
         config=config, description="DataRobot Litellm provider for use with an LLM client."
+    )
+
+
+class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"):  # type: ignore[call-arg]
+    """Primary + one-or-more fallback LLMs with automatic failover via LiteLLM Router.
+
+    Example workflow YAML::
+
+        datarobot_llm:
+          _type: datarobot-llm-router
+          primary:
+            llm_deployment_id: "abc123"
+            use_datarobot_llm_gateway: false
+          fallbacks:
+            - llm_deployment_id: "def456"
+              use_datarobot_llm_gateway: false
+          num_retries: 3
+    """
+
+    model_name: str = Field(
+        validation_alias=AliasChoices("model_name", "model"),
+        serialization_alias="model",
+        description="Placeholder model name (not used for routing; each sub-config has its own).",
+        default="datarobot-router",
+    )
+    primary: LLMConfig = Field(description="Primary LLM configuration.")
+    fallbacks: list[LLMConfig] = Field(
+        description="Ordered list of fallback LLM configurations (at least one required).",
+        min_length=1,
+    )
+    num_retries: int = Field(
+        default=3,
+        description="Number of retries for a request before the router surfaces a failure.",
+    )
+
+
+@register_llm_provider(config_type=DataRobotLLMRouterConfig)
+async def datarobot_llm_router(
+    config: DataRobotLLMRouterConfig, _builder: Builder
+) -> LLMProviderInfo:
+    yield LLMProviderInfo(
+        config=config,
+        description="DataRobot LLM Router with automatic failover via LiteLLM Router.",
     )
