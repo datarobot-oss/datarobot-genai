@@ -75,9 +75,9 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          key: e2e-uv-examples-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}
           restore-keys: |
-            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}-
+            e2e-uv-examples-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.example }}
 
       - name: Install dependencies
         working-directory: e2e-tests
