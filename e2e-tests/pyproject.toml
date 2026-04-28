@@ -78,9 +78,6 @@ exclude-dependencies = [
     "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
     "diskcache",                # disk caching pulled in by ragas; not used
     "scikit-network",           # graph analysis pulled in by ragas; not used
-    # mem0ai bloat
-    "posthog",                  # analytics/telemetry pulled in by mem0ai; not used
-    "qdrant-client",            # optional vector DB pulled in by mem0ai; not used
 ]
 
 [tool.uv.sources]
