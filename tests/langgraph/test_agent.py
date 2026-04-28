@@ -29,11 +29,11 @@ from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph.message import MessagesState
-from langgraph.graph.state import Command
 from langgraph.graph.state import StateGraph
 from langgraph.types import Interrupt
 
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
@@ -278,7 +278,7 @@ class LangGraphAgentWithMemory(SimpleLangGraphAgent):
 
 
 class LegacyOverrideLangGraphAgent(SimpleLangGraphAgent):
-    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
+    async def convert_input_message(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
         return await super().convert_input_message(run_agent_input)
 
 
@@ -367,7 +367,7 @@ async def test_convert_input_message_includes_history() -> None:
     )
 
     command = await agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
+    all_messages = command["messages"]
 
     # History is embedded as string in the template, so we expect 2 messages:
     # - System message with history transcript + user message
@@ -405,7 +405,7 @@ async def test_convert_input_message_truncates_history() -> None:
     )
 
     command = await agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
+    all_messages = command["messages"]
 
     # We expect 2 templated messages (system + user)
     assert len(all_messages) == 2
@@ -440,7 +440,7 @@ async def test_convert_input_message_injects_chat_history_variable() -> None:
     )
 
     command = await agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
+    all_messages = command["messages"]
 
     # Find the system message generated from the prompt template and assert that
     # it contains a rendered history transcript (prior turns only).
@@ -479,7 +479,7 @@ async def test_convert_input_message_zero_history_disables_history() -> None:
     )
 
     command = await agent.convert_input_message(run_agent_input)
-    all_messages = command.update["messages"]
+    all_messages = command["messages"]
 
     # Only the templated messages for the final user turn should remain.
     assert len(all_messages) == 2
@@ -506,14 +506,12 @@ async def test_langgraph_non_streaming(run_agent_input):
     ) in streaming_response_iterator:
         # Check that agent.workflow is called with expected arguments after first consumption
         if not first_item_consumed:
-            expected_command = Command(
-                update={
-                    "messages": [
-                        SystemMessage(content="You are a helpful assistant. Tell user about AI."),
-                        HumanMessage(content="Hi, tell me about AI."),
-                    ]
-                }
-            )
+            expected_command = {
+                "messages": [
+                    SystemMessage(content="You are a helpful assistant. Tell user about AI."),
+                    HumanMessage(content="Hi, tell me about AI."),
+                ]
+            }
             agent.workflow.compile().astream.assert_called_once_with(
                 input=expected_command,
                 config={"configurable": {"thread_id": "thread_id"}},
@@ -658,6 +656,30 @@ async def test_build_input_command_explicit_resume_returns_command_resume() -> N
     assert command.resume == "human approved"
 
 
+async def test_build_input_command_returns_state_input_for_normal_turn() -> None:
+    """Normal turns use plain state input so checkpointed runs restart naturally."""
+    # GIVEN a normal turn with no explicit resume and no pending interrupts
+    agent = HistoryAwareLangGraphAgent(checkpointer=Mock())
+    compiled_graph = Mock()
+    compiled_graph.aget_state = Mock(return_value=None)
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(content='{"topic": "AI"}', id="m")],
+        tools=[],
+        forwarded_props={},
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+    # WHEN building the graph input for a normal turn
+    command = await agent._build_input_command(run_agent_input, compiled_graph)
+
+    # THEN the result is plain state input (not Command(update=...))
+    assert isinstance(command, dict)
+    assert "messages" in command
+
+
 class InterruptStreamAgent(SimpleLangGraphAgent):
     """Mock graph that only emits a LangGraph __interrupt__ update."""
 
@@ -676,13 +698,15 @@ class InterruptStreamAgent(SimpleLangGraphAgent):
 
 
 @pytest.mark.asyncio
-async def test_invoke_emits_interrupt_custom_event(run_agent_input: RunAgentInput) -> None:
+async def test_invoke_emits_interrupt_confirmation_tool_events(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Interrupt path surfaces as AG-UI confirmation tool events (not CUSTOM)."""
     agent = InterruptStreamAgent()
     events = [e async for e in agent.invoke(run_agent_input)]
-    custom_events = [e[0] for e in events if e[0].type == EventType.CUSTOM]
-    assert len(custom_events) == 1
-    assert custom_events[0].name == "on_interrupt"
-    assert custom_events[0].value["interrupts"][0]["id"] == "intr-1"
+    tool_starts = [e[0] for e in events if e[0].type == EventType.TOOL_CALL_START]
+    names = [getattr(ts, "tool_call_name", None) for ts in tool_starts]
+    assert INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME in names
     finished = events[-1][0]
     assert finished.type == EventType.RUN_FINISHED
     assert finished.result is not None

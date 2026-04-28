@@ -19,6 +19,7 @@ import uuid
 import httpx
 import pytest
 from ag_ui.core import EventType
+from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 
 from dragent.langgraph.myagent import (
     E2E_INTERRUPT_CANCELLED,
@@ -65,8 +66,21 @@ def test_stream_interrupt_then_resume_plain_user_message_no(http_client: httpx.C
         sse_1 = parse_sse_responses(response)
 
     events_1 = collect_ag_ui_events(sse_1)
-    custom_names = [getattr(e, "name", None) for e in events_1 if e.type == EventType.CUSTOM]
-    assert "on_interrupt" in custom_names
+    interrupt_tool_starts = [
+        e
+        for e in events_1
+        if e.type == EventType.TOOL_CALL_START
+        and getattr(e, "tool_call_name", None) == INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
+    ]
+    assert interrupt_tool_starts, (
+        "expected LangGraph HITL as synthetic AG-UI tool " + INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
+    )
+    on_interrupt_custom = [
+        e
+        for e in events_1
+        if e.type == EventType.CUSTOM and getattr(e, "name", None) == "on_interrupt"
+    ]
+    assert not on_interrupt_custom
 
     finished_1 = [e for e in events_1 if e.type == EventType.RUN_FINISHED][-1]
     assert finished_1.result is not None
@@ -114,8 +128,13 @@ def test_stream_interrupt_then_resume_plain_user_message_yes(http_client: httpx.
         sse_1 = parse_sse_responses(response)
 
     events_1 = collect_ag_ui_events(sse_1)
-    custom_names = [getattr(e, "name", None) for e in events_1 if e.type == EventType.CUSTOM]
-    assert "on_interrupt" in custom_names
+    interrupt_tool_starts = [
+        e
+        for e in events_1
+        if e.type == EventType.TOOL_CALL_START
+        and getattr(e, "tool_call_name", None) == INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
+    ]
+    assert interrupt_tool_starts
 
     finished_1 = [e for e in events_1 if e.type == EventType.RUN_FINISHED][-1]
     assert finished_1.result is not None
@@ -139,6 +158,11 @@ def test_stream_interrupt_then_resume_plain_user_message_yes(http_client: httpx.
     events_2 = collect_ag_ui_events(sse_2)
     text = collect_text(events_2)
     assert E2E_INTERRUPT_CONTINUING in text
-    # Resume completed the graph (writer ran); no second interrupt on this run.
-    custom_names_2 = [getattr(e, "name", None) for e in events_2 if e.type == EventType.CUSTOM]
-    assert "on_interrupt" not in custom_names_2
+    # Resume completed the graph (writer ran); no second HITL interrupt tool on this run.
+    interrupt_tool_starts_2 = [
+        e
+        for e in events_2
+        if e.type == EventType.TOOL_CALL_START
+        and getattr(e, "tool_call_name", None) == INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
+    ]
+    assert not interrupt_tool_starts_2
