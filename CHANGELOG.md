@@ -4,8 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.18
+## 0.15.23
 - Added LangGraph human-in-the-loop support and parameterization of LangGraph agent.
+
+## 0.15.22
+- Removed `posthog` and `qdrant-client` from `e2e-tests/pyproject.toml` exclude list to mirror the main pyproject.toml fix in 0.15.21; both are imported eagerly by upstream libs and excluding them would break e2e test collection.
+
+## 0.15.21
+- Restored `posthog` and `qdrant-client` as runtime dependencies. Both are imported eagerly at module load by `deepeval/telemetry.py` and `mem0`'s `Memory` class respectively; excluding them broke pytest collection and any memory-enabled agent on startup.
+
+## 0.15.20
+- Added `DataRobotLLMRouterConfig` (`datarobot-llm-router`) to NAT to configure primary and fallback LLM providers via `litellm.Router`.
+- Added `get_router_llm` for CrewAI and `RouterLLM` support for LangGraph and LlamaIndex to expose the same fallback router behavior across frameworks.
+- Added fallback E2E coverage and updated docs for workflow-router fallback behavior.
+
+## 0.15.19
+- Removed unnecessary packages with exclude to reduce the dependency footprint
+
+## 0.15.18
+- Refactored event rendering: decouple it from NAT console and make it all go to stdout
+- Added Agent.invoke_simple: method to simply call an agent class with a single request, and output a stream of rendered colored events
 
 ## 0.15.17
 - Added option to configure OAuth2 token exchange flow for server

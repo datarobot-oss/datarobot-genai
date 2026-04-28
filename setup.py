@@ -38,6 +38,7 @@ core = [
     # agent application template
     "ag-ui-protocol==0.1.15",
     "pyarrow==21.0.0",
+    "colorama>=0.4.6,<1.0.0",
 ]
 
 memory = [

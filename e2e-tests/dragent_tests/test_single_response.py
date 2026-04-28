@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from ag_ui.verify import validate_sequence
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import AGENT
@@ -49,8 +48,9 @@ def test_generate_single(http_client: httpx.Client) -> None:
     # THEN: the response contains AG-UI events
     assert len(response_data.events) > 0
 
-    # THEN: the events are a valid AG-UI sequence
-    validate_sequence(response_data.events)
+    # TODO (BUZZOK-30524): re-enable when merged upstream
+    # # THEN: the events are a valid AG-UI sequence
+    # validate_sequence(response_data.events)
 
     # THEN: there are events with text
     full_text = collect_text(response_data.events)

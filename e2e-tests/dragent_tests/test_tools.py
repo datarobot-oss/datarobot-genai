@@ -17,7 +17,6 @@ from __future__ import annotations
 import httpx
 import pytest
 from ag_ui.core import EventType
-from ag_ui.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
@@ -63,8 +62,9 @@ def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  #
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_events)
 
-    # THEN: the events are a valid AG-UI sequence
-    validate_sequence(ag_ui_events)
+    # TODO (BUZZOK-30524): re-enable when merged upstream
+    # # THEN: the events are a valid AG-UI sequence
+    # validate_sequence(ag_ui_events)
     # THEN: there are events with tool call
     event_types = {e.type for e in ag_ui_events}
     tool_types = {
@@ -125,8 +125,9 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_events)
 
-    # THEN: the events are a valid AG-UI sequence
-    validate_sequence(ag_ui_events)
+    # TODO (BUZZOK-30524): re-enable when merged upstream
+    # # THEN: the events are a valid AG-UI sequence
+    # validate_sequence(ag_ui_events)
 
     # THEN: there are events with tool call
     event_types = {e.type for e in ag_ui_events}

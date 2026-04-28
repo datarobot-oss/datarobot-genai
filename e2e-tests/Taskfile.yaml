@@ -41,7 +41,7 @@ tasks:
           - base
     cmds:
       - echo "🔧 Installing dependencies for {{.AGENT}}"
-      - uv sync --group dragent-{{.AGENT}} --group lint
+      - uv sync --group dragent-{{.AGENT}} --dev
   install-all:
     desc: "🔧 Install dependencies for all groups"
     cmds:
@@ -75,7 +75,7 @@ tasks:
     desc: "🧪 Run examples"
     cmds:
       - echo "🧪 Running examples"
-      - uv run pytest --nbmake "examples" -n auto -vv -s
+      - uv run pytest --nbmake "examples" -vv -s
 
   run-dragent:
     desc: "🔨 Run dragent"
