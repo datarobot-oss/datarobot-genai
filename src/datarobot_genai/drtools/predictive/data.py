@@ -32,6 +32,22 @@ logger = logging.getLogger(__name__)
 DR_PREDICTIVE_API_PAGINATION_MAX = 1000
 
 
+def _clamp_limit(limit: int) -> tuple[int, str | None]:
+    """Clamp page size to [1, DR_PREDICTIVE_API_PAGINATION_MAX] and an optional user-facing note."""
+    m = DR_PREDICTIVE_API_PAGINATION_MAX
+    if limit < 1:
+        return (
+            m,
+            f"Limit must be at least 1. The maximum limit of {m} was applied.",
+        )
+    if limit > m:
+        return (
+            m,
+            f"Limit cannot exceed {m}. The maximum limit of {m} was applied.",
+        )
+    return (limit, None)
+
+
 def _serialize_datastore_params(params: Any) -> dict[str, Any]:
     """Return JSON-serializable params; DataRobot SDK uses DataStoreParameters, not a dict."""
     if params is None:
@@ -159,13 +175,7 @@ async def list_ai_catalog_items(
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative")
 
-    message = None
-    if limit < 1:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit must be at least 1. The maximum limit of 1000 was applied."
-    elif limit > DR_PREDICTIVE_API_PAGINATION_MAX:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit cannot exceed 1000. The maximum limit of 1000 was applied."
+    limit, message = _clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -250,13 +260,7 @@ async def list_datastores(
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative")
 
-    message = None
-    if limit < 1:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit must be at least 1. The maximum limit of 1000 was applied."
-    elif limit > DR_PREDICTIVE_API_PAGINATION_MAX:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit cannot exceed 1000. The maximum limit of 1000 was applied."
+    limit, message = _clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -313,13 +317,7 @@ async def browse_datastore(
     if offset < 0:
         raise ToolError("offset must be non-negative")
 
-    message = None
-    if limit < 1:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit must be at least 1. The maximum limit of 1000 was applied."
-    elif limit > DR_PREDICTIVE_API_PAGINATION_MAX:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit cannot exceed 1000. The maximum limit of 1000 was applied."
+    limit, message = _clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -380,13 +378,7 @@ async def query_datastore(
     if offset < 0:
         raise ToolError("offset must be non-negative")
 
-    message = None
-    if limit < 1:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit must be at least 1. The maximum limit of 1000 was applied."
-    elif limit > DR_PREDICTIVE_API_PAGINATION_MAX:
-        limit = DR_PREDICTIVE_API_PAGINATION_MAX
-        message = "Limit cannot exceed 1000. The maximum limit of 1000 was applied."
+    limit, message = _clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
