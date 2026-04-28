@@ -34,15 +34,16 @@ DR_PREDICTIVE_API_PAGINATION_MAX = 1000
 
 def _clamp_limit(limit: int) -> tuple[int, str | None]:
     """Clamp page size to [1, DR_PREDICTIVE_API_PAGINATION_MAX] and an optional user-facing note."""
-    if limit < 0:
+    m = DR_PREDICTIVE_API_PAGINATION_MAX
+    if limit < 1:
         return (
-            DR_PREDICTIVE_API_PAGINATION_MAX,
-            f"Limit must be at least 0. The maximum limit of {DR_PREDICTIVE_API_PAGINATION_MAX} was applied.",
+            m,
+            f"Limit must be at least 1. The maximum limit of {m} was applied.",
         )
-    if limit > DR_PREDICTIVE_API_PAGINATION_MAX:
+    if limit > m:
         return (
-            DR_PREDICTIVE_API_PAGINATION_MAX,
-            f"Limit cannot exceed {DR_PREDICTIVE_API_PAGINATION_MAX}. The maximum limit of {DR_PREDICTIVE_API_PAGINATION_MAX} was applied.",
+            m,
+            f"Limit cannot exceed {m}. The maximum limit of {m} was applied.",
         )
     return (limit, None)
 
