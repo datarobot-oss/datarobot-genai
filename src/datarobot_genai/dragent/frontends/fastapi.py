@@ -58,14 +58,12 @@ OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
     "audience specifications."
 )
 
-# The extension explicitly references the security scheme key so SDKs can resolve
-# the RFC 8693 Token Exchange override without ambiguity.
+# params.ref points at securitySchemes.oauth2 + clientCredentials for SDK binding.
 RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
-RFC8693_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 RFC8693_SECURITY_SCHEME_REF = "oauth2"  # The key in securitySchemes
 RFC8693_SECURITY_SCHEME_FLOW_REF = "clientCredentials"  # The exact flow being overridden
 RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
-    "Overrides the referenced security scheme with RFC 8693 Token Exchange requirements."
+    "Two-Step RFC 8693 Token Exchange execution parameters."
 )
 
 
@@ -163,20 +161,20 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def _token_exchange_capability_extension(
         config: OAuth2TokenExchangeConfig,
     ) -> list[AgentExtension]:
-        """Build the RFC 8693 binder extension for the agent card.
+        """Build the RFC 8693 extension for the agent card (two-step flow).
 
-        Binds the extension to the named security scheme (``security_scheme_ref``) so SDKs
-        can unambiguously resolve which OAuth2 flow requires the token exchange override.
-        Scopes are the single source of truth: they stay under ``flows.clientCredentials``
-        and are never duplicated here.
+        OpenAPI ``token_url`` / ``scopes`` remain on ``securitySchemes.oauth2.flows``.
+        ``params`` carries Step 1 (passport) and Step 2 (Okta exchange) only, plus a
+        ``ref`` to the client-credentials flow for unambiguous SDK binding.
         """
-        params: dict[str, str] = {
-            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
-            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
-            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
+        params = {
+            "ref": {
+                "scheme": RFC8693_SECURITY_SCHEME_REF,
+                "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            },
+            "passport_requirement": config.passport_requirement.model_dump(),
+            "exchange_payload": config.exchange_payload.model_dump(),
         }
-        if config.audience is not None:
-            params["audience"] = config.audience
         return [
             AgentExtension(
                 uri=RFC8693_GRANT_TYPE_URI,

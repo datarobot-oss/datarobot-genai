@@ -35,14 +35,15 @@ from datarobot_genai.dragent.frontends.fastapi import (
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_SECURITY_SCHEME_REF
-from datarobot_genai.dragent.frontends.fastapi import RFC8693_SUBJECT_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.fastapi import RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
+from datarobot_genai.dragent.frontends.server_auth import OAuth2PassportRequirement
 from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
+from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangePayload
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
@@ -388,8 +389,16 @@ class TestCreateAgentCard:
         dragent_worker_with_a2a.front_end_config.a2a.oauth_token_exchange = (
             OAuth2TokenExchangeConfig(
                 token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-                audience="https://app.datarobot.com/dr_org_id/my_agent",
                 scopes=["blog:write"],
+                passport_requirement=OAuth2PassportRequirement(
+                    trusted_issuer="https://id-jag.internal.datarobot.com",
+                ),
+                exchange_payload=OAuth2TokenExchangePayload(
+                    audience="https://app.datarobot.com/dr_org_id/my_agent",
+                    subject_token_type="urn:ietf:params:oauth:token-type:jwt",
+                    requested_token_type="urn:ietf:params:oauth:token-type:access_token",
+                    token_endpoint_auth_method="private_key_jwt",
+                ),
             )
         )
         card = await dragent_worker_with_a2a._create_agent_card(a2a_frontend_config)
@@ -407,17 +416,26 @@ class TestCreateAgentCard:
 
         assert card.security == [{"oauth2": ["blog:write"]}]
 
-        # RFC 8693 binder extension (scopes only in flows, never in params)
+        # RFC 8693 extension: ref + passport_requirement + exchange_payload (scopes only in flows)
         assert card.capabilities.extensions is not None
         assert len(card.capabilities.extensions) == 1
         ext = card.capabilities.extensions[0]
         assert ext.uri == RFC8693_GRANT_TYPE_URI
         assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
         assert ext.params == {
-            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
-            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
-            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
-            "audience": "https://app.datarobot.com/dr_org_id/my_agent",
+            "ref": {
+                "scheme": RFC8693_SECURITY_SCHEME_REF,
+                "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            },
+            "passport_requirement": {
+                "trusted_issuer": "https://id-jag.internal.datarobot.com",
+            },
+            "exchange_payload": {
+                "audience": "https://app.datarobot.com/dr_org_id/my_agent",
+                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+                "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+                "token_endpoint_auth_method": "private_key_jwt",
+            },
         }
 
     async def test_security_schemes_from_server_auth(
@@ -460,8 +478,16 @@ class TestCreateAgentCard:
         dragent_worker_with_a2a.front_end_config.a2a.oauth_token_exchange = (
             OAuth2TokenExchangeConfig(
                 token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-                audience="https://app.datarobot.com/dr_org_id/my_agent",
                 scopes=["blog:write"],
+                passport_requirement=OAuth2PassportRequirement(
+                    trusted_issuer="https://id-jag.internal.datarobot.com",
+                ),
+                exchange_payload=OAuth2TokenExchangePayload(
+                    audience="https://app.datarobot.com/dr_org_id/my_agent",
+                    subject_token_type="urn:ietf:params:oauth:token-type:jwt",
+                    requested_token_type="urn:ietf:params:oauth:token-type:access_token",
+                    token_endpoint_auth_method="private_key_jwt",
+                ),
             )
         )
 
@@ -487,16 +513,25 @@ class TestCreateAgentCard:
         # Merged scopes (deduplicated)
         assert card.security == [{"oauth2": ["read", "blog:write"]}]
 
-        # RFC 8693 binder extension: audience in params, scopes only under flows
+        # RFC 8693 extension: nested params; scopes only under OpenAPI flows
         assert card.capabilities.extensions is not None
         ext = card.capabilities.extensions[0]
         assert ext.uri == RFC8693_GRANT_TYPE_URI
         assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
         assert ext.params == {
-            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
-            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
-            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
-            "audience": "https://app.datarobot.com/dr_org_id/my_agent",
+            "ref": {
+                "scheme": RFC8693_SECURITY_SCHEME_REF,
+                "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            },
+            "passport_requirement": {
+                "trusted_issuer": "https://id-jag.internal.datarobot.com",
+            },
+            "exchange_payload": {
+                "audience": "https://app.datarobot.com/dr_org_id/my_agent",
+                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+                "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+                "token_endpoint_auth_method": "private_key_jwt",
+            },
         }
 
     async def test_no_security_when_server_auth_absent(
@@ -518,8 +553,16 @@ class TestDRAgentFastApiFrontEndConfig:
     def test_custom_a2a_fields(self):
         oauth = OAuth2TokenExchangeConfig(
             token_url="https://idp.example.com/oauth2/v1/token",
-            audience="api://my-agent",
             scopes=["agent:use"],
+            passport_requirement=OAuth2PassportRequirement(
+                trusted_issuer="https://id-jag.example.com",
+            ),
+            exchange_payload=OAuth2TokenExchangePayload(
+                audience="api://my-agent",
+                subject_token_type="urn:ietf:params:oauth:token-type:jwt",
+                requested_token_type="urn:ietf:params:oauth:token-type:access_token",
+                token_endpoint_auth_method="private_key_jwt",
+            ),
         )
         config = DRAgentFastApiFrontEndConfig(
             a2a=DRAgentA2AConfig(
