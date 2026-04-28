@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.22
+- Removed `posthog` and `qdrant-client` from `e2e-tests/pyproject.toml` exclude list to mirror the main pyproject.toml fix in 0.15.21; both are imported eagerly by upstream libs and excluding them would break e2e test collection.
+
 ## 0.15.21
 - Restored `posthog` and `qdrant-client` as runtime dependencies. Both are imported eagerly at module load by `deepeval/telemetry.py` and `mem0`'s `Memory` class respectively; excluding them broke pytest collection and any memory-enabled agent on startup.
 
