@@ -326,8 +326,6 @@ jobs:
 
       AGENT: ${{ matrix.framework }}
       LLM: llmgw
-
-      LLM_DEFAULT_MODEL: datarobot/azure/gpt-4o-2024-11-20
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -1279,9 +1279,6 @@ dragent-llamaindex = [
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent"] },
 ]
-dragent-router = [
-    { name = "datarobot-genai", extra = ["dragent"] },
-]
 example-quickstart = [
     { name = "datarobot-genai", extra = ["langgraph"] },
 ]
@@ -1310,7 +1307,6 @@ dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], ed
 dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
 dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]
 dragent-nat = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
-dragent-router = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
 example-quickstart = [{ name = "datarobot-genai", extras = ["langgraph"], editable = "../" }]
 
 [[package]]
