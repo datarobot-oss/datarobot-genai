@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
@@ -19,6 +20,7 @@ from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage
 from ag_ui.core import UserMessage
+from ag_ui.core.events import TextMessageContentEvent
 from ag_ui.core.types import FunctionCall
 from ag_ui.core.types import ToolCall
 from ag_ui.core.types import ToolMessage
@@ -26,6 +28,7 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
+from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import make_system_prompt
 from datarobot_genai.core.agents.history import extract_history_messages
@@ -98,6 +101,24 @@ class SimpleAgent(BaseAgent):
         self, run_agent_input: RunAgentInput
     ) -> tuple[str, Any | None, dict[str, int]]:
         return "ok", None, {}
+
+
+class SingleMessageTestAgent(BaseAgent):
+    """Stub agent that replays a fixed event stream for :meth:`BaseAgent.invoke_single_message`
+    tests.
+    """
+
+    def __init__(self, *events: Any, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._events = events
+        self.last_input: RunAgentInput | None = None
+
+    async def invoke(
+        self, run_agent_input: RunAgentInput
+    ) -> AsyncGenerator[tuple[Any, Any, Any], None]:
+        self.last_input = run_agent_input
+        for ev in self._events:
+            yield (ev, None, default_usage_metrics())
 
 
 def test_base_agent_env_defaults_and_verbose(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -345,3 +366,33 @@ def test_base_agent_forwarded_headers_with_bearer_token() -> None:
     agent = SimpleAgent(forwarded_headers=headers)
     assert agent.forwarded_headers == headers
     assert agent.forwarded_headers["x-datarobot-api-key"] == "Bearer scoped-token-456"
+
+
+async def test_invoke_single_message_forwards_invoke_stream() -> None:
+    # GIVEN a stub that emits two AG-UI events
+    a = TextMessageContentEvent(message_id="a", delta="1")
+    b = TextMessageContentEvent(message_id="b", delta="2")
+    agent = SingleMessageTestAgent(a, b)
+
+    # WHEN invoke_single_message is consumed
+    rows = [row async for row in agent.invoke_single_message("user text")]
+
+    # THEN the stream matches invoke() tuples unchanged (no rendering)
+    metrics = default_usage_metrics()
+    assert rows == [(a, None, metrics), (b, None, metrics)]
+
+
+async def test_invoke_single_message_builds_run_input_with_user_message() -> None:
+    # GIVEN one emitted event
+    event = TextMessageContentEvent(message_id="m", delta="x")
+    agent = SingleMessageTestAgent(event)
+
+    # WHEN invoke_single_message runs
+    _ = [r async for r in agent.invoke_single_message("hello world")]
+
+    # THEN invoke received a run input whose sole message is the user string
+    assert agent.last_input is not None
+    assert len(agent.last_input.messages) == 1
+    assert agent.last_input.messages[0].content == "hello world"
+    assert agent.last_input.state == []
+    assert agent.last_input.tools == []

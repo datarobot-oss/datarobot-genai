@@ -12,7 +12,6 @@ dependencies = [
     "pytest-rerunfailures",
     "pytest-timeout",
     "python-dotenv",
-    "ag-ui-protocol @ git+https://github.com/cavitcakir/ag-ui@feat/python-validate-sequence#egg=ag-ui&subdirectory=sdks/python",
     "nbmake>=1.5.5",
     "pytest-xdist>=3.8.0",
 ]
@@ -33,13 +32,14 @@ dragent-llamaindex = [
 dragent-base = [
     "datarobot-genai[dragent]",
 ]
-lint = [
-    "mypy>=1.19.1",
-    "ruff>=0.15.2",
+example-quickstart = [
+    "datarobot-genai[langgraph]",
 ]
 dev = [
     "ipdb>=0.13.13",
     "jupyter>=1.1.1",
+    "mypy>=1.19.1",
+    "ruff>=0.15.2",
 ]
 
 [project.entry-points.'nat.plugins']
@@ -54,13 +54,33 @@ package = true
 override-dependencies = [
     "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
+    "ag-ui-protocol==0.1.15",
 ]
 exclude-dependencies = [
     "llama-index-llms-azure-openai",
     "llama-index-llms-bedrock",
     "llama-index-llms-nvidia",
     "llama-index-llms-openai",
-    "flask",
+    "uv",                       # package manager bundled by crewai; runtime unnecessary
+    "langchain-milvus",         # Milvus vector DB adapter pulled in by nvidia-nat-langchain; not used
+    "pymilvus",                 # Milvus client pulled in by langchain-milvus; not used
+    "flask",                    # web framework pulled in by nvidia-nat 1.6.0; not used
+    # crewai / crewai-tools bloat
+    "build",                    # Python build system pulled in by crewai; runtime unnecessary
+    "kubernetes",               # K8s client pulled in by crewai-tools; not used
+    "stagehand",                # Playwright web automation pulled in by crewai-tools; not used
+    "pytube",                   # YouTube downloader pulled in by crewai-tools; not used
+    "youtube-transcript-api",   # YouTube transcripts pulled in by crewai-tools; not used
+    "lancedb",                  # optional vector DB pulled in by crewai; not used
+    "openpyxl",                 # Excel parser pulled in by crewai-tools; not used
+    "python-docx",              # Word doc parser pulled in by crewai-tools; not used
+    # llama-index / ragas / mem0ai bloat
+    "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
+    "diskcache",                # disk caching pulled in by ragas; not used
+    "scikit-network",           # graph analysis pulled in by ragas; not used
+    # mem0ai bloat
+    "posthog",                  # analytics/telemetry pulled in by mem0ai; not used
+    "qdrant-client",            # optional vector DB pulled in by mem0ai; not used
 ]
 
 [tool.uv.sources]
