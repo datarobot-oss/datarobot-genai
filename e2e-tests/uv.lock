@@ -9,7 +9,7 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "ag-ui-protocol", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", specifier = "==0.1.15" },
     { name = "crewai", extras = ["litellm"], specifier = ">=1.11.0" },
     { name = "litellm", specifier = ">=1.83.0,<2.0.0" },
 ]
@@ -939,7 +939,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.18"
+version = "0.15.19"
 source = { editable = "../" }
 
 [package.optional-dependencies]

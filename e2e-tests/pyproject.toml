@@ -54,7 +54,7 @@ package = true
 override-dependencies = [
     "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
-    "ag-ui-protocol>=0.1.14,<0.2.0",
+    "ag-ui-protocol==0.1.15",
 ]
 exclude-dependencies = [
     "llama-index-llms-azure-openai",
