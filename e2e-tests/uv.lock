@@ -45,10 +45,14 @@ http-server = [
 
 [[package]]
 name = "ag-ui-protocol"
-version = "0.1.14"
-source = { git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence#2eca856589f48118323b941d06f1780c69fefdd7" }
+version = "0.1.15"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/71/96c21ae7e2fb9b610c1a90d38bd2de8b6e5b2900a63001f3882f43e519af/ag_ui_protocol-0.1.15.tar.gz", hash = "sha256:5e23c1042c7d4e364d685e68d2fb74d37c16bc83c66d270102d8eaedce56ad82", size = 6269, upload-time = "2026-04-01T15:44:33.136Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e4/a0/a73398d30bb0f9ad70cd70426151a4a19527a7296e48a3a16a50e1d5db05/ag_ui_protocol-0.1.15-py3-none-any.whl", hash = "sha256:85cde077023ccbc37b5ce2ad953537883c262d210320f201fc2ec4e85408b06a", size = 8661, upload-time = "2026-04-01T15:44:32.079Z" },
 ]
 
 [[package]]
@@ -961,7 +965,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.16"
+version = "0.15.18"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -969,6 +973,7 @@ crewai = [
     { name = "ag-ui-protocol" },
     { name = "anthropic" },
     { name = "azure-ai-inference" },
+    { name = "colorama" },
     { name = "crewai", extra = ["litellm"] },
     { name = "crewai-tools", extra = ["mcp"] },
     { name = "datarobot" },
@@ -992,6 +997,7 @@ crewai = [
 dragent = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1016,6 +1022,7 @@ dragent = [
 ]
 langgraph = [
     { name = "ag-ui-protocol" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1038,6 +1045,7 @@ langgraph = [
 ]
 llamaindex = [
     { name = "ag-ui-protocol" },
+    { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
     { name = "datarobot-predict" },
@@ -1064,12 +1072,12 @@ llamaindex = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = ">=0.1.14,<0.2.0" },
+    { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = "==0.1.15" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.13.3,<4.0.0" },
@@ -1081,6 +1089,12 @@ requires-dist = [
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
+    { name = "colorama", marker = "extra == 'core'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'crewai'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'dragent'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'langgraph'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'llamaindex'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'nat'", specifier = ">=0.4.6,<1.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
     { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },
@@ -1259,7 +1273,6 @@ name = "datarobot-genai-e2e-tests"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "ag-ui-protocol" },
     { name = "httpx" },
     { name = "nbmake" },
     { name = "openai" },
@@ -1274,6 +1287,8 @@ dependencies = [
 dev = [
     { name = "ipdb" },
     { name = "jupyter" },
+    { name = "mypy" },
+    { name = "ruff" },
 ]
 dragent-base = [
     { name = "datarobot-genai", extra = ["dragent"] },
@@ -1290,14 +1305,12 @@ dragent-llamaindex = [
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent"] },
 ]
-lint = [
-    { name = "mypy" },
-    { name = "ruff" },
+example-quickstart = [
+    { name = "datarobot-genai", extra = ["langgraph"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "ag-ui-protocol", git = "https://github.com/cavitcakir/ag-ui?subdirectory=sdks%2Fpython&rev=feat%2Fpython-validate-sequence" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
     { name = "nbmake", specifier = ">=1.5.5" },
     { name = "openai", specifier = ">=2.0.0,<3.0.0" },
@@ -1312,16 +1325,15 @@ requires-dist = [
 dev = [
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "mypy", specifier = ">=1.19.1" },
+    { name = "ruff", specifier = ">=0.15.2" },
 ]
 dragent-base = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
 dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" }]
 dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
 dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]
 dragent-nat = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
-lint = [
-    { name = "mypy", specifier = ">=1.19.1" },
-    { name = "ruff", specifier = ">=0.15.2" },
-]
+example-quickstart = [{ name = "datarobot-genai", extras = ["langgraph"], editable = "../" }]
 
 [[package]]
 name = "datarobot-predict"

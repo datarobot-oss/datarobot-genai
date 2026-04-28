@@ -18,6 +18,7 @@ import abc
 import json
 import logging
 import os
+import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
@@ -29,6 +30,7 @@ from typing import TypeVar
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -163,6 +165,33 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @abc.abstractmethod
     def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
+
+    async def invoke_single_message(self, user_message: str) -> InvokeReturn:
+        """
+        Invoke the agent without chat history with a single user message.
+
+        Parameters
+        ----------
+        user_message: str
+            The user message to invoke the agent with.
+
+        Returns
+        -------
+        InvokeReturn
+            Same async stream as :meth:`invoke` for a fresh run with a single user turn.
+        """
+        # Generate a new thread and run ID
+        run_input = RunAgentInput(
+            thread_id=str(uuid.uuid4()),
+            run_id=str(uuid.uuid4()),
+            messages=[UserMessage(id=str(uuid.uuid4()), role="user", content=user_message)],
+            state=[],
+            tools=[],
+            context=[],
+            forwardedProps=None,
+        )
+        async for output in self.invoke(run_input):
+            yield output
 
     def build_history_summary(
         self,

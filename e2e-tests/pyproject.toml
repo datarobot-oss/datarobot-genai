@@ -12,7 +12,6 @@ dependencies = [
     "pytest-rerunfailures",
     "pytest-timeout",
     "python-dotenv",
-    "ag-ui-protocol @ git+https://github.com/cavitcakir/ag-ui@feat/python-validate-sequence#egg=ag-ui&subdirectory=sdks/python",
     "nbmake>=1.5.5",
     "pytest-xdist>=3.8.0",
 ]
@@ -33,13 +32,14 @@ dragent-llamaindex = [
 dragent-base = [
     "datarobot-genai[dragent]",
 ]
-lint = [
-    "mypy>=1.19.1",
-    "ruff>=0.15.2",
+example-quickstart = [
+    "datarobot-genai[langgraph]",
 ]
 dev = [
     "ipdb>=0.13.13",
     "jupyter>=1.1.1",
+    "mypy>=1.19.1",
+    "ruff>=0.15.2",
 ]
 
 [project.entry-points.'nat.plugins']
