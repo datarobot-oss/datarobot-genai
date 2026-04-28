@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.20
+- A2A `oauth_token_exchange` and its AgentCard extension now use a nested two-step structure (passport requirement + exchange payload) instead of flat fields.
+
 ## 0.15.19
 - Removed unnecessary packages with exclude to reduce the dependency footprint
 
