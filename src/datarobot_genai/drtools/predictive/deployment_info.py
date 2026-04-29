@@ -32,8 +32,10 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-def _feature_importance_value(feature: dict[str, Any]) -> float:
-    """Deployment features may have importance null; treat as 0 for comparisons and formatting."""
+def _feature_importance_value(feature: Any) -> float:
+    """Deployment features may have importance null or non-numeric; coerce for sort/compare."""
+    if not isinstance(feature, dict):
+        return 0.0
     imp = feature.get("importance")
     if imp is None:
         return 0.0
@@ -96,7 +98,7 @@ async def get_deployment_info(
         "model_type": model_type,
         "target": target,
         "target_type": target_type,
-        "features": sorted(features, key=lambda x: x.get("importance") or 0, reverse=True),
+        "features": sorted(features, key=_feature_importance_value, reverse=True),
         "total_features": len(features),
     }
 
