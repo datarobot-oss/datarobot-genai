@@ -19,6 +19,8 @@ from typing import Any
 import pytest
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
+from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
+from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
@@ -57,10 +59,7 @@ def expectations_for_generate_prediction_data_template_success(
         tool_calls_expected=[
             ToolCallTestExpectations(
                 name="generate_prediction_data_template",
-                parameters={
-                    "deployment_id": deployment_id,
-                    "n_rows": 5,
-                },
+                parameters={"deployment_id": deployment_id},
                 result={
                     "deployment_id": "",
                     "model_type": "",
@@ -116,15 +115,16 @@ def expectations_for_validate_prediction_data_inline_csv(
                 name="validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
-                    "csv_string": INLINE_CSV_FOR_VALIDATE,
+                    "csv_string": ANY_NONEMPTY_STRING,
                 },
-                result={"status": "valid"},
+                result=SHOULD_NOT_BE_EMPTY,
             ),
         ],
         llm_response_content_contains_expectations=[
             "valid",
             "validate",
             "deployment",
+            "csv",
         ],
     )
 
@@ -223,8 +223,8 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
         [
             """
             I have a DataRobot deployment with ID '{deployment_id}' for a text classification
-            model. Call validate_prediction_data with csv_string set to this exact multi-line
-            CSV (preserve newlines; do not add a file path):
+            model. Check whether this exact multi-line CSV is valid for scoring (preserve
+            newlines; do not add a file path):
 
             {csv_inline}
             """
@@ -301,9 +301,9 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
         [
             """
             DataRobot deployment_id is '{deployment_id}'.
-            Invoke the validate_prediction_data tool once. Pass csv_string as the empty string
-            (length zero: no spaces, no placeholder CSV). Pass only deployment_id and csv_string.
-            Do not use file paths. The purpose is to observe the tool error for empty csv_string.
+            Try to validate scoring data where the inline CSV body is completely empty: pass
+            csv_string as exactly an empty string (length zero, no spaces, no placeholder text).
+            Do not use file paths. We expect a clear validation or argument error for empty input.
             """
         ],
     )

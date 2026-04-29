@@ -42,25 +42,33 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
     return {}
 
 
-@tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "write", "upload", "catalog", "daria"},
+    description=(
+        "[Catalog—register new data] Use when the user has file bytes or a public HTTPS URL "
+        "and needs a new AI Catalog dataset_id (nothing registered yet). Exactly one of "
+        "base64 file content or file_url. Returns dataset id, version id, and name for "
+        "Autopilot, scoring, or inspection. Not for listing existing items "
+        "(list_ai_catalog_items), not external DB browsing (list_datastores)."
+    ),
+)
 async def upload_dataset_to_ai_catalog(
     *,
     file_content_base64: Annotated[
         str,
-        (
-            "Base64-encoded file bytes (e.g. CSV). For remote clients; "
-            "mutually exclusive with file_url."
-        ),
+        "Base64-encoded file bytes (e.g. CSV). Mutually exclusive with file_url.",
     ]
     | None = None,
     dataset_filename: Annotated[
         str,
-        "Filename for base64 upload; include extension (e.g. data.csv).",
+        "Filename for base64 upload; include extension (e.g. sales.csv).",
     ] = "data.csv",
-    file_url: Annotated[str, "HTTPS URL of a dataset file to register in the catalog."]
+    file_url: Annotated[
+        str,
+        "Public HTTPS URL of the file to register. Mutually exclusive with file_content_base64.",
+    ]
     | None = None,
 ) -> dict[str, Any]:
-    """Upload a dataset to the DataRobot AI Catalog / Data Registry from bytes or URL."""
     if not file_content_base64 and not file_url:
         raise ToolError("Either file_content_base64 or file_url must be provided.")
     if file_content_base64 and file_url:
@@ -103,9 +111,16 @@ async def upload_dataset_to_ai_catalog(
     }
 
 
-@tool_metadata(tags={"predictive", "data", "read", "list", "catalog", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "list", "catalog", "daria"},
+    description=(
+        "[Catalog—list datasets] Use when the user needs catalog datasets they already have "
+        "as id-to-name map. Read-only. Not project-attached datasets "
+        "(get_project_dataset_by_name), not modeling projects (list_projects). Follow with "
+        "get_dataset_details or scoring tools that take dataset_id."
+    ),
+)
 async def list_ai_catalog_items() -> dict[str, Any]:
-    """List all AI Catalog items (datasets) for the authenticated user."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     datasets = client.Dataset.list()
@@ -122,14 +137,24 @@ async def list_ai_catalog_items() -> dict[str, Any]:
     }
 
 
-@tool_metadata(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "dataset", "metadata", "daria"},
+    description=(
+        "[Catalog—one dataset metadata] Use when you already have catalog dataset_id and "
+        "need name, row count, timestamps, optional column list and sample rows. Read-only. "
+        "Lighter than full EDA (analyze_dataset / get_exploratory_insights); not datastore "
+        "SQL (query_datastore)."
+    ),
+)
 async def get_dataset_details(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset"] | None = None,
-    include_sample: Annotated[bool, "Whether to include sample rows"] = True,
-    sample_rows: Annotated[int, "Number of sample rows to return"] = 10,
+    dataset_id: Annotated[str, "AI Catalog dataset id (from list_ai_catalog_items or upload)."]
+    | None = None,
+    include_sample: Annotated[
+        bool, "If true, include columns and up to sample_rows example rows."
+    ] = True,
+    sample_rows: Annotated[int, "Max sample rows when include_sample is true."] = 10,
 ) -> dict[str, Any]:
-    """Get DataRobot dataset metadata and optional sample rows."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
@@ -154,9 +179,16 @@ async def get_dataset_details(
     return result
 
 
-@tool_metadata(tags={"predictive", "data", "read", "datastore", "list", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "datastore", "list", "daria"},
+    description=(
+        "[Datastore—list connections] Use when the user works with saved external connections "
+        "(DB, warehouse, bucket, etc.) and needs datastore ids. Read-only. Not AI Catalog "
+        "datasets (list_ai_catalog_items), not modeling projects. Next step: browse_datastore "
+        "or query_datastore."
+    ),
+)
 async def list_datastores() -> dict[str, Any]:
-    """List available DataRobot data connections (datastores)."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     datastores = client.DataStore.list()
@@ -175,16 +207,23 @@ async def list_datastores() -> dict[str, Any]:
     }
 
 
-@tool_metadata(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "datastore", "browse", "daria"},
+    description=(
+        "[Datastore—browse objects] Use after list_datastores when the user needs schemas, "
+        "tables, or folders inside one connection. Read-only; optional path, search filter, "
+        "pagination. Not SQL execution (query_datastore), not catalog dataset listing."
+    ),
+)
 async def browse_datastore(
     *,
-    datastore_id: Annotated[str, "The ID of the datastore to browse"] | None = None,
-    path: Annotated[str, "The path to browse within the datastore"] | None = None,
-    offset: Annotated[int, "Pagination offset"] = 0,
-    limit: Annotated[int, "Maximum number of items to return"] = 100,
-    search: Annotated[str, "Search filter for items"] | None = None,
+    datastore_id: Annotated[str, "Connection id from list_datastores."] | None = None,
+    path: Annotated[str, "Path within the connection (e.g. schema or folder); omit for root."]
+    | None = None,
+    offset: Annotated[int, "Pagination offset."] = 0,
+    limit: Annotated[int, "Max entries to return."] = 100,
+    search: Annotated[str, "Optional filter substring for object names."] | None = None,
 ) -> dict[str, Any]:
-    """Browse a DataRobot data connection to list catalogs, schemas, and tables."""
     if not datastore_id:
         raise ToolError("Datastore ID must be provided")
 
@@ -210,19 +249,20 @@ async def browse_datastore(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"}
+    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"},
+    description=(
+        "[Datastore—run SQL] Use when the user wants to execute SQL (SELECT or DML) against "
+        "one saved external connection. Requires datastore_id from list_datastores; returns "
+        "rows, columns, and row count up to limit. Not DataRobot catalog inspection "
+        "(get_dataset_details), not browsing without SQL (browse_datastore)."
+    ),
 )
 async def query_datastore(
     *,
-    datastore_id: Annotated[str, "The ID of the datastore to query"] | None = None,
-    sql: Annotated[str, "The SQL query to execute"] | None = None,
-    limit: Annotated[int, "Maximum number of rows to return"] = 1000,
+    datastore_id: Annotated[str, "Connection id from list_datastores."] | None = None,
+    sql: Annotated[str, "SQL statement to run against that connection."] | None = None,
+    limit: Annotated[int, "Max rows returned from the query result."] = 1000,
 ) -> dict[str, Any]:
-    """Execute a SQL query against a DataRobot datastore connection.
-
-    Only data manipulation language queries (insert, update, and delete data)
-    are supported — no commits or rollbacks.
-    """
     if not datastore_id:
         raise ToolError("Datastore ID must be provided")
     if not sql:
