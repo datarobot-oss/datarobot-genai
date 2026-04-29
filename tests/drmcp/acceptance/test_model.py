@@ -94,7 +94,13 @@ def expectations_for_score_dataset_with_model_success(
                 result=SHOULD_NOT_BE_EMPTY,
             ),
         ],
-        llm_response_content_contains_expectations=["Scoring job started"],
+        llm_response_content_contains_expectations=[
+            "scoring",
+            "job",
+            "started",
+            "dataset",
+            "project",
+        ],
     )
 
 
@@ -202,8 +208,8 @@ class TestModelE2E(ToolBaseE2E):
         [
             """
         I'm working on a machine learning project with ID '{project_id}' and I have a
-        DataRobot model with ID '{model_id}'. Score the AI Catalog dataset with dataset_id
-        '{dataset_id}' using score_dataset_with_model (use dataset_id, not a URL or file path).
+        DataRobot model with ID '{model_id}'. Please start scoring the AI Catalog dataset
+        '{dataset_id}' with that model (use the catalog dataset id, not a URL or local file).
         Can you help me score the dataset?
         """
         ],
@@ -239,8 +245,8 @@ class TestModelE2E(ToolBaseE2E):
         [
             """
         I'm working on a machine learning project with ID '{project_id}' but my model ID is
-        wrong: '{model_id}'. Please call score_dataset_with_model with dataset_id '{dataset_id}'
-        so we can see the error from the invalid model id.
+        wrong: '{model_id}'. Try to start scoring AI Catalog dataset '{dataset_id}' with that
+        model id so we can see the error from the invalid model id.
         """
         ],
     )

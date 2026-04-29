@@ -207,6 +207,7 @@ async def test_predict_by_ai_catalog_missing_download_url(
             return_value="token",
         ),
         patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.time.sleep"),
     ):
         mock_dataset = MagicMock()
         mock_client = MagicMock()

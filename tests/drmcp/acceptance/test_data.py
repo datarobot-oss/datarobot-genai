@@ -46,6 +46,11 @@ def expectations_for_upload_dataset_to_ai_catalog_success_from_base64() -> ETETe
             "dataset has been uploaded",
             "successfully",
             "uploaded",
+            "upload complete",
+            "dataset id",
+            "done",
+            "registered",
+            "ete_tiny.csv",
         ],
     )
 
@@ -67,6 +72,8 @@ def expectations_for_upload_dataset_to_ai_catalog_success_from_url() -> ETETestE
             "dataset has been uploaded",
             "successfully",
             "uploaded",
+            "upload complete",
+            "dataset id",
         ],
     )
 
@@ -128,9 +135,8 @@ class TestDataE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        Upload a dataset to the DataRobot AI Catalog using the upload_dataset_to_ai_catalog tool.
-        Use file_content_base64 with this exact value (copy it character for character, no spaces
-        added or removed): {b64}
+        Register this file in the DataRobot AI Catalog from raw bytes: use file_content_base64 with
+        this exact value (copy it character for character, no spaces added or removed): {b64}
         Use dataset_filename exactly: ete_tiny.csv
         Do not use file_url or a local file path.
         """

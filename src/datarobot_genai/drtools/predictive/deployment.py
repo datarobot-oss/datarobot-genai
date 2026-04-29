@@ -29,9 +29,16 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "management", "list", "daria"})
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "management", "list", "daria"},
+    description=(
+        "[Deploy—discover deployments] Use when the user needs their MLOps deployments as "
+        "id-to-label map. Read-only. Not modeling projects (list_projects), not logged "
+        "prediction rows (get_prediction_history), not scoring payloads "
+        "(predict_* / get_deployment_info)."
+    ),
+)
 async def list_deployments() -> dict[str, Any]:
-    """List all DataRobot deployments for the authenticated user."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     deployments = client.Deployment.list()
@@ -41,12 +48,19 @@ async def list_deployments() -> dict[str, Any]:
     return {"deployments": deployments_dict}
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "model", "info", "daria"})
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "model", "info", "daria"},
+    description=(
+        "[Deploy—model linkage] Use when the user wants the model record attached to a deployment "
+        "(model id, project linkage). Read-only and narrow. For input feature names, types, and "
+        "prediction contract, use get_deployment_info instead; for training leaderboard details, "
+        "use get_model_details with project_id + model_id."
+    ),
+)
 async def get_model_info_from_deployment(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
+    deployment_id: Annotated[str, "MLOps deployment id."],
 ) -> dict[str, Any]:
-    """Retrieve model info associated with a given deployment ID."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
     token = await get_datarobot_access_token()
@@ -55,14 +69,22 @@ async def get_model_info_from_deployment(
     return deployment.model
 
 
-@tool_metadata(tags={"predictive", "deployment", "write", "model", "create", "daria"})
+@tool_metadata(
+    tags={"predictive", "deployment", "write", "model", "create", "daria"},
+    description=(
+        "[Deploy—from leaderboard model] Use when the user wants a new live MLOps deployment "
+        "from an existing trained leaderboard model_id (from list_models / get_best_model). "
+        "Returns deployment id and label. Not batch or realtime scoring by itself, not custom "
+        "folder deploy (deploy_custom_model when enabled), not listing deployments "
+        "(list_deployments)."
+    ),
+)
 async def deploy_model(
     *,
-    model_id: Annotated[str, "The ID of the DataRobot model to deploy"],
-    label: Annotated[str, "The label/name for the deployment"],
-    description: Annotated[str, "Optional description for the deployment"] | None = None,
+    model_id: Annotated[str, "Trained model id from list_models / leaderboard."],
+    label: Annotated[str, "Human-readable deployment name shown in the UI."],
+    description: Annotated[str, "Optional longer description for operators."] | None = None,
 ) -> dict[str, Any]:
-    """Deploy a model by creating a new DataRobot deployment."""
     if not model_id:
         raise ToolError("Model ID must be provided")
     if not label:
@@ -107,10 +129,6 @@ async def deploy_custom_model(
     execution_environment_id: Annotated[str, "Optional execution environment ID"] | None = None,
     description: Annotated[str, "Optional description"] | None = None,
 ) -> dict[str, Any]:
-    """Deploy a custom inference model (e.g., .pkl) to DataRobot MLOps.
-
-    Requires a model file in the folder or model_file_path.
-    """
     if not model_folder:
         raise ToolError("model_folder must be provided")
     if not name:
@@ -163,16 +181,23 @@ async def deploy_custom_model(
     return out
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "predictions", "history", "daria"})
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "predictions", "history", "daria"},
+    description=(
+        "[Deploy—prediction audit log] Use when the user asks for historical prediction rows "
+        "already logged for a deployment (monitoring, audit). Read-only pagination; does not run "
+        "new scores. For fresh scoring use predict_realtime, predict_by_ai_catalog, "
+        "predict_from_project_data, etc."
+    ),
+)
 async def get_prediction_history(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
-    limit: Annotated[int, "Maximum number of prediction rows to return"] = 100,
-    offset: Annotated[int, "Number of rows to skip for pagination"] = 0,
-    start_time: Annotated[str, "ISO 8601 start time filter"] | None = None,
-    end_time: Annotated[str, "ISO 8601 end time filter"] | None = None,
+    deployment_id: Annotated[str, "MLOps deployment id."],
+    limit: Annotated[int, "Max rows in this page."] = 100,
+    offset: Annotated[int, "Rows to skip (pagination)."] = 0,
+    start_time: Annotated[str, "Optional ISO 8601 lower bound on prediction time."] | None = None,
+    end_time: Annotated[str, "Optional ISO 8601 upper bound on prediction time."] | None = None,
 ) -> dict[str, Any]:
-    """Retrieve recent prediction results from a DataRobot deployment."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
 
