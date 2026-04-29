@@ -19,6 +19,7 @@ Homepage = "https://github.com/datarobot-oss/datarobot-genai"
 
 [project.entry-points.'nat.plugins']
 authenticated_a2a_client = "datarobot_genai.dragent.plugins.auth_a2a_client"
+okta_token_exchange = "datarobot_genai.dragent.plugins.okta_a2a_auth"
 per_user_tool_calling_agent = "datarobot_genai.dragent.plugins.per_user_tool_calling_agent"
 datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
 datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"

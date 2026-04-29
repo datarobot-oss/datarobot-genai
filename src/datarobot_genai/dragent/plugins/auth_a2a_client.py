@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import abc
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
+from a2a.client import A2ACardResolver
+from a2a.client import AuthInterceptor
 from a2a.client import ClientConfig
 from a2a.client import ClientFactory
 from nat.authentication.interfaces import AuthProviderBase
@@ -25,6 +28,7 @@ from nat.builder.context import Context
 from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
+from nat.plugins.a2a.auth.credential_service import A2ACredentialService
 from nat.plugins.a2a.client.client_base import A2ABaseClient
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
@@ -44,79 +48,127 @@ def _extract_auth_headers(auth_result: Any) -> dict[str, str]:
     return headers
 
 
-class _AuthenticatedA2ABaseClient(A2ABaseClient):
-    """A2ABaseClient that authenticates all requests to the remote agent.
+class A2ADiscoveryAuthMixin(abc.ABC):
+    """Mixin for auth providers that need different credentials for agent card discovery.
 
-    Overrides ``__aenter__`` to pre-authenticate via the auth provider and embed
-    the Bearer token in the ``httpx.AsyncClient`` default headers.  This ensures
-    every request — agent-card fetch *and* every ``send_message`` — carries auth.
+    By default :meth:`_AuthenticatedA2ABaseClient._resolve_agent_card` calls
+    ``authenticate()`` and extracts the resulting credentials as HTTP headers.
+    Implement this mixin to return different headers for the agent card GET
+    without affecting the call-phase ``authenticate()`` used by ``AuthInterceptor``.
+
+    Example: :class:`~datarobot_genai.dragent.plugins.okta_a2a_auth.OktaTokenExchangeAuthProvider`
+    uses this to forward the incoming Okta bearer token for discovery while
+    performing a two-step RFC 8693 exchange for the actual A2A calls.
     """
+
+    @abc.abstractmethod
+    async def authenticate_for_discovery(self, user_id: str | None = None) -> dict[str, str]:
+        """Return HTTP headers for the agent card GET request.
+
+        Returns
+        -------
+        dict[str, str]
+            Header name → value pairs to attach to the agent card HTTP request.
+        """
+
+
+class _AuthenticatedA2ABaseClient(A2ABaseClient):
+    """A2A client that authenticates agent card discovery and A2A RPC independently.
+
+    * **Agent card** ``GET`` — if the configured ``auth_provider`` implements
+      :class:`A2ADiscoveryAuthMixin`, ``authenticate_for_discovery()`` is called
+      and its result is used as headers on a short-lived ``httpx.AsyncClient``.
+      Otherwise ``authenticate()`` is called and its credentials are extracted as
+      headers (default behavior for e.g. ``DataRobotAPIKeyAuthProvider``).
+      When no provider is set the card is fetched unauthenticated.
+    * **Task / message** traffic uses NAT's ``AuthInterceptor`` +
+      ``A2ACredentialService``, which calls ``authenticate()`` per-request.
+    """
+
+    async def _resolve_agent_card(self) -> None:
+        user_id = Context.get().user_id or "default-user"
+
+        if isinstance(self._auth_provider, A2ADiscoveryAuthMixin):
+            headers = await self._auth_provider.authenticate_for_discovery(user_id)
+            logger.info(
+                "Fetching agent card (custom discovery auth) from: %s%s",
+                self._base_url,
+                self._agent_card_path,
+            )
+        elif self._auth_provider:
+            auth_result = await self._auth_provider.authenticate(user_id=user_id)
+            headers = _extract_auth_headers(auth_result) if auth_result else {}
+            logger.info(
+                "Fetching agent card (auth_provider authenticate()) from: %s%s",
+                self._base_url,
+                self._agent_card_path,
+            )
+        else:
+            headers = {}
+            logger.info(
+                "Fetching agent card (unauthenticated) from: %s%s",
+                self._base_url,
+                self._agent_card_path,
+            )
+
+        timeout = httpx.Timeout(self._task_timeout.total_seconds())
+        try:
+            async with httpx.AsyncClient(timeout=timeout, headers=headers) as card_client:
+                resolver = A2ACardResolver(
+                    httpx_client=card_client,
+                    base_url=self._base_url,
+                    agent_card_path=self._agent_card_path,
+                )
+                self._agent_card = await resolver.get_agent_card()
+                logger.info("Successfully fetched agent card")
+        except Exception as e:
+            logger.error("Failed to fetch agent card: %s", e, exc_info=True)
+            raise RuntimeError(f"Failed to fetch agent card from {self._base_url}") from e
 
     async def __aenter__(self) -> "_AuthenticatedA2ABaseClient":
         if self._httpx_client is not None or self._client is not None:  # type: ignore[has-type]
             raise RuntimeError("A2ABaseClient already initialized")
 
-        # Pre-authenticate to embed Bearer token in every httpx request.
-        default_headers: dict[str, str] = {}
-        if self._auth_provider:
-            try:
-                user_id = Context.get().user_id or "default-user"
-                auth_result = await self._auth_provider.authenticate(user_id=user_id)
-                if auth_result:
-                    default_headers = _extract_auth_headers(auth_result)
-                    logger.info(
-                        "Pre-authenticated: injecting %d auth header(s) into httpx client",
-                        len(default_headers),
-                    )
-            except Exception:
-                logger.warning("Failed to pre-authenticate for A2A client", exc_info=True)
-
-        # Create httpx client with auth headers as defaults (applied to ALL requests).
         self._httpx_client = httpx.AsyncClient(
             timeout=httpx.Timeout(self._task_timeout.total_seconds()),
-            headers=default_headers,
         )
 
-        # Resolve agent card — our override below; auth already in httpx headers.
         await self._resolve_agent_card()
         if not self._agent_card:
             raise RuntimeError("Agent card not resolved")
 
-        # Create A2A client without AuthInterceptor — auth is at the httpx level.
+        interceptors: list[Any] = []
+        if self._auth_provider:
+            credential_service = A2ACredentialService(
+                auth_provider=self._auth_provider,
+                agent_card=self._agent_card,
+            )
+            interceptors.append(AuthInterceptor(credential_service))
+            logger.info("Task-phase authentication configured for A2A client (AuthInterceptor)")
+
         client_config = ClientConfig(
             httpx_client=self._httpx_client,
             streaming=self._streaming,
         )
         factory = ClientFactory(client_config)
-        self._client = factory.create(self._agent_card)
+        self._client = factory.create(self._agent_card, interceptors=interceptors)
 
-        logger.info(
-            "Connected to A2A agent at %s with pre-injected auth headers",
-            self._base_url,
-        )
+        logger.info("Connected to A2A agent at %s", self._base_url)
         return self
 
 
 class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_client"):  # type: ignore[call-arg]
-    """A2AClientConfig variant that authenticates the agent-card fetch.
+    """A2A client config for DataRobot deployments.
 
-    Identical to ``A2AClientConfig`` — the separate ``name`` avoids a
-    registration conflict with the upstream ``a2a_client`` function group.
-
-    Use ``_type: authenticated_a2a_client`` in workflow.yaml instead of
-    ``_type: a2a_client`` when the remote agent requires authentication
-    for the agent-card endpoint.
+    Uses ``auth_provider`` (from the parent ``A2AClientConfig``) for both agent
+    card discovery and A2A RPC calls.  If the referenced provider implements
+    :class:`A2ADiscoveryAuthMixin` it can supply different credentials for the
+    two phases; otherwise the same ``authenticate()`` result is used for both.
     """
 
 
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
-    """A2AClientFunctionGroup that uses ``_AuthenticatedA2ABaseClient`` so the
-    agent-card fetch is authenticated.
-
-    Upstream ``__aenter__`` hardcodes ``A2ABaseClient(...)`` so we must
-    override it, but the body is a minimal copy — the only delta is the
-    client class on the construction line.
-    """
+    """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
         config: A2AClientConfig = self._config  # type: ignore[assignment]
@@ -130,7 +182,10 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
         if config.auth_provider:
             try:
                 auth_provider = await self._builder.get_auth_provider(config.auth_provider)
-                logger.info("Resolved authentication provider for A2A client")
+                logger.info(
+                    "Resolved authentication provider '%s' for A2A client",
+                    config.auth_provider,
+                )
             except Exception as e:
                 logger.error(
                     "Failed to resolve auth provider '%s': %s",
@@ -139,7 +194,6 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
                 )
                 raise RuntimeError(f"Failed to resolve auth provider: {e}") from e
 
-        # Only difference from upstream: _AuthenticatedA2ABaseClient instead of A2ABaseClient
         self._client = _AuthenticatedA2ABaseClient(
             base_url=base_url,
             agent_card_path=config.agent_card_path,
@@ -149,14 +203,12 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
         )
         await self._client.__aenter__()
 
-        if auth_provider:
-            logger.info(
-                "Connected to A2A agent at %s with authentication (user_id: %s)",
-                base_url,
-                user_id,
-            )
-        else:
-            logger.info("Connected to A2A agent at %s (user_id: %s)", base_url, user_id)
+        logger.info(
+            "Connected to A2A agent at %s (auth_provider: %s, user_id: %s)",
+            base_url,
+            config.auth_provider or "none",
+            user_id,
+        )
 
         self._register_functions()
         return self
@@ -166,8 +218,12 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
 async def authenticated_a2a_client(
     config: AuthenticatedA2AClientConfig, _builder: Builder
 ) -> AsyncGenerator[Any, None]:
-    """Drop-in replacement for the upstream ``a2a_client`` function group that
-    authenticates all api calls, including the agent-card fetch request.
+    """A2A function group with authenticated agent card discovery and RPC.
+
+    The ``auth_provider`` field controls both phases.  If the provider
+    implements :class:`A2ADiscoveryAuthMixin` it supplies separate credentials
+    for agent card discovery; otherwise the same ``authenticate()`` is used
+    for both phases.
     """
     async with AuthenticatedA2AClientFunctionGroup(config, _builder) as group:
         yield group
