@@ -20,11 +20,19 @@ from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drtools.core.clients.jira import JiraClient
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"jira", "search", "issues"})
+@tool_metadata(
+    tags={"jira", "search", "issues"},
+    description=(
+        "[Jira—search issues] Use when filtering many issues with JQL (project, status, text, "
+        "dates, assignee, etc.). Returns matching issues as summaries. Not one known issue key "
+        "(jira_get_issue), not Confluence (confluence_search)."
+    ),
+)
 async def jira_search_issues(
     *,
     jql_query: Annotated[
@@ -32,17 +40,10 @@ async def jira_search_issues(
     ],
     max_results: Annotated[int, "Maximum number of issues to return. Default is 50."] = 50,
 ) -> dict[str, Any]:
-    """
-    Search for Jira issues using a powerful JQL query string.
-
-    Refer to JQL documentation for advanced query construction:
-    JQL functions: https://support.atlassian.com/jira-service-management-cloud/docs/jql-functions/
-    JQL fields: https://support.atlassian.com/jira-service-management-cloud/docs/jql-fields/
-    JQL keywords: https://support.atlassian.com/jira-service-management-cloud/docs/use-advanced-search-with-jira-query-language-jql/
-    JQL operators: https://support.atlassian.com/jira-service-management-cloud/docs/jql-operators/
-    """
     if not jql_query:
-        raise ToolError("Argument validation error: 'jql_query' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'jql_query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
@@ -57,13 +58,20 @@ async def jira_search_issues(
     }
 
 
-@tool_metadata(tags={"jira", "read", "get", "issue"})
+@tool_metadata(
+    tags={"jira", "read", "get", "issue"},
+    description=(
+        "[Jira—get issue] Use when you already have an issue key (e.g. PROJ-123) and need full "
+        "fields and current values. Read-only. Not JQL multi-issue search (jira_search_issues)."
+    ),
+)
 async def jira_get_issue(
     *, issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."]
 ) -> dict[str, Any]:
-    """Retrieve all fields and details for a single Jira issue by its key."""
     if not issue_key:
-        raise ToolError("Argument validation error: 'issue_key' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'issue_key' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
@@ -75,7 +83,14 @@ async def jira_get_issue(
     return issue.as_flat_dict()
 
 
-@tool_metadata(tags={"jira", "create", "add", "issue"})
+@tool_metadata(
+    tags={"jira", "create", "add", "issue"},
+    description=(
+        "[Jira—create issue] Use when opening a new work item: project key, summary, and issue "
+        "type name (Task/Bug/Story as configured). Optional description. Not status moves "
+        "(jira_transition_issue), not field patches on existing issues (jira_update_issue)."
+    ),
+)
 async def jira_create_issue(
     *,
     project_key: Annotated[str, "The key of the project where the issue should be created."],
@@ -83,10 +98,10 @@ async def jira_create_issue(
     issue_type: Annotated[str, "The type of issue to create (e.g., 'Task', 'Bug', 'Story')."],
     description: Annotated[str | None, "Detailed description of the issue."] = None,
 ) -> dict[str, Any]:
-    """Create a new Jira issue with mandatory project, summary, and type information."""
     if not all([project_key, summary, issue_type]):
         raise ToolError(
-            "Argument validation error: project_key, summary, and issue_type are required fields."
+            "Argument validation error: project_key, summary, and issue_type are required fields.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     access_token = await get_atlassian_access_token()
@@ -102,9 +117,10 @@ async def jira_create_issue(
             issue_type_id = issue_types[issue_type]
         except KeyError:
             possible_issue_types = ",".join(issue_types)
-            raise ToolError(
+            msg = (
                 f"Unexpected issue type `{issue_type}`. Possible values are {possible_issue_types}."
             )
+            raise ToolError(msg, kind=ToolErrorKind.VALIDATION)
 
     async with JiraClient(access_token) as client:
         issue_key = await client.create_jira_issue(
@@ -117,7 +133,14 @@ async def jira_create_issue(
     return {"newIssueKey": issue_key, "projectKey": project_key}
 
 
-@tool_metadata(tags={"jira", "update", "edit", "issue"})
+@tool_metadata(
+    tags={"jira", "update", "edit", "issue"},
+    description=(
+        "[Jira—update fields] Use when changing field values on an existing issue (summary, "
+        "description, custom fields) by key; values must match Jira field formats. Not workflow "
+        "status changes (jira_transition_issue), not create (jira_create_issue)."
+    ),
+)
 async def jira_update_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."],
@@ -126,34 +149,14 @@ async def jira_update_issue(
         "A dictionary of field names and their new values (e.g., {'summary': 'New content'}).",
     ],
 ) -> dict[str, Any]:
-    """
-    Modify descriptive fields or custom fields on an existing Jira issue using its key.
-    If you want to update issue status you should use `jira_transition_issue` tool instead.
-
-    Some fields needs very specific schema to allow update.
-    You should follow jira rest api guidance.
-    Good example is description field:
-        "description": {
-            "type": "text",
-            "version": 1,
-            "text": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "[HERE YOU PUT REAL DESCRIPTION]"
-                        }
-                    ]
-                }
-            ]
-        }
-    """
     if not issue_key:
-        raise ToolError("Argument validation error: 'issue_key' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'issue_key' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
     if not fields_to_update or not isinstance(fields_to_update, dict):
         raise ToolError(
-            "Argument validation error: 'fields_to_update' must be a non-empty dictionary."
+            "Argument validation error: 'fields_to_update' must be a non-empty dictionary.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     access_token = await get_atlassian_access_token()
@@ -168,7 +171,14 @@ async def jira_update_issue(
     return {"updatedIssueKey": issue_key, "fields": updated_fields}
 
 
-@tool_metadata(tags={"jira", "update", "transition", "issue"})
+@tool_metadata(
+    tags={"jira", "update", "transition", "issue"},
+    description=(
+        "[Jira—transition status] Use when moving an existing issue along its workflow by exact "
+        "transition name (e.g. 'In Progress'). Not arbitrary field edits (jira_update_issue), "
+        "not new issues (jira_create_issue)."
+    ),
+)
 async def jira_transition_issue(
     *,
     issue_key: Annotated[str, "The key (ID) of the Jira issue to transition, e.g. 'PROJ-123'."],
@@ -176,12 +186,11 @@ async def jira_transition_issue(
         str, "The exact name of the target status/transition (e.g., 'In Progress')."
     ],
 ) -> dict[str, Any]:
-    """
-    Move a Jira issue through its defined workflow to a new status.
-    This leverages Jira's workflow engine directly.
-    """
     if not all([issue_key, transition_name]):
-        raise ToolError("Argument validation error: issue_key and transition name/ID are required.")
+        raise ToolError(
+            "Argument validation error: issue_key and transition name/ID are required.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
@@ -196,7 +205,8 @@ async def jira_transition_issue(
             available_transitions_str = ",".join(available_transitions)
             raise ToolError(
                 f"Unexpected transition name `{transition_name}`. "
-                f"Possible values are {available_transitions_str}."
+                f"Possible values are {available_transitions_str}.",
+                kind=ToolErrorKind.VALIDATION,
             )
 
     async with JiraClient(access_token) as client:

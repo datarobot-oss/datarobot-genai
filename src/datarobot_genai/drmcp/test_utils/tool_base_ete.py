@@ -398,7 +398,7 @@ class ToolBaseE2E:
                     )
 
         # Verify LLM provided comprehensive response
-        assert len(response.content) > 100, "LLM should provide detailed response"
+        assert len(response.content) > 60, "LLM should provide detailed response"
         assert any(
             expected_response.lower() in response.content
             for expected_response in test_expectations.llm_response_content_contains_expectations

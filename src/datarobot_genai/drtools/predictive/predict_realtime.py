@@ -20,6 +20,7 @@ from typing import Annotated
 from typing import Any
 
 import polars as pl
+from datarobot.errors import ClientError
 from datarobot_predict import TimeSeriesType
 from datarobot_predict.deployment import predict as dr_predict
 from dateutil import parser as dateutil_parser
@@ -28,7 +29,9 @@ from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import predictions_result_response
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -52,18 +55,28 @@ def _parse_datetime(value: str) -> datetime:
     ),
 )
 async def predict_by_ai_catalog_rt(
+    *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset_id: Annotated[str, "AI Catalog dataset id (tabular)."],
     timeout: Annotated[int, "Client wait cap in seconds."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
-        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'deployment_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if not dataset_id or not dataset_id.strip():
-        raise ToolError("Argument validation error: 'dataset_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'dataset_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    dataset = client.Dataset.get(dataset_id)
+    try:
+        dataset = client.Dataset.get(dataset_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     # 1. Preferred: built-in DataFrame helper (newer SDKs)
     if hasattr(dataset, "get_as_dataframe"):
@@ -89,7 +102,10 @@ async def predict_by_ai_catalog_rt(
         url = dataset.url
         df = pl.read_csv(url).to_pandas()
 
-    deployment = client.Deployment.get(deployment_id=deployment_id)
+    try:
+        deployment = client.Deployment.get(deployment_id=deployment_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     result = dr_predict(deployment, df, timeout=timeout or 600)
     predictions = result.dataframe
     prediction_results = predictions_result_response(predictions, show_explanations=True)
@@ -118,6 +134,7 @@ async def predict_by_ai_catalog_rt(
     ),
 )
 async def predict_realtime(
+    *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset: Annotated[
         str,
@@ -184,10 +201,15 @@ async def predict_realtime(
     timeout: Annotated[int, "Client wait cap in seconds."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
-        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'deployment_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     ds = dataset.strip()
     if not ds:
-        raise ToolError("Argument validation error: 'dataset' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'dataset' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     # JSON array of row objects must not go through read_csv first — Polars can "parse" a
     # leading '[' as CSV and yield empty or wrong frames, which then produce API errors like
@@ -224,7 +246,10 @@ async def predict_realtime(
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    deployment = client.Deployment.get(deployment_id=deployment_id)
+    try:
+        deployment = client.Deployment.get(deployment_id=deployment_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     # Check if this is a time series prediction or regular prediction
     is_time_series = bool(forecast_point or (forecast_range_start and forecast_range_end))

@@ -21,14 +21,6 @@ tasks:
       - uv run src/datarobot_genai/drmcp/server.py
     silent: true
 
-  drmcp-ete-test-server:
-    desc: "🔨 Running DR MCP Library test server"
-    cmds:
-      - echo "🔨 Starting DR MCP Library development server"
-      - task: drmcp-install
-      - uv run tests/drmcp/acceptance/ete_test_server.py
-    silent: true
-
   drmcp-test-dev-server-background:
     desc: "🔨 Running DR MCP Library locally in background"
     vars:
@@ -36,10 +28,11 @@ tasks:
     cmds:
       - echo "🔨 Starting DR MCP Library development server"
       - lsof -i :{{.PORT}} > /dev/null 2>&1 && echo "Killing existing process on port {{.PORT}}" && lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+      - task: drmcp-install
       - |
         OTEL_ENABLED=false \
         OTEL_SDK_DISABLED=true \
-        MCP_SERVER_PORT={{.PORT}} task drmcp-ete-test-server &
+        MCP_SERVER_PORT={{.PORT}} uv run tests/drmcp/acceptance/ete_test_server.py &
       - |
         for i in {1..30}; do
           if curl -s http://localhost:{{.PORT}}/ > /dev/null 2>&1; then

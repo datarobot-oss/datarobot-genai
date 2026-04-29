@@ -27,23 +27,33 @@ from datarobot_genai.drtools.core.clients.tavily import MAX_RESULTS_DEFAULT
 from datarobot_genai.drtools.core.clients.tavily import TavilyClient
 from datarobot_genai.drtools.core.clients.tavily import get_tavily_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"tavily", "search", "web", "websearch"})
+@tool_metadata(
+    tags={"tavily", "search", "web", "websearch"},
+    description=(
+        "[Tavily—web search] Use when the user needs fresh facts from the public web by keyword "
+        "(optional topic string: 'general', 'news', or 'finance'). Returns ranked snippets and "
+        "optional short answer. "
+        "Not for reading full pages when you already have URLs (tavily_extract), not site link "
+        "discovery (tavily_map), not multi-page site harvest (tavily_crawl)."
+    ),
+)
 async def tavily_search(
     *,
     query: Annotated[str, "The search query to execute."],
     topic: Annotated[
         Literal["general", "news", "finance"],
-        "The category of search. Use 'general' for broad web search, "
-        "'news' for recent news articles, or 'finance' for financial information.",
+        "Pass exactly one of these strings (not a type or enum name): 'general', 'news', "
+        "'finance'. Broad web vs news vs finance search; omit to default to 'general'.",
     ] = "general",
     search_depth: Annotated[
         Literal["basic", "advanced"],
-        "The depth of search. 'basic' is faster and cheaper, "
-        "'advanced' provides more comprehensive results.",
+        "Pass exactly one of these strings: 'basic', 'advanced'. Faster/cheaper vs deeper "
+        "coverage; omit to default to 'basic'.",
     ] = "basic",
     max_results: Annotated[
         int,
@@ -51,8 +61,8 @@ async def tavily_search(
     ] = MAX_RESULTS_DEFAULT,
     time_range: Annotated[
         Literal["day", "week", "month", "year"] | None,
-        "Filter results by time range. Use 'day' for last 24 hours, "
-        "'week' for last 7 days, 'month' for last 30 days, or 'year' for last year.",
+        "Optional. Pass exactly one of these strings or omit: 'day', 'week', 'month', 'year' "
+        "(last 24h / 7d / 30d / year).",
     ] = None,
     include_images: Annotated[
         bool,
@@ -72,30 +82,10 @@ async def tavily_search(
         "Whether to include an AI-generated answer summarizing the search results.",
     ] = False,
 ) -> dict[str, Any]:
-    """
-    Perform a real-time web search using Tavily API.
-
-    Tavily is optimized for AI agents and provides clean, relevant search results
-    suitable for LLM consumption. Use this tool to search the web for current
-    information, news, financial data, or general knowledge.
-
-    Usage:
-        - Basic search: tavily_search(query="Python best practices 2026")
-        - News search: tavily_search(query="AI regulations", topic="news", time_range="week")
-        - Financial search: tavily_search(query="AAPL stock analysis", topic="finance")
-        - Comprehensive search: tavily_search(
-            query="climate change solutions",
-            search_depth="advanced",
-            max_results=10,
-            include_answer=True
-          )
-
-    Note:
-        - Advanced search depth consumes more API credits but provides better results
-        - Time range filtering is useful for finding recent information
-    """
     if not query or not query.strip():
-        raise ToolError("Argument validation error: 'query' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     api_key = await get_tavily_access_token()
 
@@ -115,7 +105,14 @@ async def tavily_search(
     return response.as_flat_dict(include_images=include_images, include_answer=include_answer)
 
 
-@tool_metadata(tags={"extract", "tavily", "web", "content"})
+@tool_metadata(
+    tags={"tavily", "extract", "web", "content"},
+    description=(
+        "[Tavily—read URLs] Use when you already have one or more page URLs and need cleaned "
+        "body text or reranked chunks (optional query for relevance). Not broad keyword web "
+        "search (tavily_search), not crawling an entire site (tavily_crawl)."
+    ),
+)
 async def tavily_extract(
     *,
     urls: Annotated[
@@ -132,45 +129,36 @@ async def tavily_extract(
     ] = 3,
     format: Annotated[
         Literal["markdown", "text"],
-        "Format of extracted content. Markdown is usually more ergonomic for LLMs.",
+        "Pass exactly one of these strings: 'markdown', 'text'. Omit to default to 'markdown'.",
     ] = "markdown",
     extract_depth: Annotated[
         Literal["basic", "advanced"],
-        "Depth of extraction; 'advanced' handles complex tables and embedded content.",
+        "Pass exactly one of these strings: 'basic', 'advanced'. Omit to default to 'basic'; "
+        "'advanced' handles complex tables and embedded content.",
     ] = "basic",
 ) -> dict[str, Any]:
-    """
-    Extract content from web pages using Tavily Extract API.
-
-    Use this tool to retrieve and parse content from one or more URLs. The extracted
-    content is cleaned and formatted for LLM consumption.
-
-    Usage:
-        - Single URL: tavily_extract(urls="https://example.com/article")
-        - Multiple URLs: tavily_extract(urls=["url1", "url2"])
-        - With relevance query: tavily_extract(urls="url", query="auth setup", chunks_per_source=5)
-        - Advanced: tavily_extract(urls="url", extract_depth="advanced")
-
-    Limits (configurable in client):
-        - Maximum 20 URLs per request
-        - chunks_per_source: 1-5 (default 3)
-        - timeout: 1.0-60.0 seconds (default 30.0)
-
-    Note:
-        - Advanced depth handles complex content but may be slower
-    """
     if isinstance(urls, str):
         if not urls or not urls.strip():
-            raise ToolError("Argument validation error: 'urls' cannot be empty.")
+            raise ToolError(
+                "Argument validation error: 'urls' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            )
     elif isinstance(urls, list):
         if not urls:
-            raise ToolError("Argument validation error: 'urls' list cannot be empty.")
+            raise ToolError(
+                "Argument validation error: 'urls' list cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
         for url in urls:
             if not url or not url.strip():
-                raise ToolError("Argument validation error: URLs in list cannot be empty.")
+                raise ToolError(
+                    "Argument validation error: URLs in list cannot be empty.",
+                    kind=ToolErrorKind.VALIDATION,
+                )
 
     if query is not None and (not query or not query.strip()):
-        raise ToolError("Argument validation error: 'query' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     api_key = await get_tavily_access_token()
 
@@ -186,7 +174,15 @@ async def tavily_extract(
     return response.as_flat_dict()
 
 
-@tool_metadata(tags={"map", "tavily", "discovery"})
+@tool_metadata(
+    tags={"tavily", "map", "discovery"},
+    description=(
+        "[Tavily—site map] Use when you need a structured list of links under one root URL "
+        "(find sections or docs paths before reading). Optional instructions steer which branches "
+        "matter. Not keyword web search (tavily_search), not full page text (tavily_extract), "
+        "not deep multi-hop crawl (tavily_crawl)."
+    ),
+)
 async def tavily_map(
     *,
     url: Annotated[str, "The root URL to begin mapping."],
@@ -198,15 +194,16 @@ async def tavily_map(
         bool, "Whether to include credit usage information in the response."
     ] = False,
 ) -> dict[str, Any]:
-    """
-    Generate a structured map of a website to discover relevant sub-pages.
-    API documentation: https://docs.tavily.com/documentation/api-reference/endpoint/map .
-    """
     if not url or not url.strip():
-        raise ToolError("Argument validation error: 'url' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'url' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if instructions is not None and (not instructions or not instructions.strip()):
-        raise ToolError("Argument validation error: 'instructions' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'instructions' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     api_key = await get_tavily_access_token()
 
@@ -218,7 +215,15 @@ async def tavily_map(
     return response.as_flat_dict()
 
 
-@tool_metadata(tags={"crawl", "tavily", "web", "rag"})
+@tool_metadata(
+    tags={"tavily", "crawl", "web", "rag"},
+    description=(
+        "[Tavily—site crawl] Use when you need many related pages from one site guided by "
+        "natural-language instructions (breadth/depth limits). Not single-URL read "
+        "(tavily_extract), not link-only outline (tavily_map), not global keyword search "
+        "(tavily_search)."
+    ),
+)
 async def tavily_crawl(
     *,
     url: Annotated[str, "The root URL to begin the traversal."],
@@ -234,38 +239,16 @@ async def tavily_crawl(
     ] = None,
     include_images: Annotated[bool, "Include images found during crawl."] = False,
 ) -> dict[str, Any]:
-    """
-    Crawl a website using Tavily Crawl API for Crawl-to-RAG workflows.
-
-    Use this tool to explore an entire site and retrieve relevant content based on
-    natural language instructions. Ideal for building knowledge bases, extracting
-    documentation, or gathering structured content from websites.
-
-    Usage:
-        - Basic crawl: tavily_crawl(url="https://docs.example.com")
-        - With instructions: tavily_crawl(
-            url="https://docs.example.com",
-            instructions="Find all API documentation pages"
-          )
-        - Deep crawl: tavily_crawl(url="https://example.com", max_depth=3, limit=100)
-        - Exclude paths: tavily_crawl(
-            url="https://example.com",
-            exclude_paths=["/blog/.*", "/archive/.*"]
-          )
-
-    Limits:
-        - limit: 1-500 (default 20)
-        - max_depth: 1-5 (default 1)
-
-    Note:
-        - Higher limits and depths consume more API credits
-        - Use instructions to filter for relevant content and reduce noise
-    """
     if not url or not url.strip():
-        raise ToolError("Argument validation error: 'url' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'url' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if instructions is not None and (not instructions or not instructions.strip()):
-        raise ToolError("Argument validation error: 'instructions' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'instructions' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     api_key = await get_tavily_access_token()
 

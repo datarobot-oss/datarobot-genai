@@ -24,22 +24,26 @@ from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphC
 from datarobot_genai.drtools.core.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drtools.core.clients.microsoft_graph import validate_site_url
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
     tags={
+        "microsoft_graph",
         "microsoft",
-        "graph api",
         "sharepoint",
-        "drive",
-        "list",
+        "onedrive",
         "search",
         "files",
-        "find",
-        "contents",
-    }
+    },
+    description=(
+        "[M365—search files] Use when the user needs SharePoint or OneDrive files and list items "
+        "by keywords plus optional KQL filters, paginated. Scope with site_url or site_id when "
+        "they named a site. Not Google Drive (gdrive_find_contents), not Jira issues, not "
+        "Confluence pages, not downloading file contents."
+    ),
 )
 async def microsoft_graph_search_content(
     *,
@@ -68,9 +72,8 @@ async def microsoft_graph_search_content(
     ] = 250,
     entity_types: Annotated[
         list[str] | None,
-        "Optional list of entity types to search. Valid values: 'driveItem', 'listItem', "
-        "'site', 'list', 'drive'. Default: ['driveItem', 'listItem']. "
-        "Multiple types can be specified.",
+        "Optional. Each list entry must be exactly one of these strings: 'driveItem', "
+        "'listItem', 'site', 'list', 'drive'. Omit to default to ['driveItem', 'listItem'].",
     ] = None,
     filters: Annotated[
         list[str] | None,
@@ -89,49 +92,17 @@ async def microsoft_graph_search_content(
         "specific regions.",
     ] = None,
 ) -> dict[str, Any]:
-    """
-    Search for SharePoint and OneDrive content using Microsoft Graph Search API.
-
-    Search Scope:
-    - When site_url or site_id is provided: searches within the specified SharePoint site
-    - When neither is provided: searches across all accessible SharePoint sites and OneDrive
-
-    Supported Entity Types:
-    - driveItem: Files and folders in document libraries and OneDrive
-    - listItem: Items in SharePoint lists
-    - site: SharePoint sites
-    - list: SharePoint lists
-    - drive: Document libraries/drives
-
-    Filtering:
-    - Filters use KQL (Keyword Query Language) syntax
-    - Multiple filters are combined with AND operators
-    - Examples: ['fileType:docx', 'size>1000', 'lastModifiedTime>2024-01-01']
-    - Filters are applied in addition to the search query
-
-    Pagination:
-    - Controlled via from_offset (zero-based index) and size parameters
-    - Maximum size per request: 250 results
-    - To paginate: increment from_offset by size value for each subsequent page
-    - Example pagination sequence:
-      * Page 1: from_offset=0, size=250 (returns results 0-249)
-      * Page 2: from_offset=250, size=250 (returns results 250-499)
-      * Page 3: from_offset=500, size=250 (returns results 500-749)
-
-    API Reference:
-    - Endpoint: POST /search/query
-    - Documentation: https://learn.microsoft.com/en-us/graph/api/search-query
-    - Search concepts: https://learn.microsoft.com/en-us/graph/search-concept-files
-
-    """
     if not search_query:
-        raise ToolError("Argument validation error: 'search_query' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'search_query' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     # Validate site_url if provided
     if site_url:
         validation_error = validate_site_url(site_url)
         if validation_error:
-            raise ToolError(validation_error)
+            raise ToolError(validation_error, kind=ToolErrorKind.VALIDATION)
 
     access_token = await get_microsoft_graph_access_token()
     if isinstance(access_token, ToolError):
@@ -177,37 +148,44 @@ async def microsoft_graph_search_content(
     }
 
 
-@tool_metadata(tags={"microsoft", "graph api", "sharepoint", "onedrive", "share"}, enabled=False)
+@tool_metadata(
+    tags={"microsoft_graph", "sharepoint", "onedrive", "share"},
+    enabled=False,
+    description=(
+        "[M365—share item] Use when inviting people to an existing SharePoint/OneDrive file or "
+        "folder by file id and document library id. Not search (microsoft_graph_search_content), "
+        "not create file."
+    ),
+)
 async def microsoft_graph_share_item(
     *,
     file_id: Annotated[str, "The ID of the file or folder to share."],
     document_library_id: Annotated[str, "The ID of the document library containing the item."],
     recipient_emails: Annotated[list[str], "A list of email addresses to invite."],
-    role: Annotated[Literal["read", "write"], "The role to assign: 'read' or 'write'."] = "read",
+    role: Annotated[
+        Literal["read", "write"],
+        "Pass exactly one of these strings: 'read', 'write'. Omit to default to 'read'.",
+    ] = "read",
     send_invitation: Annotated[
         bool, "Flag determining if recipients should be notified. Default False"
     ] = False,
 ) -> dict[str, Any]:
-    """
-    Share a SharePoint or Onedrive file or folder with one or more users.
-    It works with internal users or existing guest users in the
-    tenant. It does NOT create new guest accounts and does NOT use the tenant-level
-    /invitations endpoint.
-
-    Microsoft Graph API is treating OneDrive and SharePoint resources as driveItem.
-
-    API Reference:
-    - DriveItem Resource Type: https://learn.microsoft.com/en-us/graph/api/resources/driveitem
-    - API Documentation: https://learn.microsoft.com/en-us/graph/api/driveitem-invite
-    """
     if not file_id or not file_id.strip():
-        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'file_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if not document_library_id or not document_library_id.strip():
-        raise ToolError("Argument validation error: 'document_library_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'document_library_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     if not recipient_emails:
-        raise ToolError("Argument validation error: you must provide at least one 'recipient'.")
+        raise ToolError(
+            "Argument validation error: you must provide at least one 'recipient'.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     access_token = await get_microsoft_graph_access_token()
     if isinstance(access_token, ToolError):
@@ -232,17 +210,13 @@ async def microsoft_graph_share_item(
 
 
 @tool_metadata(
-    tags={
-        "microsoft",
-        "graph api",
-        "sharepoint",
-        "onedrive",
-        "document library",
-        "create",
-        "file",
-        "write",
-    },
+    tags={"microsoft_graph", "sharepoint", "onedrive", "create", "file", "write"},
     enabled=False,
+    description=(
+        "[M365—create text file] Use when the user wants a new plain-text file in personal "
+        "OneDrive or a SharePoint library (library id from search). Not metadata updates "
+        "(microsoft_update_metadata), not sharing (microsoft_graph_share_item)."
+    ),
 )
 async def microsoft_create_file(
     *,
@@ -257,23 +231,10 @@ async def microsoft_create_file(
         "ID of the parent folder. Defaults to 'root' (root of the drive).",
     ] = "root",
 ) -> dict[str, Any]:
-    """
-    Create a new text file in SharePoint or OneDrive.
-
-    **Personal OneDrive:** Just provide file_name and content_text.
-    The file saves to your personal OneDrive root folder.
-
-    **SharePoint:** Provide document_library_id to save to a specific
-    SharePoint site. Get the ID from microsoft_graph_search_content
-    results ('documentLibraryId' field).
-
-    **Conflict Resolution:** If a file with the same name exists,
-    it will be automatically renamed (e.g., 'report (1).txt').
-    """
     if not file_name or not file_name.strip():
-        raise ToolError("Error: file_name is required.")
+        raise ToolError("Error: file_name is required.", kind=ToolErrorKind.VALIDATION)
     if not content_text:
-        raise ToolError("Error: content_text is required.")
+        raise ToolError("Error: content_text is required.", kind=ToolErrorKind.VALIDATION)
 
     access_token = await get_microsoft_graph_access_token()
     if isinstance(access_token, ToolError):
@@ -309,17 +270,13 @@ async def microsoft_create_file(
 
 
 @tool_metadata(
-    tags={
-        "microsoft",
-        "graph api",
-        "sharepoint",
-        "onedrive",
-        "metadata",
-        "update",
-        "fields",
-        "compliance",
-    },
+    tags={"microsoft_graph", "sharepoint", "onedrive", "metadata", "update"},
     enabled=False,
+    description=(
+        "[M365—update metadata] Use when renaming or updating list/drive item fields: either "
+        "SharePoint list context (site_id + list_id) or a drive item (document_library_id). "
+        "Not file body edits, not search, not sharing."
+    ),
 )
 async def microsoft_update_metadata(
     *,
@@ -344,29 +301,13 @@ async def microsoft_update_metadata(
         "Cannot be used together with site_id and list_id.",
     ] = None,
 ) -> dict[str, Any]:
-    """
-    Update metadata on a SharePoint list item or OneDrive/SharePoint drive item.
-
-    **SharePoint List Items:** Provide site_id and list_id to update custom
-    column values on a list item. All custom columns can be updated.
-
-    **OneDrive/Drive Items:** Provide document_library_id to update drive item
-    properties. Only 'name' and 'description' fields can be updated.
-
-    **Context Requirements:**
-    - For SharePoint list items: Both site_id AND list_id are required
-    - For OneDrive/drive items: document_library_id is required
-    - Cannot specify both contexts simultaneously
-
-    **Examples:**
-    - SharePoint list item: Update a 'Status' column to 'Approved'
-    - Drive item: Rename a file or update its description
-
-    """
     if not item_id or not item_id.strip():
-        raise ToolError("Error: item_id is required.")
+        raise ToolError("Error: item_id is required.", kind=ToolErrorKind.VALIDATION)
     if not fields_to_update:
-        raise ToolError("Error: fields_to_update is required and cannot be empty.")
+        raise ToolError(
+            "Error: fields_to_update is required and cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     # Validate context parameters
     has_sharepoint_context = site_id is not None and list_id is not None
@@ -375,19 +316,22 @@ async def microsoft_update_metadata(
 
     if has_partial_sharepoint_context:
         raise ToolError(
-            "Error: For SharePoint list items, both site_id and list_id must be provided."
+            "Error: For SharePoint list items, both site_id and list_id must be provided.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     if has_sharepoint_context and has_drive_context:
         raise ToolError(
             "Error: Cannot specify both SharePoint (site_id + list_id) and OneDrive "
-            "(document_library_id) context. Choose one."
+            "(document_library_id) context. Choose one.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     if not has_sharepoint_context and not has_drive_context:
         raise ToolError(
             "Error: Must specify either SharePoint context (site_id + list_id) or "
-            "OneDrive context (document_library_id)."
+            "OneDrive context (document_library_id).",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     access_token = await get_microsoft_graph_access_token()

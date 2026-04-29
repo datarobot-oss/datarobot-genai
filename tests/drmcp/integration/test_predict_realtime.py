@@ -194,7 +194,7 @@ class TestMCPRealtimePredictToolsIntegration:
             assert result.isError
             assert (
                 result.content[0].text  # type: ignore[union-attr]
-                == "Error in predict_realtime: "
+                == "[internal] Error in predict_realtime: "
                 "ValueError: series_id_column 'invalid_column' not found in input data."
             )
 

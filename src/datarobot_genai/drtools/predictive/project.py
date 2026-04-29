@@ -16,10 +16,14 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +63,16 @@ async def get_project_dataset_by_name(
     dataset_name: Annotated[str, "Substring to match against dataset display names."],
 ) -> dict[str, Any]:
     if not project_id:
-        raise ToolError("Project ID is required.")
+        raise ToolError("Project ID is required.", kind=ToolErrorKind.VALIDATION)
     if not dataset_name:
-        raise ToolError("Dataset name is required.")
+        raise ToolError("Dataset name is required.", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
+    try:
+        project = client.Project.get(project_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     all_datasets = []
     source_dataset = project.get_dataset()
     if source_dataset:
@@ -80,5 +87,6 @@ async def get_project_dataset_by_name(
                 "dataset_type": ds["type"],
             }
     raise ToolError(
-        f"Dataset with name containing '{dataset_name}' not found in project {project_id}."
+        f"Dataset with name containing '{dataset_name}' not found in project {project_id}.",
+        kind=ToolErrorKind.NOT_FOUND,
     )

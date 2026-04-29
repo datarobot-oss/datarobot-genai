@@ -59,10 +59,7 @@ def expectations_for_get_best_model_failure(
             ToolCallTestExpectations(
                 name="get_best_model",
                 parameters={"project_id": nonexistent_project_id},
-                result=(
-                    "Error in get_best_model: "
-                    "ClientError: 404 client error: {'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -119,11 +116,7 @@ def expectations_for_score_dataset_with_model_failure(
                     "model_id": nonexistent_model_id,
                     "dataset_id": classification_predict_dataset["dataset_id"],
                 },
-                result=(
-                    "Error in score_dataset_with_model: "
-                    "ClientError: 404 client error: "
-                    "{'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[

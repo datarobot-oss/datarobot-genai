@@ -23,11 +23,14 @@ from typing import Annotated
 from typing import Any
 
 import polars as pl
+from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +63,14 @@ async def get_deployment_info(
     deployment_id: Annotated[str, "MLOps deployment id (from list_deployments or product UI)."],
 ) -> dict[str, Any]:
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    deployment = client.Deployment.get(deployment_id)
+    try:
+        deployment = client.Deployment.get(deployment_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     # get features from the deployment
     features_raw = deployment.get_features()
@@ -86,11 +92,15 @@ async def get_deployment_info(
         target = ""
         target_type = ""
     else:
-        project = client.Project.get(deployment.model["project_id"])
-        model = client.Model.get(project=project, model_id=deployment.model["id"])
+        try:
+            dr_project = client.Project.get(deployment.model["project_id"])
+            model = client.Model.get(project=dr_project, model_id=deployment.model["id"])
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        project = dr_project
         model_type = model.model_type
-        target = project.target
-        target_type = project.target_type
+        target = dr_project.target
+        target_type = dr_project.target_type
 
     # Add model metadata
     result = {
@@ -130,7 +140,7 @@ async def generate_prediction_data_template(
     n_rows: Annotated[int, "How many identical-length template rows to generate (≥1)."] = 1,
 ) -> dict[str, Any]:
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
     if n_rows is None or n_rows <= 0:
         n_rows = 1
 
@@ -138,7 +148,9 @@ async def generate_prediction_data_template(
     features_info = await get_deployment_features(deployment_id=deployment_id)
     # Check if we got a valid result
     if not isinstance(features_info, dict) or "features" not in features_info:
-        raise ToolError(f"Invalid feature information received: {features_info}")
+        raise ToolError(
+            f"Invalid feature information received: {features_info}", kind=ToolErrorKind.INTERNAL
+        )
 
     # Create template data
     template_data: dict[str, list[Any]] = {}
@@ -230,7 +242,10 @@ async def validate_prediction_data(
     ],
 ) -> dict[str, Any]:
     if not csv_string or not csv_string.strip():
-        raise ToolError("Argument validation error: 'csv_string' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'csv_string' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     df = pl.read_csv(io.StringIO(csv_string.strip()))
     # LLMs often paste CSV with indented headers; align names to deployment features.
@@ -242,7 +257,7 @@ async def validate_prediction_data(
         df = df.filter(row_nonempty)
 
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
     # Get deployment features
     features_info = await get_deployment_features(deployment_id=deployment_id)
 
@@ -367,7 +382,7 @@ async def get_deployment_features(
     deployment_id: Annotated[str, "MLOps deployment id."],
 ) -> dict[str, Any]:
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     info = await get_deployment_info(deployment_id=deployment_id)
     # Only keep features, time_series_config, and total_features
