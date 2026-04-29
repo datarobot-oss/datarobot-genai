@@ -61,11 +61,10 @@ OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
 # The extension explicitly references the security scheme key so SDKs can resolve
 # the RFC 8693 Token Exchange override without ambiguity.
 RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
-RFC8693_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 RFC8693_SECURITY_SCHEME_REF = "oauth2"  # The key in securitySchemes
 RFC8693_SECURITY_SCHEME_FLOW_REF = "clientCredentials"  # The exact flow being overridden
 RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
-    "Overrides the referenced security scheme with RFC 8693 Token Exchange requirements."
+    "Two-Step RFC 8693 Token Exchange execution parameters."
 )
 
 
@@ -163,20 +162,20 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def _token_exchange_capability_extension(
         config: OAuth2TokenExchangeConfig,
     ) -> list[AgentExtension]:
-        """Build the RFC 8693 binder extension for the agent card.
+        """Build the RFC 8693 extension for the agent card (OAuth2 token exchange).
 
-        Binds the extension to the named security scheme (``security_scheme_ref``) so SDKs
-        can unambiguously resolve which OAuth2 flow requires the token exchange override.
-        Scopes are the single source of truth: they stay under ``flows.clientCredentials``
-        and are never duplicated here.
+        OpenAPI ``token_url`` / ``scopes`` remain on ``securitySchemes.oauth2.flows``.
+        ``params`` carries ``subject_token_constraints``, ``token_exchange_request``,
+        and ``ref`` binding to the client-credentials flow.
         """
-        params: dict[str, str] = {
-            "security_scheme_ref": RFC8693_SECURITY_SCHEME_REF,
-            "flow_ref": RFC8693_SECURITY_SCHEME_FLOW_REF,
-            "subject_token_type": RFC8693_SUBJECT_TOKEN_TYPE,
+        params = {
+            "ref": {
+                "scheme": RFC8693_SECURITY_SCHEME_REF,
+                "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            },
+            "subject_token_constraints": config.subject_token_constraints.model_dump(),
+            "token_exchange_request": config.token_exchange_request.model_dump(),
         }
-        if config.audience is not None:
-            params["audience"] = config.audience
         return [
             AgentExtension(
                 uri=RFC8693_GRANT_TYPE_URI,

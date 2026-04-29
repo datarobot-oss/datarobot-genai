@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.23
+## 0.15.24
 - Added LangGraph human-in-the-loop support and parameterization of LangGraph agent.
+
+## 0.15.23
+- OAuth2 token exchange configuration now use a nested `subject_token_constraints` and `token_exchange_request`, with AgentCard extension.
 
 ## 0.15.22
 - Removed `posthog` and `qdrant-client` from `e2e-tests/pyproject.toml` exclude list to mirror the main pyproject.toml fix in 0.15.21; both are imported eagerly by upstream libs and excluding them would break e2e test collection.
