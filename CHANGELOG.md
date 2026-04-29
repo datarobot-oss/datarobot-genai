@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.24
+## 0.15.25
 - Added LangGraph human-in-the-loop support and parameterization of LangGraph agent.
+
+## 0.15.24
+- Fixed NAT `per_user_tool_calling_agent` leaking prior assistant messages from chat history back into the response stream as a single trailing chunk.
 
 ## 0.15.23
 - OAuth2 token exchange configuration now use a nested `subject_token_constraints` and `token_exchange_request`, with AgentCard extension.
