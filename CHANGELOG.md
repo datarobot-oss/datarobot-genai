@@ -4,8 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.20
+## 0.15.23
 - OAuth2 token exchange configuration now use a nested `subject_token_constraints` and `token_exchange_request`, with AgentCard extension.
+- 
+## 0.15.22
+- Removed `posthog` and `qdrant-client` from `e2e-tests/pyproject.toml` exclude list to mirror the main pyproject.toml fix in 0.15.21; both are imported eagerly by upstream libs and excluding them would break e2e test collection.
+
+## 0.15.21
+- Restored `posthog` and `qdrant-client` as runtime dependencies. Both are imported eagerly at module load by `deepeval/telemetry.py` and `mem0`'s `Memory` class respectively; excluding them broke pytest collection and any memory-enabled agent on startup.
+
+## 0.15.20
+- Added `DataRobotLLMRouterConfig` (`datarobot-llm-router`) to NAT to configure primary and fallback LLM providers via `litellm.Router`.
+- Added `get_router_llm` for CrewAI and `RouterLLM` support for LangGraph and LlamaIndex to expose the same fallback router behavior across frameworks.
+- Added fallback E2E coverage and updated docs for workflow-router fallback behavior.
 
 ## 0.15.19
 - Removed unnecessary packages with exclude to reduce the dependency footprint
