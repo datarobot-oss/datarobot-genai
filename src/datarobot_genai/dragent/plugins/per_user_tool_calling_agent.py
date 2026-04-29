@@ -26,9 +26,14 @@ using ``DRAgentNestedReasoningStepAdaptor.process_chunks()`` to produce
 ``DRAgentEventResponse`` with valid AG-UI event sequences.
 """
 
+import uuid
 from collections.abc import AsyncGenerator
+from collections.abc import Sequence
 from typing import Any
 
+from langchain_core.messages import BaseMessage
+from langgraph.pregel._messages import StreamMessagesHandler
+from langgraph.pregel._messages import _state_values
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
@@ -39,6 +44,49 @@ from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
+
+# Workaround: prior assistant messages from chat history were leaking back into
+# the response stream as a single trailing mega-chunk after the new response.
+#
+# How that happens:
+#   1. NAT's `Message` data model has no `id` field, so when `_stream_fn`
+#      converts the request into BaseMessages via
+#      `trim_messages([m.model_dump() for m in chat.messages], ...)`, every
+#      BaseMessage handed to the graph has `id=None`.
+#   2. Langgraph's `StreamMessagesHandler` uses a `seen` set, keyed by
+#      `message.id`, to avoid emitting the same message twice. Its
+#      `on_chain_start` only records ids when `id is not None`, so id-less
+#      inputs are never added to `seen`.
+#   3. When `agent_node` returns, `on_chain_end` walks the new state and emits
+#      every BaseMessage not in `seen`. Prior history items (id=None) match
+#      that condition and get streamed to the client as if the model had just
+#      produced them, even though they were part of the conversation history.
+#
+# Fix: assign a uuid to every id-less input message before the original
+# `on_chain_start` runs, mirroring what `StreamMessagesHandler._emit` already
+# does for output messages. This makes the seen set track them correctly, so
+# `on_chain_end` no longer treats them as new output.
+#
+_original_on_chain_start = StreamMessagesHandler.on_chain_start
+
+
+def _patched_on_chain_start(
+    self: StreamMessagesHandler,
+    serialized: dict[str, Any],
+    inputs: dict[str, Any],
+    **kwargs: Any,
+) -> Any:
+    for value in _state_values(inputs):
+        if isinstance(value, BaseMessage) and value.id is None:
+            value.id = str(uuid.uuid4())
+        elif isinstance(value, Sequence) and not isinstance(value, str):
+            for item in value:
+                if isinstance(item, BaseMessage) and item.id is None:
+                    item.id = str(uuid.uuid4())
+    return _original_on_chain_start(self, serialized, inputs, **kwargs)
+
+
+StreamMessagesHandler.on_chain_start = _patched_on_chain_start  # type: ignore[method-assign]
 
 
 class PerUserToolCallAgentWorkflowConfig(
