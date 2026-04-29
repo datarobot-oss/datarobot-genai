@@ -73,12 +73,11 @@ def graph_factory(
 
     def human_review(state: MessagesState) -> MessagesState:
         decision = interrupt({"e2e_prompt": "approve?", "kind": "e2e_hitl"})
-        prior = list(state.get("messages", []))
         if decision == "no":
             reply = E2E_INTERRUPT_CANCELLED
         else:
             reply = E2E_INTERRUPT_CONTINUING
-        return {"messages": prior + [AIMessageChunk(content=reply)]}
+        return {"messages": [AIMessageChunk(content=reply)]}
 
     def route_after_human_review(state: MessagesState) -> str:
         """Return the next node: END or writer_node.
