@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.20
-- OAuth2 token exchange configuration now use a nested two-step structure (passport requirement + exchange payload) instead of flat fields.
+- OAuth2 token exchange configuration now use a nested `subject_token_constraints` and `token_exchange_request`, with AgentCard extension.
 
 ## 0.15.19
 - Removed unnecessary packages with exclude to reduce the dependency footprint

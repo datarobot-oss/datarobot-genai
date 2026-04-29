@@ -162,19 +162,19 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def _token_exchange_capability_extension(
         config: OAuth2TokenExchangeConfig,
     ) -> list[AgentExtension]:
-        """Build the RFC 8693 extension for the agent card (two-step flow).
+        """Build the RFC 8693 extension for the agent card (OAuth2 token exchange).
 
         OpenAPI ``token_url`` / ``scopes`` remain on ``securitySchemes.oauth2.flows``.
-        ``params`` carries Step 1 (passport) and Step 2 (Okta exchange) only, plus a
-        ``ref`` to the client-credentials flow for unambiguous SDK binding.
+        ``params`` carries ``subject_token_constraints``, ``token_exchange_request``,
+        and ``ref`` binding to the client-credentials flow.
         """
         params = {
             "ref": {
                 "scheme": RFC8693_SECURITY_SCHEME_REF,
                 "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
             },
-            "passport_requirement": config.passport_requirement.model_dump(),
-            "exchange_payload": config.exchange_payload.model_dump(),
+            "subject_token_constraints": config.subject_token_constraints.model_dump(),
+            "token_exchange_request": config.token_exchange_request.model_dump(),
         }
         return [
             AgentExtension(

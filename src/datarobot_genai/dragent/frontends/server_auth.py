@@ -19,8 +19,8 @@ from pydantic import BaseModel
 from pydantic import Field
 
 
-class OAuth2PassportRequirement(BaseModel):
-    """Step 1: SDK prerequisite — ID-JAG passport JWT trusted issuer."""
+class OAuth2SubjectTokenConstraints(BaseModel):
+    """Constraints on the subject token used in RFC 8693 token exchange (e.g. trusted issuer)."""
 
     trusted_issuer: str = Field(
         description=(
@@ -30,8 +30,8 @@ class OAuth2PassportRequirement(BaseModel):
     )
 
 
-class OAuth2TokenExchangePayload(BaseModel):
-    """Step 2: RFC 8693 token exchange POST body parameters for the authorization server."""
+class OAuth2TokenExchangeRequest(BaseModel):
+    """RFC 8693 token exchange request parameters for the authorization server."""
 
     audience: str = Field(description="Expected resource / audience (`aud`) for the issued token.")
     subject_token_type: str = Field(
@@ -50,9 +50,10 @@ class OAuth2TokenExchangePayload(BaseModel):
 class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
     """OAuth2 server-side auth for RFC 8693 token exchange surfaced on the AgentCard.
 
-    OpenAPI-relevant fields (`token_url`, `scopes`) populate ``securitySchemes.oauth2``.
-    Step 1 (`passport_requirement`) and Step 2 (`exchange_payload`) are advertised in
-    ``capabilities.extensions`` for SDKs executing the two-step flow.
+    OpenAPI fields (`token_url`, `scopes`) populate ``securitySchemes.oauth2`` client
+    credentials flow.
+    ``subject_token_constraints`` and ``token_exchange_request`` are advertised in
+    ``capabilities.extensions`` for SDKs executing the flow.
     """
 
     token_url: str = Field(
@@ -68,9 +69,9 @@ class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
             "the token grants required scopes."
         ),
     )
-    passport_requirement: OAuth2PassportRequirement = Field(
-        description="Step 1: trusted issuer for the prerequisite ID-JAG passport JWT.",
+    subject_token_constraints: OAuth2SubjectTokenConstraints = Field(
+        description="Requirements for the subject token presented during token exchange.",
     )
-    exchange_payload: OAuth2TokenExchangePayload = Field(
-        description="Step 2: Okta/token endpoint parameters for the token exchange POST.",
+    token_exchange_request: OAuth2TokenExchangeRequest = Field(
+        description="Token endpoint parameters for the token exchange request.",
     )
