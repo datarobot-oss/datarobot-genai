@@ -86,12 +86,20 @@ def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFra
         raise ToolError(f"Failed to retrieve dataset '{dataset_id}': {error_str}")
 
 
-@tool_metadata(tags={"predictive", "training", "read", "analysis", "dataset"})
+@tool_metadata(
+    tags={"predictive", "training", "read", "analysis", "dataset"},
+    description=(
+        "[Catalog—quick profile] Use for a fast structural overview of one AI Catalog dataset: "
+        "row/column counts, inferred kinds (numeric, categorical, datetime, text), missingness, "
+        "heuristic candidate targets. Read-only; does not train. Lighter than "
+        "get_exploratory_insights; does not rank ML use-case ideas (suggest_use_cases calls this "
+        "internally)."
+    ),
+)
 async def analyze_dataset(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"],
+    dataset_id: Annotated[str, "AI Catalog dataset id."],
 ) -> dict[str, Any]:
-    """Analyze a dataset to understand its structure and potential use cases."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
@@ -136,12 +144,19 @@ async def analyze_dataset(
     return insights_dict
 
 
-@tool_metadata(tags={"predictive", "training", "read", "analysis", "usecase"})
+@tool_metadata(
+    tags={"predictive", "training", "read", "analysis", "usecase"},
+    description=(
+        "[Catalog—use-case ideas] Use when the user wants ranked ML problem suggestions from one "
+        "catalog dataset (name, suggested target, problem type, confidence). Read-only. Builds on "
+        "dataset profiling; not the same as starting Autopilot (start_autopilot) or deep EDA "
+        "(get_exploratory_insights)."
+    ),
+)
 async def suggest_use_cases(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"],
+    dataset_id: Annotated[str, "AI Catalog dataset id."],
 ) -> dict[str, Any]:
-    """Analyze a dataset and suggest potential machine learning use cases."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
@@ -164,13 +179,23 @@ async def suggest_use_cases(
     return {"use_case_suggestions": suggestions}
 
 
-@tool_metadata(tags={"predictive", "training", "read", "analysis", "eda"})
+@tool_metadata(
+    tags={"predictive", "training", "read", "analysis", "eda"},
+    description=(
+        "[Catalog—deep EDA] Use when the user wants richer exploratory stats on one catalog "
+        "dataset: memory, per-column missingness, type groupings, optional target distribution "
+        "and numeric correlations. Read-only; does not train or upload data. Heavier than "
+        "analyze_dataset; not time-series eligibility (is_eligible_for_timeseries_training)."
+    ),
+)
 async def get_exploratory_insights(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset to analyze"],
-    target_col: Annotated[str, "Optional target column to focus EDA insights on"] | None = None,
+    dataset_id: Annotated[str, "AI Catalog dataset id."],
+    target_col: Annotated[
+        str, "If set, add target-centric stats (must be an existing column name)."
+    ]
+    | None = None,
 ) -> dict[str, Any]:
-    """Generate exploratory data insights for a dataset."""
     if not dataset_id:
         raise ToolError("Dataset ID must be provided")
 
@@ -461,43 +486,44 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
     return suggestions
 
 
-@tool_metadata(tags={"predictive", "training", "write", "autopilot", "model", "daria"})
+@tool_metadata(
+    tags={"predictive", "training", "write", "autopilot", "model", "daria"},
+    description=(
+        "[Project—start Autopilot] Use when the user wants to start or resume Autopilot for one "
+        "tabular target: new project from dataset_id or public dataset_url plus project_name, or "
+        "existing project via project_id. mode is quick, comprehensive, or manual. Returns "
+        "project_id and status—not finished leaderboard models yet. Not deployment creation "
+        "(deploy_model), not batch scoring (predict_*), not dataset upload "
+        "(upload_dataset_to_ai_catalog) unless they already registered data."
+    ),
+)
 async def start_autopilot(
     *,
-    target: Annotated[str, "Name of the target column for modeling"],
+    target: Annotated[str, "Column name in the training table to predict."],
     project_id: Annotated[
-        str, "Optional, the ID of the DataRobot project or a new project if no id is provided"
+        str, "Existing project id to resume; omit when creating from dataset_url or dataset_id."
     ]
     | None = None,
-    mode: Annotated[
-        str, "Optional, Autopilot mode ('quick', 'comprehensive', or 'manual')"
-    ] = "quick",
+    mode: Annotated[str, "Autopilot breadth: quick, comprehensive, or manual."] = "quick",
     dataset_url: Annotated[
         str,
-        """
-        Optional, The URL to the dataset to upload
-        (optional if dataset_id is provided) for a new project.
-        """,
+        "For new projects: public URL to tabular data (mutually exclusive with dataset_id).",
     ]
     | None = None,
     dataset_id: Annotated[
         str,
-        """
-        Optional, The ID of an existing dataset in AI Catalog
-        (optional if dataset_url is provided) for a new project.
-        """,
+        "For new projects: AI Catalog dataset id (mutually exclusive with dataset_url).",
     ]
     | None = None,
     project_name: Annotated[
-        str, "Optional, name for the project if no id is provided, creates a new project"
+        str, "New project display name when project_id is omitted."
     ] = "MCP Project",
     use_case_id: Annotated[
         str,
-        "Optional, ID of the use case to associate this project (required for next-gen platform)",
+        "Optional org use-case id; some tenants require it on new projects.",
     ]
     | None = None,
 ) -> dict[str, Any]:
-    """Start automated model training (Autopilot) for a project."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
 
@@ -539,20 +565,24 @@ async def start_autopilot(
         raise ToolError(f"Failed to start Autopilot: {str(e)}")
 
 
-@tool_metadata(tags={"prediction", "training", "read", "model", "evaluation"})
+@tool_metadata(
+    tags={"prediction", "training", "read", "model", "evaluation"},
+    description=(
+        "[Project—ROC only] Use when the user wants ROC curve points for one binary classification "
+        "leaderboard model; source is validation, holdout, or crossValidation. Read-only. Not "
+        "for regression-only models, not full model card (get_model_details), not deployment "
+        "monitoring (get_prediction_history)."
+    ),
+)
 async def get_model_roc_curve(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project"],
-    model_id: Annotated[str, "The ID of the model to analyze"],
+    project_id: Annotated[str, "DataRobot modeling project id."],
+    model_id: Annotated[str, "Leaderboard model id."],
     source: Annotated[
         str,
-        """
-        The source of the data to use for the ROC curve
-        ('validation' or 'holdout' or 'crossValidation')
-        """,
+        "Which data fold: validation, holdout, or crossValidation.",
     ] = "validation",
 ) -> dict[str, Any]:
-    """Get detailed ROC curve for a specific model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
     if not model_id:
@@ -596,13 +626,20 @@ async def get_model_roc_curve(
         raise ToolError(f"Failed to get ROC curve: {str(e)}")
 
 
-@tool_metadata(tags={"predictive", "training", "read", "model", "evaluation"})
+@tool_metadata(
+    tags={"predictive", "training", "read", "model", "evaluation"},
+    description=(
+        "[Project—global feature impact] Use for training-time global feature impact on one "
+        "leaderboard model (may wait while impact is computed). Read-only. Not per-row SHAP from "
+        "live deployment predictions (those come from predict_realtime explanation flags), not "
+        "lift chart bins (get_model_lift_chart)."
+    ),
+)
 async def get_model_feature_impact(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project"],
-    model_id: Annotated[str, "The ID of the model to analyze"],
+    project_id: Annotated[str, "DataRobot modeling project id."],
+    model_id: Annotated[str, "Leaderboard model id."],
 ) -> dict[str, Any]:
-    """Get detailed feature impact for a specific model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
     if not model_id:
@@ -619,20 +656,24 @@ async def get_model_feature_impact(
     return {"data": feature_impact}
 
 
-@tool_metadata(tags={"predictive", "training", "read", "model", "evaluation"})
+@tool_metadata(
+    tags={"predictive", "training", "read", "model", "evaluation"},
+    description=(
+        "[Project—lift chart] Use for lift chart bins on one classification leaderboard model "
+        "(actual vs predicted by score bucket); source is validation, holdout, or crossValidation. "
+        "Read-only. Not ROC points (get_model_roc_curve), not general model metrics dump "
+        "(get_model_details)."
+    ),
+)
 async def get_model_lift_chart(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project"],
-    model_id: Annotated[str, "The ID of the model to analyze"],
+    project_id: Annotated[str, "DataRobot modeling project id."],
+    model_id: Annotated[str, "Leaderboard model id."],
     source: Annotated[
         str,
-        """
-        The source of the data to use for the lift chart
-        ('validation' or 'holdout' or 'crossValidation')
-        """,
+        "Which data fold: validation, holdout, or crossValidation.",
     ] = "validation",
 ) -> dict[str, Any]:
-    """Get detailed lift chart for a specific model."""
     if not project_id:
         raise ToolError("Project ID must be provided")
     if not model_id:

@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
+from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
@@ -79,6 +80,85 @@ def expectations_for_predict_realtime_dataset_string_success(
 
 
 @pytest.fixture(scope="session")
+def expectations_for_get_deployment_info_success(deployment_id: str) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="get_deployment_info",
+                parameters={"deployment_id": deployment_id},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "feature",
+            "deployment",
+            "target",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_get_deployment_features_success(deployment_id: str) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="get_deployment_features",
+                parameters={"deployment_id": deployment_id},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "feature",
+            "deployment",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_generate_prediction_data_template_success(
+    deployment_id: str,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="generate_prediction_data_template",
+                parameters={"deployment_id": deployment_id},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "template",
+            "column",
+            "feature",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_validate_prediction_data_success(
+    deployment_id: str,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="validate_prediction_data",
+                parameters={
+                    "deployment_id": deployment_id,
+                    "csv_string": INLINE_CSV_DATASET,
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "validation",
+            "deployment",
+            "column",
+            "row",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
 def expectations_for_predict_realtime_json_dataset_success(
     deployment_id: str,
 ) -> ETETestExpectations:
@@ -88,7 +168,7 @@ def expectations_for_predict_realtime_json_dataset_success(
                 name="predict_realtime",
                 parameters={
                     "deployment_id": deployment_id,
-                    "dataset": INLINE_JSON_DATASET,
+                    "dataset": ANY_NONEMPTY_STRING,
                 },
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -176,8 +256,8 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         [
             """
         I have a DataRobot deployment with ID '{deployment_id}'.
-        Run predict_realtime using the dataset parameter only (inline JSON array, not a file path).
-        Use this exact JSON string as dataset (copy verbatim):
+        Run realtime scoring using the dataset argument only as an inline JSON array of row objects
+        (not a file path). Use this exact JSON string as dataset (copy verbatim):
 
         {dataset}
         """
@@ -202,6 +282,123 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_realtime_json_dataset_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        For DataRobot deployment '{deployment_id}', look up what that deployment needs for
+        scoring: the prediction target and the input features. Summarize the target and roughly
+        how many features are required.
+        """
+        ],
+    )
+    async def test_get_deployment_info_success(
+        self,
+        llm_client: Any,
+        expectations_for_get_deployment_info_success: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(deployment_id=deployment_id)
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_get_deployment_info_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_get_deployment_info_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        For deployment '{deployment_id}', list a few of the feature names the model expects
+        as inputs when scoring.
+        """
+        ],
+    )
+    async def test_get_deployment_features_success(
+        self,
+        llm_client: Any,
+        expectations_for_get_deployment_features_success: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(deployment_id=deployment_id)
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_get_deployment_features_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_get_deployment_features_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        For deployment '{deployment_id}', produce about two sample rows that match the shape
+        needed for scoring, then describe the columns in those rows.
+        """
+        ],
+    )
+    async def test_generate_prediction_data_template_success(
+        self,
+        llm_client: Any,
+        expectations_for_generate_prediction_data_template_success: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(deployment_id=deployment_id)
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name if frame else "test_generate_prediction_data_template_success"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_generate_prediction_data_template_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        For deployment '{deployment_id}', check whether this inline CSV is acceptable for scoring.
+        Use this exact CSV text (verbatim, including header and newlines, no extra spaces):
+        {csv}
+        Summarize validation status and any warnings.
+        """
+        ],
+    )
+    async def test_validate_prediction_data_success(
+        self,
+        llm_client: Any,
+        expectations_for_validate_prediction_data_success: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(deployment_id=deployment_id, csv=INLINE_CSV_DATASET)
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = frame.f_code.co_name if frame else "test_validate_prediction_data_success"
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_validate_prediction_data_success,
                 llm_client,
                 session,
                 test_name,

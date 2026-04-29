@@ -32,15 +32,31 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "info", "metadata", "daria"})
+def _feature_importance_value(feature: dict[str, Any]) -> float:
+    """Deployment features may have importance null; treat as 0 for comparisons and formatting."""
+    imp = feature.get("importance")
+    if imp is None:
+        return 0.0
+    try:
+        return float(imp)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "info", "metadata", "daria"},
+    description=(
+        "[Deploy—scoring contract] Use first when building or validating payloads for a "
+        "deployment: target name/type, model family, all input features (name, type, "
+        "importance), plus time-series settings when relevant. Read-only. Narrower feature-only "
+        "view is get_deployment_features; model training diagnostics stay on the project "
+        "(get_model_details)."
+    ),
+)
 async def get_deployment_info(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
+    deployment_id: Annotated[str, "MLOps deployment id (from list_deployments or product UI)."],
 ) -> dict[str, Any]:
-    """
-    Retrieve information about the deployment, including the list of
-    features needed to make predictions on this deployment.
-    """
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
 
@@ -97,13 +113,20 @@ async def get_deployment_info(
     return result
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "template", "data"})
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "template", "data"},
+    description=(
+        "[Deploy—sample prediction rows] Use when the user needs example rows with correct "
+        "column names and types for one deployment (placeholder values only). Read-only. "
+        "Pair with get_deployment_info for semantics; output is meant as a skeleton for "
+        "predict_realtime CSV/JSON, not for batch catalog jobs or project model scoring."
+    ),
+)
 async def generate_prediction_data_template(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
-    n_rows: Annotated[int, "Number of template rows to generate"] = 1,
+    deployment_id: Annotated[str, "MLOps deployment id."],
+    n_rows: Annotated[int, "How many identical-length template rows to generate (≥1)."] = 1,
 ) -> dict[str, Any]:
-    """Generate a template CSV with the correct structure for making predictions."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
     if n_rows is None or n_rows <= 0:
@@ -187,17 +210,34 @@ async def generate_prediction_data_template(
     return structured_content
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "validation", "data"})
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "validation", "data"},
+    description=(
+        "[Deploy—validate CSV only] Use when the user has inline CSV text and wants a schema "
+        "check against one deployment before scoring (columns, basic types, time-series "
+        "datetime and series id columns). Does not score; returns valid/invalid plus "
+        "errors/warnings. Same csv_string shape as predict_realtime dataset when CSV; not for "
+        "catalog dataset_id flows or JSON-only payloads."
+    ),
+)
 async def validate_prediction_data(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
-    csv_string: Annotated[str, "CSV data as a string (same format as predict_realtime dataset)."],
+    deployment_id: Annotated[str, "MLOps deployment id."],
+    csv_string: Annotated[
+        str, "Single CSV document (header + rows), same shape as predict_realtime dataset."
+    ],
 ) -> dict[str, Any]:
-    """Validate whether inline CSV data is suitable for making predictions with a deployment."""
     if not csv_string or not csv_string.strip():
         raise ToolError("Argument validation error: 'csv_string' cannot be empty.")
 
-    df = pl.read_csv(io.StringIO(csv_string))
+    df = pl.read_csv(io.StringIO(csv_string.strip()))
+    # LLMs often paste CSV with indented headers; align names to deployment features.
+    df = df.rename({c: c.strip() for c in df.columns})
+    if df.height > 0 and df.width > 0:
+        row_nonempty = pl.any_horizontal(
+            [pl.col(c).cast(pl.Utf8).fill_null("").str.strip_chars() != "" for c in df.columns]
+        )
+        df = df.filter(row_nonempty)
 
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
@@ -222,10 +262,10 @@ async def validate_prediction_data(
 
         # Check if feature exists
         if feature_name not in data_columns:
-            if feature.get("importance", 0) > importance_threshold:
+            imp_val = _feature_importance_value(feature)
+            if imp_val > importance_threshold:
                 validation_report["warnings"].append(
-                    f"Missing important feature: {feature_name} (importance: "
-                    f"{feature.get('importance', 0):.2f})"
+                    f"Missing important feature: {feature_name} (importance: {imp_val:.2f})"
                 )
             else:
                 validation_report["warnings"].append(
@@ -311,12 +351,19 @@ async def validate_prediction_data(
     return validation_report
 
 
-@tool_metadata(tags={"predictive", "deployment", "read", "features", "info"})
+@tool_metadata(
+    tags={"predictive", "deployment", "read", "features", "info"},
+    description=(
+        "[Deploy—features slice] Use when you only need feature list, target summary, and "
+        "optional time_series_config for a deployment without the full scoring contract "
+        "narrative. Read-only; subset of get_deployment_info (which remains the default first "
+        "call for predict_realtime prep)."
+    ),
+)
 async def get_deployment_features(
     *,
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment"],
+    deployment_id: Annotated[str, "MLOps deployment id."],
 ) -> dict[str, Any]:
-    """Retrieve only the features list for a deployment, as JSON string."""
     if not deployment_id:
         raise ToolError("Deployment ID must be provided")
 

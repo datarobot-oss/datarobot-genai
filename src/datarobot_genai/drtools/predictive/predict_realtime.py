@@ -41,18 +41,21 @@ def _parse_datetime(value: str) -> datetime:
         return dateutil_parser.parse(str(value))
 
 
-@tool_metadata(tags={"predictive", "prediction", "realtime", "read", "scoring"})
+@tool_metadata(
+    tags={"predictive", "prediction", "realtime", "read", "scoring"},
+    description=(
+        "[Predict—deployment + catalog, synchronous rows] Use when the user already has an AI "
+        "Catalog dataset_id and wants realtime-style scoring through a deployment with rows "
+        "returned in one response (moderate size). Not for pasted inline CSV/JSON "
+        "(predict_realtime), not for async batch CSV download (predict_by_ai_catalog), not "
+        "project-partition batch (predict_from_project_data)."
+    ),
+)
 async def predict_by_ai_catalog_rt(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
-    dataset_id: Annotated[str, "ID of an AI Catalog item to use as input data"],
-    timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
+    deployment_id: Annotated[str, "MLOps deployment id."],
+    dataset_id: Annotated[str, "AI Catalog dataset id (tabular)."],
+    timeout: Annotated[int, "Client wait cap in seconds."] | None = 600,
 ) -> dict[str, Any]:
-    """
-    Make real-time predictions using a DataRobot deployment and an AI Catalog dataset using the
-    datarobot-predict library.
-    Use this for fast results when your data is not huge (not gigabytes). Results must fit within
-    the configured inline size limit; otherwise use batch prediction tools for large outputs.
-    """
     if not deployment_id or not deployment_id.strip():
         raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
     if not dataset_id or not dataset_id.strip():
@@ -100,151 +103,118 @@ async def predict_by_ai_catalog_rt(
     return content
 
 
-@tool_metadata(tags={"predictive", "prediction", "realtime", "read", "scoring"})
+@tool_metadata(
+    tags={"predictive", "prediction", "realtime", "read", "scoring"},
+    description=(
+        "[Predict—inline rows now] Use when the user pastes or embeds prediction rows directly "
+        "in the conversation: a CSV snippet (header + rows) or a JSON array of row objects in "
+        "the dataset argument, plus deployment_id. Immediate synchronous scoring; results return "
+        "in the tool response. Do not use for catalog dataset_id only (use "
+        "predict_by_ai_catalog_rt or batch predict_by_ai_catalog), not for project holdout "
+        "batch jobs (predict_from_project_data), and not for leaderboard model scoring jobs "
+        "(score_dataset_with_model). Match feature columns to get_deployment_info. Time series: "
+        "forecast_point or forecast_range_start+end, plus series_id_column if multiseries. "
+        "validate_prediction_data can sanity-check CSV shape first."
+    ),
+)
 async def predict_realtime(
-    deployment_id: Annotated[str, "The ID of the DataRobot deployment to use for prediction"],
+    deployment_id: Annotated[str, "MLOps deployment id."],
     dataset: Annotated[
         str,
-        """CSV or JSON string representing the input data, e.g. "a,b\\na value,b value\\n".
-        For time series with forecast_point, include at least enough historical rows within the
-        feature derivation window.""",
+        (
+            "CSV (header row + data) or JSON array of row objects; columns must match deployment "
+            "inputs."
+        ),
     ],
     forecast_point: Annotated[
         str,
-        """Date to start forecasting from (e.g., '2024-06-01').
-        If provided, triggers time series FORECAST mode. Uses most recent date if None.""",
+        "Time series forecast anchor date (ISO). Omit for non-time-series or use range instead.",
     ]
     | None = None,
     forecast_range_start: Annotated[
         str,
-        """Start date for historical predictions (e.g., '2024-06-01').
-        Must be used with forecast_range_end for HISTORICAL mode.""",
+        "Time series historical window start (ISO); pair with forecast_range_end.",
     ]
     | None = None,
     forecast_range_end: Annotated[
         str,
-        """End date for historical predictions (e.g., '2024-06-07').
-        Must be used with forecast_range_start for HISTORICAL mode.""",
+        "Time series historical window end (ISO); pair with forecast_range_start.",
     ]
     | None = None,
     series_id_column: Annotated[
         str,
-        """Column name identifying different series (e.g., 'store_id', 'region').
-        Must exist in the input data.""",
+        "Multiseries: existing column that identifies each series (e.g. store_id).",
     ]
     | None = None,
     max_explanations: Annotated[
         int,
-        """Number of prediction explanations to return per prediction.
-        - 0: No explanations (default)
-        - Positive integer: Specific number of explanations
-        - 'all': All available explanations (SHAP only)
-        Note: For SHAP, 0 means all explanations; for XEMP, 0 means none.""",
+        "Explanation count: 0 none; >0 cap; some deployments treat 0 as 'all' for SHAP—see docs.",
     ]
     | None = 0,
     max_ngram_explanations: Annotated[
         int,
-        """Maximum number of text explanations per prediction.
-        Recommended: 'all' for text models. None disables text explanations.""",
+        "Text model: max text-segment explanations per row; omit to skip.",
     ]
     | None = None,
     threshold_high: Annotated[
         float,
-        """Only compute explanations for predictions above this threshold (0.0-1.0).
-        Useful for focusing explanations on high-confidence predictions.""",
+        "If set with explanations: only explain rows with prediction probability above this (0–1).",
     ]
     | None = None,
     threshold_low: Annotated[
         float,
-        """Only compute explanations for predictions below this threshold (0.0-1.0).
-        Useful for focusing explanations on low-confidence predictions.""",
+        "If set with explanations: only explain rows with prediction probability below this (0–1).",
     ]
     | None = None,
     passthrough_columns: Annotated[
         str,
-        """Input columns to include in output alongside predictions.
-        - 'all': Include all input columns
-        - 'column1,column2': Comma-separated list of specific columns
-        - None: No passthrough columns (default)""",
+        "'all' or comma-separated input column names to copy through to the output.",
     ]
     | None = None,
     explanation_algorithm: Annotated[
         str,
-        """Algorithm for computing explanations.
-        - 'shap': SHAP explanations (default for most models)
-        - 'xemp': XEMP explanations (faster, less accurate)
-        - None: Use deployment default""",
+        "Optional 'shap' or 'xemp'; omit to use deployment default.",
     ]
     | None = None,
     prediction_endpoint: Annotated[
         str,
-        """Override the prediction server endpoint URL.
-        Useful for custom prediction servers or Portable Prediction Server.""",
+        "Rare: override default prediction HTTP endpoint (e.g. dedicated inference host).",
     ]
     | None = None,
-    timeout: Annotated[int, "Timeout in seconds for the prediction job"] | None = 600,
+    timeout: Annotated[int, "Client wait cap in seconds."] | None = 600,
 ) -> dict[str, Any]:
-    r"""
-    Make real-time predictions using a DataRobot deployment and inline CSV or JSON data.
-
-    This is the unified prediction function that supports:
-    - Regular classification/regression predictions
-    - Time series forecasting with advanced parameters
-    - Prediction explanations (SHAP/XEMP)
-    - Text explanations for NLP models
-    - Custom thresholds and passthrough columns
-
-    For regular predictions: provide deployment_id and dataset (CSV or JSON string).
-    For time series: add forecast_point OR forecast_range_start/end.
-    For explanations: set max_explanations > 0 and optionally explanation_algorithm.
-    For text models: use max_ngram_explanations for text feature explanations.
-
-    When using this tool, always consider feature importance. For features with high importance,
-    try to infer or ask for a reasonable value, using frequent values or domain knowledge if
-    available.
-    For less important features, you may leave them blank.
-
-    Examples
-    --------
-        # Regular binary classification (CSV string)
-        predict_realtime(deployment_id="abc123", dataset="f1,f2\\n0,1\\n1,0")
-
-        # With SHAP explanations
-        predict_realtime(deployment_id="abc123", dataset="...",
-                        max_explanations=10, explanation_algorithm="shap")
-
-        # Time series forecasting
-        predict_realtime(deployment_id="abc123", dataset="...",
-                        forecast_point="2024-06-01")
-
-        # Multiseries time series
-        predict_realtime(deployment_id="abc123", dataset="...",
-                        forecast_point="2024-06-01", series_id_column="store_id")
-
-        # Historical time series predictions
-        predict_realtime(deployment_id="abc123", dataset="...",
-                        forecast_range_start="2024-06-01",
-                        forecast_range_end="2024-06-07")
-
-        # Text model with explanations and passthrough
-        predict_realtime(deployment_id="abc123", dataset="...",
-                        max_explanations="all", max_ngram_explanations="all",
-                        passthrough_columns="document_id,customer_id")
-    """
     if not deployment_id or not deployment_id.strip():
         raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
-    if not dataset or not dataset.strip():
+    ds = dataset.strip()
+    if not ds:
         raise ToolError("Argument validation error: 'dataset' cannot be empty.")
 
-    # Load input data from dataset string (CSV or JSON)
-    try:
-        pl_df = pl.read_csv(io.StringIO(dataset))
-    except Exception:
+    # JSON array of row objects must not go through read_csv first — Polars can "parse" a
+    # leading '[' as CSV and yield empty or wrong frames, which then produce API errors like
+    # "no data to predict on".
+    pl_df: pl.DataFrame
+    if ds.startswith("["):
         try:
-            data = json.loads(dataset)
-            pl_df = pl.DataFrame(data)
-        except Exception as e:
-            raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}") from e
+            data = json.loads(ds)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Could not parse dataset string as JSON: {e}") from e
+        if not isinstance(data, list):
+            raise ValueError("JSON dataset must be an array of row objects.")
+        pl_df = pl.DataFrame(data)
+    else:
+        try:
+            pl_df = pl.read_csv(io.StringIO(ds))
+        except Exception:
+            try:
+                parsed = json.loads(ds)
+                if isinstance(parsed, list):
+                    pl_df = pl.DataFrame(parsed)
+                elif isinstance(parsed, dict):
+                    pl_df = pl.DataFrame([parsed])
+                else:
+                    raise ValueError("JSON dataset must be an array or object.")
+            except Exception as e:
+                raise ValueError(f"Could not parse dataset string as CSV or JSON: {e}") from e
 
     # Normalize column names: strip leading/trailing whitespace
     pl_df = pl_df.rename({c: c.strip() for c in pl_df.columns})
