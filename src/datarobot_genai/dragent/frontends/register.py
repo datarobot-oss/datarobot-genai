@@ -52,9 +52,9 @@ class DRAgentA2AConfig(BaseModel):
         default=None,
         description=(
             "Configuration for agent authorization using Token Exchange (RFC 8693). "
-            "If provided, the token_url, audience, and scopes will be used to perform a "
-            "token exchange, allowing the client to dynamically obtain a scoped JWT during "
-            "the second phase of authentication."
+            "If provided, `token_url` and `scopes` populate OpenAPI security schemes; "
+            "`passport_requirement` and `exchange_payload` describe the two-step flow "
+            "(ID-JAG passport, then Okta token exchange) in the agent card extension."
         ),
     )
     skills: list[AgentSkill] = Field(
