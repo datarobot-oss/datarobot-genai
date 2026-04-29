@@ -97,6 +97,17 @@ def set_context_user_id() -> None:
     ContextState.get().user_id.set("integration-test-user")
 
 
+@pytest.fixture(autouse=True)
+def set_datarobot_api_token_for_agent_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide a DataRobot API token for respx tests.
+
+    ``DataRobotAPIKeyAuthProvider`` does not implement ``A2ADiscoveryAuthMixin``,
+    so ``_resolve_agent_card`` falls back to calling ``authenticate()``, which
+    reads ``DATAROBOT_API_TOKEN`` from the environment.
+    """
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "integration-test-token")
+
+
 @pytest.fixture
 def mock_a2a_endpoints():
     """Intercept httpx calls with respx so no real A2A agent is needed.

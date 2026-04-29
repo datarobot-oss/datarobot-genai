@@ -23,6 +23,7 @@ from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
+from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
@@ -74,6 +75,21 @@ def bearer_auth_provider():
 
 
 @pytest.fixture
+def mixin_auth_provider():
+    """Auth provider that implements A2ADiscoveryAuthMixin."""
+
+    class _MockDiscoveryProvider(A2ADiscoveryAuthMixin):
+        authenticate_for_discovery = AsyncMock(
+            return_value={"Authorization": "Bearer discovery_token"}
+        )
+        authenticate = AsyncMock(
+            return_value=AuthResult(credentials=[BearerTokenCred(token="call_token")])
+        )
+
+    return _MockDiscoveryProvider()
+
+
+@pytest.fixture
 def patched_base_client_env():
     """Patch httpx, ClientFactory, and Context for _AuthenticatedA2ABaseClient tests."""
     with (
@@ -84,14 +100,12 @@ def patched_base_client_env():
         mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
         mock_factory.return_value.create.return_value = MagicMock(aclose=AsyncMock())
         mock_ctx.get.return_value.user_id = "test-user"
-        yield mock_httpx
+        yield mock_httpx, mock_factory
 
 
 @pytest.fixture
 def patched_fg_env():
-    """Patch Context, _AuthenticatedA2ABaseClient,
-    and _register_functions for function group tests.
-    """
+    """Patch Context, _AuthenticatedA2ABaseClient, and _register_functions."""
     with (
         patch(f"{_MODULE}.Context") as mock_ctx,
         patch(f"{_MODULE}._AuthenticatedA2ABaseClient") as mock_cls,
@@ -120,6 +134,21 @@ class TestExtractAuthHeaders:
 
 
 # ---------------------------------------------------------------------------
+# Tests: A2ADiscoveryAuthMixin
+# ---------------------------------------------------------------------------
+
+
+class TestA2ADiscoveryAuthMixin:
+    def test_is_abstract(self):
+        """A2ADiscoveryAuthMixin cannot be instantiated without implementing the abstract method."""
+        with pytest.raises(TypeError):
+            A2ADiscoveryAuthMixin()  # type: ignore[abstract]
+
+    def test_concrete_subclass_is_recognised(self, mixin_auth_provider):
+        assert isinstance(mixin_auth_provider, A2ADiscoveryAuthMixin)
+
+
+# ---------------------------------------------------------------------------
 # Tests: AuthenticatedA2AClientConfig
 # ---------------------------------------------------------------------------
 
@@ -130,25 +159,101 @@ class TestAuthenticatedA2AClientConfig:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _AuthenticatedA2ABaseClient
+# Tests: _AuthenticatedA2ABaseClient — _resolve_agent_card dispatch
 # ---------------------------------------------------------------------------
 
 
-class TestAuthenticatedA2ABaseClient:
-    async def test_injects_bearer_headers(self, bearer_auth_provider, patched_base_client_env):
+class TestAuthenticatedA2ABaseClientResolveCard:
+    """Unit-tests for the three-branch discovery-auth dispatch in _resolve_agent_card."""
+
+    @pytest.fixture
+    def patched_resolver_env(self):
+        """Patch A2ACardResolver and Context; yield (mock_resolver_cls, mock_ctx)."""
+        with (
+            patch(f"{_MODULE}.A2ACardResolver") as mock_resolver_cls,
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(f"{_MODULE}.httpx") as mock_httpx,
+        ):
+            mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
+            mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_httpx.Timeout = MagicMock()
+            mock_resolver_cls.return_value.get_agent_card = AsyncMock(return_value=MagicMock())
+            mock_ctx.get.return_value.user_id = "test-user"
+            yield mock_resolver_cls, mock_ctx, mock_httpx
+
+    async def test_no_provider_unauthenticated(self, patched_resolver_env):
+        """When no auth_provider is set, card is fetched with empty headers."""
+        _, _, mock_httpx = patched_resolver_env
+        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
+        await client._resolve_agent_card()
+        _, httpx_kwargs = mock_httpx.AsyncClient.call_args
+        assert httpx_kwargs.get("headers", {}) == {}
+
+    async def test_plain_provider_calls_authenticate(
+        self, patched_resolver_env, bearer_auth_provider
+    ):
+        """Provider without mixin → authenticate() called, headers extracted."""
+        _, _, mock_httpx = patched_resolver_env
+        client = _AuthenticatedA2ABaseClient(
+            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+        )
+        await client._resolve_agent_card()
+        bearer_auth_provider.authenticate.assert_awaited_once()
+        _, httpx_kwargs = mock_httpx.AsyncClient.call_args
+        assert httpx_kwargs["headers"]["Authorization"] == "Bearer test_token"
+
+    async def test_mixin_provider_calls_authenticate_for_discovery(
+        self, patched_resolver_env, mixin_auth_provider
+    ):
+        """Provider with mixin → authenticate_for_discovery() called; authenticate() NOT called."""
+        _, _, mock_httpx = patched_resolver_env
+        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=mixin_auth_provider)
+        await client._resolve_agent_card()
+        mixin_auth_provider.authenticate_for_discovery.assert_awaited_once()
+        mixin_auth_provider.authenticate.assert_not_awaited()
+        _, httpx_kwargs = mock_httpx.AsyncClient.call_args
+        assert httpx_kwargs["headers"]["Authorization"] == "Bearer discovery_token"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _AuthenticatedA2ABaseClient — __aenter__ (call phase)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2ABaseClientCallPhase:
+    async def test_call_auth_uses_auth_interceptor(
+        self, bearer_auth_provider, patched_base_client_env
+    ):
+        """When auth_provider is set, AuthInterceptor is added for RPC calls."""
+        mock_httpx, mock_factory = patched_base_client_env
         client = _AuthenticatedA2ABaseClient(
             base_url=_AGENT_URL, auth_provider=bearer_auth_provider
         )
         with _skip_agent_card_resolution(client):
             async with client:
-                _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
-                assert httpx_kwargs["headers"]["Authorization"] == "Bearer test_token"
+                create_kw = mock_factory.return_value.create.call_args.kwargs
+                assert len(create_kw["interceptors"]) == 1
 
-    async def test_no_auth_uses_empty_headers(self, patched_base_client_env):
+    async def test_no_auth_empty_interceptors(self, patched_base_client_env):
+        """When no auth_provider, no interceptors are added."""
+        mock_httpx, mock_factory = patched_base_client_env
         client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
         with _skip_agent_card_resolution(client):
             async with client:
-                _, httpx_kwargs = patched_base_client_env.AsyncClient.call_args
+                create_kw = mock_factory.return_value.create.call_args.kwargs
+                assert create_kw.get("interceptors") == []
+
+    async def test_task_httpx_client_has_no_default_headers(
+        self, bearer_auth_provider, patched_base_client_env
+    ):
+        """The long-lived task httpx client carries no default auth headers."""
+        mock_httpx, _ = patched_base_client_env
+        client = _AuthenticatedA2ABaseClient(
+            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+        )
+        with _skip_agent_card_resolution(client):
+            async with client:
+                _, httpx_kwargs = mock_httpx.AsyncClient.call_args
                 assert httpx_kwargs.get("headers", {}) == {}
 
 
