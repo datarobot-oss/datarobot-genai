@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.15.30"
+version = "0.15.31"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -23,6 +23,7 @@ per_user_tool_calling_agent = "datarobot_genai.dragent.plugins.per_user_tool_cal
 datarobot_llm_providers = "datarobot_genai.nat.datarobot_llm_providers"
 datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
+datarobot_moderation_middleware = "datarobot_genai.nat.datarobot_moderation_middleware"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 
 [project.entry-points.'nat.front_ends']
@@ -46,6 +47,14 @@ override-dependencies = [
   "crewai[litellm]>=1.11.0",
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.3.8,<0.4.0",
+  # datarobot-moderations pins opentelemetry-instrumentation 0.60b1, which needs otel-api 1.39.x;
+  # crewai pins otel-api <1.35. Align the family so `moderation` extra resolves with other extras.
+  "opentelemetry-api>=1.39.0,<2.0.0",
+  "opentelemetry-sdk>=1.39.0,<2.0.0",
+  "opentelemetry-instrumentation>=0.60b1,<0.61",
+  "opentelemetry-exporter-otlp-proto-http>=1.39.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-common>=1.39.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.39.0,<2.0.0",
 ]
 exclude-dependencies = [
   "uv",                       # package manager bundled by crewai; runtime unnecessary

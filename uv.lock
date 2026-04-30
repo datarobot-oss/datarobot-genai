@@ -11,6 +11,12 @@ resolution-markers = [
 overrides = [
     { name = "crewai", extras = ["litellm"], specifier = ">=1.11.0" },
     { name = "litellm", specifier = ">=1.83.0,<2.0.0" },
+    { name = "opentelemetry-api", specifier = ">=1.39.0,<2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.39.0,<2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.0,<2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.39.0,<2.0.0" },
+    { name = "opentelemetry-instrumentation", specifier = ">=0.60b1,<0.61" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.0,<2.0.0" },
     { name = "ragas", specifier = ">=0.3.8,<0.4.0" },
 ]
 excludes = [
@@ -52,6 +58,15 @@ http-server = [
     { name = "fastapi" },
     { name = "sse-starlette" },
     { name = "starlette" },
+]
+
+[[package]]
+name = "absl-py"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/c7/8de93764ad66968d19329a7e0c147a2bb3c7054c554d4a119111b8f9440f/absl_py-2.4.0.tar.gz", hash = "sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4", size = 116543, upload-time = "2026-01-28T10:17:05.322Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/a6/907a406bb7d359e6a63f99c313846d9eec4f7e6f7437809e03aa00fa3074/absl_py-2.4.0-py3-none-any.whl", hash = "sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d", size = 135750, upload-time = "2026-01-28T10:17:04.19Z" },
 ]
 
 [[package]]
@@ -1070,7 +1085,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.30"
+version = "0.15.31"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1246,6 +1261,33 @@ llamaindex = [
 memory = [
     { name = "mem0ai" },
 ]
+moderation = [
+    { name = "ag-ui-protocol" },
+    { name = "anyio" },
+    { name = "colorama" },
+    { name = "datarobot" },
+    { name = "datarobot-early-access" },
+    { name = "datarobot-moderations" },
+    { name = "datarobot-predict" },
+    { name = "fastapi" },
+    { name = "litellm" },
+    { name = "nvidia-nat" },
+    { name = "nvidia-nat-a2a" },
+    { name = "nvidia-nat-langchain" },
+    { name = "nvidia-nat-mcp" },
+    { name = "nvidia-nat-opentelemetry" },
+    { name = "openai" },
+    { name = "opentelemetry-instrumentation-aiohttp-client" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-openai" },
+    { name = "opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "pyarrow" },
+    { name = "pyjwt" },
+    { name = "ragas" },
+    { name = "requests" },
+    { name = "starlette" },
+]
 nat = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
@@ -1293,6 +1335,7 @@ requires-dist = [
     { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'langgraph'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = "==0.1.15" },
+    { name = "ag-ui-protocol", marker = "extra == 'moderation'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = "==0.1.15" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.13.3,<4.0.0" },
@@ -1300,6 +1343,7 @@ requires-dist = [
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
     { name = "anthropic", marker = "extra == 'crewai'", specifier = "~=0.71.0,<1.0.0" },
     { name = "anyio", marker = "extra == 'dragent'", specifier = "==4.11.0" },
+    { name = "anyio", marker = "extra == 'moderation'", specifier = "==4.11.0" },
     { name = "anyio", marker = "extra == 'nat'", specifier = "==4.11.0" },
     { name = "azure-ai-inference", marker = "extra == 'crewai'", specifier = ">=1.0.0b9,<2.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
@@ -1310,6 +1354,7 @@ requires-dist = [
     { name = "colorama", marker = "extra == 'dragent'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'langgraph'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'llamaindex'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "colorama", marker = "extra == 'moderation'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'nat'", specifier = ">=0.4.6,<1.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
@@ -1320,6 +1365,7 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'moderation'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
@@ -1331,7 +1377,9 @@ requires-dist = [
     { name = "datarobot-early-access", marker = "extra == 'drmcp'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
+    { name = "datarobot-early-access", marker = "extra == 'moderation'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
+    { name = "datarobot-moderations", marker = "extra == 'moderation'", specifier = ">=11.2.24,<12" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
@@ -1339,8 +1387,10 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'drtools'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'langgraph'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'llamaindex'", specifier = ">=1.13.2,<2.0.0" },
+    { name = "datarobot-predict", marker = "extra == 'moderation'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
     { name = "fastapi", marker = "extra == 'dragent'", specifier = "<0.133.0" },
+    { name = "fastapi", marker = "extra == 'moderation'", specifier = "<0.133.0" },
     { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.2.0,<4.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
@@ -1351,6 +1401,7 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.83.0,<2.0.0" },
+    { name = "litellm", marker = "extra == 'moderation'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.83.0,<2.0.0" },
     { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
@@ -1360,17 +1411,22 @@ requires-dist = [
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
     { name = "mem0ai", marker = "extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.6.0" },
+    { name = "nvidia-nat", marker = "extra == 'moderation'", specifier = "==1.6.0" },
     { name = "nvidia-nat", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.6.0" },
+    { name = "nvidia-nat-a2a", marker = "extra == 'moderation'", specifier = "==1.6.0" },
     { name = "nvidia-nat-a2a", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.6.0" },
     { name = "nvidia-nat-langchain", marker = "extra == 'dragent'", specifier = "==1.6.0" },
     { name = "nvidia-nat-langchain", marker = "extra == 'langgraph'", specifier = "==1.6.0" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'moderation'", specifier = "==1.6.0" },
     { name = "nvidia-nat-langchain", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-llama-index", marker = "extra == 'llamaindex'", specifier = "==1.6.0" },
     { name = "nvidia-nat-mcp", marker = "extra == 'dragent'", specifier = "==1.6.0" },
+    { name = "nvidia-nat-mcp", marker = "extra == 'moderation'", specifier = "==1.6.0" },
     { name = "nvidia-nat-mcp", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.6.0" },
+    { name = "nvidia-nat-opentelemetry", marker = "extra == 'moderation'", specifier = "==1.6.0" },
     { name = "nvidia-nat-opentelemetry", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "openai", marker = "extra == 'core'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'crewai'", specifier = ">=2.0.0,<3.0.0" },
@@ -1378,6 +1434,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.0.0,<3.0.0" },
+    { name = "openai", marker = "extra == 'moderation'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'nat'", specifier = ">=2.0.0,<3.0.0" },
     { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
@@ -1388,6 +1445,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'drmcp'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
+    { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'moderation'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-crewai", marker = "extra == 'crewai'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'core'", specifier = ">=0.43b0,<1.0.0" },
@@ -1396,6 +1454,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'drmcp'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
+    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'moderation'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-langchain", marker = "extra == 'langgraph'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-llamaindex", marker = "extra == 'llamaindex'", specifier = ">=0.40.5,<1.0.0" },
@@ -1404,6 +1463,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'dragent'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'langgraph'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'llamaindex'", specifier = ">=0.40.5,<1.0.0" },
+    { name = "opentelemetry-instrumentation-openai", marker = "extra == 'moderation'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-openai", marker = "extra == 'nat'", specifier = ">=0.40.5,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'core'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'crewai'", specifier = ">=0.43b0,<1.0.0" },
@@ -1411,12 +1471,14 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'drmcp'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
+    { name = "opentelemetry-instrumentation-requests", marker = "extra == 'moderation'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'core'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'crewai'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'dragent'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'langgraph'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'llamaindex'", specifier = ">=0.43b0,<1.0.0" },
+    { name = "opentelemetry-instrumentation-threading", marker = "extra == 'moderation'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'nat'", specifier = ">=0.43b0,<1.0.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "perplexityai", marker = "extra == 'drmcp'", specifier = ">=0.27,<1.0" },
@@ -1430,6 +1492,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'drtools'", specifier = ">=21.0.0,<22.0.0" },
     { name = "pyarrow", marker = "extra == 'langgraph'", specifier = "==21.0.0" },
     { name = "pyarrow", marker = "extra == 'llamaindex'", specifier = "==21.0.0" },
+    { name = "pyarrow", marker = "extra == 'moderation'", specifier = "==21.0.0" },
     { name = "pyarrow", marker = "extra == 'nat'", specifier = "==21.0.0" },
     { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2,<2.0.0" },
     { name = "pydantic", marker = "extra == 'auth'", specifier = ">=2.6.1,<3.0.0" },
@@ -1442,6 +1505,7 @@ requires-dist = [
     { name = "pyjwt", marker = "extra == 'drmcp'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'langgraph'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'llamaindex'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", marker = "extra == 'moderation'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'nat'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.10.1,<7.0.0" },
     { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.10.1,<7.0.0" },
@@ -1454,6 +1518,7 @@ requires-dist = [
     { name = "ragas", marker = "extra == 'dragent'", specifier = ">=0.3.8,<0.4.0" },
     { name = "ragas", marker = "extra == 'langgraph'", specifier = ">=0.3.8,<0.4.0" },
     { name = "ragas", marker = "extra == 'llamaindex'", specifier = ">=0.3.8,<0.4.0" },
+    { name = "ragas", marker = "extra == 'moderation'", specifier = ">=0.3.8,<0.4.0" },
     { name = "ragas", marker = "extra == 'nat'", specifier = ">=0.3.8,<0.4.0" },
     { name = "requests", marker = "extra == 'core'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'crewai'", specifier = ">=2.32.4,<3.0.0" },
@@ -1461,13 +1526,15 @@ requires-dist = [
     { name = "requests", marker = "extra == 'drmcp'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'langgraph'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'llamaindex'", specifier = ">=2.32.4,<3.0.0" },
+    { name = "requests", marker = "extra == 'moderation'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'nat'", specifier = ">=2.32.4,<3.0.0" },
     { name = "rich", marker = "extra == 'drmcp'", specifier = ">=13.0.0,<16.0.0" },
     { name = "starlette", marker = "extra == 'dragent'", specifier = "<1.0.0" },
+    { name = "starlette", marker = "extra == 'moderation'", specifier = "<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "drmcp", "drtools", "dragent", "memory"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "drmcp", "drtools", "dragent", "moderation", "memory"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1482,6 +1549,30 @@ dev = [
     { name = "respx", specifier = ">=0.22.0" },
     { name = "ruff", specifier = ">=0.6.0" },
     { name = "twine", specifier = ">=5.0.0" },
+]
+
+[[package]]
+name = "datarobot-moderations"
+version = "11.2.27"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "backoff" },
+    { name = "numpy" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-sdk" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "pydantic" },
+    { name = "ragas" },
+    { name = "rouge-score" },
+    { name = "tiktoken" },
+    { name = "trafaret" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/74/0866625be275c5c6465baafc0f4758a25bbad1cbd293178aa87374acf268/datarobot_moderations-11.2.27-py3-none-any.whl", hash = "sha256:b08615319662ea9c922b7807f5c91815006d5611f0c7baf7ef17c7708faf76f5", size = 108343, upload-time = "2026-04-29T18:20:39.424Z" },
 ]
 
 [[package]]
@@ -4165,15 +4256,15 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-api"
-version = "1.34.1"
+version = "1.41.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "importlib-metadata" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/5e/94a8cb759e4e409022229418294e098ca7feca00eb3c467bb20cbd329bda/opentelemetry_api-1.34.1.tar.gz", hash = "sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3", size = 64987, upload-time = "2025-06-10T08:55:19.818Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fa/fc/b7564cbef36601aef0d6c9bc01f7badb64be8e862c2e1c3c5c3b43b53e4f/opentelemetry_api-1.41.1.tar.gz", hash = "sha256:0ad1814d73b875f84494387dae86ce0b12c68556331ce6ce8fe789197c949621", size = 71416, upload-time = "2026-04-24T13:15:38.262Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/3a/2ba85557e8dc024c0842ad22c570418dc02c36cbd1ab4b832a93edf071b8/opentelemetry_api-1.34.1-py3-none-any.whl", hash = "sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c", size = 65767, upload-time = "2025-06-10T08:54:56.717Z" },
+    { url = "https://files.pythonhosted.org/packages/29/59/3e7118ed140f76b0982ba4321bdaed1997a0473f9720de2d10788a577033/opentelemetry_api-1.41.1-py3-none-any.whl", hash = "sha256:a22df900e75c76dc08440710e51f52f1aa6b451b429298896023e60db5b3139f", size = 69007, upload-time = "2026-04-24T13:15:15.662Z" },
 ]
 
 [[package]]
@@ -4191,19 +4282,19 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-common"
-version = "1.34.1"
+version = "1.41.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-proto" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/f0/ff235936ee40db93360233b62da932d4fd9e8d103cd090c6bcb9afaf5f01/opentelemetry_exporter_otlp_proto_common-1.34.1.tar.gz", hash = "sha256:b59a20a927facd5eac06edaf87a07e49f9e4a13db487b7d8a52b37cb87710f8b", size = 20817, upload-time = "2025-06-10T08:55:22.55Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/fa/f9e3bd3c4d692b3ce9a2880a167d1f79681a1bea11f00d5bf76adc03e6ea/opentelemetry_exporter_otlp_proto_common-1.41.1.tar.gz", hash = "sha256:0e253156ea9c36b0bd3d2440c5c9ba7dd1f3fb64ba7a08fc85fbac536b56e1fb", size = 20409, upload-time = "2026-04-24T13:15:40.924Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/e8/8b292a11cc8d8d87ec0c4089ae21b6a58af49ca2e51fa916435bc922fdc7/opentelemetry_exporter_otlp_proto_common-1.34.1-py3-none-any.whl", hash = "sha256:8e2019284bf24d3deebbb6c59c71e6eef3307cd88eff8c633e061abba33f7e87", size = 18834, upload-time = "2025-06-10T08:55:00.806Z" },
+    { url = "https://files.pythonhosted.org/packages/29/48/bce76d3ea772b609757e9bc844e02ab408a6446609bf74fb562062ba6b71/opentelemetry_exporter_otlp_proto_common-1.41.1-py3-none-any.whl", hash = "sha256:10da74dad6a49344b9b7b21b6182e3060373a235fde1528616d5f01f92e66aa9", size = 18366, upload-time = "2026-04-24T13:15:18.917Z" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-grpc"
-version = "1.34.1"
+version = "1.41.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -4214,14 +4305,14 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/41/f7/bb63837a3edb9ca857aaf5760796874e7cecddc88a2571b0992865a48fb6/opentelemetry_exporter_otlp_proto_grpc-1.34.1.tar.gz", hash = "sha256:7c841b90caa3aafcfc4fee58487a6c71743c34c6dc1787089d8b0578bbd794dd", size = 22566, upload-time = "2025-06-10T08:55:23.214Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/9b/e4503060b8695579dbaad187dc8cef4554188de68748c88060599b77489e/opentelemetry_exporter_otlp_proto_grpc-1.41.1.tar.gz", hash = "sha256:b05df8fa1333dc9a3fda36b676b96b5095ab6016d3f0c3296d430d629ba1443b", size = 25755, upload-time = "2026-04-24T13:15:41.93Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/42/0a4dd47e7ef54edf670c81fc06a83d68ea42727b82126a1df9dd0477695d/opentelemetry_exporter_otlp_proto_grpc-1.34.1-py3-none-any.whl", hash = "sha256:04bb8b732b02295be79f8a86a4ad28fae3d4ddb07307a98c7aa6f331de18cca6", size = 18615, upload-time = "2025-06-10T08:55:02.214Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/f2/c54f33c92443d087703e57e52e55f22f111373a5c4c4aa349ea60efe512e/opentelemetry_exporter_otlp_proto_grpc-1.41.1-py3-none-any.whl", hash = "sha256:537926dcef951136992479af1d9cd88f25e33d56c530e9f020ed57774dca2f94", size = 20297, upload-time = "2026-04-24T13:15:20.212Z" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-http"
-version = "1.34.1"
+version = "1.41.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -4232,14 +4323,14 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/8f/954bc725961cbe425a749d55c0ba1df46832a5999eae764d1a7349ac1c29/opentelemetry_exporter_otlp_proto_http-1.34.1.tar.gz", hash = "sha256:aaac36fdce46a8191e604dcf632e1f9380c7d5b356b27b3e0edb5610d9be28ad", size = 15351, upload-time = "2025-06-10T08:55:24.657Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/5b/9d3c7f70cca10136ba82a81e738dee626c8e7fc61c6887ea9a58bf34c606/opentelemetry_exporter_otlp_proto_http-1.41.1.tar.gz", hash = "sha256:4747a9604c8550ab38c6fd6180e2fcb80de3267060bef2c306bad3cb443302bc", size = 24139, upload-time = "2026-04-24T13:15:42.977Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/54/b05251c04e30c1ac70cf4a7c5653c085dfcf2c8b98af71661d6a252adc39/opentelemetry_exporter_otlp_proto_http-1.34.1-py3-none-any.whl", hash = "sha256:5251f00ca85872ce50d871f6d3cc89fe203b94c3c14c964bbdc3883366c705d8", size = 17744, upload-time = "2025-06-10T08:55:03.802Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/4d/ef07ff2fc630849f2080ae0ae73a61f67257905b7ac79066640bfa0c5739/opentelemetry_exporter_otlp_proto_http-1.41.1-py3-none-any.whl", hash = "sha256:1a21e8f49c7a946d935551e90947d6c3eb39236723c6624401da0f33d68edcb4", size = 22673, upload-time = "2026-04-24T13:15:21.313Z" },
 ]
 
 [[package]]
 name = "opentelemetry-instrumentation"
-version = "0.55b1"
+version = "0.60b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -4247,14 +4338,14 @@ dependencies = [
     { name = "packaging" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/69/d8995f229ddf4d98b9c85dd126aeca03dd1742f6dc5d3bc0d2f6dae1535c/opentelemetry_instrumentation-0.55b1.tar.gz", hash = "sha256:2dc50aa207b9bfa16f70a1a0571e011e737a9917408934675b89ef4d5718c87b", size = 28552, upload-time = "2025-06-10T08:58:15.312Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/0f/7e6b713ac117c1f5e4e3300748af699b9902a2e5e34c9cf443dde25a01fa/opentelemetry_instrumentation-0.60b1.tar.gz", hash = "sha256:57ddc7974c6eb35865af0426d1a17132b88b2ed8586897fee187fd5b8944bd6a", size = 31706, upload-time = "2025-12-11T13:36:42.515Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/7d/8ddfda1506c2fcca137924d5688ccabffa1aed9ec0955b7d0772de02cec3/opentelemetry_instrumentation-0.55b1-py3-none-any.whl", hash = "sha256:cbb1496b42bc394e01bc63701b10e69094e8564e281de063e4328d122cc7a97e", size = 31108, upload-time = "2025-06-10T08:57:14.355Z" },
+    { url = "https://files.pythonhosted.org/packages/77/d2/6788e83c5c86a2690101681aeef27eeb2a6bf22df52d3f263a22cee20915/opentelemetry_instrumentation-0.60b1-py3-none-any.whl", hash = "sha256:04480db952b48fb1ed0073f822f0ee26012b7be7c3eac1a3793122737c78632d", size = 33096, upload-time = "2025-12-11T13:35:33.067Z" },
 ]
 
 [[package]]
 name = "opentelemetry-instrumentation-aiohttp-client"
-version = "0.55b1"
+version = "0.60b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -4263,9 +4354,9 @@ dependencies = [
     { name = "opentelemetry-util-http" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ad/91/ec37663100b39af0ab1548db57e8703adad50fe7383d0a6ed7459c4d6d08/opentelemetry_instrumentation_aiohttp_client-0.55b1.tar.gz", hash = "sha256:d1f21eb41fac54a5ece4592e82921cb1ec97ad04d714e073a4dac2dad3b5af5c", size = 15013, upload-time = "2025-06-10T08:58:16.529Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/79/95be90c555fd7efde79dcba36ea5c668815aa2d0a4250b63687e0f91c74a/opentelemetry_instrumentation_aiohttp_client-0.60b1.tar.gz", hash = "sha256:d0e7d5aa057791ca4d9090b0d3c9982f253c1a24b6bc78a734fc18d8dd97927b", size = 15907, upload-time = "2025-12-11T13:36:44.434Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/20/a65ca5591507eb4bafebe90e0dd0368669ca25c9f49f577cabc42d3bcc72/opentelemetry_instrumentation_aiohttp_client-0.55b1-py3-none-any.whl", hash = "sha256:d2b3300b50362561b90a92d768c3599e7b1110fa2b5977ea193cb46260699753", size = 12378, upload-time = "2025-06-10T08:57:16.631Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/f4/1a1ec632c86269750ae833c8fbdd4c8d15316eb1c21e3544e34791c805ee/opentelemetry_instrumentation_aiohttp_client-0.60b1-py3-none-any.whl", hash = "sha256:34c5097256a30b16c5a2a88a409ed82b92972a494c43212c85632d204a78c2a1", size = 12694, upload-time = "2025-12-11T13:35:35.034Z" },
 ]
 
 [[package]]
@@ -4285,7 +4376,7 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-instrumentation-httpx"
-version = "0.55b1"
+version = "0.60b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -4294,9 +4385,9 @@ dependencies = [
     { name = "opentelemetry-util-http" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/42/7d/3fe981e7ee6655406aef2ff391a8192c1d3934f5990603af4ce1a8689a8e/opentelemetry_instrumentation_httpx-0.55b1.tar.gz", hash = "sha256:3121a9196a25a72b65cb16188a1b09f61e365694c75534b306d09088e5f90041", size = 19268, upload-time = "2025-06-10T08:58:31.31Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/08/11208bcfcab4fc2023252c3f322aa397fd9ad948355fea60f5fc98648603/opentelemetry_instrumentation_httpx-0.60b1.tar.gz", hash = "sha256:a506ebaf28c60112cbe70ad4f0338f8603f148938cb7b6794ce1051cd2b270ae", size = 20611, upload-time = "2025-12-11T13:37:01.661Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/70/a4bd4b7b5c601573975e33e276b0c2eb7635ae4d752359d49b68a8547414/opentelemetry_instrumentation_httpx-0.55b1-py3-none-any.whl", hash = "sha256:5fe22fcc3ad78a1da85cbd5d35d6acfb208521c164ad1dd75594230a266c6811", size = 15124, upload-time = "2025-06-10T08:57:43.062Z" },
+    { url = "https://files.pythonhosted.org/packages/43/59/b98e84eebf745ffc75397eaad4763795bff8a30cbf2373a50ed4e70646c5/opentelemetry_instrumentation_httpx-0.60b1-py3-none-any.whl", hash = "sha256:f37636dd742ad2af83d896ba69601ed28da51fa4e25d1ab62fde89ce413e275b", size = 15701, upload-time = "2025-12-11T13:36:04.56Z" },
 ]
 
 [[package]]
@@ -4347,7 +4438,7 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-instrumentation-requests"
-version = "0.55b1"
+version = "0.60b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -4355,9 +4446,9 @@ dependencies = [
     { name = "opentelemetry-semantic-conventions" },
     { name = "opentelemetry-util-http" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/0c/8300ceffd0a41e69590f20ff4854f5c0b2ed5e9453c21c1d710746377cd2/opentelemetry_instrumentation_requests-0.55b1.tar.gz", hash = "sha256:3a04ae7bc90af08acef074b369275cf77c60533b319fa91cad76a380fd035c83", size = 14778, upload-time = "2025-06-10T08:58:42.958Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/4a/bb9d47d7424fc33aeba75275256ae6e6031f44b6a9a3f778d611c0c3ac27/opentelemetry_instrumentation_requests-0.60b1.tar.gz", hash = "sha256:9a1063c16c44a3ba6e81870c4fa42a0fac3ecef5a4d60a11d0976eec9046f3d4", size = 16366, upload-time = "2025-12-11T13:37:12.456Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/31/9643d13bb78e07038c96e264a9e75cde93ecde50ff2b0cac7597613074d7/opentelemetry_instrumentation_requests-0.55b1-py3-none-any.whl", hash = "sha256:c9ba0a67850b49aa965e760e87e4b68e52530e5373a0b3c15d290a8997136619", size = 12973, upload-time = "2025-06-10T08:57:58.132Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/7f/969b59a5acccb4c35317421843d63d7853ad7a18078ca3a9b80c248be448/opentelemetry_instrumentation_requests-0.60b1-py3-none-any.whl", hash = "sha256:eec9fac3fab84737f663a2e08b12cb095b4bd67643b24587a8ecfa3cf4d0ca4c", size = 13141, upload-time = "2025-12-11T13:36:23.696Z" },
 ]
 
 [[package]]
@@ -4376,41 +4467,41 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-proto"
-version = "1.34.1"
+version = "1.41.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/b3/c3158dd012463bb7c0eb7304a85a6f63baeeb5b4c93a53845cf89f848c7e/opentelemetry_proto-1.34.1.tar.gz", hash = "sha256:16286214e405c211fc774187f3e4bbb1351290b8dfb88e8948af209ce85b719e", size = 34344, upload-time = "2025-06-10T08:55:32.25Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/99/e8/633c6d8a9c8840338b105907e55c32d3da1983abab5e52f899f72a82c3d1/opentelemetry_proto-1.41.1.tar.gz", hash = "sha256:4b9d2eb631237ea43b80e16c073af438554e32bc7e9e3f8ca4a9582f900020e5", size = 45670, upload-time = "2026-04-24T13:15:49.768Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/ab/4591bfa54e946350ce8b3f28e5c658fe9785e7cd11e9c11b1671a867822b/opentelemetry_proto-1.34.1-py3-none-any.whl", hash = "sha256:eb4bb5ac27f2562df2d6857fc557b3a481b5e298bc04f94cc68041f00cebcbd2", size = 55692, upload-time = "2025-06-10T08:55:14.904Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/1e/5cd77035e3e82070e2265a63a760f715aacd3cb16dddc7efee913f297fcc/opentelemetry_proto-1.41.1-py3-none-any.whl", hash = "sha256:0496713b804d127a4147e32849fbaf5683fac8ee98550e8e7679cd706c289720", size = 72076, upload-time = "2026-04-24T13:15:32.542Z" },
 ]
 
 [[package]]
 name = "opentelemetry-sdk"
-version = "1.34.1"
+version = "1.39.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/41/fe20f9036433da8e0fcef568984da4c1d1c771fa072ecd1a4d98779dccdd/opentelemetry_sdk-1.34.1.tar.gz", hash = "sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d", size = 159441, upload-time = "2025-06-10T08:55:33.028Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/eb/fb/c76080c9ba07e1e8235d24cdcc4d125ef7aa3edf23eb4e497c2e50889adc/opentelemetry_sdk-1.39.1.tar.gz", hash = "sha256:cf4d4563caf7bff906c9f7967e2be22d0d6b349b908be0d90fb21c8e9c995cc6", size = 171460, upload-time = "2025-12-11T13:32:49.369Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/1b/def4fe6aa73f483cabf4c748f4c25070d5f7604dcc8b52e962983491b29e/opentelemetry_sdk-1.34.1-py3-none-any.whl", hash = "sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e", size = 118477, upload-time = "2025-06-10T08:55:16.02Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/98/e91cf858f203d86f4eccdf763dcf01cf03f1dae80c3750f7e635bfa206b6/opentelemetry_sdk-1.39.1-py3-none-any.whl", hash = "sha256:4d5482c478513ecb0a5d938dcc61394e647066e0cc2676bee9f3af3f3f45f01c", size = 132565, upload-time = "2025-12-11T13:32:35.069Z" },
 ]
 
 [[package]]
 name = "opentelemetry-semantic-conventions"
-version = "0.55b1"
+version = "0.60b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/f0/f33458486da911f47c4aa6db9bda308bb80f3236c111bf848bd870c16b16/opentelemetry_semantic_conventions-0.55b1.tar.gz", hash = "sha256:ef95b1f009159c28d7a7849f5cbc71c4c34c845bb514d66adfdf1b3fff3598b3", size = 119829, upload-time = "2025-06-10T08:55:33.881Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/df/553f93ed38bf22f4b999d9be9c185adb558982214f33eae539d3b5cd0858/opentelemetry_semantic_conventions-0.60b1.tar.gz", hash = "sha256:87c228b5a0669b748c76d76df6c364c369c28f1c465e50f661e39737e84bc953", size = 137935, upload-time = "2025-12-11T13:32:50.487Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/89/267b0af1b1d0ba828f0e60642b6a5116ac1fd917cde7fc02821627029bd1/opentelemetry_semantic_conventions-0.55b1-py3-none-any.whl", hash = "sha256:5da81dfdf7d52e3d37f8fe88d5e771e191de924cfff5f550ab0b8f7b2409baed", size = 196223, upload-time = "2025-06-10T08:55:17.638Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/5e/5958555e09635d09b75de3c4f8b9cae7335ca545d77392ffe7331534c402/opentelemetry_semantic_conventions-0.60b1-py3-none-any.whl", hash = "sha256:9fa8c8b0c110da289809292b0591220d3a7b53c1526a23021e977d68597893fb", size = 219982, upload-time = "2025-12-11T13:32:36.955Z" },
 ]
 
 [[package]]
@@ -4424,11 +4515,11 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-util-http"
-version = "0.55b1"
+version = "0.60b1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/12/f7/3cc23b95921177cdda6d61d3475659b86bac335ed02dd19f994a850ceee3/opentelemetry_util_http-0.55b1.tar.gz", hash = "sha256:29e119c1f6796cccf5fc2aedb55274435cde5976d0ac3fec3ca20a80118f821e", size = 8038, upload-time = "2025-06-10T08:58:53.414Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/fc/c47bb04a1d8a941a4061307e1eddfa331ed4d0ab13d8a9781e6db256940a/opentelemetry_util_http-0.60b1.tar.gz", hash = "sha256:0d97152ca8c8a41ced7172d29d3622a219317f74ae6bb3027cfbdcf22c3cc0d6", size = 11053, upload-time = "2025-12-11T13:37:25.115Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/0a/49c5464efc0e6f6aa94a9ec054879efe2a59d7c1f6aacc500665b3d8afdc/opentelemetry_util_http-0.55b1-py3-none-any.whl", hash = "sha256:e134218df8ff010e111466650e5f019496b29c3b4f1b7de0e8ff8ebeafeebdf4", size = 7299, upload-time = "2025-06-10T08:58:11.785Z" },
+    { url = "https://files.pythonhosted.org/packages/16/5c/d3f1733665f7cd582ef0842fb1d2ed0bc1fba10875160593342d22bba375/opentelemetry_util_http-0.60b1-py3-none-any.whl", hash = "sha256:66381ba28550c91bee14dcba8979ace443444af1ed609226634596b4b0faf199", size = 8947, upload-time = "2025-12-11T13:36:37.151Z" },
 ]
 
 [[package]]
@@ -5770,6 +5861,18 @@ sdist = { url = "https://files.pythonhosted.org/packages/bc/6d/a506aaa4a9eaa945e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/13/2f/b4530fbf948867702d0a3f27de4a6aab1d156f406d72852ab902c4d04de9/rich_rst-1.3.2-py3-none-any.whl", hash = "sha256:a99b4907cbe118cf9d18b0b44de272efa61f15117c61e39ebdc431baf5df722a", size = 12567, upload-time = "2025-10-14T16:49:42.953Z" },
 ]
+
+[[package]]
+name = "rouge-score"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "absl-py" },
+    { name = "nltk" },
+    { name = "numpy" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e2/c5/9136736c37022a6ad27fea38f3111eb8f02fe75d067f9a985cc358653102/rouge_score-0.1.2.tar.gz", hash = "sha256:c7d4da2683e68c9abf0135ef915d63a46643666f848e558a1b9f7ead17ff0f04", size = 17400, upload-time = "2022-07-22T22:46:22.909Z" }
 
 [[package]]
 name = "rpds-py"
