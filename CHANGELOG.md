@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-
 ## 0.15.30
 - Implemented pagination for predictive data MCP tools
+- Fixed AG-UI event ordering in CrewAI and LlamaIndex agents so each agent step closes its open text/reasoning message before STEP_FINISHED, allocates a fresh message_id per step, and emits well-formed start/end pairs that pass the AG-UI sequence validator.
 
 ## 0.15.29
 - Added LangGraph human-in-the-loop (HITL) support and parameterization of LangGraph agent.

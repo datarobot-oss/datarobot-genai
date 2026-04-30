@@ -362,15 +362,17 @@ async def test_llama_index_agent_invoke(
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: text message events contain the expected deltas (after step / lifecycle events)
+    # THEN: each agent step has its own text message (start/end pair) with a unique id
     text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
-    assert len(text_starts) == 1
+    assert len(text_starts) == 2
     content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
 
-    # THEN: TextMessageEnd is present
+    # THEN: each TextMessageStart has a matching TextMessageEnd with the same id
     end_events = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
-    assert len(end_events) == 1
+    assert len(end_events) == 2
+    assert {e.message_id for e in text_starts} == {e.message_id for e in end_events}
+    assert len({e.message_id for e in text_starts}) == 2
 
     # THEN: last event is RunFinishedEvent with pipeline interactions
     assert isinstance(ag_events[-1], RunFinishedEvent)

@@ -154,6 +154,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         current_agent_name: str | None = None
         message_id = str(uuid.uuid4())
         text_started = False
+        any_text_emitted = False
         agent: str | None = None
 
         async for event in handler.stream_events():
@@ -188,17 +189,29 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
+                any_text_emitted = True
 
                 # Agent switch banner if available on event
             if hasattr(event, "current_agent_name"):
                 agent = getattr(event, "current_agent_name", None)
                 if agent is not None and agent != current_agent_name:
                     if current_agent_name is not None:
+                        if text_started:
+                            yield (
+                                TextMessageEndEvent(
+                                    type=EventType.TEXT_MESSAGE_END,
+                                    message_id=message_id,
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                            text_started = False
                         yield (
                             StepFinishedEvent(step_name=current_agent_name),
                             None,
                             usage_metrics,
                         )
+                        message_id = str(uuid.uuid4())
 
                     yield (
                         StepStartedEvent(step_name=agent),
@@ -236,6 +249,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                             None,
                             usage_metrics,
                         )
+                        any_text_emitted = True
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -278,12 +292,23 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
+                message_id = str(uuid.uuid4())
             elif event_type == "ToolCall":
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
                 tid = getattr(event, "tool_id", None)
                 logger.info(f"Calling Tool: {tname}")
                 logger.debug(f"With arguments: {tkwargs}")
+                if text_started:
+                    yield (
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    text_started = False
                 yield (
                     ToolCallStartEvent(
                         type=EventType.TOOL_CALL_START,
@@ -303,20 +328,20 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
 
-        if agent is not None:
-            yield (
-                StepFinishedEvent(step_name=agent),
-                None,
-                usage_metrics,
-            )
-            agent = None
-
         if text_started:
             yield (
                 TextMessageEndEvent(
                     type=EventType.TEXT_MESSAGE_END,
                     message_id=message_id,
                 ),
+                None,
+                usage_metrics,
+            )
+            text_started = False
+
+        if current_agent_name is not None:
+            yield (
+                StepFinishedEvent(step_name=current_agent_name),
                 None,
                 usage_metrics,
             )
@@ -338,7 +363,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Use subclass-defined response extraction as final fallback when no text was streamed
         fallback_text = self.extract_response_text(state, events)
-        if not text_started and fallback_text:
+        if not any_text_emitted and fallback_text:
             yield (
                 TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
                 None,
