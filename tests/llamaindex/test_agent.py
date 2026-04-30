@@ -520,6 +520,62 @@ async def test_invoke_fallback_text_stays_within_active_step(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
+async def test_invoke_fallback_text_not_suppressed_by_prior_step_text(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text still emits for the active step after earlier streamed text."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(delta="outline", response="", current_agent_name="Planner"),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'write answer'}", role=MessageRole.USER)],
+                current_agent_name="Writer",
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a prior step already streamed text
+    # WHEN the active step relies on fallback extraction for its final answer
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the fallback text still appears within the active step
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["outline", "FINAL:3"]
+
+    writer_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Writer"
+    )
+    fallback_text_start_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageStartEvent) and event.message_id == content[1].message_id
+    )
+    fallback_text_end_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageEndEvent) and event.message_id == content[1].message_id
+    )
+    writer_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Writer"
+    )
+
+    assert (
+        writer_step_started_idx
+        < fallback_text_start_idx
+        < fallback_text_end_idx
+        < writer_step_finished_idx
+    )
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
 async def test_invoke_replaces_chat_history_placeholder() -> None:
     """invoke() replaces {chat_history} inside the raw user prompt."""
     workflow = CapturingWorkflow(events=[], state="S")

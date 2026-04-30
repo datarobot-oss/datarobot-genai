@@ -154,7 +154,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         current_agent_name: str | None = None
         message_id = str(uuid.uuid4())
         text_started = False
-        any_text_emitted = False
+        current_message_has_text = False
 
         async for event in handler.stream_events():
             events.append(event)
@@ -179,6 +179,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     message_id = str(uuid.uuid4())
+                    current_message_has_text = False
 
                 yield (
                     StepStartedEvent(step_name=next_agent),
@@ -218,7 +219,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
-                any_text_emitted = True
+                current_message_has_text = True
 
             event_type = type(event).__name__
             if event_type == "AgentInput" and hasattr(event, "input"):
@@ -247,7 +248,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                             None,
                             usage_metrics,
                         )
-                        any_text_emitted = True
+                        current_message_has_text = True
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -309,6 +310,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
                 message_id = str(uuid.uuid4())
+                current_message_has_text = False
             elif event_type == "ToolCall":
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
@@ -372,7 +374,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Use subclass-defined response extraction as final fallback when no text was streamed
         fallback_text = self.extract_response_text(state, events)
-        if not any_text_emitted and fallback_text:
+        if not current_message_has_text and fallback_text:
             yield (
                 TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
                 None,
