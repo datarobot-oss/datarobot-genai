@@ -44,7 +44,10 @@ def _skip_agent_card_resolution(client):
     """Patch _resolve_agent_card to set a mock agent card without network access."""
 
     async def _set_mock_card():
-        client._agent_card = MagicMock()
+        mock_card = MagicMock()
+        # Ensure A2ACredentialService skips compatibility validation (no security schemes).
+        mock_card.security_schemes = None
+        client._agent_card = mock_card
 
     with patch.object(client, "_resolve_agent_card", side_effect=_set_mock_card):
         yield
@@ -79,9 +82,9 @@ def mixin_auth_provider():
     """Auth provider that implements A2ADiscoveryAuthMixin."""
 
     class _MockDiscoveryProvider(A2ADiscoveryAuthMixin):
-        authenticate_for_discovery = AsyncMock(
-            return_value={"Authorization": "Bearer discovery_token"}
-        )
+        async def authenticate_for_discovery(self, user_id=None):
+            return {"Authorization": "Bearer discovery_token"}
+
         authenticate = AsyncMock(
             return_value=AuthResult(credentials=[BearerTokenCred(token="call_token")])
         )
@@ -157,6 +160,10 @@ class TestAuthenticatedA2AClientConfig:
     def test_is_a2a_client_config(self, a2a_config):
         assert isinstance(a2a_config, A2AClientConfig)
 
+    def test_url_only_is_valid(self):
+        cfg = AuthenticatedA2AClientConfig(url=_AGENT_URL)
+        assert str(cfg.url).rstrip("/") == _AGENT_URL
+
 
 # ---------------------------------------------------------------------------
 # Tests: _AuthenticatedA2ABaseClient — _resolve_agent_card dispatch
@@ -164,7 +171,7 @@ class TestAuthenticatedA2AClientConfig:
 
 
 class TestAuthenticatedA2ABaseClientResolveCard:
-    """Unit-tests for the three-branch discovery-auth dispatch in _resolve_agent_card."""
+    """Unit-tests for the two-branch discovery-auth dispatch in _resolve_agent_card."""
 
     @pytest.fixture
     def patched_resolver_env(self):
@@ -209,7 +216,6 @@ class TestAuthenticatedA2ABaseClientResolveCard:
         _, _, mock_httpx = patched_resolver_env
         client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=mixin_auth_provider)
         await client._resolve_agent_card()
-        mixin_auth_provider.authenticate_for_discovery.assert_awaited_once()
         mixin_auth_provider.authenticate.assert_not_awaited()
         _, httpx_kwargs = mock_httpx.AsyncClient.call_args
         assert httpx_kwargs["headers"]["Authorization"] == "Bearer discovery_token"
