@@ -375,6 +375,136 @@ async def test_is_eligible_for_timeseries_training_missing_params() -> None:
         )
 
 
+def _build_dataset_mock(pandas_df) -> MagicMock:
+    mock_client = MagicMock()
+    mock_dataset = MagicMock()
+    mock_dataset.get_as_dataframe.return_value = pandas_df
+    mock_client.Dataset.get.return_value = mock_dataset
+    return mock_client
+
+
+async def _run_eligibility(
+    pandas_df, *, datetime_column="date", target_column="target", series_id_column=None
+):
+    mock_client = _build_dataset_mock(pandas_df)
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.model.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_client
+        return await model.is_eligible_for_timeseries_training(
+            dataset_id="ds1",
+            datetime_column=datetime_column,
+            target_column=target_column,
+            series_id_column=series_id_column,
+        )
+
+
+@pytest.mark.asyncio
+async def test_eligibility_reports_daily_cadence_and_no_gaps() -> None:
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True
+    )
+    pandas_df = pl.DataFrame({"date": dates, "target": range(200)}).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "ELIGIBLE"
+    assert result["cadence"]["median_timestep_human"] == "1 day"
+    assert result["cadence"]["pct_series_with_gaps"] == 0.0
+    assert any("Median timestep: 1 day" in line for line in result["info"])
+
+
+@pytest.mark.asyncio
+async def test_eligibility_flags_gap_percentage_for_irregular_data() -> None:
+    # 200 daily timestamps with one missing date partway through
+    dates = list(
+        pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True)
+    )
+    del dates[100]
+    pandas_df = pl.DataFrame({"date": dates, "target": range(199)}).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    # DR's backend treats non-regular cadence as still eligible — verdict
+    # must remain ELIGIBLE; only the diagnostics change.
+    assert result["status"] == "ELIGIBLE"
+    assert result["cadence"]["pct_series_with_gaps"] == 1.0
+    assert any("gap larger than the median timestep" in line for line in result["info"])
+
+
+@pytest.mark.asyncio
+async def test_eligibility_multiseries_cadence_per_series() -> None:
+    daily = list(
+        pl.date_range(
+            pl.date(2020, 1, 1),
+            pl.date(2020, 1, 1) + pl.duration(days=149),
+            interval="1d",
+            eager=True,
+        )
+    )
+    biweekly = list(
+        pl.date_range(
+            pl.date(2020, 1, 1),
+            pl.date(2020, 1, 1) + pl.duration(weeks=2 * 149),
+            interval="2w",
+            eager=True,
+        )
+    )[:150]
+    pandas_df = pl.DataFrame(
+        {
+            "date": daily + biweekly,
+            "series": ["a"] * 150 + ["b"] * 150,
+            "target": list(range(150)) + list(range(150)),
+        }
+    ).to_pandas()
+
+    result = await _run_eligibility(pandas_df, series_id_column="series")
+
+    assert result["status"] == "ELIGIBLE"
+    assert result["cadence"]["n_series"] == 2
+    # Some fraction of series will register gaps relative to the global median.
+    assert 0.0 < result["cadence"]["pct_series_with_gaps"] <= 1.0
+
+
+@pytest.mark.asyncio
+async def test_eligibility_handles_weekly_cadence_label() -> None:
+    dates = pl.date_range(
+        pl.date(2020, 1, 1),
+        pl.date(2020, 1, 1) + pl.duration(weeks=199),
+        interval="1w",
+        eager=True,
+    )
+    pandas_df = pl.DataFrame({"date": dates, "target": range(200)}).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "ELIGIBLE"
+    assert result["cadence"]["median_timestep_human"] == "1 week"
+    assert result["cadence"]["pct_series_with_gaps"] == 0.0
+
+
+def test_humanize_timestep_seconds_known_cadences() -> None:
+    assert model._humanize_timestep_seconds(0) == "unknown"
+    assert model._humanize_timestep_seconds(60) == "1 minute"
+    assert model._humanize_timestep_seconds(3600) == "1 hour"
+    assert model._humanize_timestep_seconds(86400) == "1 day"
+    assert model._humanize_timestep_seconds(86400 * 2) == "2 days"
+    assert model._humanize_timestep_seconds(604800) == "1 week"
+    assert model._humanize_timestep_seconds(90) == "90.0 seconds"
+
+
+def test_compute_cadence_returns_none_when_insufficient_data() -> None:
+    import datetime as _dt
+
+    df = pl.DataFrame({"t": [_dt.datetime(2024, 1, 1)]})
+    assert model._compute_cadence(df, "t", None) is None
+
+
 class TestModelToDict:
     """Test cases for model_to_dict function."""
 
