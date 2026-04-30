@@ -16,12 +16,15 @@ import abc
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
+from typing import Protocol
+from typing import runtime_checkable
 
 import httpx
 from a2a.client import A2ACardResolver
 from a2a.client import AuthInterceptor
 from a2a.client import ClientConfig
 from a2a.client import ClientFactory
+from a2a.types import AgentCard
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
 from nat.builder.context import Context
@@ -46,6 +49,25 @@ def _extract_auth_headers(auth_result: Any) -> dict[str, str]:
             headers[cred.name] = cred.value.get_secret_value()
 
     return headers
+
+
+@runtime_checkable
+class AgentCardAware(Protocol):
+    """Auth providers that need the resolved agent card before ``authenticate()``.
+
+    Implement this protocol on an auth provider to receive the fetched
+    :class:`~a2a.types.AgentCard` before the first ``authenticate()`` call.
+    :class:`_AuthenticatedA2ABaseClient` checks for this protocol via
+    ``isinstance`` and calls :meth:`set_agent_card` automatically.
+    """
+
+    def set_agent_card(self, card: AgentCard) -> None:
+        """Receive the resolved agent card.
+
+        Called by :class:`_AuthenticatedA2ABaseClient` immediately after the
+        card is fetched, before ``authenticate()`` is ever invoked.
+        """
+        ...
 
 
 class A2ADiscoveryAuthMixin(abc.ABC):
@@ -75,12 +97,15 @@ class A2ADiscoveryAuthMixin(abc.ABC):
 class _AuthenticatedA2ABaseClient(A2ABaseClient):
     """A2A client that authenticates agent card discovery and A2A RPC independently.
 
-    * **Agent card** ``GET`` — if the configured ``auth_provider`` implements
-      :class:`A2ADiscoveryAuthMixin`, ``authenticate_for_discovery()`` is called
-      and its result is used as headers on a short-lived ``httpx.AsyncClient``.
-      Otherwise ``authenticate()`` is called and its credentials are extracted as
-      headers (default behavior for e.g. ``DataRobotAPIKeyAuthProvider``).
-      When no provider is set the card is fetched unauthenticated.
+    * **Agent card** ``GET`` — two mutually exclusive paths:
+
+      1. *Discovery mixin*: if the configured ``auth_provider`` implements
+         :class:`A2ADiscoveryAuthMixin`, ``authenticate_for_discovery()`` is called
+         and its result is used as headers on a short-lived ``httpx.AsyncClient``.
+      2. *Default*: ``authenticate()`` is called and its credentials are extracted
+         as headers (e.g. ``DataRobotAPIKeyAuthProvider``).  When no provider is
+         set the card is fetched unauthenticated.
+
     * **Task / message** traffic uses NAT's ``AuthInterceptor`` +
       ``A2ACredentialService``, which calls ``authenticate()`` per-request.
     """
@@ -137,6 +162,11 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
         if not self._agent_card:
             raise RuntimeError("Agent card not resolved")
 
+        # Allow auth providers that need agent-card parameters (e.g. OktaTokenExchangeAuthProvider)
+        # to receive the resolved card before the interceptor is set up.
+        if isinstance(self._auth_provider, AgentCardAware):
+            self._auth_provider.set_agent_card(self._agent_card)
+
         interceptors: list[Any] = []
         if self._auth_provider:
             credential_service = A2ACredentialService(
@@ -158,12 +188,14 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
 
 
 class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_client"):  # type: ignore[call-arg]
-    """A2A client config for DataRobot deployments.
+    """A2A client config with separate discovery and call-phase auth.
 
-    Uses ``auth_provider`` (from the parent ``A2AClientConfig``) for both agent
-    card discovery and A2A RPC calls.  If the referenced provider implements
-    :class:`A2ADiscoveryAuthMixin` it can supply different credentials for the
-    two phases; otherwise the same ``authenticate()`` result is used for both.
+    Inherits all fields from :class:`~nat.plugins.a2a.client.client_config.A2AClientConfig`
+    (``url``, ``auth_provider``, ``agent_card_path``, ``task_timeout``, ``streaming``).
+
+    If the referenced ``auth_provider`` implements :class:`A2ADiscoveryAuthMixin`,
+    it supplies different credentials for agent card discovery vs A2A RPC calls.
+    Otherwise the same ``authenticate()`` result is used for both phases.
     """
 
 
@@ -171,8 +203,7 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
-        config: A2AClientConfig = self._config  # type: ignore[assignment]
-        base_url = str(config.url)
+        config: AuthenticatedA2AClientConfig = self._config  # type: ignore[assignment]
 
         user_id = Context.get().user_id
         if not user_id:
@@ -194,6 +225,7 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
                 )
                 raise RuntimeError(f"Failed to resolve auth provider: {e}") from e
 
+        base_url = str(config.url)
         self._client = _AuthenticatedA2ABaseClient(
             base_url=base_url,
             agent_card_path=config.agent_card_path,
