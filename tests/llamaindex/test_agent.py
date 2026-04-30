@@ -581,6 +581,66 @@ async def test_invoke_fallback_text_not_suppressed_by_prior_step_text(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
+async def test_invoke_does_not_repeat_prior_step_text_in_silent_final_step(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text is suppressed when it would only repeat the prior step's output."""
+
+    class EventEchoAgent(MyLlamaAgent):
+        def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+            for event in reversed(events):
+                response = getattr(event, "response", None)
+                if response is not None and getattr(response, "content", None):
+                    return str(response.content)
+                delta = getattr(event, "delta", None)
+                if isinstance(delta, str) and delta:
+                    return delta
+            return ""
+
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(delta="outline", response="", current_agent_name="Planner"),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'write answer'}", role=MessageRole.USER)],
+                current_agent_name="Writer",
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = EventEchoAgent(workflow)
+
+    # GIVEN a prior step already emitted the only assistant text
+    # WHEN the final step is silent and fallback extraction looks at prior events
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the previous step's text is not re-emitted inside the silent final step
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["outline"]
+
+    writer_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Writer"
+    )
+    writer_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Writer"
+    )
+    writer_text_events = [
+        event
+        for event in ag_events[writer_step_started_idx + 1 : writer_step_finished_idx]
+        if isinstance(
+            event,
+            TextMessageStartEvent | TextMessageContentEvent | TextMessageEndEvent,
+        )
+    ]
+    assert writer_text_events == []
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
 async def test_invoke_emits_fallback_after_tool_when_final_answer_is_new(
     run_agent_input: RunAgentInput,
 ) -> None:

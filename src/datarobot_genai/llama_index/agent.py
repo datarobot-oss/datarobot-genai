@@ -184,7 +184,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     )
                     message_id = str(uuid.uuid4())
                     current_message_has_text = False
-                    last_step_text = None
 
                 yield (
                     StepStartedEvent(step_name=next_agent),

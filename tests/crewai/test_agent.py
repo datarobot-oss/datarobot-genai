@@ -24,6 +24,7 @@ from crewai.types.streaming import StreamChunk
 from crewai.types.streaming import StreamChunkType
 import pytest
 from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
 from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import RunAgentInput
@@ -457,6 +458,67 @@ async def test_invoke_streaming_closes_reasoning_before_finishing_step(
     )
     assert reasoning_message_end_idx < reasoning_end_idx < planner_step_finished_idx
     assert planner_step_finished_idx < writer_step_started_idx
+
+
+async def test_invoke_streaming_closes_text_before_same_step_reasoning_starts(
+    run_agent_input, mock_ragas_event_listener
+) -> None:
+    streaming_listener = StreamingListenerForTest()
+
+    async def stream_chunks() -> AsyncGenerator[StreamChunk, None]:
+        yield StreamChunk(
+            content="answer",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="plan",
+            agent_role="Planner",
+        )
+        streaming_listener.reasoning_event = True
+        yield StreamChunk(
+            content="think",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="plan",
+            agent_role="Planner",
+        )
+
+    # GIVEN a streamed CrewAI run that switches from text to reasoning in one step
+    streaming_output = FakeStreamingOutput(async_iterator=stream_chunks())
+    agent = AgentForTest(
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        crew=StreamingCrewForTest(streaming_output),
+    )
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        return_value=streaming_listener,
+    ):
+        # WHEN invoking the agent
+        events_out = [event async for event in agent.invoke(run_agent_input)]
+
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the text lifecycle closes before reasoning starts
+    text_start_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageStartEvent)
+    )
+    text_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageEndEvent)
+    )
+    reasoning_start_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, ReasoningMessageStartEvent)
+    )
+    reasoning_content_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, ReasoningMessageContentEvent)
+    )
+    assert text_start_idx < text_end_idx < reasoning_start_idx < reasoning_content_idx
+
+    planner_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Planner"
+    )
+    assert reasoning_content_idx < planner_step_finished_idx
 
 
 async def test_invoke_does_not_include_chat_history_by_default(

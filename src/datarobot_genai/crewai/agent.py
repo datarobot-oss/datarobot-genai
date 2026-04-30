@@ -464,6 +464,16 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                     if streaming_event_listener.reasoning_event:
                         if not reasoning_started:
+                            if text_started:
+                                yield (
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                text_started = False
                             yield (
                                 ReasoningStartEvent(
                                     type=EventType.REASONING_START,
