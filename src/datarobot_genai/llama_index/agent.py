@@ -355,13 +355,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             )
             text_started = False
 
-        if current_agent_name is not None:
-            yield (
-                StepFinishedEvent(step_name=current_agent_name),
-                None,
-                usage_metrics,
-            )
-
         # After streaming completes, build final interactions and finish chunk
         # Extract state from workflow context (supports sync/async get or attribute)
         state = None
@@ -402,7 +395,14 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 None,
                 usage_metrics,
             )
-            text_started = True
+            text_started = False
+
+        if current_agent_name is not None:
+            yield (
+                StepFinishedEvent(step_name=current_agent_name),
+                None,
+                usage_metrics,
+            )
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
         if uses_memory:

@@ -22,6 +22,7 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
@@ -471,6 +472,51 @@ async def test_invoke_agent_stream_multiple_agents(
     assert text_starts[1].message_id == content[1].message_id
 
     # THEN the run still completes cleanly
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_fallback_text_stays_within_active_step(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text is emitted before the active step is finished."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'say hello'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a workflow that assigns agent ownership but streams no text
+    # WHEN invoking the agent
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the fallback text lifecycle stays inside the active step
+    step_started_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, StepStartedEvent)
+    )
+    text_start_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageStartEvent)
+    )
+    text_content_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageContentEvent)
+    )
+    text_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageEndEvent)
+    )
+    step_finished_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, StepFinishedEvent)
+    )
+
+    assert step_started_idx < text_start_idx < text_content_idx < text_end_idx < step_finished_idx
+
+    content = next(event for event in ag_events if isinstance(event, TextMessageContentEvent))
+    assert content.delta == "FINAL:2"
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
