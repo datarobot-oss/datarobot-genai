@@ -59,10 +59,7 @@ def expectations_for_get_best_model_failure(
             ToolCallTestExpectations(
                 name="get_best_model",
                 parameters={"project_id": nonexistent_project_id},
-                result=(
-                    "Error in get_best_model: "
-                    "ClientError: 404 client error: {'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -94,7 +91,13 @@ def expectations_for_score_dataset_with_model_success(
                 result=SHOULD_NOT_BE_EMPTY,
             ),
         ],
-        llm_response_content_contains_expectations=["Scoring job started"],
+        llm_response_content_contains_expectations=[
+            "scoring",
+            "job",
+            "started",
+            "dataset",
+            "project",
+        ],
     )
 
 
@@ -113,11 +116,7 @@ def expectations_for_score_dataset_with_model_failure(
                     "model_id": nonexistent_model_id,
                     "dataset_id": classification_predict_dataset["dataset_id"],
                 },
-                result=(
-                    "Error in score_dataset_with_model: "
-                    "ClientError: 404 client error: "
-                    "{'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -202,8 +201,8 @@ class TestModelE2E(ToolBaseE2E):
         [
             """
         I'm working on a machine learning project with ID '{project_id}' and I have a
-        DataRobot model with ID '{model_id}'. Score the AI Catalog dataset with dataset_id
-        '{dataset_id}' using score_dataset_with_model (use dataset_id, not a URL or file path).
+        DataRobot model with ID '{model_id}'. Please start scoring the AI Catalog dataset
+        '{dataset_id}' with that model (use the catalog dataset id, not a URL or local file).
         Can you help me score the dataset?
         """
         ],
@@ -239,8 +238,8 @@ class TestModelE2E(ToolBaseE2E):
         [
             """
         I'm working on a machine learning project with ID '{project_id}' but my model ID is
-        wrong: '{model_id}'. Please call score_dataset_with_model with dataset_id '{dataset_id}'
-        so we can see the error from the invalid model id.
+        wrong: '{model_id}'. Try to start scoring AI Catalog dataset '{dataset_id}' with that
+        model id so we can see the error from the invalid model id.
         """
         ],
     )

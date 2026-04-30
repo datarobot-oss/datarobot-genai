@@ -23,6 +23,7 @@ from datarobot.context import Context as DRContext
 from datarobot_genai.drtools.core.auth import resolve_token_from_headers
 from datarobot_genai.drtools.core.credentials import get_credentials
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,8 @@ async def get_datarobot_access_token() -> str:
         logger.warning("DataRobot API token not found in headers")
         raise ToolError(
             "DataRobot API token not found in headers. "
-            "Please provide it via 'Authorization' (Bearer), 'x-datarobot-api-token' headers."
+            "Please provide it via 'Authorization' (Bearer), 'x-datarobot-api-token' headers.",
+            kind=ToolErrorKind.AUTHENTICATION,
         )
     return token
 

@@ -17,6 +17,7 @@ import contextvars
 import logging
 from typing import Any
 
+from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from datarobot.auth.session import AuthCtx
 from datarobot.models.genai.agent.auth import ToolAuth
 
@@ -25,6 +26,8 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
 from datarobot_genai.drtools.core.constants import AUTH_CTX_KEY
 from datarobot_genai.drtools.core.constants import HEADER_TOKEN_CANDIDATE_NAMES
+from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 # Try to import get_http_headers from FastMCP if available
 # The deplyment is expected to have the fastmcp dependency installed.
@@ -186,6 +189,136 @@ async def get_access_token(provider_type: str | None = None) -> str:
         provider_type=provider_type,
     )
     return oauth_access_token
+
+
+def oauth_access_token_header_name(header_segment: str) -> str:
+    """Build ``x-datarobot-<segment>-access-token`` from *header_segment* (normalized)."""
+    segment = header_segment.strip().lower().replace("_", "-")
+    return f"x-datarobot-{segment}-access-token"
+
+
+def _parse_optional_bearer_token(raw: str) -> str | None:
+    value = str(raw).strip()
+    if not value:
+        return None
+    bearer_prefix = "bearer "
+    if value.lower().startswith(bearer_prefix):
+        value = value[len(bearer_prefix) :].strip()
+    return value or None
+
+
+def _extract_oauth_fallback_token_from_headers(
+    headers: dict[str, str], header_name_lower: str
+) -> str | None:
+    lowered = {str(k).lower(): v for k, v in headers.items() if isinstance(v, str)}
+    raw = lowered.get(header_name_lower)
+    if not raw:
+        return None
+    return _parse_optional_bearer_token(raw)
+
+
+def resolve_oauth_access_token_from_headers(header_segment: str) -> str | None:
+    """Read ``x-datarobot-<segment>-access-token`` for *header_segment* (raw or Bearer).
+
+    Tries framework HTTP headers, then :func:`set_request_headers_for_context`.
+    """
+    header_key = oauth_access_token_header_name(header_segment).lower()
+
+    framework_headers: dict[str, str] | None = None
+    try:
+        framework_headers = _get_http_headers()
+    except Exception:
+        pass
+
+    if framework_headers:
+        if token := _extract_oauth_fallback_token_from_headers(framework_headers, header_key):
+            logger.debug(
+                "OAuth fallback token (segment %r) resolved from framework headers.",
+                header_segment,
+            )
+            return token
+
+    ctx_headers = _request_headers_ctx.get()
+    if ctx_headers:
+        if token := _extract_oauth_fallback_token_from_headers(ctx_headers, header_key):
+            logger.debug(
+                "OAuth fallback token (segment %r) resolved from request-headers context.",
+                header_segment,
+            )
+            return token
+
+    return None
+
+
+async def get_oauth_access_token_with_header_fallback(
+    provider_type: str,
+    *,
+    display_name: str,
+    access_token_header_segment: str,
+) -> str | ToolError:
+    """Resolve an OAuth access token via OBO, or from the header for *access_token_header_segment*.
+
+    *provider_type* is passed to :func:`get_access_token`. *access_token_header_segment* builds
+    ``x-datarobot-<segment>-access-token`` (normalized: lower case, ``_`` → ``-``).
+    """
+    pt = provider_type.strip()
+    oauth_exc: BaseException | None = None
+    try:
+        access_token = await get_access_token(pt)
+        if access_token:
+            return access_token
+        logger.debug("OAuth returned empty token; checking header fallback for %s.", pt)
+    except OAuthServiceClientErr as e:
+        oauth_exc = e
+        logger.info(
+            "OAuth token not available for %s (%s); checking header fallback.",
+            pt,
+            e,
+            exc_info=True,
+        )
+    except RuntimeError as e:
+        oauth_exc = e
+        logger.info("No OAuth auth context for %s (%s); checking header fallback.", pt, e)
+    except Exception as e:
+        oauth_exc = e
+        logger.warning(
+            "Unexpected error obtaining OAuth token for %s; checking header fallback: %s",
+            pt,
+            e,
+            exc_info=True,
+        )
+
+    if header_token := resolve_oauth_access_token_from_headers(access_token_header_segment):
+        return header_token
+
+    header = oauth_access_token_header_name(access_token_header_segment)
+    if isinstance(oauth_exc, OAuthServiceClientErr):
+        logger.error("OAuth client error (no header fallback): %s", oauth_exc, exc_info=True)
+        return ToolError(
+            f"Could not obtain access token for {display_name}. Complete the OAuth flow or pass "
+            f"an access token via the {header} header.",
+            kind=ToolErrorKind.AUTHENTICATION,
+        )
+    if isinstance(oauth_exc, RuntimeError):
+        return ToolError(
+            f"No OAuth context for {display_name} and no access token in request headers. "
+            f"Complete the OAuth flow or pass a token via {header}.",
+            kind=ToolErrorKind.AUTHENTICATION,
+        )
+    if oauth_exc is not None:
+        logger.error(
+            "Unexpected error obtaining access token for %s: %s", pt, oauth_exc, exc_info=True
+        )
+        return ToolError(
+            f"An unexpected error occurred while obtaining access token for {display_name}.",
+            kind=ToolErrorKind.INTERNAL,
+        )
+
+    return ToolError(
+        f"Received empty access token for {display_name}. Complete the OAuth flow or pass an "
+        f"access token via the {header} header.",
+        kind=ToolErrorKind.AUTHENTICATION,
+    )
 
 
 def initialize_oauth_middleware(mcp: Any) -> None:

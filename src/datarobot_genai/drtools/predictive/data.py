@@ -20,11 +20,15 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import is_valid_url
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -88,29 +92,43 @@ def _merge_pagination_metadata(
     return final_results
 
 
-@tool_metadata(tags={"predictive", "data", "write", "upload", "catalog", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "write", "upload", "catalog", "daria"},
+    description=(
+        "[Catalog—register new data] Use when the user has file bytes or a public HTTPS URL "
+        "and needs a new AI Catalog dataset_id (nothing registered yet). Exactly one of "
+        "base64 file content or file_url. Returns dataset id, version id, and name for "
+        "Autopilot, scoring, or inspection. Not for listing existing items "
+        "(list_ai_catalog_items), not external DB browsing (list_datastores)."
+    ),
+)
 async def upload_dataset_to_ai_catalog(
     *,
     file_content_base64: Annotated[
         str,
-        (
-            "Base64-encoded file bytes (e.g. CSV). For remote clients; "
-            "mutually exclusive with file_url."
-        ),
+        "Base64-encoded file bytes (e.g. CSV). Mutually exclusive with file_url.",
     ]
     | None = None,
     dataset_filename: Annotated[
         str,
-        "Filename for base64 upload; include extension (e.g. data.csv).",
+        "Filename for base64 upload; include extension (e.g. sales.csv).",
     ] = "data.csv",
-    file_url: Annotated[str, "HTTPS URL of a dataset file to register in the catalog."]
+    file_url: Annotated[
+        str,
+        "Public HTTPS URL of the file to register. Mutually exclusive with file_content_base64.",
+    ]
     | None = None,
 ) -> dict[str, Any]:
-    """Upload a dataset to the DataRobot AI Catalog / Data Registry from bytes or URL."""
     if not file_content_base64 and not file_url:
-        raise ToolError("Either file_content_base64 or file_url must be provided.")
+        raise ToolError(
+            "Either file_content_base64 or file_url must be provided.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if file_content_base64 and file_url:
-        raise ToolError("Please provide either file_content_base64 or file_url, not both.")
+        raise ToolError(
+            "Please provide either file_content_base64 or file_url, not both.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -118,13 +136,18 @@ async def upload_dataset_to_ai_catalog(
     if file_content_base64 is not None:
         raw_b64 = file_content_base64.strip()
         if not raw_b64:
-            raise ToolError("Argument validation error: 'file_content_base64' cannot be empty.")
+            raise ToolError(
+                "Argument validation error: 'file_content_base64' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
         try:
             raw = base64.b64decode(raw_b64)
         except binascii.Error as e:
-            raise ToolError("Invalid base64 in file_content_base64.") from e
+            raise ToolError(
+                "Invalid base64 in file_content_base64.", kind=ToolErrorKind.VALIDATION
+            ) from e
         if not raw:
-            raise ToolError("Decoded file content is empty.")
+            raise ToolError("Decoded file content is empty.", kind=ToolErrorKind.VALIDATION)
         fname = (
             dataset_filename.strip()
             if dataset_filename and dataset_filename.strip()
@@ -136,11 +159,11 @@ async def upload_dataset_to_ai_catalog(
     else:
         if file_url is None or not is_valid_url(file_url):
             logger.error("Invalid file URL: %s", file_url)
-            raise ToolError(f"Invalid file URL: {file_url}")
+            raise ToolError(f"Invalid file URL: {file_url}", kind=ToolErrorKind.VALIDATION)
         catalog_item = client.Dataset.create_from_url(file_url)
 
     if not catalog_item:
-        raise ToolError("Failed to upload dataset.")
+        raise ToolError("Failed to upload dataset.", kind=ToolErrorKind.UPSTREAM)
 
     return {
         "dataset_id": catalog_item.id,
@@ -149,7 +172,19 @@ async def upload_dataset_to_ai_catalog(
     }
 
 
-@tool_metadata(tags={"predictive", "data", "read", "list", "catalog", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "list", "catalog", "daria"},
+    description=(
+        "[Catalog—list datasets] Use when the user needs catalog datasets they already have "
+        "as id-to-name map. Read-only. Not project-attached datasets "
+        "(get_project_dataset_by_name), not modeling projects (list_projects). Follow with "
+        "get_dataset_details or scoring tools that take dataset_id."
+        "Pagination: the DataRobot SDK's ``Dataset.iterate`` is called with a finite "
+        "``limit`` (default 1000) so the gateway and MCP process avoid unbounded responses."
+        " Use ``offset`` and additional calls to walk large catalogs. The response echoes "
+        "the effective limit and may set ``may_have_more`` when the page is full."
+    ),
+)
 async def list_ai_catalog_items(
     offset: Annotated[
         int | None,
@@ -163,17 +198,9 @@ async def list_ai_catalog_items(
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
-    """List AI Catalog items (datasets) for the authenticated user.
 
-    The ``datasets`` value is always a mapping of dataset id to name (empty mapping when none).
-
-    Pagination: the DataRobot SDK's ``Dataset.iterate`` is called with a finite ``limit`` (default
-    1000) so the gateway and MCP process avoid unbounded responses. Use ``offset`` and additional
-    calls to walk large catalogs. The response echoes the effective limit and may set
-    ``may_have_more`` when the page is full.
-    """
     if offset is not None and offset < 0:
-        raise ToolError("offset must be non-negative")
+        raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
     limit, message = _clamp_limit(limit)
 
@@ -181,7 +208,10 @@ async def list_ai_catalog_items(
     client = DataRobotClient(token).get_client()
     # DataRobot ``Dataset.iterate`` expects an int; do not pass ``None`` when offset is omitted.
     iterate_offset = 0 if offset is None else offset
-    gen = client.Dataset.iterate(offset=iterate_offset, limit=limit)
+    try:
+        gen = client.Dataset.iterate(offset=iterate_offset, limit=limit)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     datasets = list(itertools.islice(gen, limit))
 
     if not datasets:
@@ -210,20 +240,33 @@ async def list_ai_catalog_items(
     return final_results
 
 
-@tool_metadata(tags={"predictive", "data", "read", "dataset", "metadata", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "dataset", "metadata", "daria"},
+    description=(
+        "[Catalog—one dataset metadata] Use when you already have catalog dataset_id and "
+        "need name, row count, timestamps, optional column list and sample rows. Read-only. "
+        "Lighter than full EDA (analyze_dataset / get_exploratory_insights); not datastore "
+        "SQL (query_datastore)."
+    ),
+)
 async def get_dataset_details(
     *,
-    dataset_id: Annotated[str, "The ID of the DataRobot dataset"] | None = None,
-    include_sample: Annotated[bool, "Whether to include sample rows"] = True,
-    sample_rows: Annotated[int, "Number of sample rows to return"] = 10,
+    dataset_id: Annotated[str, "AI Catalog dataset id (from list_ai_catalog_items or upload)."]
+    | None = None,
+    include_sample: Annotated[
+        bool, "If true, include columns and up to sample_rows example rows."
+    ] = True,
+    sample_rows: Annotated[int, "Max sample rows when include_sample is true."] = 10,
 ) -> dict[str, Any]:
-    """Get DataRobot dataset metadata and optional sample rows."""
     if not dataset_id:
-        raise ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    dataset = client.Dataset.get(dataset_id)
+    try:
+        dataset = client.Dataset.get(dataset_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     result: dict = {
         "id": dataset.id,
@@ -242,7 +285,15 @@ async def get_dataset_details(
     return result
 
 
-@tool_metadata(tags={"predictive", "data", "read", "datastore", "list", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "datastore", "list", "daria"},
+    description=(
+        "[Datastore—list connections] Use when the user works with saved external connections "
+        "(DB, warehouse, bucket, etc.) and needs datastore ids. Read-only. Not AI Catalog "
+        "datasets (list_ai_catalog_items), not modeling projects. Next step: browse_datastore "
+        "or query_datastore."
+    ),
+)
 async def list_datastores(
     offset: Annotated[
         int | None,
@@ -256,9 +307,8 @@ async def list_datastores(
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
-    """List available DataRobot data connections (datastores)."""
     if offset is not None and offset < 0:
-        raise ToolError("offset must be non-negative")
+        raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
     limit, message = _clamp_limit(limit)
 
@@ -269,7 +319,10 @@ async def list_datastores(
     params: dict[str, Any] = {"limit": limit}
     if offset is not None:
         params["offset"] = offset
-    response = rest_client.get("externalDataStores/", params=params)
+    try:
+        response = rest_client.get("externalDataStores/", params=params)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     api_response = response.json()
     items = api_response.get("data", [])
     if not isinstance(items, list):
@@ -296,12 +349,20 @@ async def list_datastores(
     )
 
 
-@tool_metadata(tags={"predictive", "data", "read", "datastore", "browse", "daria"})
+@tool_metadata(
+    tags={"predictive", "data", "read", "datastore", "browse", "daria"},
+    description=(
+        "[Datastore—browse objects] Use after list_datastores when the user needs schemas, "
+        "tables, or folders inside one connection. Read-only; optional path, search filter, "
+        "pagination. Not SQL execution (query_datastore), not catalog dataset listing."
+    ),
+)
 async def browse_datastore(
     *,
-    datastore_id: Annotated[str, "The ID of the datastore to browse"] | None = None,
-    path: Annotated[str, "The path to browse within the datastore"] | None = None,
-    offset: Annotated[int, "Pagination offset"] = 0,
+    datastore_id: Annotated[str, "Connection id from list_datastores."] | None = None,
+    path: Annotated[str, "Path within the connection (e.g. schema or folder); omit for root."]
+    | None = None,
+    offset: Annotated[int, "Pagination offset."] = 0,
     limit: Annotated[
         int,
         (
@@ -309,13 +370,12 @@ async def browse_datastore(
             "use offset to page."
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
-    search: Annotated[str, "Search filter for items"] | None = None,
+    search: Annotated[str, "Optional filter substring for object names."] | None = None,
 ) -> dict[str, Any]:
-    """Browse a DataRobot data connection to list catalogs, schemas, and tables."""
     if not datastore_id:
-        raise ToolError("Datastore ID must be provided")
+        raise ToolError("Datastore ID must be provided", kind=ToolErrorKind.VALIDATION)
     if offset < 0:
-        raise ToolError("offset must be non-negative")
+        raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
     limit, message = _clamp_limit(limit)
 
@@ -328,7 +388,10 @@ async def browse_datastore(
         params["path"] = path
     if search:
         params["search"] = search
-    response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+    try:
+        response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     data = response.json()
     items = data.get("data", data) if isinstance(data, dict) else data
     if not isinstance(items, list):
@@ -351,12 +414,17 @@ async def browse_datastore(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"}
+    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"},
+    description=(
+        "[Datastore—run SQL] Use when the user wants to execute SQL (SELECT or DML) against "
+        "one saved external connection. Requires datastore_id from list_datastores; returns "
+        "rows, columns, and row count up to limit. Not DataRobot catalog inspection "
+        "(get_dataset_details), not browsing without SQL (browse_datastore)."
+    ),
 )
 async def query_datastore(
-    *,
-    datastore_id: Annotated[str, "The ID of the datastore to query"] | None = None,
-    sql: Annotated[str, "The SQL query to execute"] | None = None,
+    datastore_id: Annotated[str, "Connection id from list_datastores."] | None = None,
+    sql: Annotated[str, "SQL statement to run against that connection."] | None = None,
     offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[
         int,
@@ -366,17 +434,12 @@ async def query_datastore(
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
-    """Execute a SQL query against a DataRobot datastore connection.
-
-    Only data manipulation language queries (insert, update, and delete data)
-    are supported — no commits or rollbacks.
-    """
     if not datastore_id:
-        raise ToolError("Datastore ID must be provided")
+        raise ToolError("Datastore ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not sql:
-        raise ToolError("SQL query must be provided")
+        raise ToolError("SQL query must be provided", kind=ToolErrorKind.VALIDATION)
     if offset < 0:
-        raise ToolError("offset must be non-negative")
+        raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
     limit, message = _clamp_limit(limit)
 
@@ -385,7 +448,10 @@ async def query_datastore(
     rest_client = dr_module.client.get_client()
 
     payload = {"query": sql, "offset": offset, "limit": limit}
-    response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
+    try:
+        response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     api_response = response.json()
     row_data = api_response.get("data", [])
 

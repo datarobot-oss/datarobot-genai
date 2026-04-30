@@ -14,6 +14,7 @@
 
 """Unit tests for tool_base_ete.py module."""
 
+from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
@@ -58,6 +59,7 @@ class TestETETestExpectations:
         assert len(expectations.tool_calls_expected) == 1
         assert expectations.tool_calls_expected[0].name == "tool1"
         assert expectations.potential_no_tool_calls is False
+        assert expectations.allow_unexpected_tool_calls is True
 
     def test_ete_test_expectations_with_potential_no_tool_calls(self) -> None:
         """Test ETETestExpectations with potential_no_tool_calls set."""
@@ -202,6 +204,15 @@ class TestCheckDictParamsMatch:
         actual = {"outer": "not_a_dict"}
 
         assert _check_dict_params_match(expected, actual) is False
+
+    def test_any_nonempty_string_accepts_nonblank(self) -> None:
+        expected = {"job_id": ANY_NONEMPTY_STRING}
+        assert _check_dict_params_match(expected, {"job_id": "abc-123"}) is True
+
+    def test_any_nonempty_string_rejects_blank(self) -> None:
+        expected = {"job_id": ANY_NONEMPTY_STRING}
+        assert _check_dict_params_match(expected, {"job_id": ""}) is False
+        assert _check_dict_params_match(expected, {"job_id": "   "}) is False
 
 
 class TestToolBaseE2E:

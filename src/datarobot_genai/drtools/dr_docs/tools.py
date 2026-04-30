@@ -45,11 +45,20 @@ from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS_DEFAULT
 from datarobot_genai.drtools.core.clients.dr_docs import fetch_page_content
 from datarobot_genai.drtools.core.clients.dr_docs import search_docs
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"datarobot", "docs", "documentation", "search"})
+@tool_metadata(
+    tags={"dr_docs", "datarobot", "docs", "documentation", "search"},
+    description=(
+        "[DR docs—search] Use when the user asks about DataRobot agentic AI product behavior, "
+        "setup, or APIs covered on the public agentic-AI documentation site. Returns page titles "
+        "and URLs (then fetch_datarobot_doc_page for full text). Not Confluence, not general web "
+        "(tavily_search / perplexity_search)."
+    ),
+)
 async def search_datarobot_agentic_docs(
     *,
     query: Annotated[
@@ -63,26 +72,10 @@ async def search_datarobot_agentic_docs(
         f"Maximum number of documentation pages to return (allowable values: 1 to {MAX_RESULTS}).",
     ] = MAX_RESULTS_DEFAULT,
 ) -> dict[str, Any]:
-    """
-    Search the DataRobot agentic-AI documentation for relevant pages.
-
-    This tool searches through the DataRobot agentic-AI documentation at
-    https://docs.datarobot.com/en/docs/agentic-ai/ to find pages relevant
-    to your query. It returns page titles, URLs, and page contents.
-
-    No API keys are required — the tool indexes the public documentation
-    site using TF-IDF over real page titles and page text.
-
-    Usage:
-        - Find MCP info: search_datarobot_agentic_docs(query="MCP server setup")
-        - Find agent tools: search_datarobot_agentic_docs(query="agentic tools")
-        - Broad search: search_datarobot_agentic_docs(query="authentication", max_results=10)
-
-    Note:
-        - The index covers only https://docs.datarobot.com/en/docs/agentic-ai/ (~28 pages).
-    """
     if not query or not query.strip():
-        raise ToolError("Argument validation error: 'query' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     results = await search_docs(query=query, max_results=max_results)
 
@@ -108,7 +101,14 @@ async def search_datarobot_agentic_docs(
     return flat
 
 
-@tool_metadata(tags={"datarobot", "docs", "documentation", "fetch", "read"})
+@tool_metadata(
+    tags={"dr_docs", "datarobot", "docs", "documentation", "fetch", "read"},
+    description=(
+        "[DR docs—fetch page] Use when you already have a full docs.datarobot.com English docs URL "
+        "(e.g. from search results) and need the page body as text. Not keyword search across the "
+        "agentic docs index (search_datarobot_agentic_docs)."
+    ),
+)
 async def fetch_datarobot_doc_page(
     *,
     url: Annotated[
@@ -117,22 +117,10 @@ async def fetch_datarobot_doc_page(
         "Must be a URL from docs.datarobot.com/en/docs/.",
     ],
 ) -> dict[str, Any]:
-    """
-    Fetch and extract the text content of a specific DataRobot documentation page.
-
-    Use this tool to retrieve the full content of a relevant documentation page. The content is
-    extracted as clean text, suitable for reading and analysis.
-
-    Usage:
-        - Fetch a page: fetch_datarobot_doc_page(
-            url="https://docs.datarobot.com/en/docs/mlops/deployment/index.html"
-          )
-
-    Note:
-        - Only works with English DataRobot documentation URLs (e.g. docs.datarobot.com/en/docs/).
-    """
     if not url or not url.strip():
-        raise ToolError("Argument validation error: 'url' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'url' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     result = await fetch_page_content(url=url)
     return result

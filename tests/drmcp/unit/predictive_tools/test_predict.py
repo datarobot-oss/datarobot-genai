@@ -62,7 +62,9 @@ async def test_predict_by_ai_catalog(
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
         mock_drc.return_value.get_client.return_value = mock_client
-        result = await predict.predict_by_ai_catalog("dep", "dsid", 5)
+        result = await predict.predict_by_ai_catalog(
+            deployment_id="dep", dataset_id="dsid", timeout=5
+        )
         patch_predict_dependencies["mock_batch_job"].score.assert_called_once_with(
             deployment="dep",
             intake_settings={"type": "dataset", "dataset": mock_dataset},
@@ -90,7 +92,13 @@ async def test_predict_from_project_data(
         mock_drc.return_value.get_client.return_value = MagicMock()
         mock_job = _completed_job()
         patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
-        result = await predict.predict_from_project_data("dep", "pid", "dsid", "holdout", 5)
+        result = await predict.predict_from_project_data(
+            deployment_id="dep",
+            project_id="pid",
+            dataset_id="dsid",
+            partition="holdout",
+            timeout=5,
+        )
         patch_predict_dependencies["mock_batch_job"].score.assert_called_once_with(
             deployment="dep",
             intake_settings={
@@ -132,7 +140,7 @@ async def test_predict_by_ai_catalog_timeout(
         mock_drc.return_value.get_client.return_value = mock_client
         patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
         with pytest.raises(dr.errors.AsyncTimeoutError) as exc_info:
-            await predict.predict_by_ai_catalog("dep", "dsid", 1)
+            await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid", timeout=1)
     assert "Job did not complete within the timeout period." == str(exc_info.value)
 
 
@@ -160,7 +168,7 @@ async def test_predict_by_ai_catalog_failure_error(
         mock_drc.return_value.get_client.return_value = mock_client
         patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
         with pytest.raises(dr.errors.AsyncFailureError) as exc_info:
-            await predict.predict_by_ai_catalog("dep", "dsid", 1)
+            await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid", timeout=1)
     assert "Job failed for some reason." == str(exc_info.value)
 
 
@@ -188,7 +196,7 @@ async def test_predict_by_ai_catalog_unsuccessful_error(
         mock_drc.return_value.get_client.return_value = mock_client
         patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
         with pytest.raises(dr.errors.AsyncProcessUnsuccessfulError) as exc_info:
-            await predict.predict_by_ai_catalog("dep", "dsid", 1)
+            await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid", timeout=1)
     assert "Job was unsuccessful." == str(exc_info.value)
 
 
@@ -207,6 +215,7 @@ async def test_predict_by_ai_catalog_missing_download_url(
             return_value="token",
         ),
         patch("datarobot_genai.drtools.predictive.predict.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.predict.time.sleep"),
     ):
         mock_dataset = MagicMock()
         mock_client = MagicMock()
@@ -214,7 +223,7 @@ async def test_predict_by_ai_catalog_missing_download_url(
         mock_drc.return_value.get_client.return_value = mock_client
         patch_predict_dependencies["mock_batch_job"].score.return_value = mock_job
         with pytest.raises(ToolError, match="no download URL"):
-            await predict.predict_by_ai_catalog("dep", "dsid", 600)
+            await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid", timeout=600)
 
 
 @pytest.mark.asyncio
@@ -239,7 +248,7 @@ async def test_get_batch_prediction_results_success() -> None:
         ),
     ):
         mock_drc.return_value.get_client.return_value = MagicMock()
-        result = await predict.get_batch_prediction_results("abc123")
+        result = await predict.get_batch_prediction_results(job_id="abc123")
     assert result["job_id"] == "abc123"
     assert result["mime_type"] == "text/csv"
     assert result["data"] == "x,y\n1,2\n"
@@ -250,7 +259,7 @@ async def test_get_batch_prediction_results_success() -> None:
 @pytest.mark.asyncio
 async def test_get_batch_prediction_results_empty_job_id() -> None:
     with pytest.raises(ToolError, match="job_id"):
-        await predict.get_batch_prediction_results("   ")
+        await predict.get_batch_prediction_results(job_id="   ")
 
 
 @pytest.mark.asyncio
@@ -277,7 +286,7 @@ async def test_get_batch_prediction_results_too_large() -> None:
     ):
         mock_drc.return_value.get_client.return_value = MagicMock()
         with pytest.raises(ToolError, match="exceeding the inline limit") as exc:
-            await predict.get_batch_prediction_results("jid")
+            await predict.get_batch_prediction_results(job_id="jid")
         assert "https://example.com/batch/dl" in str(exc.value)
 
 
@@ -301,5 +310,5 @@ async def test_get_batch_prediction_results_download_runtime_error() -> None:
     ):
         mock_drc.return_value.get_client.return_value = MagicMock()
         with pytest.raises(ToolError, match="queue full") as exc:
-            await predict.get_batch_prediction_results("jid")
+            await predict.get_batch_prediction_results(job_id="jid")
         assert "https://example.com/batch/dl2" in str(exc.value)

@@ -14,6 +14,23 @@
 
 """Custom exceptions for DataRobot tools."""
 
+from enum import StrEnum
+
+
+class ToolErrorKind(StrEnum):
+    """High-level category for tool failures (logging and MCP-friendly).
+
+    ``SCHEMA`` — tool call arguments do not match the tool input schema (MCP/JSON shape, types,
+    required fields). Use ``VALIDATION`` for domain rules enforced inside the tool body.
+    """
+
+    SCHEMA = "schema"
+    VALIDATION = "validation"
+    AUTHENTICATION = "authentication"
+    NOT_FOUND = "not_found"
+    UPSTREAM = "upstream"
+    INTERNAL = "internal"
+
 
 class ToolError(Exception):
     """Drop-in replacement for fastmcp.exceptions.ToolError.
@@ -30,27 +47,31 @@ class ToolError(Exception):
     Attributes
     ----------
         message: The error message to be displayed to the user.
+        kind: Semantic category of the failure (defaults to INTERNAL). Use ``ToolErrorKind.SCHEMA``
+            when MCP tool-call JSON or types do not match the declared input schema.
         args: Tuple containing the error message (for compatibility with base Exception).
 
     Examples
     --------
         >>> raise ToolError("Failed to create deployment: No prediction servers available")
-        >>> raise ToolError(f"Job failed with status {job.status}")
+        >>> raise ToolError(f"Job failed with status {job.status}", kind=ToolErrorKind.UPSTREAM)
         >>> try:
         ...     risky_operation()
         ... except ValueError as e:
-        ...     raise ToolError(f"Invalid input: {e}")
+        ...     raise ToolError(f"Invalid input: {e}", kind=ToolErrorKind.VALIDATION)
+        >>> raise ToolError("Arguments do not match tool schema", kind=ToolErrorKind.SCHEMA)
     """
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, *, kind: ToolErrorKind = ToolErrorKind.INTERNAL) -> None:
         """Initialize the ToolError with a descriptive message.
 
         Args:
             message: A clear, user-friendly description of what went wrong.
-                    This message will be displayed to the end user.
+                This message will be displayed to the end user.
+            kind: Category used for routing, metrics, and MCP error strings.
         """
         self.message = message
-        # Call parent constructor with message to ensure args[0] is set
+        self.kind = kind
         super().__init__(message)
 
     def __str__(self) -> str:
@@ -59,4 +80,4 @@ class ToolError(Exception):
 
     def __repr__(self) -> str:
         """Return a string representation of the exception."""
-        return f"{self.__class__.__name__}({self.message!r})"
+        return f"{self.__class__.__name__}({self.message!r}, kind={self.kind!r})"

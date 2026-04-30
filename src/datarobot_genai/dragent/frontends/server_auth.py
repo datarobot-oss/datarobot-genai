@@ -15,33 +15,63 @@
 from __future__ import annotations
 
 from nat.data_models.authentication import AuthProviderBaseConfig
+from pydantic import BaseModel
 from pydantic import Field
 
 
-class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
-    """OAuth2 Server-side authentication configuration for token exchange.
+class OAuth2SubjectTokenConstraints(BaseModel):
+    """Constraints on the subject token used in RFC 8693 token exchange (e.g. trusted issuer)."""
 
-    This configuration is surfaced in the agent's AgentCard, specifically in the
-    `securitySchemes` section. It should expose the information needed to mint the token
-    used to communicate with this agent (`token_url`, `audience`, and `scopes`)
-    during the second step of the two-step token exchange, where the ID-JAG token is
-    exchanged for the downstream scoped token required to call the agent.
+    trusted_issuer: str = Field(
+        description=(
+            "Issuer URL of the internal passport JWT that must be validated before "
+            "the downstream Okta token exchange."
+        ),
+    )
+
+
+class OAuth2TokenExchangeRequest(BaseModel):
+    """RFC 8693 token exchange request parameters for the authorization server."""
+
+    audience: str = Field(description="Expected resource / audience (`aud`) for the issued token.")
+    subject_token_type: str = Field(
+        description=(
+            "`subject_token_type` value for RFC 8693 (e.g. JWT access token vs id token URN)."
+        ),
+    )
+    requested_token_type: str = Field(
+        description="`requested_token_type` per RFC 8693 (usually an access token URN).",
+    )
+    token_endpoint_auth_method: str = Field(
+        description="OAuth 2.0 token endpoint client authentication method (e.g. private_key_jwt).",
+    )
+
+
+class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
+    """OAuth2 server-side auth for RFC 8693 token exchange surfaced on the AgentCard.
+
+    OpenAPI fields (`token_url`, `scopes`) populate ``securitySchemes.oauth2`` client
+    credentials flow.
+    ``subject_token_constraints`` and ``token_exchange_request`` are advertised in
+    ``capabilities.extensions`` for SDKs executing the flow.
     """
 
     token_url: str = Field(
         description=(
             "Token URL for Token Exchange (RFC 8693). This is the endpoint to which "
-            "the client will send the token exchange request to obtain a scoped token "
-            "for this agent."
-        )
-    )
-    audience: str | None = Field(
-        default=None,
-        description=("Expected audience (`aud`) claim for this API."),
+            "the client sends the exchange request for a scoped token for this agent."
+        ),
     )
     scopes: list[str] = Field(
         default=["read_data"],
         description=(
-            "Scopes required by this API. Validation ensures the token grants all listed scopes."
+            "Scopes advertised for this API. Listed under OpenAPI flows; validation ensures "
+            "the token grants required scopes."
         ),
+    )
+    subject_token_constraints: OAuth2SubjectTokenConstraints = Field(
+        description="Requirements for the subject token presented during token exchange.",
+    )
+    token_exchange_request: OAuth2TokenExchangeRequest = Field(
+        description="Token endpoint parameters for the token exchange request.",
     )

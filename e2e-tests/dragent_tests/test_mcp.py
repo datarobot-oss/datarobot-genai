@@ -17,6 +17,7 @@ import os
 import httpx
 import pytest
 from ag_ui.core import EventType
+from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
@@ -57,9 +58,8 @@ def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[
     # THEN: a response is correct AG UI events
     mcp_ag_ui_events = collect_ag_ui_events(sse_events)
 
-    # TODO (BUZZOK-30524): re-enable when merged upstream
-    # # THEN: a response is a valid AG-UI sequence
-    # validate_sequence(mcp_ag_ui_events)
+    # THEN: a response is a valid AG-UI sequence
+    validate_sequence(mcp_ag_ui_events)
 
     # THEN: the events contain tool call events (if framework supports tool calls)
     tool_types = {

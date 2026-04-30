@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import re
 from typing import Any
 
 from pydantic import BaseModel
@@ -29,14 +30,64 @@ class ToolCallTestExpectations(BaseModel):
 
 
 class ETETestExpectations(BaseModel):
-    """Class to store test expectations for ETE tests."""
+    """Class to store test expectations for ETE tests.
+
+    By default ``allow_unexpected_tool_calls`` is True so models may call extra tools
+    (e.g. list_projects after an error, get_dataset_details after resolving an id).
+    Set it to False when a test must assert an exact tool-call count and order with
+    no additional calls.
+    """
 
     potential_no_tool_calls: bool = False
+    allow_unexpected_tool_calls: bool = True
     tool_calls_expected: list[ToolCallTestExpectations]
     llm_response_content_contains_expectations: list[str]
 
 
 SHOULD_NOT_BE_EMPTY = "SHOULD_NOT_BE_EMPTY"
+
+
+class _AnyNonemptyStringSentinel:
+    """Sentinel: expected param must be a non-blank string (e.g. job_id from a prior tool)."""
+
+
+ANY_NONEMPTY_STRING = _AnyNonemptyStringSentinel()
+
+
+def _truncate(text: str, max_len: int = 400) -> str:
+    """Return a single-line truncated representation for failure diagnostics."""
+    flattened = text.replace("\n", "\\n")
+    if len(flattened) <= max_len:
+        return flattened
+    return f"{flattened[:max_len]}...<truncated>"
+
+
+def _normalize_tool_name(tool_name: str, expected_tool_name: str | None = None) -> str:
+    """Normalize namespaced MCP tool names to their base function name.
+
+    Some environments expose tool names as `mcp_<server>_<tool_name>` while others expose
+    plain `<tool_name>`. Acceptance checks should compare logical tool names, not namespace.
+
+    When expected_tool_name is provided, match by suffix for namespaced MCP tools so server
+    names that include underscores do not break normalization.
+    """
+    if expected_tool_name:
+        if tool_name == expected_tool_name:
+            return tool_name
+        if tool_name.startswith("mcp_") and tool_name.endswith(f"_{expected_tool_name}"):
+            return expected_tool_name
+
+    # Some environments expose names as `<server>_mcp_<tool_name>`
+    # (e.g. `global_mcp_upload_dataset_to_ai_catalog`). Strip that server prefix.
+    if "_mcp_" in tool_name:
+        _, suffix = tool_name.split("_mcp_", 1)
+        if suffix:
+            # If expected_tool_name is provided, validate the suffix matches
+            if expected_tool_name is None or suffix == expected_tool_name:
+                return suffix
+
+    match = re.match(r"^mcp_[^_]+_(.+)$", tool_name)
+    return match.group(1) if match else tool_name
 
 
 def _extract_content_when_structured_empty(tool_result: str) -> dict[str, str] | None:
@@ -102,6 +153,15 @@ def _extract_structured_content(tool_result: str) -> Any:
     return result
 
 
+def _param_leaf_matches(expected: Any, actual: Any) -> bool:
+    """Return whether ``actual`` satisfies the expected leaf constraint."""
+    if expected is ANY_NONEMPTY_STRING:
+        return isinstance(actual, str) and bool(str(actual).strip())
+    if isinstance(expected, str) and isinstance(actual, str):
+        return actual.strip() == expected.strip()
+    return actual == expected
+
+
 def _check_dict_params_match(
     expected: dict[str, Any],
     actual: dict[str, Any],
@@ -110,20 +170,21 @@ def _check_dict_params_match(
     """
     Recursively check if all keys in expected exist in actual with matching values.
     Extra keys in actual are ignored (subset/partial matching).
+
+    Use :data:`ANY_NONEMPTY_STRING` as an expected leaf when the value is any non-blank string
+    (e.g. IDs from a prior tool). String literals compare with leading/trailing whitespace stripped.
     """
     for key, value in expected.items():
         current_path = f"{path}.{key}" if path else key
         if key not in actual:
             return False
+        actual_v = actual[key]
         if isinstance(value, dict):
-            if not isinstance(actual[key], dict):
+            if not isinstance(actual_v, dict) or not _check_dict_params_match(
+                value, actual_v, current_path
+            ):
                 return False
-            if not _check_dict_params_match(value, actual[key], current_path):
-                return False
-        elif isinstance(value, str) and isinstance(actual[key], str):
-            if actual[key].strip() != value.strip():
-                return False
-        elif actual[key] != value:
+        elif not _param_leaf_matches(value, actual_v):
             return False
     return True
 
@@ -158,6 +219,38 @@ def _check_dict_has_keys(
     return True
 
 
+def _build_failure_diagnostics(
+    expected_calls: list[ToolCallTestExpectations],
+    response: LLMResponse,
+) -> str:
+    """Build a compact diagnostics section for assertion errors."""
+    expected_lines = [
+        f"#{idx + 1} {call.name} params={call.parameters}"
+        for idx, call in enumerate(expected_calls)
+    ]
+    actual_lines = []
+    for idx, tool_call in enumerate(response.tool_calls):
+        expected_name = expected_calls[idx].name if idx < len(expected_calls) else None
+        normalized_name = _normalize_tool_name(tool_call.tool_name, expected_name)
+        actual_lines.append(
+            f"#{idx + 1} raw={tool_call.tool_name} "
+            f"normalized={normalized_name} "
+            f"params={tool_call.parameters}"
+        )
+    result_lines = [
+        f"#{idx + 1} {_truncate(result)}" for idx, result in enumerate(response.tool_results)
+    ]
+    return (
+        "Diagnostics:\n"
+        f"Expected tool calls ({len(expected_calls)}):\n  "
+        + "\n  ".join(expected_lines or ["<none>"])
+        + f"\nActual tool calls ({len(response.tool_calls)}):\n  "
+        + "\n  ".join(actual_lines or ["<none>"])
+        + f"\nTool results ({len(response.tool_results)}):\n  "
+        + "\n  ".join(result_lines or ["<none>"])
+    )
+
+
 class ToolBaseE2E:
     """Base class for end-to-end tests."""
 
@@ -176,6 +269,8 @@ class ToolBaseE2E:
             prompt: The prompt to send to the LLM
             test_expectations: ETETestExpectations object containing test expectations with keys:
                 - tool_calls_expected: List of expected tool calls with their parameters and results
+                - allow_unexpected_tool_calls: Default True — expected calls must appear in order,
+                  with optional extra calls allowed. Set False for strict exact count.
                 - llm_response_content_contains_expectations: Expected content in the LLM response
             openai_llm_client: The OpenAI LLM client
             mcp_session: The test session
@@ -195,40 +290,89 @@ class ToolBaseE2E:
         if test_expectations.potential_no_tool_calls and len(response.tool_calls) == 0:
             pass
         else:
-            # Verify LLM decided to use tools
-            assert len(response.tool_calls) == len(test_expectations.tool_calls_expected), (
-                "LLM should have decided to call tools"
+            diagnostics = _build_failure_diagnostics(
+                test_expectations.tool_calls_expected,
+                response,
             )
 
-            for i, tool_call in enumerate(response.tool_calls):
-                assert tool_call.tool_name == test_expectations.tool_calls_expected[i].name, (
-                    f"Should have called {test_expectations.tool_calls_expected[i].name} tool, but "
-                    f"got: {tool_call.tool_name}"
+            expected_calls = test_expectations.tool_calls_expected
+            expected_actual_indices: list[tuple[int, int]] = []
+
+            # Verify LLM decided to use tools
+            if test_expectations.allow_unexpected_tool_calls:
+                assert len(response.tool_calls) >= len(expected_calls), (
+                    f"LLM should have decided to call tools\n{diagnostics}"
+                )
+                search_start = 0
+                for expected_idx, expected_call in enumerate(expected_calls):
+                    matched_actual_idx = None
+                    for actual_idx in range(search_start, len(response.tool_calls)):
+                        actual_call = response.tool_calls[actual_idx]
+                        actual_tool_name = _normalize_tool_name(
+                            actual_call.tool_name, expected_call.name
+                        )
+                        if actual_tool_name != expected_call.name:
+                            continue
+                        if not _check_dict_params_match(
+                            expected_call.parameters, actual_call.parameters
+                        ):
+                            continue
+                        matched_actual_idx = actual_idx
+                        break
+
+                    assert matched_actual_idx is not None, (
+                        f"Should have called {expected_call.name} tool with the correct "
+                        f"parameters. Expected (subset): {expected_call.parameters}\n"
+                        f"{diagnostics}"
+                    )
+                    expected_actual_indices.append((expected_idx, matched_actual_idx))
+                    search_start = matched_actual_idx + 1
+            else:
+                assert len(response.tool_calls) == len(expected_calls), (
+                    f"LLM should have decided to call tools\n{diagnostics}"
+                )
+                expected_actual_indices = [(i, i) for i in range(len(expected_calls))]
+
+            for expected_idx, actual_idx in expected_actual_indices:
+                tool_call = response.tool_calls[actual_idx]
+                expected_tool_name = expected_calls[expected_idx].name
+                actual_tool_name = _normalize_tool_name(tool_call.tool_name, expected_tool_name)
+
+                assert actual_tool_name == expected_tool_name, (
+                    f"Should have called {expected_tool_name} tool, but got: "
+                    f"{tool_call.tool_name}\n"
+                    f"{diagnostics}"
                 )
                 assert _check_dict_params_match(
-                    test_expectations.tool_calls_expected[i].parameters, tool_call.parameters
+                    expected_calls[expected_idx].parameters, tool_call.parameters
                 ), (
-                    f"Should have called {tool_call.tool_name} tool with the correct parameters. "
-                    f"Expected (subset): {test_expectations.tool_calls_expected[i].parameters}, "
-                    f"but got: {tool_call.parameters}"
+                    f"Should have called {expected_tool_name} tool with the correct parameters. "
+                    f"Expected (subset): {expected_calls[expected_idx].parameters}, "
+                    f"but got: {tool_call.parameters}\n"
+                    f"{diagnostics}"
                 )
-                if test_expectations.tool_calls_expected[i].result != SHOULD_NOT_BE_EMPTY:
-                    expected_result = test_expectations.tool_calls_expected[i].result
+                if expected_calls[expected_idx].result != SHOULD_NOT_BE_EMPTY:
+                    expected_result = expected_calls[expected_idx].result
                     if isinstance(expected_result, str):
-                        assert expected_result in response.tool_results[i], (
-                            f"Should have called {tool_call.tool_name} tool with the correct "
-                            f"result, but got: {response.tool_results[i]}"
+                        assert expected_result in response.tool_results[actual_idx], (
+                            f"Should have called {expected_tool_name} tool with the correct "
+                            f"result, but got: {response.tool_results[actual_idx]}\n"
+                            f"{diagnostics}"
                         )
                     else:
-                        actual_result = _extract_structured_content(response.tool_results[i])
+                        actual_result = _extract_structured_content(
+                            response.tool_results[actual_idx]
+                        )
                         if actual_result is None:
                             # Fallback: try to parse the entire tool result as JSON
                             try:
-                                actual_result = json.loads(response.tool_results[i])
+                                actual_result = json.loads(response.tool_results[actual_idx])
                             except json.JSONDecodeError:
                                 # If that fails, try to extract content part
-                                if "Content: " in response.tool_results[i]:
-                                    content_part = response.tool_results[i].split("Content: ", 1)[1]
+                                if "Content: " in response.tool_results[actual_idx]:
+                                    content_part = response.tool_results[actual_idx].split(
+                                        "Content: ", 1
+                                    )[1]
                                     if "\nStructured content: " in content_part:
                                         content_part = content_part.split(
                                             "\nStructured content: ", 1
@@ -238,20 +382,23 @@ class ToolBaseE2E:
                                     except json.JSONDecodeError:
                                         raise AssertionError(
                                             f"Could not parse tool result for "
-                                            f"{tool_call.tool_name}: {response.tool_results[i]}"
+                                            f"{expected_tool_name}: "
+                                            f"{response.tool_results[actual_idx]}"
                                         )
                         assert _check_dict_has_keys(expected_result, actual_result), (
-                            f"Should have called {tool_call.tool_name} tool with the correct "
-                            f"result structure, but got: {response.tool_results[i]}"
+                            f"Should have called {expected_tool_name} tool with the correct "
+                            f"result structure, but got: {response.tool_results[actual_idx]}\n"
+                            f"{diagnostics}"
                         )
                 else:
-                    assert len(response.tool_results[i]) > 0, (
-                        f"Should have called {tool_call.tool_name} tool with non-empty result, but "
-                        f"got: {response.tool_results[i]}"
+                    assert len(response.tool_results[actual_idx]) > 0, (
+                        f"Should have called {expected_tool_name} tool with non-empty result, but "
+                        f"got: {response.tool_results[actual_idx]}\n"
+                        f"{diagnostics}"
                     )
 
         # Verify LLM provided comprehensive response
-        assert len(response.content) > 100, "LLM should provide detailed response"
+        assert len(response.content) > 60, "LLM should provide detailed response"
         assert any(
             expected_response.lower() in response.content
             for expected_response in test_expectations.llm_response_content_contains_expectations

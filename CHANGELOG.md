@@ -5,8 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
-## 0.15.23
+## 0.15.29
 - Implemented pagination for predictive data MCP tools
+
+## 0.15.28
+- Added `datarobot_genai.core.agents.verify` for validating AG-UI event streams against the protocol state machine. Re-enabled the previously skipped sequence checks in dragent e2e tests.
+
+## 0.15.27
+- Fixed LangGraph MCP integration so a single failing MCP tool no longer aborts the entire agent run.
+
+## 0.15.26
+- Categorized ToolErrors, OAuth access tokens with x-datarobot-*-access-token fallback, MCP logging that surfaces kinds to FastMCP, SDK ClientError → tool errors in predictive tools and improved third party APIs tool_metadata descriptions.
+
+## 0.15.25
+- Improved predictive drtools for MCP agents: rich tool_metadata descriptions, robust batch download polling and async-safe waits, safer CSV/JSON parsing for realtime predict, and more resilient deployment CSV validation (importance + whitespace/empty rows).
+
+## 0.15.24
+- Fixed NAT `per_user_tool_calling_agent` leaking prior assistant messages from chat history back into the response stream as a single trailing chunk.
+
+## 0.15.23
+- OAuth2 token exchange configuration now use a nested `subject_token_constraints` and `token_exchange_request`, with AgentCard extension.
 
 ## 0.15.22
 - Removed `posthog` and `qdrant-client` from `e2e-tests/pyproject.toml` exclude list to mirror the main pyproject.toml fix in 0.15.21; both are imported eagerly by upstream libs and excluding them would break e2e test collection.

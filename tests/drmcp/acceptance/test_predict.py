@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
+from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
@@ -64,6 +65,35 @@ def expectations_for_predict_from_project_data_success(
         ],
         llm_response_content_contains_expectations=[
             "prediction",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_batch_predict_then_get_batch_results_success(
+    deployment_id: str,
+    classification_predict_dataset: Any,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="predict_by_ai_catalog",
+                parameters={
+                    "deployment_id": deployment_id,
+                    "dataset_id": classification_predict_dataset["dataset_id"],
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_results",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "prediction",
+            "job",
+            "result",
         ],
     )
 
@@ -135,8 +165,8 @@ class TestPredictE2E(ToolBaseE2E):
         [
             """
         The MCP server has no access to my laptop files. Deployment ID is '{deployment_id}'.
-        Run batch predictions with predict_by_ai_catalog using only dataset_id '{dataset_id}'
-        (AI Catalog). Do not use local file paths or batch intake from disk.
+        Run batch scoring using only the AI Catalog dataset id '{dataset_id}' as the input source.
+        Do not use local file paths or upload from this machine.
         """
         ],
     )
@@ -196,6 +226,44 @@ class TestPredictE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_from_project_data_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        First, run batch scoring on DataRobot deployment '{deployment_id}' using AI Catalog
+        dataset '{dataset_id}'. When the first response includes a batch job identifier, use that
+        identifier in a follow-up step to fetch the scored CSV content (still within this
+        conversation). Summarize what you got back from the second step.
+        """
+        ],
+    )
+    async def test_batch_predict_then_get_batch_prediction_results(
+        self,
+        llm_client: Any,
+        expectations_for_batch_predict_then_get_batch_results_success: ETETestExpectations,
+        deployment_id: str,
+        classification_predict_dataset: Any,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            dataset_id=classification_predict_dataset["dataset_id"],
+        )
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_batch_predict_then_get_batch_prediction_results"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_batch_predict_then_get_batch_results_success,
                 llm_client,
                 session,
                 test_name,
