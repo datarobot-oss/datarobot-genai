@@ -19,9 +19,11 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
+from datarobot.errors import ClientError
 from datarobot.models.data_store import DataStoreParameters
 
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive import data
 
 
@@ -956,3 +958,32 @@ async def test_list_ai_catalog_items_error() -> None:
         with pytest.raises(Exception) as exc_info:
             await data.list_ai_catalog_items()
         assert "fail" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_list_ai_catalog_items_client_error_during_lazy_iteration() -> None:
+
+    def _gen_raises_on_consume():
+        raise ClientError(
+            "500 client error: {'message': 'Server Error'}",
+            status_code=500,
+            json={"message": "Server Error"},
+        )
+        yield  # pragma: no cover — makes this a generator; first next() runs raise first
+
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.data.DataRobotClient") as mock_data_robot_client,
+    ):
+        mock_client = MagicMock()
+        mock_client.Dataset.iterate.return_value = _gen_raises_on_consume()
+        mock_data_robot_client.return_value.get_client.return_value = mock_client
+
+        with pytest.raises(ToolError) as exc_info:
+            await data.list_ai_catalog_items()
+        assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+        assert "500" in str(exc_info.value)

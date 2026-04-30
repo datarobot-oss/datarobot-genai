@@ -155,12 +155,18 @@ async def upload_dataset_to_ai_catalog(
         )
         buffer = io.BytesIO(raw)
         buffer.name = fname
-        catalog_item = client.Dataset.create_from_file(filelike=buffer)
+        try:
+            catalog_item = client.Dataset.create_from_file(filelike=buffer)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
     else:
         if file_url is None or not is_valid_url(file_url):
             logger.error("Invalid file URL: %s", file_url)
             raise ToolError(f"Invalid file URL: {file_url}", kind=ToolErrorKind.VALIDATION)
-        catalog_item = client.Dataset.create_from_url(file_url)
+        try:
+            catalog_item = client.Dataset.create_from_url(file_url)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
     if not catalog_item:
         raise ToolError("Failed to upload dataset.", kind=ToolErrorKind.UPSTREAM)
@@ -206,9 +212,9 @@ async def list_ai_catalog_items(
     iterate_offset = 0 if offset is None else offset
     try:
         gen = client.Dataset.iterate(offset=iterate_offset, limit=limit)
+        datasets = list(itertools.islice(gen, limit))
     except ClientError as e:
         raise_tool_error_for_client_error(e)
-    datasets = list(itertools.islice(gen, limit))
 
     if not datasets:
         logger.info("No AI Catalog items found")
