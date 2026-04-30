@@ -35,6 +35,92 @@ logger = logging.getLogger(__name__)
 # Max target null rate (30%) for time-series eligibility check
 _MAX_NULL_RATE_FOR_ELIGIBILITY = 0.3
 
+# Cadence / gap inference helpers for is_eligible_for_timeseries_training.
+# Adapted from datarobot-ts-helpers (MIT, Bultema et al.):
+# https://github.com/jarredbultema/ts_helpers_package — specifically
+# `time_steps_gap_check` and the `median_timestep` derivation in
+# `TSDataQuality.calc_summary_stats`. Reimplemented in polars and
+# generalized to single- and multi-series inputs.
+
+_SEC = 1.0
+_MIN = 60.0
+_HOUR = 3600.0
+_DAY = 86400.0
+_WEEK = 604800.0
+
+
+def _humanize_timestep_seconds(seconds: float) -> str:
+    """Return a short human-readable label for a timestep duration in seconds."""
+    if seconds <= 0:
+        return "unknown"
+    for unit_seconds, unit_name in (
+        (_WEEK, "week"),
+        (_DAY, "day"),
+        (_HOUR, "hour"),
+        (_MIN, "minute"),
+    ):
+        if seconds % unit_seconds == 0:
+            n = int(seconds // unit_seconds)
+            return f"{n} {unit_name}" + ("s" if n != 1 else "")
+    return f"{seconds:.1f} seconds"
+
+
+def _compute_cadence(
+    df: pl.DataFrame,
+    datetime_column: str,
+    series_id_column: str | None,
+) -> dict[str, Any] | None:
+    """Infer median timestep and per-series gap statistics.
+
+    Adapted from datarobot-ts-helpers (MIT). Returns ``None`` when there
+    are not enough timestamps to compute deltas.
+
+    The dict has keys:
+        median_timestep_seconds: float — median delta across all
+            consecutive (within-series) datetime pairs.
+        median_timestep_human: str — short label such as "1 day".
+        pct_series_with_gaps: float in [0, 1] — fraction of series whose
+            largest delta exceeds the median timestep.
+        max_gap_seconds: float — largest delta observed across all series.
+        n_series: int — number of distinct series considered.
+    """
+    grouped: pl.DataFrame
+    group_col: str
+    if series_id_column and series_id_column in df.columns:
+        grouped = df
+        group_col = series_id_column
+    else:
+        group_col = "__series__"
+        grouped = df.with_columns(pl.lit(0).alias(group_col))
+
+    sorted_df = grouped.sort(group_col, datetime_column)
+    diffs = (
+        sorted_df.with_columns(pl.col(datetime_column).diff().over(group_col).alias("__delta__"))
+        .filter(pl.col("__delta__").is_not_null())
+        .with_columns(pl.col("__delta__").dt.total_seconds().alias("__delta_s__"))
+    )
+    if diffs.height == 0:
+        return None
+
+    median_seconds = diffs["__delta_s__"].median()
+    if median_seconds is None or median_seconds <= 0:
+        return None
+
+    per_series = diffs.group_by(group_col).agg(pl.col("__delta_s__").max().alias("__max_gap_s__"))
+    n_series = per_series.height
+    max_gap_seconds = float(per_series["__max_gap_s__"].max() or 0.0)
+    pct_series_with_gaps = per_series.filter(pl.col("__max_gap_s__") > median_seconds).height / max(
+        n_series, 1
+    )
+
+    return {
+        "median_timestep_seconds": float(median_seconds),
+        "median_timestep_human": _humanize_timestep_seconds(float(median_seconds)),
+        "pct_series_with_gaps": float(pct_series_with_gaps),
+        "max_gap_seconds": max_gap_seconds,
+        "n_series": int(n_series),
+    }
+
 
 @dataclass
 class ModelInsights:
@@ -324,15 +410,31 @@ async def is_eligible_for_timeseries_training(
         pandas_df = dataset.get_as_dataframe()
         df = pl.from_pandas(pandas_df)
     except Exception as exc:
-        raise ToolError(f"Could not load dataset: {exc}", kind=ToolErrorKind.UPSTREAM)
+        raise ToolError(
+            f"Could not load AI Catalog dataset '{dataset_id}': {exc}. "
+            "Confirm the dataset id is correct, the dataset has finished "
+            "ingesting (status=COMPLETED), and your token has read access.",
+            kind=ToolErrorKind.UPSTREAM,
+        )
 
+    available_columns = list(df.columns)
     row_count = df.height
     infos.append(f"Row count: {row_count}")
     if row_count < 100:
-        errors.append(f"Too few rows ({row_count}): time series training requires at least 100.")
+        errors.append(
+            f"Too few rows: {row_count} < 100. Time-series Autopilot needs "
+            f"at least 100 rows total to fit a usable validation window. "
+            "Collect more history, lower the aggregation level (e.g. daily "
+            "instead of weekly), or pick a target with denser observations."
+        )
 
+    datetime_parsed = False
     if datetime_column not in df.columns:
-        errors.append(f"Datetime column '{datetime_column}' not found in dataset.")
+        errors.append(
+            f"Datetime column '{datetime_column}' not found in dataset. "
+            f"Available columns: {available_columns}. "
+            "Pass the exact column name; column names are case-sensitive."
+        )
     else:
         try:
             col = pl.col(datetime_column)
@@ -342,25 +444,91 @@ async def is_eligible_for_timeseries_training(
             else:
                 df = df.with_columns(col.cast(pl.Datetime))
             infos.append(f"Datetime column '{datetime_column}' parsed successfully.")
+            datetime_parsed = True
         except Exception as exc:
-            errors.append(f"Datetime column '{datetime_column}' could not be parsed: {exc}")
+            sample = df[datetime_column].drop_nulls().head(3).to_list()
+            errors.append(
+                f"Datetime column '{datetime_column}' could not be parsed as "
+                f"a timestamp ({exc}). Sample values: {sample}. "
+                "Coerce the column to ISO-8601 (e.g. 2024-01-15 or "
+                "2024-01-15T09:30:00) before uploading, or upload the "
+                "dataset with the column already typed as date/datetime."
+            )
 
     if series_id_column and series_id_column not in df.columns:
-        errors.append(f"Series ID column '{series_id_column}' not found in dataset.")
+        errors.append(
+            f"Series ID column '{series_id_column}' not found in dataset. "
+            f"Available columns: {available_columns}. "
+            "Pass the exact column name, or omit series_id_column entirely "
+            "for single-series datasets."
+        )
 
     if target_column not in df.columns:
-        errors.append(f"Target column '{target_column}' not found in dataset.")
+        errors.append(
+            f"Target column '{target_column}' not found in dataset. "
+            f"Available columns: {available_columns}. "
+            "Pass the exact column name; column names are case-sensitive."
+        )
 
     null_pct = df[target_column].null_count() / row_count if target_column in df.columns else None
     if null_pct is not None:
         infos.append(f"Target null rate: {null_pct:.1%}")
         if null_pct > _MAX_NULL_RATE_FOR_ELIGIBILITY:
-            errors.append(f"Target column has {null_pct:.1%} null values (>30%).")
+            errors.append(
+                f"Target column '{target_column}' is {null_pct:.1%} null "
+                f"(threshold: {_MAX_NULL_RATE_FOR_ELIGIBILITY:.0%}). "
+                "DataRobot needs a populated target to learn from. "
+                "Either pick a different target, filter the dataset to rows "
+                "where the target is present, or aggregate to a coarser "
+                "frequency where most periods have observations."
+            )
+
+    cadence: dict[str, Any] | None = None
+    if datetime_parsed:
+        try:
+            cadence = _compute_cadence(df, datetime_column, series_id_column)
+        except Exception as exc:
+            # Cadence inference is informational; don't fail the eligibility
+            # verdict if it blows up on weird data.
+            infos.append(
+                f"Cadence/gap diagnostics unavailable ({exc}). The eligibility "
+                "verdict still holds, but the agent should not assume a "
+                "specific time_step or gap pattern."
+            )
+        else:
+            if cadence is None and row_count >= 2:
+                infos.append(
+                    "Cadence/gap diagnostics unavailable: could not compute "
+                    "consecutive-timestamp deltas (likely too few rows per "
+                    "series, or all timestamps identical). The eligibility "
+                    "verdict still holds, but agents should sanity-check "
+                    "the time_step before running TS Autopilot."
+                )
+
+        if cadence:
+            infos.append(
+                f"Median timestep: {cadence['median_timestep_human']} "
+                f"across {cadence['n_series']} "
+                f"series."
+                if cadence["n_series"] > 1
+                else f"Median timestep: {cadence['median_timestep_human']}."
+            )
+            gap_pct = cadence["pct_series_with_gaps"]
+            if gap_pct > 0:
+                infos.append(
+                    f"{gap_pct:.0%} of series have at least one gap larger than "
+                    f"the median timestep. DataRobot accepts non-regular cadences "
+                    f"for TS modeling, but consider reindexing/imputing if gaps "
+                    f"are large or row-based partitioning if they cluster."
+                )
 
     status = "ELIGIBLE" if not errors else "NOT_ELIGIBLE"
 
-    return {
+    result: dict[str, Any] = {
         "status": status,
         "errors": errors,
         "info": infos,
     }
+    if cadence is not None:
+        result["cadence"] = cadence
+    return result
