@@ -28,6 +28,10 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -43,6 +47,7 @@ from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
 
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
@@ -629,6 +634,89 @@ async def test_invoke_emits_fallback_after_tool_when_final_answer_is_new(
     assert len(text_ends) == 2
     assert text_starts[0].message_id == text_ends[0].message_id == content[0].message_id
     assert text_starts[1].message_id == text_ends[1].message_id == content[1].message_id
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_tool_result_uses_tool_call_id_and_post_tool_text_gets_new_message(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Tool result stays tied to the tool call while post-tool text starts a fresh message."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'use tool'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+            AgentStream(delta="prefix", response="", current_agent_name="Agent1"),
+            AgentOutput(
+                response=ChatMessage(content="prefix", role=MessageRole.ASSISTANT),
+                current_agent_name="Agent1",
+                tool_calls=[
+                    ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")
+                ],
+            ),
+            ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+            ToolCallResult(
+                tool_name="tool1",
+                tool_kwargs={"a": 1},
+                tool_id="tool1",
+                tool_output=ToolOutput(
+                    tool_name="tool1",
+                    content="tool result",
+                    raw_input={"a": 1},
+                    raw_output="tool result",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+            AgentStream(delta="suffix", response="", current_agent_name="Agent1"),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a step that streams text, runs a tool, then streams more text
+    # WHEN invoking the agent
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the AG-UI event sequence remains valid
+    validate_sequence(list(ag_events))
+
+    # THEN the tool-result event is keyed by the tool call id
+    tool_start = next(event for event in ag_events if isinstance(event, ToolCallStartEvent))
+    tool_args = next(event for event in ag_events if isinstance(event, ToolCallArgsEvent))
+    tool_end = next(event for event in ag_events if isinstance(event, ToolCallEndEvent))
+    tool_result = next(event for event in ag_events if isinstance(event, ToolCallResultEvent))
+    assert tool_start.tool_call_id == "tool1"
+    assert tool_args.tool_call_id == "tool1"
+    assert tool_end.tool_call_id == "tool1"
+    assert tool_result.tool_call_id == "tool1"
+    assert tool_result.message_id == "tool1"
+
+    # THEN post-tool assistant text opens a new message instead of reusing the tool id
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["prefix", "suffix"]
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    assert len(text_starts) == 2
+    assert text_starts[0].message_id == content[0].message_id
+    assert text_starts[1].message_id == content[1].message_id
+    assert text_starts[1].message_id != tool_result.message_id
+
+    prefix_text_end_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageEndEvent) and event.message_id == content[0].message_id
+    )
+    tool_start_idx = next(i for i, event in enumerate(ag_events) if event == tool_start)
+    tool_result_idx = next(i for i, event in enumerate(ag_events) if event == tool_result)
+    suffix_text_start_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageStartEvent) and event.message_id == content[1].message_id
+    )
+    assert prefix_text_end_idx < tool_start_idx < tool_result_idx < suffix_text_start_idx
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 

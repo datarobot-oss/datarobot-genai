@@ -476,6 +476,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 ReasoningMessageStartEvent(
                                     type=EventType.REASONING_MESSAGE_START,
                                     message_id=message_id,
+                                    role="reasoning",
                                 ),
                                 None,
                                 zero_metrics,
