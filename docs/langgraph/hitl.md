@@ -32,7 +32,7 @@ When the graph reports an `__interrupt__` update, streaming emits a **`CUSTOM`**
 
 You can also pass **`interrupt_before`** / **`interrupt_after`** when constructing the agent; they are forwarded to `StateGraph.compile(...)`, for example to pause *before* a node without custom `interrupt()` code in that node.
 
-## DRAgent / NAT: passing the checkpointer (e2e register)
+## DRAgent / NAT: passing the checkpointer (example from e2e-tests)
 
 The minimal [`register.py`](../../e2e-tests/dragent/langgraph/register.py) builds `MyAgent(..., checkpointer=HITL_E2E_CHECKPOINTER)`.
 

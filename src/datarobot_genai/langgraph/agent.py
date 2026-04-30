@@ -98,12 +98,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         :meth:`BaseAgent.__init__`: ``checkpointer``, ``interrupt_before``,
         ``interrupt_after``, ``debug``, ``name``.
 
-        - ``checkpointer``: if set, that saver is used; otherwise a process-wide
-          shared :class:`~langgraph.checkpoint.memory.InMemorySaver` (so ``interrupt()``
-          can resume across HTTP requests when ``RunAgentInput.thread_id`` is stable).
-          With a stable ``thread_id``, normal turns are passed as plain state input
-          (not ``Command(update=...)``), which lets LangGraph re-enter from the graph
-          entrypoint on subsequent invocations.
+        - ``checkpointer``: forwarded to ``compile(...)``. Required for ``interrupt()``
+          resume across requests; without it, pending-interrupt detection is a no-op.
+          Pair with a stable ``RunAgentInput.thread_id`` from the caller.
         - ``interrupt_before`` / ``interrupt_after``: passed to
           :meth:`langgraph.graph.state.StateGraph.compile`.
         - ``debug``: if provided, passed to ``compile(debug=...)``; for ``astream``,
@@ -165,14 +162,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         run_agent_input: RunAgentInput,
     ) -> Command | None:
         """When the thread is paused on `interrupt()`, map the user message to `resume`."""
+        if self.checkpointer is None:
+            return None
         config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
-        ag = getattr(compiled_graph, "aget_state", None)
-        if ag is None:
-            return None
-        try:
-            snap = await ag(config)
-        except (TypeError, ValueError):
-            return None
+        snap = await compiled_graph.aget_state(config)
         interrupts = getattr(snap, "interrupts", None)
         if not interrupts:
             return None
@@ -188,14 +181,19 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     ) -> dict[str, Any] | Command:
         """Resolve LangGraph input: explicit resume, pending interrupt, or normal prompt."""
         state = run_agent_input.state
-        resume_payload: Any | None = None
+        resume_present = False
+        resume_payload: Any = None
         if isinstance(state, Mapping) and LANGGRAPH_RESUME_STATE_KEY in state:
-            resume_payload = state[LANGGRAPH_RESUME_STATE_KEY]
-        else:
-            forwarded = run_agent_input.forwarded_props
-            if isinstance(forwarded, Mapping) and LANGGRAPH_RESUME_STATE_KEY in forwarded:
-                resume_payload = forwarded[LANGGRAPH_RESUME_STATE_KEY]
-        if resume_payload is not None:
+            resume_present, resume_payload = True, state[LANGGRAPH_RESUME_STATE_KEY]
+        elif (
+            isinstance(run_agent_input.forwarded_props, Mapping)
+            and LANGGRAPH_RESUME_STATE_KEY in run_agent_input.forwarded_props
+        ):
+            resume_present, resume_payload = (
+                True,
+                run_agent_input.forwarded_props[LANGGRAPH_RESUME_STATE_KEY],
+            )
+        if resume_present:
             return self._command_for_interrupt_resume(resume_payload)
 
         pending = await self._command_for_pending_interrupt(compiled_graph, run_agent_input)

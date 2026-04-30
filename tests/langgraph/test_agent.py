@@ -13,6 +13,7 @@
 # limitations under the License.
 from functools import cached_property
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import Mock
 
 import pytest
@@ -661,7 +662,7 @@ async def test_build_input_command_returns_state_input_for_normal_turn() -> None
     # GIVEN a normal turn with no explicit resume and no pending interrupts
     agent = HistoryAwareLangGraphAgent(checkpointer=Mock())
     compiled_graph = Mock()
-    compiled_graph.aget_state = Mock(return_value=None)
+    compiled_graph.aget_state = AsyncMock(return_value=Mock(interrupts=[]))
     run_agent_input = RunAgentInput(
         messages=[UserMessage(content='{"topic": "AI"}', id="m")],
         tools=[],

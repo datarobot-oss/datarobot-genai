@@ -43,4 +43,4 @@ Patterns visible in the file:
 
 ## Human in the loop
 
-The sample `myagent.py` can include a **review** node that calls LangGraph’s **`interrupt()`** between other nodes (planner → **human review** → writer). That pattern needs a **checkpointer** and a stable **`thread_id`** across the interrupt and resume requests. See [hitl.md](hitl.md) for behavior, `langgraph_resume`, DRAgent’s shared `HITL_E2E_CHECKPOINTER` in `register.py`, and links to interrupt/resume tests.
+The sample `myagent.py` can include a **review** node that calls LangGraph’s **`interrupt()`** between other nodes (planner → **human review** → writer). That pattern needs a **checkpointer** and a stable **`thread_id`** across the interrupt and resume requests. See [hitl.md](hitl.md) to read more about behavior, `langgraph_resume`, and `HITL_E2E_CHECKPOINTER` example from e2e-tests.
