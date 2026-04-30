@@ -104,6 +104,10 @@ auth = [
   "pydantic>=2.6.1,<3.0.0",
 ]
 
+auth_okta = auth + [
+    "okta-client-python>=0.2.0,<1.0.0",
+]
+
 # drtools: no subpackages dependencies other than auth.
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
 drtools = auth + [
@@ -151,6 +155,7 @@ extras_require = {
     "llamaindex": llamaindex,
     "nat": nat,
     "auth": auth,
+    "auth-okta": auth_okta,
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
