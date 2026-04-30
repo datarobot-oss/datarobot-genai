@@ -273,6 +273,20 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 logger.info(f"Tool Result: {tname}")
                 logger.debug(f"Arguments: {tkwargs}")
                 logger.debug(f"Output: {tout}")
+                # Safety net: if a text message is somehow still open (e.g. a
+                # ToolCallResult arrives without a preceding ToolCall having
+                # closed it), close it before emitting tool events so they
+                # never sit inside an open text message. Mirrors ToolCall.
+                if text_started:
+                    yield (
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    text_started = False
                 yield (
                     ToolCallEndEvent(
                         type=EventType.TOOL_CALL_END,
@@ -296,18 +310,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
-                # Close any open text/reasoning before regenerating message_id so
-                # the next text block opens with a fresh id (mirrors ToolCall).
-                if text_started:
-                    yield (
-                        TextMessageEndEvent(
-                            type=EventType.TEXT_MESSAGE_END,
-                            message_id=message_id,
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-                    text_started = False
                 message_id = str(uuid.uuid4())
             elif event_type == "ToolCall":
                 tname = getattr(event, "tool_name", None)
