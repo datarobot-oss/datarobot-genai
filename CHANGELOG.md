@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.42
+- `is_eligible_for_timeseries_training`: Surfaced median timestep, per-series gap percentage, and max-gap-seconds as a `cadence` field so agents can pick between TS and row-based partitioning before calling `start_autopilot`. Treated an entirely-null target as a scoring dataset (downgraded from blocking error to INFO). Detected row-level duplicates per (datetime, series_id) and reported up to three offending keys. Updated error messages to follow what + why + how-to-fix format, listed available columns on column-name mismatches, and showed sample bad values on unparseable datetimes.
+
 ## 0.15.41
 - Added a NAT `dr_mem0_memory` provider that adapts `datarobot-genai[memory]`'s Mem0 client to NAT's `MemoryEditor` interface for `auto_memory_agent`.
 - Documented Mem0 automatic-memory workflow configuration for NAT.
