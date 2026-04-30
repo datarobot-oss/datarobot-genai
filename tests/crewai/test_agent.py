@@ -147,13 +147,13 @@ def mock_ragas_event_listener() -> ListenerForTest:
 
 
 class AgentForTest(CrewAIAgent):
-    def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, crew_output: CrewOutput | None = None, **kwargs: Any) -> None:
         crew_kw = kwargs.pop("crew", None)
         self.crew_output = crew_output
         self._crew_for_test: Any = crew_kw if crew_kw is not None else CrewForTest(crew_output)
         self._agents_for_test: list[MagicMock] = [_mock_crewai_agent(), _mock_crewai_agent()]
         self._tasks_for_test: list[MagicMock] = [MagicMock(), MagicMock()]
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
     @property
     def agents(self) -> list[Any]:

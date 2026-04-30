@@ -50,6 +50,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.memory.base import BaseMemoryClient
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -89,30 +90,63 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     History is opt-in: prior turns are only injected when the prompt template
     declares and uses a `{chat_history}` input variable. If the template does
     not use `{chat_history}`, no chat history is passed to the model.
+
+    Framework-specific parameters:
+
+    - ``checkpointer``: checkpoint store for ``interrupt()`` and thread resume.
+    - ``interrupt_before`` / ``interrupt_after``: compile-time interrupt node lists.
+    - ``debug``: forwarded to ``StateGraph.compile(debug=...)``.
+    - ``name``: optional name for the compiled graph.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Forward ``*args`` / ``**kwargs`` to :class:`BaseAgent` after setting LangGraph fields.
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[BaseTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+        model: str | None = None,
+        checkpointer: Any | None = None,
+        interrupt_before: Any | None = None,
+        interrupt_after: Any | None = None,
+        debug: bool = False,
+        name: str | None = None,
+    ) -> None:
+        """Initialize the agent and LangGraph compile settings.
 
-        The following keyword arguments are handled here and are not passed to
-        :meth:`BaseAgent.__init__`: ``checkpointer``, ``interrupt_before``,
-        ``interrupt_after``, ``debug``, ``name``.
+        LangGraph-only parameters:
 
         - ``checkpointer``: forwarded to ``compile(...)``. Required for ``interrupt()``
           resume across requests; without it, pending-interrupt detection is a no-op.
           Pair with a stable ``RunAgentInput.thread_id`` from the caller.
         - ``interrupt_before`` / ``interrupt_after``: passed to
           :meth:`langgraph.graph.state.StateGraph.compile`.
-        - ``debug``: if provided, passed to ``compile(debug=...)``; for ``astream``,
-          when omitted, ``debug`` follows ``verbose`` (previous behavior).
+        - ``debug``: passed to ``compile(debug=...)``; for ``astream``, when this is
+          false, ``debug`` follows ``verbose`` (previous behavior).
         - ``name``: optional graph name for ``compile(name=...)``.
         """
-        self.checkpointer = kwargs.pop("checkpointer", None)
-        self.interrupt_before = kwargs.pop("interrupt_before", None)
-        self.interrupt_after = kwargs.pop("interrupt_after", None)
-        self.debug = kwargs.pop("debug", False)
-        self.name = kwargs.pop("name", None)
-        super().__init__(*args, **kwargs)
+        self.checkpointer = checkpointer
+        self.interrupt_before = interrupt_before
+        self.interrupt_after = interrupt_after
+        self.debug = debug
+        self.name = name
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            llm=llm,
+            tools=tools,
+            verbose=verbose,
+            timeout=timeout,
+            forwarded_headers=forwarded_headers,
+            max_history_messages=max_history_messages,
+            memory_client=memory_client,
+            model=model,
+        )
 
     @property
     @abc.abstractmethod
@@ -305,7 +339,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 # LangGraph expects a RunnableConfig, but our config is a plain dict.
                 # Cast to Any to avoid leaking LangGraph internals into this interface.
                 config=cast(Any, self.build_langgraph_runnable_config(run_agent_input)),
-                debug=self.verbose,
+                debug=self.debug,
                 # Streaming updates and messages from all the nodes
                 stream_mode=["updates", "messages"],
                 subgraphs=True,
