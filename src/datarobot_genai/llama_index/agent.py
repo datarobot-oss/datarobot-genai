@@ -284,7 +284,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 yield (
                     ToolCallResultEvent(
                         type=EventType.TOOL_CALL_RESULT,
-                        message_id=message_id,
+                        # Tie the result to its tool card via tool_call_id rather
+                        # than the prior assistant text's id, so UIs that group
+                        # tool results by message_id don't overwrite the
+                        # assistant bubble with the tool's confirmation string.
+                        message_id=tid,
                         tool_call_id=tid,
                         content=json.dumps(tout, default=str),
                         role="tool",
@@ -292,6 +296,18 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
+                # Close any open text/reasoning before regenerating message_id so
+                # the next text block opens with a fresh id (mirrors ToolCall).
+                if text_started:
+                    yield (
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    text_started = False
                 message_id = str(uuid.uuid4())
             elif event_type == "ToolCall":
                 tname = getattr(event, "tool_name", None)
