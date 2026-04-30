@@ -22,7 +22,6 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
-from ag_ui.core import StepFinishedEvent
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
@@ -428,7 +427,7 @@ async def test_invoke_agent_output_with_dict_tool_calls(
 async def test_invoke_agent_stream_multiple_agents(
     run_agent_input: RunAgentInput,
 ) -> None:
-    """Multi-agent stream yields text, step events, and completes."""
+    """Multi-agent stream starts a fresh text message when agent ownership changes."""
     workflow = Workflow(
         events=[
             AgentWorkflowStartEvent(),
@@ -439,21 +438,39 @@ async def test_invoke_agent_stream_multiple_agents(
     )
     agent = MyLlamaAgent(workflow)
 
+    # GIVEN a stream that switches agents between incremental text chunks
+    # WHEN invoking the agent
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, _, _ = zip(*events_out)
 
+    # THEN the streamed text deltas are preserved
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["one", " two"]
-    assert any(isinstance(e, TextMessageStartEvent) for e in ag_events)
-    assert any(isinstance(e, TextMessageEndEvent) for e in ag_events)
 
-    step_started = [e for e in ag_events if isinstance(e, StepStartedEvent)]
-    step_finished = [e for e in ag_events if isinstance(e, StepFinishedEvent)]
-    if step_started:
-        assert {e.step_name for e in step_started} <= {"Agent1", "Agent2"}
-    if step_finished:
-        assert {e.step_name for e in step_finished} <= {"Agent1", "Agent2"}
+    # THEN each agent step gets its own text message lifecycle
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
+    assert len(text_starts) == 2
+    assert len(text_ends) == 2
+    assert {e.message_id for e in text_starts} == {e.message_id for e in text_ends}
+    assert len({e.message_id for e in text_starts}) == 2
 
+    # THEN the second agent's step starts before its text message opens
+    second_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Agent2"
+    )
+    second_text_start_idx = next(i for i, event in enumerate(ag_events) if event == text_starts[1])
+    second_text_content_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageContentEvent) and event.delta == " two"
+    )
+    assert second_step_started_idx < second_text_start_idx < second_text_content_idx
+    assert text_starts[1].message_id == content[1].message_id
+
+    # THEN the run still completes cleanly
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 

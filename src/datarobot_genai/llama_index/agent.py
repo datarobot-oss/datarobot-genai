@@ -155,10 +155,39 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         message_id = str(uuid.uuid4())
         text_started = False
         any_text_emitted = False
-        agent: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
+
+            # Resolve agent ownership before emitting any text from this event.
+            next_agent = getattr(event, "current_agent_name", None)
+            if next_agent is not None and next_agent != current_agent_name:
+                if current_agent_name is not None:
+                    if text_started:
+                        yield (
+                            TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END,
+                                message_id=message_id,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        text_started = False
+                    yield (
+                        StepFinishedEvent(step_name=current_agent_name),
+                        None,
+                        usage_metrics,
+                    )
+                    message_id = str(uuid.uuid4())
+
+                yield (
+                    StepStartedEvent(step_name=next_agent),
+                    None,
+                    usage_metrics,
+                )
+                current_agent_name = next_agent
+                logger.info(f"Agent: {current_agent_name}")
+
             # Best-effort extraction of incremental text from LlamaIndex events
             delta: str | None = None
 
@@ -190,37 +219,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
                 any_text_emitted = True
-
-                # Agent switch banner if available on event
-            if hasattr(event, "current_agent_name"):
-                agent = getattr(event, "current_agent_name", None)
-                if agent is not None and agent != current_agent_name:
-                    if current_agent_name is not None:
-                        if text_started:
-                            yield (
-                                TextMessageEndEvent(
-                                    type=EventType.TEXT_MESSAGE_END,
-                                    message_id=message_id,
-                                ),
-                                None,
-                                usage_metrics,
-                            )
-                            text_started = False
-                        yield (
-                            StepFinishedEvent(step_name=current_agent_name),
-                            None,
-                            usage_metrics,
-                        )
-                        message_id = str(uuid.uuid4())
-
-                    yield (
-                        StepStartedEvent(step_name=agent),
-                        None,
-                        usage_metrics,
-                    )
-                    current_agent_name = agent
-                    agent = None
-                    logger.info(f"Agent: {current_agent_name}")
 
             event_type = type(event).__name__
             if event_type == "AgentInput" and hasattr(event, "input"):
