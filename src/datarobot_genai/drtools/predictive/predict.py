@@ -20,12 +20,15 @@ from typing import Annotated
 from typing import Any
 
 import datarobot as dr
+from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +50,8 @@ def _batch_job_download_url(job: Any) -> str | None:
 
 def _tool_error_with_batch_url(message: str, url: str | None) -> ToolError:
     if url:
-        return ToolError(f"{message} url: {url}")
-    return ToolError(message)
+        return ToolError(f"{message} url: {url}", kind=ToolErrorKind.UPSTREAM)
+    return ToolError(message, kind=ToolErrorKind.UPSTREAM)
 
 
 def _handle_prediction_resource(job: Any, deployment_id: str, input_desc: str) -> dict[str, Any]:
@@ -62,7 +65,10 @@ def _handle_prediction_resource(job: Any, deployment_id: str, input_desc: str) -
         if st in _TERMINAL_FAILURE_STATUSES:
             details = status.get("status_details", "")
             logger.error("Batch job %s terminal status=%s details=%s", job.id, st, details)
-            raise ToolError(f"Batch prediction job failed: status={st!r} details={details!r}")
+            raise ToolError(
+                f"Batch prediction job failed: status={st!r} details={details!r}",
+                kind=ToolErrorKind.UPSTREAM,
+            )
         download_url = status.get("links", {}).get("download")
         if download_url:
             break
@@ -71,7 +77,8 @@ def _handle_prediction_resource(job: Any, deployment_id: str, input_desc: str) -
         if out_type and out_type != "localFile":
             raise ToolError(
                 "Batch job output is not local file streaming; there is no download URL for this "
-                f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead."
+                f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead.",
+                kind=ToolErrorKind.UPSTREAM,
             )
         if attempt < _DOWNLOAD_LINK_MAX_ATTEMPTS - 1:
             time.sleep(_DOWNLOAD_LINK_POLL_SEC)
@@ -82,7 +89,8 @@ def _handle_prediction_resource(job: Any, deployment_id: str, input_desc: str) -
             "Batch prediction finished but no download URL appeared after polling. "
             f"Last status={st!r} details={details!r}. "
             "Confirm the job used local file (streaming) output, or retry later with the same "
-            "job_id."
+            "job_id.",
+            kind=ToolErrorKind.UPSTREAM,
         )
     return {
         "job_id": job.id,
@@ -100,7 +108,7 @@ def wait_for_preds_and_cache_results(
     job.wait_for_completion(timeout)
     if job.status in _TERMINAL_FAILURE_STATUSES:
         logger.error("Job failed with status %s", job.status)
-        raise ToolError(f"Job failed with status {job.status}")
+        raise ToolError(f"Job failed with status {job.status}", kind=ToolErrorKind.UPSTREAM)
     return _handle_prediction_resource(job, deployment_id, input_desc)
 
 
@@ -127,26 +135,36 @@ async def _wait_for_preds_and_cache_results_async(
     ),
 )
 async def predict_by_ai_catalog(
+    *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset_id: Annotated[str, "AI Catalog dataset id to score."],
     timeout: Annotated[int, "Max seconds to wait for batch job completion."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
-        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'deployment_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if not dataset_id or not dataset_id.strip():
-        raise ToolError("Argument validation error: 'dataset_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'dataset_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    dataset = client.Dataset.get(dataset_id)
-    job = dr.BatchPredictionJob.score(
-        deployment=deployment_id,
-        intake_settings={  # type: ignore[arg-type]
-            "type": "dataset",
-            "dataset": dataset,
-        },
-        output_settings=None,
-    )
+    try:
+        dataset = client.Dataset.get(dataset_id)
+        job = dr.BatchPredictionJob.score(
+            deployment=deployment_id,
+            intake_settings={  # type: ignore[arg-type]
+                "type": "dataset",
+                "dataset": dataset,
+            },
+            output_settings=None,
+        )
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     return await _wait_for_preds_and_cache_results_async(
         job, deployment_id, f"Scoring dataset {dataset_id}.", timeout or 600
     )
@@ -166,6 +184,7 @@ async def predict_by_ai_catalog(
     ),
 )
 async def predict_from_project_data(
+    *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     project_id: Annotated[str, "DataRobot project id that supplies training/holdout data."],
     dataset_id: Annotated[
@@ -181,13 +200,24 @@ async def predict_from_project_data(
     timeout: Annotated[int, "Max seconds to wait for batch job completion."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
-        raise ToolError("Argument validation error: 'deployment_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'deployment_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if not project_id or not project_id.strip():
-        raise ToolError("Argument validation error: 'project_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'project_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if dataset_id is not None and (not dataset_id or not dataset_id.strip()):
-        raise ToolError("Argument validation error: 'dataset_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'dataset_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if partition is not None and (not partition or not partition.strip()):
-        raise ToolError("Argument validation error: 'partition' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'partition' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     token = await get_datarobot_access_token()
     DataRobotClient(token).get_client()
@@ -199,11 +229,14 @@ async def predict_from_project_data(
         intake_settings["partition"] = partition
     if dataset_id:
         intake_settings["dataset_id"] = dataset_id
-    job = dr.BatchPredictionJob.score(
-        deployment=deployment_id,
-        intake_settings=intake_settings,  # type: ignore[arg-type]
-        output_settings=None,
-    )
+    try:
+        job = dr.BatchPredictionJob.score(
+            deployment=deployment_id,
+            intake_settings=intake_settings,  # type: ignore[arg-type]
+            output_settings=None,
+        )
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     return await _wait_for_preds_and_cache_results_async(
         job, deployment_id, f"Scoring project {project_id}.", timeout or 600
     )
@@ -220,6 +253,7 @@ async def predict_from_project_data(
     ),
 )
 async def get_batch_prediction_results(
+    *,
     job_id: Annotated[
         str,
         "job_id returned by predict_by_ai_catalog or predict_from_project_data.",
@@ -228,11 +262,16 @@ async def get_batch_prediction_results(
     download_read_timeout: Annotated[int, "Seconds allowed for streaming the CSV body."] = 660,
 ) -> dict[str, Any]:
     if not job_id or not job_id.strip():
-        raise ToolError("Argument validation error: 'job_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     token = await get_datarobot_access_token()
     DataRobotClient(token).get_client()
-    job = dr.BatchPredictionJob.get(job_id.strip())
+    try:
+        job = dr.BatchPredictionJob.get(job_id.strip())
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     download_url = _batch_job_download_url(job)
     buf = io.BytesIO()
     try:

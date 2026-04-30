@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from .constants import MAX_INLINE_SIZE
 from .exceptions import ToolError
+from .exceptions import ToolErrorKind
 
 
 def is_valid_url(url: str) -> bool:
@@ -47,5 +48,6 @@ def predictions_result_response(df: Any, show_explanations: bool = False) -> Pre
         f"Prediction CSV is {encoded_len} bytes, which exceeds the inline limit "
         f"of {MAX_INLINE_SIZE} bytes. "
         "Use batch prediction (for example predict_by_ai_catalog) for large outputs, "
-        "or reduce rows or explanations."
+        "or reduce rows or explanations.",
+        kind=ToolErrorKind.VALIDATION,
     )

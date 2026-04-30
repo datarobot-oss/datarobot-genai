@@ -29,6 +29,7 @@ from pydantic import Field
 
 from datarobot_genai.drtools.core.auth import get_api_key_from_headers
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +69,15 @@ async def get_perplexity_access_token() -> str | ToolError:
         logger.warning("Perplexity API key not found in headers.")
         return ToolError(
             "Perplexity API key not found in headers. "
-            "Please provide it via 'x-perplexity-api-key' header."
+            "Please provide it via 'x-perplexity-api-key' header.",
+            kind=ToolErrorKind.AUTHENTICATION,
         )
     except Exception as e:
         logger.error(f"Unexpected error obtaining Perplexity API key: {e}.", exc_info=e)
-        return ToolError("An unexpected error occurred while obtaining Perplexity API key.")
+        return ToolError(
+            "An unexpected error occurred while obtaining Perplexity API key.",
+            kind=ToolErrorKind.INTERNAL,
+        )
 
 
 class PerplexityError(Exception):

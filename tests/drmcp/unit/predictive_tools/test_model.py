@@ -20,8 +20,10 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
+from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive import model
 from datarobot_genai.drtools.predictive.model import ModelEncoder
 from datarobot_genai.drtools.predictive.model import model_to_dict
@@ -87,6 +89,23 @@ async def test_get_best_model_project_not_found() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_best_model_project_client_error_404() -> None:
+    mock_client = MagicMock()
+    mock_client.Project.get.side_effect = ClientError(
+        "404 client error: {'message': 'Not Found'}",
+        status_code=404,
+        json={"message": "Not Found"},
+    )
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        with pytest.raises(ToolError) as exc_info:
+            await model.get_best_model(project_id="missing-proj", metric="AUC")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
 async def test_get_best_model_error() -> None:
     with patch(
         "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
@@ -147,20 +166,22 @@ async def test_score_dataset_with_model_empty_dataset_id() -> None:
 async def test_score_dataset_with_model_project_not_found() -> None:
     project_id = "pid"
     mock_client = MagicMock()
-    exception_message = (
-        "404 client error: {'message': 'Project with ID " + project_id + " does not exist'}"
+    mock_client.Project.get.side_effect = ClientError(
+        "404 client error: {'message': 'Not Found'}",
+        status_code=404,
+        json={"message": "Not Found"},
     )
-    mock_client.Project.get.side_effect = Exception(exception_message)
     p1, p2 = _patch_model_client(mock_client)
     with p1, p2 as mock_drc:
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await model.score_dataset_with_model(
                 project_id=project_id,
                 model_id="mid",
                 dataset_id="dsid",
             )
-    assert exception_message == str(exc_info.value)
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "not found" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio
@@ -169,18 +190,41 @@ async def test_score_dataset_with_model_model_not_found() -> None:
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
     mock_client.Project.get.return_value = mock_project
-    exception_message = "404 client error: {'message': 'Leaderboard Item Not Found'}"
-    mock_client.Model.get.side_effect = Exception(exception_message)
+    mock_client.Model.get.side_effect = ClientError(
+        "404 client error: {'message': 'Leaderboard Item Not Found'}",
+        status_code=404,
+        json={"message": "Leaderboard Item Not Found"},
+    )
     p1, p2 = _patch_model_client(mock_client)
     with p1, p2 as mock_drc:
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await model.score_dataset_with_model(
                 project_id="pid",
                 model_id="mid",
                 dataset_id="dsid",
             )
-    assert exception_message == str(exc_info.value)
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> None:
+    mock_client = MagicMock()
+    mock_client.Project.get.side_effect = ClientError(
+        "503: service unavailable",
+        status_code=503,
+        json={},
+    )
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        with pytest.raises(ToolError) as exc_info:
+            await model.score_dataset_with_model(
+                project_id="pid",
+                model_id="mid",
+                dataset_id="dsid",
+            )
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 @pytest.mark.asyncio

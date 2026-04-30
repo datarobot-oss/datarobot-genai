@@ -19,9 +19,8 @@ from typing import Any
 from typing import Literal
 
 import httpx
-from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 
-from datarobot_genai.drtools.core.auth import get_access_token
+from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +39,8 @@ async def get_atlassian_access_token() -> str | ToolError:
     """
     Get Atlassian OAuth access token with error handling.
 
+    Uses DataRobot OBO when available; otherwise ``x-datarobot-atlassian-access-token``.
+
     Returns
     -------
         Access token string on success, ToolError on failure
@@ -53,21 +54,11 @@ async def get_atlassian_access_token() -> str | ToolError:
         # Use token
         ```
     """
-    try:
-        access_token = await get_access_token("atlassian")
-        if not access_token:
-            logger.warning("Empty access token received")
-            return ToolError("Received empty access token. Please complete the OAuth flow.")
-        return access_token
-    except OAuthServiceClientErr as e:
-        logger.error(f"OAuth client error: {e}", exc_info=True)
-        return ToolError(
-            "Could not obtain access token for Atlassian. Make sure the OAuth "
-            "permission was granted for the application to act on your behalf."
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error obtaining access token: {e}", exc_info=True)
-        return ToolError("An unexpected error occurred while obtaining access token for Atlassian.")
+    return await get_oauth_access_token_with_header_fallback(
+        "atlassian",
+        display_name="Atlassian",
+        access_token_header_segment="atlassian",
+    )
 
 
 def _find_resource_by_service(
