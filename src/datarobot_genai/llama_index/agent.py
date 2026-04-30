@@ -310,7 +310,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
                 message_id = str(uuid.uuid4())
-                current_message_has_text = False
             elif event_type == "ToolCall":
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)

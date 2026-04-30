@@ -576,6 +576,61 @@ async def test_invoke_fallback_text_not_suppressed_by_prior_step_text(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
+async def test_invoke_does_not_emit_fallback_after_tool_when_step_already_streamed_text(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text does not duplicate content after a tool result in the same step."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'use tool'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+            AgentStream(delta="prefix", response="", current_agent_name="Agent1"),
+            AgentOutput(
+                response=ChatMessage(content="prefix", role=MessageRole.ASSISTANT),
+                current_agent_name="Agent1",
+                tool_calls=[
+                    ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")
+                ],
+            ),
+            ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+            ToolCallResult(
+                tool_name="tool1",
+                tool_kwargs={"a": 1},
+                tool_id="tool1",
+                tool_output=ToolOutput(
+                    tool_name="tool1",
+                    content="tool result",
+                    raw_input={"a": 1},
+                    raw_output="tool result",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a step that already streamed assistant text before a tool call
+    # WHEN the step ends without any additional text after the tool result
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN fallback text is not emitted again for the same step
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["prefix"]
+
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    text_ends = [event for event in ag_events if isinstance(event, TextMessageEndEvent)]
+    assert len(text_starts) == 1
+    assert len(text_ends) == 1
+    assert text_starts[0].message_id == text_ends[0].message_id == content[0].message_id
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
 async def test_invoke_replaces_chat_history_placeholder() -> None:
     """invoke() replaces {chat_history} inside the raw user prompt."""
     workflow = CapturingWorkflow(events=[], state="S")
