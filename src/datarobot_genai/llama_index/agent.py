@@ -155,6 +155,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         message_id = str(uuid.uuid4())
         text_started = False
         current_message_has_text = False
+        current_text_chunks: list[str] = []
+        last_step_text: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
@@ -164,6 +166,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             if next_agent is not None and next_agent != current_agent_name:
                 if current_agent_name is not None:
                     if text_started:
+                        last_step_text = "".join(current_text_chunks)
+                        current_text_chunks = []
                         yield (
                             TextMessageEndEvent(
                                 type=EventType.TEXT_MESSAGE_END,
@@ -180,6 +184,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     )
                     message_id = str(uuid.uuid4())
                     current_message_has_text = False
+                    last_step_text = None
 
                 yield (
                     StepStartedEvent(step_name=next_agent),
@@ -204,6 +209,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
             if delta:
                 if not text_started:
+                    current_text_chunks = []
                     yield (
                         TextMessageStartEvent(
                             type=EventType.TEXT_MESSAGE_START, message_id=message_id
@@ -219,6 +225,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
+                current_text_chunks.append(delta)
                 current_message_has_text = True
 
             event_type = type(event).__name__
@@ -231,6 +238,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     content_str = str(getattr(resp, "content"))
                     logger.info(f"Output: {content_str}")
                     if not text_started:
+                        current_text_chunks = []
                         yield (
                             TextMessageStartEvent(
                                 type=EventType.TEXT_MESSAGE_START, message_id=message_id
@@ -248,6 +256,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                             None,
                             usage_metrics,
                         )
+                        current_text_chunks.append(content_str)
                         current_message_has_text = True
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
@@ -277,6 +286,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 # closed it), close it before emitting tool events so they
                 # never sit inside an open text message. Mirrors ToolCall.
                 if text_started:
+                    last_step_text = "".join(current_text_chunks)
+                    current_text_chunks = []
                     yield (
                         TextMessageEndEvent(
                             type=EventType.TEXT_MESSAGE_END,
@@ -310,6 +321,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
                 message_id = str(uuid.uuid4())
+                current_message_has_text = False
             elif event_type == "ToolCall":
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
@@ -317,6 +329,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 logger.info(f"Calling Tool: {tname}")
                 logger.debug(f"With arguments: {tkwargs}")
                 if text_started:
+                    last_step_text = "".join(current_text_chunks)
+                    current_text_chunks = []
                     yield (
                         TextMessageEndEvent(
                             type=EventType.TEXT_MESSAGE_END,
@@ -346,6 +360,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 )
 
         if text_started:
+            last_step_text = "".join(current_text_chunks)
+            current_text_chunks = []
             yield (
                 TextMessageEndEvent(
                     type=EventType.TEXT_MESSAGE_END,
@@ -373,7 +389,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Use subclass-defined response extraction as final fallback when no text was streamed
         fallback_text = self.extract_response_text(state, events)
-        if not current_message_has_text and fallback_text:
+        if not current_message_has_text and fallback_text and fallback_text != last_step_text:
             yield (
                 TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
                 None,
@@ -397,6 +413,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 usage_metrics,
             )
             text_started = False
+            last_step_text = fallback_text
 
         if current_agent_name is not None:
             yield (
