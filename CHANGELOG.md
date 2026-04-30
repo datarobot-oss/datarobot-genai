@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.29
+- `is_eligible_for_timeseries_training`: surfaces median timestep, per-series gap percentage, and max-gap-seconds as a `cadence` field so agents can pick between TS and row-based partitioning before calling `start_autopilot`. Treats an entirely-null target as a scoring dataset (downgraded from blocking error to INFO). Detects row-level duplicates per (datetime, series_id) and reports up to three offending keys. Error messages now follow what + why + how-to-fix, list available columns on column-name mismatches, and show sample bad values on unparseable datetimes.
+
 ## 0.15.28
 - Added `datarobot_genai.core.agents.verify` for validating AG-UI event streams against the protocol state machine. Re-enabled the previously skipped sequence checks in dragent e2e tests.
 

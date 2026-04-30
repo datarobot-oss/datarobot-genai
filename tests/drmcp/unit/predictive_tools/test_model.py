@@ -571,6 +571,64 @@ async def test_eligibility_error_for_too_few_rows_explains_remediation() -> None
 
 
 @pytest.mark.asyncio
+async def test_eligibility_allows_all_null_target_for_scoring_dataset() -> None:
+    """Scoring datasets have an all-null target; treat as INFO, not an error."""
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True
+    )
+    pandas_df = pl.DataFrame(
+        {"date": dates, "target": [None] * 200}, schema={"date": pl.Date, "target": pl.Int64}
+    ).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "ELIGIBLE"
+    assert any("scoring dataset" in line for line in result["info"])
+
+
+@pytest.mark.asyncio
+async def test_eligibility_flags_row_level_duplicates() -> None:
+    """Two rows with identical (date, series_id) must be flagged as a blocking error."""
+    dates = list(
+        pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True)
+    )
+    # 200 unique dates + one repeat of the first date (same series).
+    dates.append(dates[0])
+    pandas_df = pl.DataFrame({"date": dates, "target": list(range(201))}).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    err = next(e for e in result["errors"] if "duplicated key" in e)
+    assert "Aggregate" in err or "disambiguate" in err
+
+
+@pytest.mark.asyncio
+async def test_eligibility_flags_duplicates_per_series_in_multiseries() -> None:
+    dates_a = list(
+        pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=99), eager=True)
+    )
+    dates_b = list(
+        pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=99), eager=True)
+    )
+    # Inject a duplicate (same date) for series 'a' but not 'b' — must
+    # detect the dupe inside series 'a' even though the date appears in 'b' too.
+    dates_a.append(dates_a[0])
+    pandas_df = pl.DataFrame(
+        {
+            "series": ["a"] * 101 + ["b"] * 100,
+            "date": dates_a + dates_b,
+            "target": list(range(201)),
+        }
+    ).to_pandas()
+
+    result = await _run_eligibility(pandas_df, series_id_column="series")
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    assert any("duplicated key" in e for e in result["errors"])
+
+
+@pytest.mark.asyncio
 async def test_eligibility_error_for_unparseable_datetime_shows_samples() -> None:
     # Strings that can't be parsed as dates/timestamps.
     pandas_df = pl.DataFrame(

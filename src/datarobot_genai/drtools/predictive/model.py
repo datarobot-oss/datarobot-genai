@@ -473,7 +473,16 @@ async def is_eligible_for_timeseries_training(
     null_pct = df[target_column].null_count() / row_count if target_column in df.columns else None
     if null_pct is not None:
         infos.append(f"Target null rate: {null_pct:.1%}")
-        if null_pct > _MAX_NULL_RATE_FOR_ELIGIBILITY:
+        # Scoring datasets have an entirely-null target (it is the quantity
+        # being predicted). Don't block — surface as INFO so callers using
+        # the same eligibility tool to validate scoring inputs aren't
+        # forced to write a separate path.
+        if null_pct >= 1.0:
+            infos.append(
+                f"Target column '{target_column}' is entirely null; treating "
+                "as a scoring dataset (target is the quantity to predict)."
+            )
+        elif null_pct > _MAX_NULL_RATE_FOR_ELIGIBILITY:
             errors.append(
                 f"Target column '{target_column}' is {null_pct:.1%} null "
                 f"(threshold: {_MAX_NULL_RATE_FOR_ELIGIBILITY:.0%}). "
@@ -482,6 +491,32 @@ async def is_eligible_for_timeseries_training(
                 "where the target is present, or aggregate to a coarser "
                 "frequency where most periods have observations."
             )
+
+    # Row-level duplicate detection per (datetime[, series_id]). Catches
+    # both fully-identical rows and contradictory rows that share keys but
+    # disagree on the target — DR Autopilot rejects both. Adapted from
+    # wren-mcp PR #85 (Bultema flow), reimplemented in polars.
+    if (
+        datetime_parsed
+        and target_column in df.columns
+        and (not series_id_column or series_id_column in df.columns)
+    ):
+        try:
+            grouping_keys = [datetime_column] + ([series_id_column] if series_id_column else [])
+            group_sizes = df.group_by(grouping_keys).len().filter(pl.col("len") > 1)
+            n_dupes = int(group_sizes.height)
+            if n_dupes > 0:
+                sample_keys = group_sizes.head(3).drop("len").rows()  # list of tuples
+                sample_str = ", ".join(str(k) for k in sample_keys)
+                errors.append(
+                    f"Dataset has {n_dupes} duplicated key(s): multiple rows "
+                    f"share the same {grouping_keys}. Example(s): {sample_str}. "
+                    "Aggregate duplicates (e.g. mean/sum) or disambiguate the "
+                    "keys before training; DataRobot Autopilot rejects datasets "
+                    "with duplicate (timestamp[, series]) tuples."
+                )
+        except Exception as exc:
+            infos.append(f"Could not evaluate duplicates: {exc}")
 
     cadence: dict[str, Any] | None = None
     if datetime_parsed:
