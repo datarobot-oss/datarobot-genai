@@ -646,7 +646,9 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         # Call function
-        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+        result = await predict_by_ai_catalog_rt(
+            deployment_id="deployment123", dataset_id="dataset123"
+        )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -704,7 +706,9 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         # Call function
-        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+        result = await predict_by_ai_catalog_rt(
+            deployment_id="deployment123", dataset_id="dataset123"
+        )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -762,7 +766,9 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+        result = await predict_by_ai_catalog_rt(
+            deployment_id="deployment123", dataset_id="dataset123"
+        )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -823,7 +829,9 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         # Call function
-        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+        result = await predict_by_ai_catalog_rt(
+            deployment_id="deployment123", dataset_id="dataset123"
+        )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -885,7 +893,9 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         # Call function
-        result = await predict_by_ai_catalog_rt("deployment123", "dataset123")
+        result = await predict_by_ai_catalog_rt(
+            deployment_id="deployment123", dataset_id="dataset123"
+        )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")

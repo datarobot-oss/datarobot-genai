@@ -20,12 +20,15 @@ from typing import Annotated
 from typing import Any
 
 import polars as pl
+from datarobot.errors import ClientError
 from datarobot.models.model import Model
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -96,17 +99,20 @@ async def get_best_model(
     | None = None,
 ) -> dict[str, Any]:
     if not project_id:
-        raise ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
+    try:
+        project = client.Project.get(project_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     if not project:
-        raise ToolError(f"Project with ID {project_id} not found.")
+        raise ToolError(f"Project with ID {project_id} not found.", kind=ToolErrorKind.NOT_FOUND)
 
     leaderboard = project.get_models()
     if not leaderboard:
-        raise ToolError("No models found for this project.")
+        raise ToolError("No models found for this project.", kind=ToolErrorKind.NOT_FOUND)
 
     if metric:
         reverse_sort = metric.upper() in [
@@ -161,19 +167,22 @@ async def score_dataset_with_model(
     dataset_id: Annotated[str, "AI Catalog dataset id to score (tabular)."],
 ) -> dict[str, Any]:
     if not project_id:
-        raise ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not model_id:
-        raise ToolError("Model ID must be provided")
+        raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not dataset_id or not dataset_id.strip():
-        raise ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
-    dr_model = client.Model.get(project, model_id)
-    catalog_dataset = client.Dataset.get(dataset_id)
-    prediction_dataset = project.upload_dataset_from_catalog(dataset_id=catalog_dataset.id)
-    job = dr_model.request_predictions(dataset_id=prediction_dataset.id)
+    try:
+        project = client.Project.get(project_id)
+        dr_model = client.Model.get(project, model_id)
+        catalog_dataset = client.Dataset.get(dataset_id)
+        prediction_dataset = project.upload_dataset_from_catalog(dataset_id=catalog_dataset.id)
+        job = dr_model.request_predictions(dataset_id=prediction_dataset.id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     return {
         "message": "Scoring job started",
@@ -199,11 +208,14 @@ async def list_models(
     project_id: Annotated[str, "DataRobot modeling project id."],
 ) -> dict[str, Any]:
     if not project_id:
-        raise ToolError("Project ID must be provided")
+        raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
+    try:
+        project = client.Project.get(project_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     models = project.get_models()
 
     return {
@@ -235,8 +247,11 @@ async def get_model_details(
 ) -> dict[str, Any]:
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
-    model = client.Model.get(project=project, model_id=model_id)
+    try:
+        project = client.Project.get(project_id)
+        model = client.Model.get(project=project, model_id=model_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     insights = ModelInsights(
         model_id=model_id,
@@ -289,15 +304,18 @@ async def is_eligible_for_timeseries_training(
     | None = None,
 ) -> dict[str, Any]:
     if not dataset_id:
-        raise ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not datetime_column:
-        raise ToolError("Datetime column must be provided")
+        raise ToolError("Datetime column must be provided", kind=ToolErrorKind.VALIDATION)
     if not target_column:
-        raise ToolError("Target column must be provided")
+        raise ToolError("Target column must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    dataset = client.Dataset.get(dataset_id)
+    try:
+        dataset = client.Dataset.get(dataset_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     errors: list[str] = []
     infos: list[str] = []
@@ -306,7 +324,7 @@ async def is_eligible_for_timeseries_training(
         pandas_df = dataset.get_as_dataframe()
         df = pl.from_pandas(pandas_df)
     except Exception as exc:
-        raise ToolError(f"Could not load dataset: {exc}")
+        raise ToolError(f"Could not load dataset: {exc}", kind=ToolErrorKind.UPSTREAM)
 
     row_count = df.height
     infos.append(f"Row count: {row_count}")

@@ -17,6 +17,8 @@ import os
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
@@ -25,6 +27,8 @@ from datarobot_genai.drtools.core.deployment_utils import REQUIRED_FILES
 from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
 from datarobot_genai.drtools.core.deployment_utils import find_model_file_in_folder
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +66,13 @@ async def get_model_info_from_deployment(
     deployment_id: Annotated[str, "MLOps deployment id."],
 ) -> dict[str, Any]:
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    deployment = client.Deployment.get(deployment_id)
+    try:
+        deployment = client.Deployment.get(deployment_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     return deployment.model
 
 
@@ -86,21 +93,26 @@ async def deploy_model(
     description: Annotated[str, "Optional longer description for operators."] | None = None,
 ) -> dict[str, Any]:
     if not model_id:
-        raise ToolError("Model ID must be provided")
+        raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not label:
-        raise ToolError("Model label must be provided")
+        raise ToolError("Model label must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     prediction_servers = client.PredictionServer.list()
     if not prediction_servers:
-        raise ToolError("No prediction servers available for deployment.")
-    deployment = client.Deployment.create_from_learning_model(
-        model_id=model_id,
-        label=label,
-        description=description,
-        default_prediction_server_id=prediction_servers[0].id,
-    )
+        raise ToolError(
+            "No prediction servers available for deployment.", kind=ToolErrorKind.UPSTREAM
+        )
+    try:
+        deployment = client.Deployment.create_from_learning_model(
+            model_id=model_id,
+            label=label,
+            description=description,
+            default_prediction_server_id=prediction_servers[0].id,
+        )
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     return {
         "deployment_id": deployment.id,
         "label": label,
@@ -115,7 +127,11 @@ async def deploy_custom_model(
         str, "Path to directory with custom.py, requirements.txt, and optionally a model file"
     ],
     name: Annotated[str, "Single name used for both custom model and deployment"],
-    target_type: Annotated[str, "Target type: binary, regression, or multiclass"],
+    target_type: Annotated[
+        str,
+        "Pass exactly one of these strings: 'binary', 'regression', 'multiclass' "
+        "(DataRobot target type).",
+    ],
     target_name: Annotated[str, "Target column name"],
     model_file_path: Annotated[
         str,
@@ -130,20 +146,22 @@ async def deploy_custom_model(
     description: Annotated[str, "Optional description"] | None = None,
 ) -> dict[str, Any]:
     if not model_folder:
-        raise ToolError("model_folder must be provided")
+        raise ToolError("model_folder must be provided", kind=ToolErrorKind.VALIDATION)
     if not name:
-        raise ToolError("name must be provided")
+        raise ToolError("name must be provided", kind=ToolErrorKind.VALIDATION)
     if not target_type:
-        raise ToolError("target_type must be provided")
+        raise ToolError("target_type must be provided", kind=ToolErrorKind.VALIDATION)
     if not target_name:
-        raise ToolError("target_name must be provided")
+        raise ToolError("target_name must be provided", kind=ToolErrorKind.VALIDATION)
 
     model_folder = os.path.abspath(model_folder)
     if not os.path.isdir(model_folder):
-        raise ToolError(f"model_folder is not a directory: {model_folder}")
+        raise ToolError(
+            f"model_folder is not a directory: {model_folder}", kind=ToolErrorKind.VALIDATION
+        )
     for f in REQUIRED_FILES:
         if not os.path.isfile(os.path.join(model_folder, f)):
-            raise ToolError(f"model_folder must contain {f}")
+            raise ToolError(f"model_folder must contain {f}", kind=ToolErrorKind.VALIDATION)
     resolved_path: str | None = None
     if model_file_path:
         p = (
@@ -154,13 +172,14 @@ async def deploy_custom_model(
         if os.path.isfile(p):
             resolved_path = p
         else:
-            raise ToolError(f"model_file_path does not exist: {p}")
+            raise ToolError(f"model_file_path does not exist: {p}", kind=ToolErrorKind.VALIDATION)
     if resolved_path is None:
         resolved_path = find_model_file_in_folder(model_folder)
     if resolved_path is None:
         raise ToolError(
             f"No model file ({', '.join(MODEL_EXTENSIONS)}) found in {model_folder}. "
-            "Add a model file to the folder or pass model_file_path."
+            "Add a model file to the folder or pass model_file_path.",
+            kind=ToolErrorKind.VALIDATION,
         )
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -199,7 +218,7 @@ async def get_prediction_history(
     end_time: Annotated[str, "Optional ISO 8601 upper bound on prediction time."] | None = None,
 ) -> dict[str, Any]:
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -211,7 +230,10 @@ async def get_prediction_history(
     if end_time:
         params["endTime"] = end_time
 
-    response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
+    try:
+        response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     data = response.json()
     rows = data.get("data", [])
     next_page = data.get("next")

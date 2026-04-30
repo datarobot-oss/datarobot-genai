@@ -21,10 +21,12 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from datarobot.errors import ClientError
 from dotenv import load_dotenv
 
 from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive import deployment
 
 
@@ -105,7 +107,11 @@ async def test_get_model_info_from_deployment_success() -> None:
 @pytest.mark.asyncio
 async def test_get_model_info_from_deployment_not_found() -> None:
     mock_client = MagicMock()
-    mock_client.Deployment.get.side_effect = Exception("404 client error: {'message': 'Not Found'}")
+    mock_client.Deployment.get.side_effect = ClientError(
+        "404 client error: {'message': 'Not Found'}",
+        status_code=404,
+        json={"message": "Not Found"},
+    )
     with (
         patch(
             "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
@@ -115,9 +121,10 @@ async def test_get_model_info_from_deployment_not_found() -> None:
         patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
     ):
         mock_drc.return_value.get_client.return_value = mock_client
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ToolError) as exc_info:
             await deployment.get_model_info_from_deployment(deployment_id="dep_id")
-        assert "404 client error: {'message': 'Not Found'}" == str(exc_info.value)
+        assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+        assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

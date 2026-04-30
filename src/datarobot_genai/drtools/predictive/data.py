@@ -19,11 +19,15 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import is_valid_url
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +74,15 @@ async def upload_dataset_to_ai_catalog(
     | None = None,
 ) -> dict[str, Any]:
     if not file_content_base64 and not file_url:
-        raise ToolError("Either file_content_base64 or file_url must be provided.")
+        raise ToolError(
+            "Either file_content_base64 or file_url must be provided.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     if file_content_base64 and file_url:
-        raise ToolError("Please provide either file_content_base64 or file_url, not both.")
+        raise ToolError(
+            "Please provide either file_content_base64 or file_url, not both.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -80,13 +90,18 @@ async def upload_dataset_to_ai_catalog(
     if file_content_base64 is not None:
         raw_b64 = file_content_base64.strip()
         if not raw_b64:
-            raise ToolError("Argument validation error: 'file_content_base64' cannot be empty.")
+            raise ToolError(
+                "Argument validation error: 'file_content_base64' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
         try:
             raw = base64.b64decode(raw_b64)
         except binascii.Error as e:
-            raise ToolError("Invalid base64 in file_content_base64.") from e
+            raise ToolError(
+                "Invalid base64 in file_content_base64.", kind=ToolErrorKind.VALIDATION
+            ) from e
         if not raw:
-            raise ToolError("Decoded file content is empty.")
+            raise ToolError("Decoded file content is empty.", kind=ToolErrorKind.VALIDATION)
         fname = (
             dataset_filename.strip()
             if dataset_filename and dataset_filename.strip()
@@ -98,11 +113,11 @@ async def upload_dataset_to_ai_catalog(
     else:
         if file_url is None or not is_valid_url(file_url):
             logger.error("Invalid file URL: %s", file_url)
-            raise ToolError(f"Invalid file URL: {file_url}")
+            raise ToolError(f"Invalid file URL: {file_url}", kind=ToolErrorKind.VALIDATION)
         catalog_item = client.Dataset.create_from_url(file_url)
 
     if not catalog_item:
-        raise ToolError("Failed to upload dataset.")
+        raise ToolError("Failed to upload dataset.", kind=ToolErrorKind.UPSTREAM)
 
     return {
         "dataset_id": catalog_item.id,
@@ -156,11 +171,14 @@ async def get_dataset_details(
     sample_rows: Annotated[int, "Max sample rows when include_sample is true."] = 10,
 ) -> dict[str, Any]:
     if not dataset_id:
-        raise ToolError("Dataset ID must be provided")
+        raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    dataset = client.Dataset.get(dataset_id)
+    try:
+        dataset = client.Dataset.get(dataset_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
 
     result: dict = {
         "id": dataset.id,
@@ -225,7 +243,7 @@ async def browse_datastore(
     search: Annotated[str, "Optional filter substring for object names."] | None = None,
 ) -> dict[str, Any]:
     if not datastore_id:
-        raise ToolError("Datastore ID must be provided")
+        raise ToolError("Datastore ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -236,7 +254,10 @@ async def browse_datastore(
         params["path"] = path
     if search:
         params["search"] = search
-    response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+    try:
+        response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     data = response.json()
     items = data.get("data", data) if isinstance(data, dict) else data
 
@@ -264,16 +285,19 @@ async def query_datastore(
     limit: Annotated[int, "Max rows returned from the query result."] = 1000,
 ) -> dict[str, Any]:
     if not datastore_id:
-        raise ToolError("Datastore ID must be provided")
+        raise ToolError("Datastore ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not sql:
-        raise ToolError("SQL query must be provided")
+        raise ToolError("SQL query must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
 
     payload = {"query": sql, "limit": limit}
-    response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
+    try:
+        response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     data = response.json()
 
     return {
