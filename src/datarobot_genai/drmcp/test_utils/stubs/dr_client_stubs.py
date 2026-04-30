@@ -301,6 +301,20 @@ def test_create_dr_client() -> StubDRClient:
     def list_datasets() -> list[StubDataset]:
         return [stub_dataset]
 
+    def _catalog_stub_datasets() -> list[StubDataset]:
+        """Several catalog rows so ``Dataset.iterate`` can honor offset/limit in tests."""
+        return [
+            StubDataset(f"stub_cat_{i}", name=f"catalog_item_{i}.csv", row_count=10)
+            for i in range(5)
+        ]
+
+    def iterate_datasets(offset: int = 0, limit: int | None = None) -> Any:
+        """Stub ``Dataset.iterate``; supports offset/limit for ``list_ai_catalog_items``."""
+        items = _catalog_stub_datasets()[offset:]
+        if limit is not None:
+            items = items[:limit]
+        return iter(items)
+
     # --- DataStore stubs ---
     stub_datastore = StubDataStore("stub_datastore_id", canonical_name="Test PostgreSQL")
 
@@ -329,6 +343,20 @@ def test_create_dr_client() -> StubDRClient:
                 for i in range(min(limit, 5))
             ]
             return StubRestResponse({"data": rows, "next": None})
+        if "externalDataStores" in url:
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "id": stub_datastore.id,
+                            "canonicalName": stub_datastore.canonical_name,
+                            "creatorId": stub_datastore.creator_id,
+                            "params": dict(stub_datastore.params),
+                        }
+                    ],
+                    "next": None,
+                }
+            )
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         if "useCases" in url:
@@ -359,6 +387,7 @@ def test_create_dr_client() -> StubDRClient:
     client.Deployment.get = get_deployment
     client.Dataset.get = get_dataset
     client.Dataset.list = list_datasets
+    client.Dataset.iterate = iterate_datasets
     client.DataStore.list = list_datastores
     client.UseCase.get = get_use_case
     # Store REST stubs on the client so integration_mcp_server can wire them
