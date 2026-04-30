@@ -31,13 +31,23 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_DRIVE_SEARCH_DOCS = "https://developers.google.com/drive/api/guides/search-files"
+_DRIVE_EXPORT_DOCS = "https://developers.google.com/workspace/drive/api/guides/ref-export-formats"
+_DRIVE_CREATE_DOCS = "https://developers.google.com/drive/api/guides/create-file"
+_DRIVE_FILES_UPDATE_DOCS = "https://developers.google.com/drive/api/reference/rest/v3/files/update"
+_DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage-sharing"
+
 
 @tool_metadata(
     tags={"gdrive", "google", "list", "search", "files", "find", "contents"},
     description=(
         "[GDrive—find files] Use when the user needs Google Drive file names and ids with "
         "optional folder scope, Drive query string, and pagination. Not file body text "
-        "(gdrive_read_content), not SharePoint (microsoft_graph_search_content)."
+        "(gdrive_read_content), not SharePoint (microsoft_graph_search_content).\n\n"
+        f"limit must be >= page_size and a multiple of page_size (page_size max {MAX_PAGE_SIZE}, "
+        f"limit max {LIMIT}). Examples: page_size=10, limit=50; page_size=3, limit=3; "
+        "page_size=12, limit=36.\n\n"
+        f"Reference: {_DRIVE_SEARCH_DOCS}"
     ),
 )
 async def gdrive_find_contents(
@@ -97,7 +107,14 @@ async def gdrive_find_contents(
     description=(
         "[GDrive—read file] Use when you have a Drive file_id (from gdrive_find_contents) and need "
         "exported text or markdown for Workspace types. Not listing files, not binary media "
-        "download."
+        "download.\n\n"
+        'Examples: gdrive_read_content(file_id="1ABC123def456"); '
+        'gdrive_read_content(file_id="1ABC...", target_format="text/plain"). '
+        "Discover file_id with gdrive_find_contents first.\n\n"
+        "Defaults: Google Docs -> text/markdown; Sheets -> text/csv; Slides -> text/plain; "
+        "PDF -> text/plain; other text as-is. Binary files are not supported; large exports "
+        "may fail.\n\n"
+        f"Reference (export MIME types): {_DRIVE_EXPORT_DOCS}"
     ),
 )
 async def gdrive_read_content(
@@ -131,7 +148,11 @@ async def gdrive_read_content(
     description=(
         "[GDrive—create file] Use when creating a new Drive file or folder from name + MIME type, "
         "optional parent folder and initial text. Not search (gdrive_find_contents), not "
-        "metadata-only updates (gdrive_update_metadata)."
+        "metadata-only updates (gdrive_update_metadata).\n\n"
+        'Examples: gdrive_create_file(name="report.txt", mime_type="text/plain"); '
+        "Google Doc with initial_content; folder with mime_type "
+        "application/vnd.google-apps.folder; file in folder via parent_id.\n\n"
+        f"Reference: {_DRIVE_CREATE_DOCS}"
     ),
 )
 async def gdrive_create_file(
@@ -179,7 +200,10 @@ async def gdrive_create_file(
     enabled=False,
     description=(
         "[GDrive—metadata] Use when renaming, starring, or trashing an existing file by id. "
-        "Not reading content (gdrive_read_content), not ACL changes (gdrive_manage_access)."
+        "Not reading content (gdrive_read_content), not ACL changes (gdrive_manage_access).\n\n"
+        "Examples: new_name only; starred=True/False; trash=True/restore False; combine fields. "
+        "At least one of new_name, starred, or trash is required.\n\n"
+        f"Reference: {_DRIVE_FILES_UPDATE_DOCS}"
     ),
 )
 async def gdrive_update_metadata(
@@ -227,7 +251,10 @@ async def gdrive_update_metadata(
     enabled=False,
     description=(
         "[GDrive—permissions] Use when adding, changing, or removing sharing on a file by id "
-        "(email or permission id). Not rename/trash (gdrive_update_metadata), not read content."
+        "(email or permission id). Not rename/trash (gdrive_update_metadata), not read content.\n\n"
+        'Examples: action="add", role="reader", email_address="user@example.com"; '
+        'action="update" with permission_id; action="remove" with permission_id.\n\n'
+        f"Reference: {_DRIVE_PERMISSIONS_DOCS}"
     ),
 )
 async def gdrive_manage_access(

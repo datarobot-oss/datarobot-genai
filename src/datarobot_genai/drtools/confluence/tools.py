@@ -27,13 +27,26 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_CQL_DOCS = "https://developer.atlassian.com/cloud/confluence/advanced-searching-using-cql/"
+_PAGE_REST_DOCS = "https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/"
+_PAGE_BODY_DOCS = (
+    "https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/#api-pages-post"
+)
+_FOOTER_COMMENTS_DOCS = (
+    "https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-footer-comments/"
+)
+
 
 @tool_metadata(
     tags={"confluence", "read", "get", "page"},
     description=(
         "[Confluence—get page] Use when you have a numeric page id, or an exact page title plus "
         "space_key, and need the page body (storage HTML). Not CQL multi-page search "
-        "(confluence_search), not Jira (jira_get_issue)."
+        "(confluence_search), not Jira (jira_get_issue).\n\n"
+        'Examples: By ID: page_id_or_title="856391684". By title: '
+        'page_id_or_title="Meeting Notes", space_key="TEAM" (space_key is required when '
+        "using a title).\n\n"
+        f"Reference: {_PAGE_REST_DOCS}"
     ),
 )
 async def confluence_get_page(
@@ -74,7 +87,10 @@ async def confluence_get_page(
     description=(
         "[Confluence—create page] Use when publishing a new page in a space (space_key, title, "
         "body storage format), optional parent page id. Not updating an existing page "
-        "(confluence_update_page), not comments (confluence_add_comment)."
+        "(confluence_update_page), not comments (confluence_add_comment).\n\n"
+        'Examples: Root page: space_key="PROJ", title="New Page", '
+        'body_content="<p>Content</p>". Child page: same fields plus parent_id=123456.\n\n'
+        f"References (body representation / storage): {_PAGE_BODY_DOCS} {_PAGE_REST_DOCS}"
     ),
 )
 async def confluence_create_page(
@@ -116,7 +132,9 @@ async def confluence_create_page(
     description=(
         "[Confluence—comment] Use when appending a page-level comment on an existing page by "
         "numeric page_id. Not page body edits (confluence_update_page), not new pages "
-        "(confluence_create_page)."
+        "(confluence_create_page).\n\n"
+        'Example: page_id="856391684", comment_body="Great work on this documentation!"\n\n'
+        f"Reference: {_FOOTER_COMMENTS_DOCS}"
     ),
 )
 async def confluence_add_comment(
@@ -157,7 +175,9 @@ async def confluence_add_comment(
         "[Confluence—CQL search] Use when finding pages or content with Confluence Query Language "
         "(type, space, text filters). Optional full body per hit. "
         "Not Jira JQL (jira_search_issues), "
-        "not single-page fetch by id alone (confluence_get_page when key already known)."
+        "not single-page fetch by id alone (confluence_get_page when key already known).\n\n"
+        'Example: cql_query="type=page and space=DOC", max_results=10, include_body=false.\n\n'
+        f"Reference (CQL): {_CQL_DOCS}"
     ),
 )
 async def confluence_search(
@@ -217,7 +237,11 @@ async def confluence_search(
     description=(
         "[Confluence—update page] Use when replacing page body content for an existing page_id; "
         "version_number must match current version from confluence_get_page (optimistic lock). "
-        "Not new pages (confluence_create_page), not comments (confluence_add_comment)."
+        "Not new pages (confluence_create_page), not comments (confluence_add_comment).\n\n"
+        'Example: page_id="856391684", new_body_content="<p>New content</p>", '
+        "version_number=5. Always call confluence_get_page first to read the current "
+        f"version_number.\n\nReferences (body representation / storage): {_PAGE_BODY_DOCS} "
+        f"{_PAGE_REST_DOCS}"
     ),
 )
 async def confluence_update_page(

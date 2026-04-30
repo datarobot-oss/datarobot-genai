@@ -28,6 +28,16 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_MS_SEARCH_QUERY = "https://learn.microsoft.com/en-us/graph/api/search-query"
+_MS_SEARCH_FILES = "https://learn.microsoft.com/en-us/graph/search-concept-files"
+_MS_KQL = (
+    "https://learn.microsoft.com/en-us/sharepoint/dev/general-development/"
+    "keyword-query-language-kql-syntax-reference"
+)
+_MS_DRIVEITEM = "https://learn.microsoft.com/en-us/graph/api/resources/driveitem"
+_MS_DRIVEITEM_INVITE = "https://learn.microsoft.com/en-us/graph/api/driveitem-invite"
+_MS_DRIVEITEM_PATCH = "https://learn.microsoft.com/en-us/graph/api/driveitem-update"
+
 
 @tool_metadata(
     tags={
@@ -42,7 +52,12 @@ logger = logging.getLogger(__name__)
         "[M365—search files] Use when the user needs SharePoint or OneDrive files and list items "
         "by keywords plus optional KQL filters, paginated. Scope with site_url or site_id when "
         "they named a site. Not Google Drive (gdrive_find_contents), not Jira issues, not "
-        "Confluence pages, not downloading file contents."
+        "Confluence pages, not downloading file contents.\n\n"
+        "Scope: with site_url/site_id -> that site; without -> tenant-wide accessible content. "
+        "Entity types include driveItem, listItem, site, list, drive. "
+        "Filters: KQL list e.g. ['fileType:docx', 'size>1000']. "
+        "Pagination: size max 250; page 1 from_offset=0, page 2 from_offset=250, etc.\n\n"
+        f"References: {_MS_SEARCH_QUERY} {_MS_SEARCH_FILES} {_MS_KQL}"
     ),
 )
 async def microsoft_graph_search_content(
@@ -154,7 +169,10 @@ async def microsoft_graph_search_content(
     description=(
         "[M365—share item] Use when inviting people to an existing SharePoint/OneDrive file or "
         "folder by file id and document library id. Not search (microsoft_graph_search_content), "
-        "not create file."
+        "not create file.\n\n"
+        "Internal or existing guest users only; does not create new guests via /invitations. "
+        "Graph treats OneDrive and SharePoint items as driveItem.\n\n"
+        f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_INVITE}"
     ),
 )
 async def microsoft_graph_share_item(
@@ -215,7 +233,11 @@ async def microsoft_graph_share_item(
     description=(
         "[M365—create text file] Use when the user wants a new plain-text file in personal "
         "OneDrive or a SharePoint library (library id from search). Not metadata updates "
-        "(microsoft_update_metadata), not sharing (microsoft_graph_share_item)."
+        "(microsoft_update_metadata), not sharing (microsoft_graph_share_item).\n\n"
+        "Personal OneDrive: file_name + content_text only (saves to root). SharePoint: set "
+        "document_library_id from microsoft_graph_search_content (documentLibraryId). "
+        "Duplicate names are auto-renamed (e.g. report (1).txt).\n\n"
+        f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_PATCH}"
     ),
 )
 async def microsoft_create_file(
@@ -275,7 +297,11 @@ async def microsoft_create_file(
     description=(
         "[M365—update metadata] Use when renaming or updating list/drive item fields: either "
         "SharePoint list context (site_id + list_id) or a drive item (document_library_id). "
-        "Not file body edits, not search, not sharing."
+        "Not file body edits, not search, not sharing.\n\n"
+        "List items: both site_id and list_id; custom columns in fields_to_update. "
+        "Drive items: document_library_id; only name and/or description in fields_to_update. "
+        "Do not mix list and drive contexts.\n\n"
+        f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_PATCH}"
     ),
 )
 async def microsoft_update_metadata(

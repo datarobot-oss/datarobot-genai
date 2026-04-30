@@ -31,6 +31,11 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_TAVILY_SEARCH_API = "https://docs.tavily.com/documentation/api-reference/endpoint/search"
+_TAVILY_EXTRACT_API = "https://docs.tavily.com/documentation/api-reference/endpoint/extract"
+_TAVILY_MAP_API = "https://docs.tavily.com/documentation/api-reference/endpoint/map"
+_TAVILY_CRAWL_API = "https://docs.tavily.com/documentation/api-reference/endpoint/crawl"
+
 
 @tool_metadata(
     tags={"tavily", "search", "web", "websearch"},
@@ -39,7 +44,11 @@ logger = logging.getLogger(__name__)
         "(optional topic string: 'general', 'news', or 'finance'). Returns ranked snippets and "
         "optional short answer. "
         "Not for reading full pages when you already have URLs (tavily_extract), not site link "
-        "discovery (tavily_map), not multi-page site harvest (tavily_crawl)."
+        "discovery (tavily_map), not multi-page site harvest (tavily_crawl).\n\n"
+        'Examples: tavily_search(query="Python best practices 2026"); '
+        'topic="news", time_range="week"; topic="finance"; search_depth="advanced", '
+        "include_answer=True. Advanced depth uses more credits.\n\n"
+        f"Reference: {_TAVILY_SEARCH_API}"
     ),
 )
 async def tavily_search(
@@ -110,7 +119,10 @@ async def tavily_search(
     description=(
         "[Tavily—read URLs] Use when you already have one or more page URLs and need cleaned "
         "body text or reranked chunks (optional query for relevance). Not broad keyword web "
-        "search (tavily_search), not crawling an entire site (tavily_crawl)."
+        "search (tavily_search), not crawling an entire site (tavily_crawl).\n\n"
+        'Examples: single url string; list of urls; tavily_extract(urls="...", query="...", '
+        'chunks_per_source=5); extract_depth="advanced". Up to 20 URLs; chunks_per_source 1-5.\n\n'
+        f"Reference: {_TAVILY_EXTRACT_API}"
     ),
 )
 async def tavily_extract(
@@ -180,7 +192,9 @@ async def tavily_extract(
         "[Tavily—site map] Use when you need a structured list of links under one root URL "
         "(find sections or docs paths before reading). Optional instructions steer which branches "
         "matter. Not keyword web search (tavily_search), not full page text (tavily_extract), "
-        "not deep multi-hop crawl (tavily_crawl)."
+        "not deep multi-hop crawl (tavily_crawl).\n\n"
+        'Example: tavily_map(url="https://docs.example.com", instructions="API sections").\n\n'
+        f"Reference: {_TAVILY_MAP_API}"
     ),
 )
 async def tavily_map(
@@ -221,7 +235,10 @@ async def tavily_map(
         "[Tavily—site crawl] Use when you need many related pages from one site guided by "
         "natural-language instructions (breadth/depth limits). Not single-URL read "
         "(tavily_extract), not link-only outline (tavily_map), not global keyword search "
-        "(tavily_search)."
+        "(tavily_search).\n\n"
+        "Examples: basic crawl on docs root; instructions to filter topics; max_depth and limit "
+        "up to API max; exclude_paths regex list. Higher depth/limit uses more credits.\n\n"
+        f"Reference: {_TAVILY_CRAWL_API}"
     ),
 )
 async def tavily_crawl(

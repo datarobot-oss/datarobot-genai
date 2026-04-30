@@ -33,6 +33,9 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_PPLX_SEARCH_GUIDE = "https://docs.perplexity.ai/guides/search"
+_PPLX_STRUCTURED = "https://docs.perplexity.ai/guides/structured-outputs"
+
 
 @tool_metadata(
     tags={"perplexity", "web", "search", "websearch", "daria"},
@@ -40,7 +43,11 @@ logger = logging.getLogger(__name__)
         "[Perplexity—web search] Use when the user needs ranked web sources/snippets for a "
         "question or multi-part research (string or list of sub-queries), with optional domain "
         "allow/deny and recency. Not long-form single narrative answers (perplexity_think), not "
-        "DataRobot docs (search_datarobot_agentic_docs), not raw URL extraction (tavily_extract)."
+        "DataRobot docs (search_datarobot_agentic_docs), not raw URL extraction "
+        "(tavily_extract).\n\n"
+        f"query may be a string or up to {MAX_QUERIES} strings; tune max_results (1-{MAX_RESULTS}) "
+        f"and max_tokens_per_page (1-{MAX_TOKENS_PER_PAGE}).\n\n"
+        f"Reference: {_PPLX_SEARCH_GUIDE}"
     ),
 )
 async def perplexity_search(
@@ -160,7 +167,10 @@ async def perplexity_search(
         "citations: fast Q&A, deeper reasoning, or long research report (set model to one of "
         "the string literals on the parameter), "
         "optionally JSON-shaped output via schema. Not primarily for ranked URL lists "
-        "(perplexity_search), not internal DR docs."
+        "(perplexity_search), not internal DR docs.\n\n"
+        "Models: sonar (fast), sonar-reasoning-pro (complex logic), sonar-deep-research (reports). "
+        "Pass json_schema for structured extraction.\n\n"
+        f"Reference: {_PPLX_STRUCTURED}"
     ),
 )
 async def perplexity_think(

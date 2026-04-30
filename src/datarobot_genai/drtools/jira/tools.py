@@ -24,13 +24,25 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_JQL_FUNCTIONS = "https://support.atlassian.com/jira-service-management-cloud/docs/jql-functions/"
+_JQL_FIELDS = "https://support.atlassian.com/jira-service-management-cloud/docs/jql-fields/"
+_JQL_KEYWORDS = (
+    "https://support.atlassian.com/jira-service-management-cloud/docs/"
+    "use-advanced-search-with-jira-query-language-jql/"
+)
+_JQL_OPERATORS = "https://support.atlassian.com/jira-service-management-cloud/docs/jql-operators/"
+_JIRA_ISSUES_REST = "https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/"
+
 
 @tool_metadata(
     tags={"jira", "search", "issues"},
     description=(
         "[Jira—search issues] Use when filtering many issues with JQL (project, status, text, "
         "dates, assignee, etc.). Returns matching issues as summaries. Not one known issue key "
-        "(jira_get_issue), not Confluence (confluence_search)."
+        "(jira_get_issue), not Confluence (confluence_search).\n\n"
+        'Example: jql_query="project = PROJ AND status = Open", max_results=50.\n\n'
+        "JQL references: "
+        f"{_JQL_FUNCTIONS} {_JQL_FIELDS} {_JQL_KEYWORDS} {_JQL_OPERATORS}"
     ),
 )
 async def jira_search_issues(
@@ -62,7 +74,8 @@ async def jira_search_issues(
     tags={"jira", "read", "get", "issue"},
     description=(
         "[Jira—get issue] Use when you already have an issue key (e.g. PROJ-123) and need full "
-        "fields and current values. Read-only. Not JQL multi-issue search (jira_search_issues)."
+        "fields and current values. Read-only. Not JQL multi-issue search (jira_search_issues).\n\n"
+        f'Example: issue_key="PROJ-123".\n\nReference: {_JIRA_ISSUES_REST}'
     ),
 )
 async def jira_get_issue(
@@ -88,7 +101,10 @@ async def jira_get_issue(
     description=(
         "[Jira—create issue] Use when opening a new work item: project key, summary, and issue "
         "type name (Task/Bug/Story as configured). Optional description. Not status moves "
-        "(jira_transition_issue), not field patches on existing issues (jira_update_issue)."
+        "(jira_transition_issue), not field patches on existing issues (jira_update_issue).\n\n"
+        'Example: project_key="PROJ", summary="Fix login", issue_type="Bug", '
+        'description="Steps...".\n\n'
+        f"Reference: {_JIRA_ISSUES_REST}"
     ),
 )
 async def jira_create_issue(
@@ -138,7 +154,11 @@ async def jira_create_issue(
     description=(
         "[Jira—update fields] Use when changing field values on an existing issue (summary, "
         "description, custom fields) by key; values must match Jira field formats. Not workflow "
-        "status changes (jira_transition_issue), not create (jira_create_issue)."
+        "status changes (jira_transition_issue), not create (jira_create_issue).\n\n"
+        "Example fields_to_update for description (ADF-style JSON): "
+        '{"description": {"type": "text", "version": 1, "text": [{"type": "paragraph", '
+        '"content": [{"type": "text", "text": "<your text>"}]}]}}\n\n'
+        f"Reference: {_JIRA_ISSUES_REST}"
     ),
 )
 async def jira_update_issue(
@@ -176,7 +196,10 @@ async def jira_update_issue(
     description=(
         "[Jira—transition status] Use when moving an existing issue along its workflow by exact "
         "transition name (e.g. 'In Progress'). Not arbitrary field edits (jira_update_issue), "
-        "not new issues (jira_create_issue)."
+        "not new issues (jira_create_issue).\n\n"
+        'Example: issue_key="PROJ-123", transition_name="In Progress" (names come from '
+        "the workflow; use the exact label returned for the issue).\n\n"
+        f"Reference: {_JIRA_ISSUES_REST}"
     ),
 )
 async def jira_transition_issue(
