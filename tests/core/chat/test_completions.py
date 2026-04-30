@@ -159,6 +159,31 @@ def test_convert_chat_completion_params_to_run_agent_input() -> None:
         "authorization_context": {"api_key": "test-api-key"},
         "forwarded_headers": {"X-Forwarded-For": "127.0.0.1"},
     }
+    assert len(run_agent_input.thread_id) == 36
+    assert len(run_agent_input.run_id) == 36
+
+
+def test_convert_chat_completion_params_to_run_agent_input_uses_thread_run_from_extra_body() -> (
+    None
+):
+    params = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "extra_body": {"thread_id": "thread-stable", "run_id": "run-second"},
+    }
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+    assert run_agent_input.thread_id == "thread-stable"
+    assert run_agent_input.run_id == "run-second"
+
+
+def test_convert_chat_completion_params_to_run_agent_input_uses_thread_run_top_level() -> None:
+    params = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "threadId": "t-camel",
+        "runId": "r-camel",
+    }
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+    assert run_agent_input.thread_id == "t-camel"
+    assert run_agent_input.run_id == "r-camel"
 
 
 def test_convert_chat_completion_params_to_run_agent_input_preserves_assistant_tool_calls() -> None:
