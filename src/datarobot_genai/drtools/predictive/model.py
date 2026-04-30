@@ -410,16 +410,31 @@ async def is_eligible_for_timeseries_training(
         pandas_df = dataset.get_as_dataframe()
         df = pl.from_pandas(pandas_df)
     except Exception as exc:
-        raise ToolError(f"Could not load dataset: {exc}", kind=ToolErrorKind.UPSTREAM)
+        raise ToolError(
+            f"Could not load AI Catalog dataset '{dataset_id}': {exc}. "
+            "Confirm the dataset id is correct, the dataset has finished "
+            "ingesting (status=COMPLETED), and your token has read access.",
+            kind=ToolErrorKind.UPSTREAM,
+        )
 
+    available_columns = list(df.columns)
     row_count = df.height
     infos.append(f"Row count: {row_count}")
     if row_count < 100:
-        errors.append(f"Too few rows ({row_count}): time series training requires at least 100.")
+        errors.append(
+            f"Too few rows: {row_count} < 100. Time-series Autopilot needs "
+            f"at least 100 rows total to fit a usable validation window. "
+            "Collect more history, lower the aggregation level (e.g. daily "
+            "instead of weekly), or pick a target with denser observations."
+        )
 
     datetime_parsed = False
     if datetime_column not in df.columns:
-        errors.append(f"Datetime column '{datetime_column}' not found in dataset.")
+        errors.append(
+            f"Datetime column '{datetime_column}' not found in dataset. "
+            f"Available columns: {available_columns}. "
+            "Pass the exact column name; column names are case-sensitive."
+        )
     else:
         try:
             col = pl.col(datetime_column)
@@ -431,19 +446,42 @@ async def is_eligible_for_timeseries_training(
             infos.append(f"Datetime column '{datetime_column}' parsed successfully.")
             datetime_parsed = True
         except Exception as exc:
-            errors.append(f"Datetime column '{datetime_column}' could not be parsed: {exc}")
+            sample = df[datetime_column].drop_nulls().head(3).to_list()
+            errors.append(
+                f"Datetime column '{datetime_column}' could not be parsed as "
+                f"a timestamp ({exc}). Sample values: {sample}. "
+                "Coerce the column to ISO-8601 (e.g. 2024-01-15 or "
+                "2024-01-15T09:30:00) before uploading, or upload the "
+                "dataset with the column already typed as date/datetime."
+            )
 
     if series_id_column and series_id_column not in df.columns:
-        errors.append(f"Series ID column '{series_id_column}' not found in dataset.")
+        errors.append(
+            f"Series ID column '{series_id_column}' not found in dataset. "
+            f"Available columns: {available_columns}. "
+            "Pass the exact column name, or omit series_id_column entirely "
+            "for single-series datasets."
+        )
 
     if target_column not in df.columns:
-        errors.append(f"Target column '{target_column}' not found in dataset.")
+        errors.append(
+            f"Target column '{target_column}' not found in dataset. "
+            f"Available columns: {available_columns}. "
+            "Pass the exact column name; column names are case-sensitive."
+        )
 
     null_pct = df[target_column].null_count() / row_count if target_column in df.columns else None
     if null_pct is not None:
         infos.append(f"Target null rate: {null_pct:.1%}")
         if null_pct > _MAX_NULL_RATE_FOR_ELIGIBILITY:
-            errors.append(f"Target column has {null_pct:.1%} null values (>30%).")
+            errors.append(
+                f"Target column '{target_column}' is {null_pct:.1%} null "
+                f"(threshold: {_MAX_NULL_RATE_FOR_ELIGIBILITY:.0%}). "
+                "DataRobot needs a populated target to learn from. "
+                "Either pick a different target, filter the dataset to rows "
+                "where the target is present, or aggregate to a coarser "
+                "frequency where most periods have observations."
+            )
 
     cadence: dict[str, Any] | None = None
     if datetime_parsed:
@@ -452,7 +490,20 @@ async def is_eligible_for_timeseries_training(
         except Exception as exc:
             # Cadence inference is informational; don't fail the eligibility
             # verdict if it blows up on weird data.
-            infos.append(f"Could not compute cadence: {exc}")
+            infos.append(
+                f"Cadence/gap diagnostics unavailable ({exc}). The eligibility "
+                "verdict still holds, but the agent should not assume a "
+                "specific time_step or gap pattern."
+            )
+        else:
+            if cadence is None and row_count >= 2:
+                infos.append(
+                    "Cadence/gap diagnostics unavailable: could not compute "
+                    "consecutive-timestamp deltas (likely too few rows per "
+                    "series, or all timestamps identical). The eligibility "
+                    "verdict still holds, but agents should sanity-check "
+                    "the time_step before running TS Autopilot."
+                )
 
         if cadence:
             infos.append(

@@ -505,6 +505,90 @@ def test_compute_cadence_returns_none_when_insufficient_data() -> None:
     assert model._compute_cadence(df, "t", None) is None
 
 
+@pytest.mark.asyncio
+async def test_eligibility_error_for_missing_datetime_column_lists_columns() -> None:
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True
+    )
+    pandas_df = pl.DataFrame({"date": dates, "target": range(200)}).to_pandas()
+
+    result = await _run_eligibility(pandas_df, datetime_column="not_a_column")
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    err = next(e for e in result["errors"] if "not_a_column" in e)
+    # Must list the available columns and call out case-sensitivity.
+    assert "Available columns" in err
+    assert "date" in err
+    assert "target" in err
+    assert "case-sensitive" in err
+
+
+@pytest.mark.asyncio
+async def test_eligibility_error_for_missing_target_lists_columns() -> None:
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True
+    )
+    pandas_df = pl.DataFrame({"date": dates, "target": range(200)}).to_pandas()
+
+    result = await _run_eligibility(pandas_df, target_column="missing_target")
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    err = next(e for e in result["errors"] if "missing_target" in e)
+    assert "Available columns" in err
+
+
+@pytest.mark.asyncio
+async def test_eligibility_error_for_high_null_target_explains_remediation() -> None:
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=199), eager=True
+    )
+    # 50% nulls in target — over the 30% threshold.
+    target = [None if i % 2 == 0 else i for i in range(200)]
+    pandas_df = pl.DataFrame({"date": dates, "target": target}).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    err = next(e for e in result["errors"] if "null" in e)
+    assert "50.0%" in err
+    # Must explain WHY (DR needs populated target) and HOW (filter / aggregate).
+    assert "filter" in err.lower() or "aggregate" in err.lower()
+
+
+@pytest.mark.asyncio
+async def test_eligibility_error_for_too_few_rows_explains_remediation() -> None:
+    dates = pl.date_range(
+        pl.date(2020, 1, 1), pl.date(2020, 1, 1) + pl.duration(days=49), eager=True
+    )
+    pandas_df = pl.DataFrame({"date": dates, "target": range(50)}).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    err = next(e for e in result["errors"] if "Too few rows" in e)
+    assert "100" in err
+    assert "aggregation" in err.lower() or "history" in err.lower()
+
+
+@pytest.mark.asyncio
+async def test_eligibility_error_for_unparseable_datetime_shows_samples() -> None:
+    # Strings that can't be parsed as dates/timestamps.
+    pandas_df = pl.DataFrame(
+        {
+            "date": ["banana", "kumquat", "fig"] + ["pear"] * 197,
+            "target": list(range(200)),
+        }
+    ).to_pandas()
+
+    result = await _run_eligibility(pandas_df)
+
+    assert result["status"] == "NOT_ELIGIBLE"
+    err = next(e for e in result["errors"] if "could not be parsed" in e)
+    # Must show example bad values and suggest ISO-8601.
+    assert "Sample values" in err
+    assert "ISO-8601" in err
+
+
 class TestModelToDict:
     """Test cases for model_to_dict function."""
 
