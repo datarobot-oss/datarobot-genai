@@ -264,9 +264,9 @@ async def test_list_ai_catalog_items_success() -> None:
         # datasets is now a dict mapping id to name
         assert result["datasets"]["1"] == "ds1"
         assert result["datasets"]["2"] == "ds2"
-        assert result["limit"] == 1000
+        assert result["limit"] == 100
         assert result["may_have_more"] is False
-        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=1000)
+        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=100)
 
 
 @pytest.mark.asyncio
@@ -309,7 +309,7 @@ async def test_list_ai_catalog_items_rejects_negative_offset() -> None:
 
 @pytest.mark.asyncio
 async def test_list_ai_catalog_items_clamps_invalid_limit_below_one() -> None:
-    """limit<1 is clamped to 1000; response includes a note; iterate uses limit 1000."""
+    """limit<1 is clamped to 100; response includes a note; iterate uses limit 100."""
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -323,9 +323,9 @@ async def test_list_ai_catalog_items_clamps_invalid_limit_below_one() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items(limit=0)
-        assert result["limit"] == 1000
+        assert result["limit"] == 100
         assert "Limit must be at least 1" in (result.get("note") or "")
-        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=1000)
+        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=100)
 
 
 @pytest.mark.asyncio
@@ -343,14 +343,14 @@ async def test_list_ai_catalog_items_clamps_limit_above_max() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         result = await data.list_ai_catalog_items(limit=1001)
-        assert result["limit"] == 1000
-        assert "Limit cannot exceed 1000" in (result.get("note") or "")
-        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=1000)
+        assert result["limit"] == 100
+        assert "Limit cannot exceed 100" in (result.get("note") or "")
+        mock_client.Dataset.iterate.assert_called_once_with(offset=0, limit=100)
 
 
 @pytest.mark.asyncio
 async def test_list_ai_catalog_items_uses_default_limit() -> None:
-    """Default limit 1000 is passed to iterate and echoed in the result when not overridden."""
+    """Default limit 100 is passed to iterate and echoed in the result when not overridden."""
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -373,9 +373,9 @@ async def test_list_ai_catalog_items_uses_default_limit() -> None:
         assert result["count"] == 3
         assert set(result["datasets"].keys()) == {"3", "4", "5"}
         assert result["offset"] == 2
-        assert result["limit"] == 1000
+        assert result["limit"] == 100
         assert result["may_have_more"] is False
-        mock_client.Dataset.iterate.assert_called_once_with(offset=2, limit=1000)
+        mock_client.Dataset.iterate.assert_called_once_with(offset=2, limit=100)
 
 
 @pytest.mark.asyncio
@@ -396,7 +396,7 @@ async def test_list_ai_catalog_items_empty() -> None:
         assert result["datasets"] == {}
         assert result["count"] == 0
         assert "offset" not in result
-        assert result["limit"] == 1000
+        assert result["limit"] == 100
 
 
 @pytest.mark.asyncio
@@ -529,7 +529,7 @@ async def test_get_dataset_details_sample_rows_zero_returns_no_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_get_dataset_details_large_sample_rows_returns_full_frame() -> None:
-    """head(sample_rows) is bounded by the preview frame; no 1000-row cap in the tool body."""
+    """head(sample_rows) is bounded by the preview frame; unrelated to catalog pagination max."""
     with (
         patch(
             "datarobot_genai.drtools.predictive.data.get_datarobot_access_token",
@@ -663,8 +663,8 @@ async def test_list_datastores_serializes_params_from_response() -> None:
         assert data._serialize_datastore_params(params) == expected
         assert result["datastores"][0]["params"] == expected
         assert "offset" not in result
-        assert result["limit"] == 1000
-        mock_rest.get.assert_called_once_with("externalDataStores/", params={"limit": 1000})
+        assert result["limit"] == 100
+        mock_rest.get.assert_called_once_with("externalDataStores/", params={"limit": 100})
 
 
 @pytest.mark.asyncio
@@ -727,9 +727,9 @@ async def test_list_datastores_clamps_limit_above_max() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_dr
 
         result = await data.list_datastores(limit=1001)
-        assert result["limit"] == 1000
-        assert "Limit cannot exceed 1000" in (result.get("note") or "")
-        mock_rest.get.assert_called_once_with("externalDataStores/", params={"limit": 1000})
+        assert result["limit"] == 100
+        assert "Limit cannot exceed 100" in (result.get("note") or "")
+        mock_rest.get.assert_called_once_with("externalDataStores/", params={"limit": 100})
 
 
 @pytest.mark.asyncio
@@ -755,7 +755,7 @@ async def test_browse_datastore_success() -> None:
         assert result["count"] == 2
         assert result["datastore_id"] == "store1"
         assert result["offset"] == 0
-        assert result["limit"] == 1000
+        assert result["limit"] == 100
 
 
 @pytest.mark.asyncio
@@ -823,10 +823,10 @@ async def test_browse_datastore_clamps_limit_above_max() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_dr
 
         result = await data.browse_datastore(datastore_id="s1", limit=2000)
-        assert result["limit"] == 1000
-        assert "Limit cannot exceed 1000" in (result.get("note") or "")
+        assert result["limit"] == 100
+        assert "Limit cannot exceed 100" in (result.get("note") or "")
         mock_rest.get.assert_called_once_with(
-            "externalDataDrivers/s1/tables/", params={"offset": 0, "limit": 1000}
+            "externalDataDrivers/s1/tables/", params={"offset": 0, "limit": 100}
         )
 
 
@@ -856,7 +856,7 @@ async def test_query_datastore_success() -> None:
         assert result["row_count"] == 1
         assert result["columns"] == ["id", "val"]
         assert result["offset"] == 0
-        assert result["limit"] == 1000
+        assert result["limit"] == 100
 
 
 @pytest.mark.asyncio
@@ -878,11 +878,11 @@ async def test_query_datastore_clamps_limit_above_max() -> None:
         mock_data_robot_client.return_value.get_client.return_value = mock_dr
 
         out = await data.query_datastore(datastore_id="ds1", sql="SELECT 1", limit=2000)
-        assert out["limit"] == 1000
-        assert "Limit cannot exceed 1000" in (out.get("note") or "")
+        assert out["limit"] == 100
+        assert "Limit cannot exceed 100" in (out.get("note") or "")
         mock_rest.post.assert_called_once_with(
             "externalDataDrivers/ds1/execute/",
-            json={"query": "SELECT 1", "offset": 0, "limit": 1000},
+            json={"query": "SELECT 1", "offset": 0, "limit": 100},
         )
 
 

@@ -33,7 +33,7 @@ from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_erro
 logger = logging.getLogger(__name__)
 
 # Max page / batch size for predictive `data` tools
-DR_PREDICTIVE_API_PAGINATION_MAX = 1000
+DR_PREDICTIVE_API_PAGINATION_MAX = 100
 
 
 def _clamp_limit(limit: int) -> tuple[int, str | None]:
@@ -179,10 +179,6 @@ async def upload_dataset_to_ai_catalog(
         "as id-to-name map. Read-only. Not project-attached datasets "
         "(get_project_dataset_by_name), not modeling projects (list_projects). Follow with "
         "get_dataset_details or scoring tools that take dataset_id."
-        "Pagination: the DataRobot SDK's ``Dataset.iterate`` is called with a finite "
-        "``limit`` (default 1000) so the gateway and MCP process avoid unbounded responses."
-        " Use ``offset`` and additional calls to walk large catalogs. The response echoes "
-        "the effective limit and may set ``may_have_more`` when the page is full."
     ),
 )
 async def list_ai_catalog_items(
@@ -193,8 +189,8 @@ async def list_ai_catalog_items(
     limit: Annotated[
         int,
         (
-            "Max datasets to return in this call (default 1000). Use with offset to page. "
-            "Values above 1000 are rejected; use offset to continue."
+            "Max datasets to return in this call (default 100). Use with offset to page. "
+            "Values above 100 are rejected; use offset to continue."
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
@@ -302,7 +298,7 @@ async def list_datastores(
     limit: Annotated[
         int,
         (
-            "Max datastores to return (default 1000). Values above 1000 are rejected; "
+            "Max datastores to return (default 100). Values above 100 are rejected; "
             "use offset to page."
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
@@ -366,7 +362,7 @@ async def browse_datastore(
     limit: Annotated[
         int,
         (
-            "Maximum items to return (default 1000). Values above 1000 are rejected; "
+            "Maximum items to return (default 100). Values above 100 are rejected; "
             "use offset to page."
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
@@ -423,13 +419,14 @@ async def browse_datastore(
     ),
 )
 async def query_datastore(
+    *,
     datastore_id: Annotated[str, "Connection id from list_datastores."] | None = None,
     sql: Annotated[str, "SQL statement to run against that connection."] | None = None,
     offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[
         int,
         (
-            "Maximum rows to return (default 1000). Values above 1000 are rejected; "
+            "Maximum rows to return (default 100). Values above 100 are rejected; "
             "use offset to page."
         ),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
