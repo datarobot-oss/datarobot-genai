@@ -1061,6 +1061,7 @@ requires-dist = [
     { name = "ag-ui-protocol", marker = "extra == 'llamaindex'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'nat'", specifier = "==0.1.15" },
     { name = "aiohttp", marker = "extra == 'auth'", specifier = ">=3.13.3,<4.0.0" },
+    { name = "aiohttp", marker = "extra == 'auth-okta'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drmcp'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp", marker = "extra == 'drtools'", specifier = ">=3.13.3,<4.0.0" },
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
@@ -1088,6 +1089,7 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'auth-okta'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
@@ -1138,6 +1140,7 @@ requires-dist = [
     { name = "nvidia-nat-mcp", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.6.0" },
     { name = "nvidia-nat-opentelemetry", marker = "extra == 'nat'", specifier = "==1.6.0" },
+    { name = "okta-client-python", marker = "extra == 'auth-okta'", specifier = ">=0.2.0,<1.0.0" },
     { name = "openai", marker = "extra == 'core'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'crewai'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'dragent'", specifier = ">=2.0.0,<3.0.0" },
@@ -1199,6 +1202,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'nat'", specifier = "==21.0.0" },
     { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2,<2.0.0" },
     { name = "pydantic", marker = "extra == 'auth'", specifier = ">=2.6.1,<3.0.0" },
+    { name = "pydantic", marker = "extra == 'auth-okta'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drtools'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic-settings", marker = "extra == 'drmcp'", specifier = ">=2.1.0,<3.0.0" },
@@ -1233,7 +1237,7 @@ requires-dist = [
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "drmcp", "drtools", "dragent", "memory"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "auth-okta", "drmcp", "drtools", "dragent", "memory"]
 
 [package.metadata.requires-dev]
 dev = [
