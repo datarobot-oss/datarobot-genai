@@ -43,6 +43,34 @@ from datarobot_genai.core.agents.base import UsageMetrics
 logger = logging.getLogger(__name__)
 
 
+def _optional_str(mapping: Mapping[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        val = mapping.get(key)
+        if val is not None and val != "":
+            return str(val)
+    return None
+
+
+def _resolve_thread_and_run_ids(chat_completion_params: Mapping[str, Any]) -> tuple[str, str]:
+    """Prefer AG-UI thread/run ids when present so LangGraph can resume across requests.
+
+    Callers may pass ``thread_id`` / ``run_id`` at the top level or inside OpenAI client
+    ``extra_body`` (both shapes appear depending on gateway and SDK behavior).
+    """
+    thread_id = _optional_str(chat_completion_params, "thread_id", "threadId")
+    run_id = _optional_str(chat_completion_params, "run_id", "runId")
+    extra = chat_completion_params.get("extra_body")
+    if isinstance(extra, Mapping):
+        if thread_id is None:
+            thread_id = _optional_str(extra, "thread_id", "threadId")
+        if run_id is None:
+            run_id = _optional_str(extra, "run_id", "runId")
+    return (
+        thread_id if thread_id is not None else str(uuid4()),
+        run_id if run_id is not None else str(uuid4()),
+    )
+
+
 def _merge_mcp_tools_with_agent_tools(mcp_tools: Any, agent: BaseAgent) -> list[Any]:
     """Return MCP tools followed by any tools already set on the agent (e.g. workflow tools)."""
     return [*list(mcp_tools), *list(agent.tools)]
@@ -118,12 +146,14 @@ def convert_chat_completion_params_to_run_agent_input(
         "forwarded_headers": chat_completion_params.get("forwarded_headers"),
     }
 
+    thread_id, run_id = _resolve_thread_and_run_ids(chat_completion_params)
+
     return RunAgentInput(
         messages=messages,
         tools=tools,
         forwarded_props=forwarded_props,
-        thread_id=str(uuid4()),
-        run_id=str(uuid4()),
+        thread_id=thread_id,
+        run_id=run_id,
         state={},
         context=[],
     )

@@ -40,3 +40,7 @@ Patterns visible in the file:
 - **Graph factory**&mdash;receives the LLM, injected tools, and verbosity from the runner so one codebase works locally and on DataRobot.
 
 [`register.py`](../../e2e-tests/dragent/langgraph/register.py) connects this module to NAT/DRAgent; copy its shape when you add a new agent package.
+
+## Human in the loop
+
+The sample `myagent.py` can include a **review** node that calls LangGraph’s **`interrupt()`** between other nodes (planner → **human review** → writer). That pattern needs a **checkpointer** and a stable **`thread_id`** across the interrupt and resume requests. See [hitl.md](hitl.md) to read more about behavior, `langgraph_resume`, and `HITL_E2E_CHECKPOINTER` example from e2e-tests.

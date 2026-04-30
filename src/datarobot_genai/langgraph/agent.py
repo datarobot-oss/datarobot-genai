@@ -11,14 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import abc
+import json
 import logging
+import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Optional
 from typing import cast
 
 from ag_ui.core import EventType
@@ -37,6 +40,7 @@ from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import START
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph
 from langgraph.types import Command
@@ -52,18 +56,63 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Must match the AG-UI client: useAgUiTool({ name: "confirmation" }) registers "ui-confirmation"
+# (e.g. ConfirmationWidget with { message: string }).
+INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME = "ui-confirmation"
+
+
+def _confirmation_args_from_interrupt_value(value: Any) -> dict[str, str]:
+    """Map a LangGraph interrupt value to the confirmation tool args."""
+    if isinstance(value, dict):
+        m = value.get("message")
+        if isinstance(m, str):
+            return {"message": m}
+        if "e2e_prompt" in value:
+            return {"message": str(value["e2e_prompt"])}
+        for key in ("prompt", "text", "question"):
+            if key in value:
+                return {"message": str(value[key])}
+    return {"message": str(value)}
+
+
+# RunAgentInput.state / forwarded_props key for Command(resume=..., goto=START).
+LANGGRAPH_RESUME_STATE_KEY = "langgraph_resume"
+
 
 class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     """Base class for LangGraph-powered agents.
 
     This class wires LangGraph workflows into the generic `BaseAgent` interface
     and provides a default implementation for turning OpenAI-style chat inputs
-    into a LangGraph `Command`.
+    into LangGraph input.
 
     History is opt-in: prior turns are only injected when the prompt template
     declares and uses a `{chat_history}` input variable. If the template does
     not use `{chat_history}`, no chat history is passed to the model.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Forward ``*args`` / ``**kwargs`` to :class:`BaseAgent` after setting LangGraph fields.
+
+        The following keyword arguments are handled here and are not passed to
+        :meth:`BaseAgent.__init__`: ``checkpointer``, ``interrupt_before``,
+        ``interrupt_after``, ``debug``, ``name``.
+
+        - ``checkpointer``: forwarded to ``compile(...)``. Required for ``interrupt()``
+          resume across requests; without it, pending-interrupt detection is a no-op.
+          Pair with a stable ``RunAgentInput.thread_id`` from the caller.
+        - ``interrupt_before`` / ``interrupt_after``: passed to
+          :meth:`langgraph.graph.state.StateGraph.compile`.
+        - ``debug``: if provided, passed to ``compile(debug=...)``; for ``astream``,
+          when omitted, ``debug`` follows ``verbose`` (previous behavior).
+        - ``name``: optional graph name for ``compile(name=...)``.
+        """
+        self.checkpointer = kwargs.pop("checkpointer", None)
+        self.interrupt_before = kwargs.pop("interrupt_before", None)
+        self.interrupt_after = kwargs.pop("interrupt_after", None)
+        self.debug = kwargs.pop("debug", False)
+        self.name = kwargs.pop("name", None)
+        super().__init__(*args, **kwargs)
 
     @property
     @abc.abstractmethod
@@ -82,8 +131,79 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             "callbacks": [LangchainProfilerHandler()],
         }
 
-    async def convert_input_message(self, run_agent_input: RunAgentInput) -> Command:
-        """Convert AG-UI input into a LangGraph `Command`.
+    def build_langgraph_runnable_config(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
+        """Merge `langgraph_config` with per-run `thread_id` for checkpointing."""
+        cfg: dict[str, Any] = dict(self.langgraph_config)
+        existing = cfg.get("configurable")
+        if isinstance(existing, dict):
+            configurable = {**existing, "thread_id": run_agent_input.thread_id}
+        else:
+            configurable = {"thread_id": run_agent_input.thread_id}
+        cfg["configurable"] = configurable
+        return cfg
+
+    def _compile_workflow(self) -> Any:
+        """Compile the workflow graph, attaching `langgraph_checkpointer` when set."""
+        return self.workflow.compile(
+            checkpointer=self.checkpointer,
+            interrupt_before=self.interrupt_before,
+            interrupt_after=self.interrupt_after,
+            debug=self.debug,
+            name=self.name,
+        )
+
+    def _command_for_interrupt_resume(self, resume_payload: Any) -> Command:
+        """Return the LangGraph input for continuing after ``interrupt()``."""
+        return Command(resume=resume_payload, goto=START)
+
+    async def _command_for_pending_interrupt(
+        self,
+        compiled_graph: Any,
+        run_agent_input: RunAgentInput,
+    ) -> Command | None:
+        """When the thread is paused on `interrupt()`, map the user message to `resume`."""
+        if self.checkpointer is None:
+            return None
+        config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
+        snap = await compiled_graph.aget_state(config)
+        interrupts = getattr(snap, "interrupts", None)
+        if not interrupts:
+            return None
+        user_reply = extract_user_prompt_content(run_agent_input)
+        if len(interrupts) == 1:
+            return self._command_for_interrupt_resume(user_reply)
+        return self._command_for_interrupt_resume({intr.id: user_reply for intr in interrupts})
+
+    async def _build_input_command(
+        self,
+        run_agent_input: RunAgentInput,
+        compiled_graph: Any,
+    ) -> dict[str, Any] | Command:
+        """Resolve LangGraph input: explicit resume, pending interrupt, or normal prompt."""
+        state = run_agent_input.state
+        resume_present = False
+        resume_payload: Any = None
+        if isinstance(state, Mapping) and LANGGRAPH_RESUME_STATE_KEY in state:
+            resume_present, resume_payload = True, state[LANGGRAPH_RESUME_STATE_KEY]
+        elif (
+            isinstance(run_agent_input.forwarded_props, Mapping)
+            and LANGGRAPH_RESUME_STATE_KEY in run_agent_input.forwarded_props
+        ):
+            resume_present, resume_payload = (
+                True,
+                run_agent_input.forwarded_props[LANGGRAPH_RESUME_STATE_KEY],
+            )
+        if resume_present:
+            return self._command_for_interrupt_resume(resume_payload)
+
+        pending = await self._command_for_pending_interrupt(compiled_graph, run_agent_input)
+        if pending is not None:
+            return pending
+
+        return await self.convert_input_message(run_agent_input)
+
+    async def convert_input_message(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
+        """Convert AG-UI input into a LangGraph state input.
 
         By default this:
         - Extracts the last user message content via `extract_user_prompt_content`
@@ -133,12 +253,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
-        command = Command(  # type: ignore[var-annotated]
-            update={
-                "messages": current_messages,
-            },
-        )
-        return command
+        return {"messages": current_messages}
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.
@@ -177,21 +292,19 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 raise
 
     async def _invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
-        input_command = await self.convert_input_message(run_agent_input)
+
+        langgraph_execution_graph = self._compile_workflow()
+        graph_input = await self._build_input_command(run_agent_input, langgraph_execution_graph)
         logger.info(
-            f"Running a langgraph agent with a command: {input_command}",
+            f"Running a langgraph agent with input: {graph_input}",
         )
-
-        # Create and invoke the Langgraph Agentic Workflow with the inputs
-        langgraph_execution_graph = self.workflow.compile()
-
         graph_stream = cast(
             AsyncGenerator[tuple[Any, str, Any], None],
             langgraph_execution_graph.astream(
-                input=input_command,
+                input=graph_input,
                 # LangGraph expects a RunnableConfig, but our config is a plain dict.
                 # Cast to Any to avoid leaking LangGraph internals into this interface.
-                config=cast(Any, self.langgraph_config),
+                config=cast(Any, self.build_langgraph_runnable_config(run_agent_input)),
                 debug=self.verbose,
                 # Streaming updates and messages from all the nodes
                 stream_mode=["updates", "messages"],
@@ -209,7 +322,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     async def _stream_generator(
         self,
-        graph_stream: AsyncGenerator[tuple[Any, str, Any], None],
+        graph_stream: AsyncGenerator[tuple[Any, str, Any]],
         usage_metrics: UsageMetrics,
         run_agent_input: RunAgentInput,
     ) -> InvokeReturn:
@@ -320,6 +433,75 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                     raise ValueError(f"Invalid message event: {message_event}")
             elif mode == "updates":
                 update_event: dict[str, Any] = event  # type: ignore[assignment]
+                if "__interrupt__" in update_event:
+                    intr_tuple = update_event["__interrupt__"]
+                    serialized: list[dict[str, Any]] = []
+                    for intr in intr_tuple:
+                        serialized.append({"id": intr.id, "value": intr.value})
+                    custom_value = {
+                        "kind": "on_interrupt",
+                        "interrupts": serialized,
+                    }
+                    for intr in intr_tuple:
+                        tool_call_id = (
+                            str(intr.id) if getattr(intr, "id", None) else uuid.uuid4().hex
+                        )
+                        args_dict = _confirmation_args_from_interrupt_value(intr.value)
+                        args_json = json.dumps(args_dict)
+                        yield (
+                            ToolCallStartEvent(
+                                type=EventType.TOOL_CALL_START,
+                                tool_call_id=tool_call_id,
+                                tool_call_name=INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME,
+                                parent_message_id="",
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            ToolCallArgsEvent(
+                                type=EventType.TOOL_CALL_ARGS,
+                                tool_call_id=tool_call_id,
+                                delta=args_json,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            ToolCallEndEvent(
+                                type=EventType.TOOL_CALL_END,
+                                tool_call_id=tool_call_id,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            ToolCallResultEvent(
+                                type=EventType.TOOL_CALL_RESULT,
+                                message_id=tool_call_id,
+                                tool_call_id=tool_call_id,
+                                content=json.dumps(
+                                    {
+                                        "langgraphInterrupt": True,
+                                        "interruptId": tool_call_id,
+                                    }
+                                ),
+                                role="tool",
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                    events.append(update_event)
+                    yield (
+                        RunFinishedEvent(
+                            thread_id=thread_id,
+                            run_id=run_id,
+                            result={"langgraph": {"interrupted": True, **custom_value}},
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    return
                 events.append(update_event)
                 current_node = next(iter(update_event))
                 node_data = update_event[current_node]
@@ -360,7 +542,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     def create_pipeline_interactions_from_events(
         cls,
         events: list[dict[str, Any]] | None,
-    ) -> Optional["MultiTurnSample"]:
+    ) -> MultiTurnSample | None:
         """Convert a list of LangGraph events into Ragas MultiTurnSample."""
         if not events:
             return None
@@ -405,12 +587,17 @@ def datarobot_agent_class_from_langgraph(
     type[LangGraphAgent]
         A new :class:`LangGraphAgent` subclass whose ``workflow`` and
         ``prompt_template`` properties are wired to the provided arguments.
+
+    Human-in-the-loop
+    ------------------
+    Unless you pass ``checkpointer=...``, a **process-wide** shared
+    :class:`~langgraph.checkpoint.memory.InMemorySaver` is used so graphs can resume
+    after ``interrupt()`` when the client reuses the same ``thread_id`` (e.g. chat id).
+    For multi-process deployments, pass a persisted checkpointer. You can also pass
+    resume payloads explicitly via ``run_agent_input.state["langgraph_resume"]``.
     """
 
     class DataRobotLangAgent(LangGraphAgent):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-
         @property
         def workflow(self) -> StateGraph[MessagesState]:
             return graph_factory(self.llm, self.tools, self.verbose)
