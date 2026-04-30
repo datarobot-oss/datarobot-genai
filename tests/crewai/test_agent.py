@@ -14,16 +14,28 @@
 
 # ruff: noqa: I001
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from crewai.types.streaming import CrewStreamingOutput
+from crewai.types.streaming import StreamChunk
+from crewai.types.streaming import StreamChunkType
 import pytest
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -31,6 +43,7 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.agent import CrewAIAgent
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
@@ -66,6 +79,41 @@ class ListenerForTest:
 
     def setup_listeners(self, crewai_event_bus: Any) -> None:
         self.called_setup = True
+
+
+class FakeStreamingOutput(CrewStreamingOutput):
+    def __init__(
+        self,
+        *,
+        async_iterator: AsyncGenerator[StreamChunk, None],
+        token_usage: Any | None = None,
+    ) -> None:
+        super().__init__(async_iterator=async_iterator)
+        self._forced_result = SimpleNamespace(
+            token_usage=token_usage
+            or SimpleNamespace(completion_tokens=1, prompt_tokens=2, total_tokens=3)
+        )
+
+    @property
+    def result(self) -> Any:
+        return self._forced_result
+
+
+class StreamingCrewForTest:
+    def __init__(self, output: CrewStreamingOutput) -> None:
+        self.output = output
+        self.verbose = True
+
+    async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewStreamingOutput:  # type: ignore[override]
+        return self.output
+
+
+class StreamingListenerForTest:
+    def __init__(self) -> None:
+        self.reasoning_event = False
+
+    def setup_listeners(self, crewai_event_bus: Any) -> None:
+        return None
 
 
 class FakeMemoryClient(BaseMemoryClient):
@@ -266,6 +314,211 @@ async def test_invoke(run_agent_input, mock_ragas_event_listener) -> None:
 
     # THEN usage is the expected usage
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
+
+
+async def test_invoke_streaming_starts_fresh_text_message_per_step(
+    run_agent_input, mock_ragas_event_listener
+) -> None:
+    async def stream_chunks() -> AsyncGenerator[StreamChunk, None]:
+        yield StreamChunk(
+            content="plan",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="plan",
+            agent_role="Planner",
+        )
+        yield StreamChunk(
+            content="write",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="write",
+            agent_role="Writer",
+        )
+
+    # GIVEN a streamed CrewAI run that switches agent roles between text chunks
+    streaming_output = FakeStreamingOutput(async_iterator=stream_chunks())
+    agent = AgentForTest(
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        crew=StreamingCrewForTest(streaming_output),
+    )
+    streaming_listener = StreamingListenerForTest()
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        return_value=streaming_listener,
+    ):
+        # WHEN invoking the agent
+        events_out = [event async for event in agent.invoke(run_agent_input)]
+
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the AG-UI event sequence remains valid
+    validate_sequence(list(ag_events))
+
+    # THEN each step gets its own text message lifecycle with a distinct id
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    text_contents = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    text_ends = [event for event in ag_events if isinstance(event, TextMessageEndEvent)]
+    assert [event.delta for event in text_contents] == ["plan", "write"]
+    assert len(text_starts) == 2
+    assert len(text_ends) == 2
+    assert len({event.message_id for event in text_starts}) == 2
+    assert {event.message_id for event in text_starts} == {event.message_id for event in text_ends}
+
+    # THEN the first text message closes before Planner finishes
+    planner_text_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageEndEvent)
+    )
+    planner_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Planner"
+    )
+    writer_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Writer"
+    )
+    writer_text_start_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageStartEvent)
+        and event.message_id == text_contents[1].message_id
+    )
+    assert planner_text_end_idx < planner_step_finished_idx < writer_step_started_idx
+    assert writer_step_started_idx < writer_text_start_idx
+
+
+async def test_invoke_streaming_closes_reasoning_before_finishing_step(
+    run_agent_input, mock_ragas_event_listener
+) -> None:
+    streaming_listener = StreamingListenerForTest()
+
+    async def stream_chunks() -> AsyncGenerator[StreamChunk, None]:
+        streaming_listener.reasoning_event = True
+        yield StreamChunk(
+            content="think",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="plan",
+            agent_role="Planner",
+        )
+        streaming_listener.reasoning_event = False
+        yield StreamChunk(
+            content="answer",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="write",
+            agent_role="Writer",
+        )
+
+    # GIVEN a streamed CrewAI run that exits reasoning mode while switching steps
+    streaming_output = FakeStreamingOutput(async_iterator=stream_chunks())
+    agent = AgentForTest(
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        crew=StreamingCrewForTest(streaming_output),
+    )
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        return_value=streaming_listener,
+    ):
+        # WHEN invoking the agent
+        events_out = [event async for event in agent.invoke(run_agent_input)]
+
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the AG-UI event sequence remains valid
+    validate_sequence(list(ag_events))
+
+    # THEN the planner reasoning lifecycle closes before Planner finishes
+    reasoning_start = next(
+        event for event in ag_events if isinstance(event, ReasoningMessageStartEvent)
+    )
+    writer_text_start = next(
+        event for event in ag_events if isinstance(event, TextMessageStartEvent)
+    )
+    assert reasoning_start.message_id != writer_text_start.message_id
+
+    reasoning_message_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, ReasoningMessageEndEvent)
+    )
+    reasoning_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, ReasoningEndEvent)
+    )
+    planner_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Planner"
+    )
+    writer_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Writer"
+    )
+    assert reasoning_message_end_idx < reasoning_end_idx < planner_step_finished_idx
+    assert planner_step_finished_idx < writer_step_started_idx
+
+
+async def test_invoke_streaming_closes_text_before_same_step_reasoning_starts(
+    run_agent_input, mock_ragas_event_listener
+) -> None:
+    streaming_listener = StreamingListenerForTest()
+
+    async def stream_chunks() -> AsyncGenerator[StreamChunk, None]:
+        yield StreamChunk(
+            content="answer",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="plan",
+            agent_role="Planner",
+        )
+        streaming_listener.reasoning_event = True
+        yield StreamChunk(
+            content="think",
+            chunk_type=StreamChunkType.TEXT,
+            task_name="plan",
+            agent_role="Planner",
+        )
+
+    # GIVEN a streamed CrewAI run that switches from text to reasoning in one step
+    streaming_output = FakeStreamingOutput(async_iterator=stream_chunks())
+    agent = AgentForTest(
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        crew=StreamingCrewForTest(streaming_output),
+    )
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        return_value=streaming_listener,
+    ):
+        # WHEN invoking the agent
+        events_out = [event async for event in agent.invoke(run_agent_input)]
+
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the text lifecycle closes before reasoning starts
+    text_start_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageStartEvent)
+    )
+    text_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageEndEvent)
+    )
+    reasoning_start_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, ReasoningMessageStartEvent)
+    )
+    reasoning_content_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, ReasoningMessageContentEvent)
+    )
+    assert text_start_idx < text_end_idx < reasoning_start_idx < reasoning_content_idx
+
+    planner_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Planner"
+    )
+    assert reasoning_content_idx < planner_step_finished_idx
 
 
 async def test_invoke_does_not_include_chat_history_by_default(

@@ -28,6 +28,10 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -43,6 +47,7 @@ from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
 
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
@@ -362,15 +367,17 @@ async def test_llama_index_agent_invoke(
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: text message events contain the expected deltas (after step / lifecycle events)
+    # THEN: each agent step has its own text message (start/end pair) with a unique id
     text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
-    assert len(text_starts) == 1
+    assert len(text_starts) == 2
     content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
 
-    # THEN: TextMessageEnd is present
+    # THEN: each TextMessageStart has a matching TextMessageEnd with the same id
     end_events = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
-    assert len(end_events) == 1
+    assert len(end_events) == 2
+    assert {e.message_id for e in text_starts} == {e.message_id for e in end_events}
+    assert len({e.message_id for e in text_starts}) == 2
 
     # THEN: last event is RunFinishedEvent with pipeline interactions
     assert isinstance(ag_events[-1], RunFinishedEvent)
@@ -426,7 +433,7 @@ async def test_invoke_agent_output_with_dict_tool_calls(
 async def test_invoke_agent_stream_multiple_agents(
     run_agent_input: RunAgentInput,
 ) -> None:
-    """Multi-agent stream yields text, step events, and completes."""
+    """Multi-agent stream starts a fresh text message when agent ownership changes."""
     workflow = Workflow(
         events=[
             AgentWorkflowStartEvent(),
@@ -437,21 +444,458 @@ async def test_invoke_agent_stream_multiple_agents(
     )
     agent = MyLlamaAgent(workflow)
 
+    # GIVEN a stream that switches agents between incremental text chunks
+    # WHEN invoking the agent
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, _, _ = zip(*events_out)
 
+    # THEN the streamed text deltas are preserved
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["one", " two"]
-    assert any(isinstance(e, TextMessageStartEvent) for e in ag_events)
-    assert any(isinstance(e, TextMessageEndEvent) for e in ag_events)
 
-    step_started = [e for e in ag_events if isinstance(e, StepStartedEvent)]
-    step_finished = [e for e in ag_events if isinstance(e, StepFinishedEvent)]
-    if step_started:
-        assert {e.step_name for e in step_started} <= {"Agent1", "Agent2"}
-    if step_finished:
-        assert {e.step_name for e in step_finished} <= {"Agent1", "Agent2"}
+    # THEN each agent step gets its own text message lifecycle
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
+    assert len(text_starts) == 2
+    assert len(text_ends) == 2
+    assert {e.message_id for e in text_starts} == {e.message_id for e in text_ends}
+    assert len({e.message_id for e in text_starts}) == 2
 
+    # THEN the second agent's step starts before its text message opens
+    second_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Agent2"
+    )
+    second_text_start_idx = next(i for i, event in enumerate(ag_events) if event == text_starts[1])
+    second_text_content_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageContentEvent) and event.delta == " two"
+    )
+    assert second_step_started_idx < second_text_start_idx < second_text_content_idx
+    assert text_starts[1].message_id == content[1].message_id
+
+    # THEN the run still completes cleanly
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_fallback_text_stays_within_active_step(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text is emitted before the active step is finished."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'say hello'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a workflow that assigns agent ownership but streams no text
+    # WHEN invoking the agent
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the fallback text lifecycle stays inside the active step
+    step_started_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, StepStartedEvent)
+    )
+    text_start_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageStartEvent)
+    )
+    text_content_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageContentEvent)
+    )
+    text_end_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, TextMessageEndEvent)
+    )
+    step_finished_idx = next(
+        i for i, event in enumerate(ag_events) if isinstance(event, StepFinishedEvent)
+    )
+
+    assert step_started_idx < text_start_idx < text_content_idx < text_end_idx < step_finished_idx
+
+    content = next(event for event in ag_events if isinstance(event, TextMessageContentEvent))
+    assert content.delta == "FINAL:2"
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_fallback_text_not_suppressed_by_prior_step_text(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text still emits for the active step after earlier streamed text."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(delta="outline", response="", current_agent_name="Planner"),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'write answer'}", role=MessageRole.USER)],
+                current_agent_name="Writer",
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a prior step already streamed text
+    # WHEN the active step relies on fallback extraction for its final answer
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the fallback text still appears within the active step
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["outline", "FINAL:3"]
+
+    writer_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Writer"
+    )
+    fallback_text_start_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageStartEvent) and event.message_id == content[1].message_id
+    )
+    fallback_text_end_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageEndEvent) and event.message_id == content[1].message_id
+    )
+    writer_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Writer"
+    )
+
+    assert (
+        writer_step_started_idx
+        < fallback_text_start_idx
+        < fallback_text_end_idx
+        < writer_step_finished_idx
+    )
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_does_not_repeat_prior_step_text_in_silent_final_step(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text is suppressed when it would only repeat the prior step's output."""
+
+    class EventEchoAgent(MyLlamaAgent):
+        def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+            for event in reversed(events):
+                response = getattr(event, "response", None)
+                if response is not None and getattr(response, "content", None):
+                    return str(response.content)
+                delta = getattr(event, "delta", None)
+                if isinstance(delta, str) and delta:
+                    return delta
+            return ""
+
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(delta="outline", response="", current_agent_name="Planner"),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'write answer'}", role=MessageRole.USER)],
+                current_agent_name="Writer",
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = EventEchoAgent(workflow)
+
+    # GIVEN a prior step already emitted the only assistant text
+    # WHEN the final step is silent and fallback extraction looks at prior events
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the previous step's text is not re-emitted inside the silent final step
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["outline"]
+
+    writer_step_started_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepStartedEvent) and event.step_name == "Writer"
+    )
+    writer_step_finished_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, StepFinishedEvent) and event.step_name == "Writer"
+    )
+    writer_text_events = [
+        event
+        for event in ag_events[writer_step_started_idx + 1 : writer_step_finished_idx]
+        if isinstance(
+            event,
+            TextMessageStartEvent | TextMessageContentEvent | TextMessageEndEvent,
+        )
+    ]
+    assert writer_text_events == []
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_emits_fallback_after_tool_when_final_answer_is_new(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text still emits after a tool when it is a new final answer."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'use tool'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+            AgentStream(delta="prefix", response="", current_agent_name="Agent1"),
+            AgentOutput(
+                response=ChatMessage(content="prefix", role=MessageRole.ASSISTANT),
+                current_agent_name="Agent1",
+                tool_calls=[
+                    ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")
+                ],
+            ),
+            ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+            ToolCallResult(
+                tool_name="tool1",
+                tool_kwargs={"a": 1},
+                tool_id="tool1",
+                tool_output=ToolOutput(
+                    tool_name="tool1",
+                    content="tool result",
+                    raw_input={"a": 1},
+                    raw_output="tool result",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a step that already streamed assistant text before a tool call
+    # WHEN the step ends without any additional text after the tool result
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the final fallback answer is emitted as a fresh message after the tool result
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["prefix", "FINAL:6"]
+
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    text_ends = [event for event in ag_events if isinstance(event, TextMessageEndEvent)]
+    assert len(text_starts) == 2
+    assert len(text_ends) == 2
+    assert text_starts[0].message_id == text_ends[0].message_id == content[0].message_id
+    assert text_starts[1].message_id == text_ends[1].message_id == content[1].message_id
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_tool_result_uses_tool_call_id_and_post_tool_text_gets_new_message(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Tool result stays tied to the tool call while post-tool text starts a fresh message."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'use tool'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+            AgentStream(delta="prefix", response="", current_agent_name="Agent1"),
+            AgentOutput(
+                response=ChatMessage(content="prefix", role=MessageRole.ASSISTANT),
+                current_agent_name="Agent1",
+                tool_calls=[
+                    ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")
+                ],
+            ),
+            ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+            ToolCallResult(
+                tool_name="tool1",
+                tool_kwargs={"a": 1},
+                tool_id="tool1",
+                tool_output=ToolOutput(
+                    tool_name="tool1",
+                    content="tool result",
+                    raw_input={"a": 1},
+                    raw_output="tool result",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+            AgentStream(delta="suffix", response="", current_agent_name="Agent1"),
+        ],
+        state="FINAL",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    # GIVEN a step that streams text, runs a tool, then streams more text
+    # WHEN invoking the agent
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the AG-UI event sequence remains valid
+    validate_sequence(list(ag_events))
+
+    # THEN the tool-result event is keyed by the tool call id
+    tool_start = next(event for event in ag_events if isinstance(event, ToolCallStartEvent))
+    tool_args = next(event for event in ag_events if isinstance(event, ToolCallArgsEvent))
+    tool_end = next(event for event in ag_events if isinstance(event, ToolCallEndEvent))
+    tool_result = next(event for event in ag_events if isinstance(event, ToolCallResultEvent))
+    assert tool_start.tool_call_id == "tool1"
+    assert tool_args.tool_call_id == "tool1"
+    assert tool_end.tool_call_id == "tool1"
+    assert tool_result.tool_call_id == "tool1"
+    assert tool_result.message_id == "tool1"
+
+    # THEN post-tool assistant text opens a new message instead of reusing the tool id
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["prefix", "suffix"]
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    assert len(text_starts) == 2
+    assert text_starts[0].message_id == content[0].message_id
+    assert text_starts[1].message_id == content[1].message_id
+    assert text_starts[1].message_id != tool_result.message_id
+
+    prefix_text_end_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageEndEvent) and event.message_id == content[0].message_id
+    )
+    tool_start_idx = next(i for i, event in enumerate(ag_events) if event == tool_start)
+    tool_result_idx = next(i for i, event in enumerate(ag_events) if event == tool_result)
+    suffix_text_start_idx = next(
+        i
+        for i, event in enumerate(ag_events)
+        if isinstance(event, TextMessageStartEvent) and event.message_id == content[1].message_id
+    )
+    assert prefix_text_end_idx < tool_start_idx < tool_result_idx < suffix_text_start_idx
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_suppresses_duplicate_fallback_after_tool_when_text_matches(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text is skipped when it would only repeat the pre-tool assistant message."""
+
+    class SameFallbackAgent(MyLlamaAgent):
+        def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+            return "prefix"
+
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'use tool'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+            AgentStream(delta="prefix", response="", current_agent_name="Agent1"),
+            AgentOutput(
+                response=ChatMessage(content="prefix", role=MessageRole.ASSISTANT),
+                current_agent_name="Agent1",
+                tool_calls=[
+                    ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")
+                ],
+            ),
+            ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+            ToolCallResult(
+                tool_name="tool1",
+                tool_kwargs={"a": 1},
+                tool_id="tool1",
+                tool_output=ToolOutput(
+                    tool_name="tool1",
+                    content="tool result",
+                    raw_input={"a": 1},
+                    raw_output="tool result",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = SameFallbackAgent(workflow)
+
+    # GIVEN a fallback extractor that would only repeat the already streamed text
+    # WHEN the step ends after a tool result
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the duplicate fallback message is suppressed
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["prefix"]
+
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    text_ends = [event for event in ag_events if isinstance(event, TextMessageEndEvent)]
+    assert len(text_starts) == 1
+    assert len(text_ends) == 1
+    assert text_starts[0].message_id == text_ends[0].message_id == content[0].message_id
+    assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+async def test_invoke_suppresses_duplicate_fallback_after_tool_when_agent_output_matches(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Fallback text is skipped when it repeats AgentOutput-only text from the same step."""
+
+    class SameFallbackAgent(MyLlamaAgent):
+        def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+            return "prefix"
+
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="{'input': 'use tool'}", role=MessageRole.USER)],
+                current_agent_name="Agent1",
+            ),
+            AgentOutput(
+                response=ChatMessage(content="prefix", role=MessageRole.ASSISTANT),
+                current_agent_name="Agent1",
+                tool_calls=[
+                    ToolSelection(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1")
+                ],
+            ),
+            ToolCall(tool_name="tool1", tool_kwargs={"a": 1}, tool_id="tool1"),
+            ToolCallResult(
+                tool_name="tool1",
+                tool_kwargs={"a": 1},
+                tool_id="tool1",
+                tool_output=ToolOutput(
+                    tool_name="tool1",
+                    content="tool result",
+                    raw_input={"a": 1},
+                    raw_output="tool result",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+        ],
+        state="FINAL",
+    )
+    agent = SameFallbackAgent(workflow)
+
+    # GIVEN assistant text emitted only through AgentOutput before the tool call
+    # WHEN fallback would repeat that same text after the tool result
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    # THEN the duplicate fallback message is suppressed
+    content = [event for event in ag_events if isinstance(event, TextMessageContentEvent)]
+    assert [event.delta for event in content] == ["prefix"]
+
+    text_starts = [event for event in ag_events if isinstance(event, TextMessageStartEvent)]
+    text_ends = [event for event in ag_events if isinstance(event, TextMessageEndEvent)]
+    assert len(text_starts) == 1
+    assert len(text_ends) == 1
+    assert text_starts[0].message_id == text_ends[0].message_id == content[0].message_id
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 

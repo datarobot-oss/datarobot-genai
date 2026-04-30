@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.31
+- Fixed AG-UI event ordering in CrewAI and LlamaIndex agents.
 
 ## 0.15.30
 - Implemented pagination for predictive data MCP tools
