@@ -54,6 +54,7 @@ async def convert_chunks_to_agui_events(
     ``GeneratorExit`` (client disconnect), exits silently.
     """
     active_message_id: str | None = None
+    tool_call_message_id: str | None = None
     active_tool_calls: set[str] = set()
     seen_tool_calls: bool = False
     tool_index_map: dict[int, str] = {}
@@ -76,6 +77,7 @@ async def convert_chunks_to_agui_events(
                     for tc_id in active_tool_calls:
                         events.append(ToolCallEndEvent(tool_call_id=tc_id))
                     active_tool_calls.clear()
+                    tool_call_message_id = None
 
                 if active_message_id is None:
                     # After a tool call cycle, the LLM response is a new turn
@@ -95,6 +97,11 @@ async def convert_chunks_to_agui_events(
                     active_message_id = None
                 seen_tool_calls = True
 
+                # Create a dedicated message for tool calls so they don't
+                # merge with the preceding text message in storage.
+                if tool_call_message_id is None:
+                    tool_call_message_id = str(uuid.uuid4())
+
                 for tc in delta.tool_calls:
                     tc_id = tc.id or tool_index_map.get(tc.index)  # type: ignore[assignment]
                     if tc_id is None:
@@ -111,6 +118,7 @@ async def convert_chunks_to_agui_events(
                             ToolCallStartEvent(
                                 tool_call_id=tc_id,
                                 tool_call_name=tc.function.name if tc.function else "",
+                                parent_message_id=tool_call_message_id,
                             )
                         )
                     arguments = tc.function.arguments if tc.function else None
