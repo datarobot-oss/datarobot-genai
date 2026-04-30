@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.28
+- Added `datarobot_genai.core.agents.verify` for validating AG-UI event streams against the protocol state machine. Re-enabled the previously skipped sequence checks in dragent e2e tests.
+
 ## 0.15.27
 - Fixed LangGraph MCP integration so a single failing MCP tool no longer aborts the entire agent run.
 
