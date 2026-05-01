@@ -93,7 +93,6 @@ tasks:
     vars:
       PORT: 8652
     cmds:
-      - task: drmcp-test-dev-server-background
       - defer: |
           echo "Stopping DR MCP Library MCP Server"
           lsof -i :{{.PORT}} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true
