@@ -29,6 +29,9 @@ from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drtools.predictive.utils import DR_PREDICTIVE_API_PAGINATION_MAX
+from datarobot_genai.drtools.predictive.utils import _clamp_limit
+from datarobot_genai.drtools.predictive.utils import _merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -197,18 +200,37 @@ async def score_dataset_with_model(
 @tool_metadata(
     tags={"predictive", "model", "read", "management", "list", "daria"},
     description=(
-        "[Project—list models] Use when the user needs every trained leaderboard model for a "
-        "project (ids, types, metrics). Read-only. Not the same as picking only the best model "
-        "(get_best_model). Follow with get_model_details, deploy_model, or "
-        "score_dataset_with_model using a chosen model_id."
+        "[Project—list models] Use when the user needs trained leaderboard models for a "
+        "project (ids, types, metrics), with optional offset/limit pagination. Read-only. Not "
+        "the same as picking only the best model (get_best_model). When may_have_more is true, "
+        "call again with offset increased by the prior limit. Follow with get_model_details, "
+        "deploy_model, or score_dataset_with_model using a chosen model_id."
     ),
 )
 async def list_models(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
+    offset: Annotated[
+        int | None,
+        (
+            "Skip this many leaderboard models (0-based). "
+            "Example: next page after limit=50 uses offset=50."
+        ),
+    ] = None,
+    limit: Annotated[
+        int,
+        (
+            "Max models to return in this call (default 100). Use with offset to page. "
+            "Values above 100 are clamped; use offset to continue."
+        ),
+    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
+
+    limit, message = _clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -216,12 +238,22 @@ async def list_models(
         project = client.Project.get(project_id)
     except ClientError as e:
         raise_tool_error_for_client_error(e)
-    models = project.get_models()
+    iterate_offset = 0 if offset is None else offset
+    models = project.get_model_records(limit=limit, offset=iterate_offset)
 
-    return {
+    final_results: dict[str, Any] = {
         "project_id": project_id,
         "models": [model_to_dict(model) for model in models],
+        "count": len(models),
+        "may_have_more": len(models) == limit,
     }
+    return _merge_pagination_metadata(
+        final_results=final_results,
+        api_response={},
+        message=message,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @tool_metadata(

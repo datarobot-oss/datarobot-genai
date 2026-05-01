@@ -29,27 +29,11 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import is_valid_url
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drtools.predictive.utils import DR_PREDICTIVE_API_PAGINATION_MAX
+from datarobot_genai.drtools.predictive.utils import _clamp_limit
+from datarobot_genai.drtools.predictive.utils import _merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
-
-# Max page / batch size for predictive `data` tools
-DR_PREDICTIVE_API_PAGINATION_MAX = 100
-
-
-def _clamp_limit(limit: int) -> tuple[int, str | None]:
-    """Clamp page size to [1, DR_PREDICTIVE_API_PAGINATION_MAX] and an optional user-facing note."""
-    m = DR_PREDICTIVE_API_PAGINATION_MAX
-    if limit < 1:
-        return (
-            m,
-            f"Limit must be at least 1. The maximum limit of {m} was applied.",
-        )
-    if limit > m:
-        return (
-            m,
-            f"Limit cannot exceed {m}. The maximum limit of {m} was applied.",
-        )
-    return (limit, None)
 
 
 def _serialize_datastore_params(params: Any) -> dict[str, Any]:
@@ -64,32 +48,6 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
         if isinstance(payload, dict):
             return payload
     return {}
-
-
-def _merge_pagination_metadata(
-    final_results: dict[str, Any],
-    api_response: dict[str, Any] | list,
-    message: str | None = None,
-    *,
-    offset: int | None = None,
-    limit: int | None = None,
-) -> dict[str, Any]:
-    """Add offset/limit echo and DataRobot list pagination (next, previous, total) when present."""
-    if offset is not None:
-        final_results["offset"] = offset
-    if limit is not None:
-        final_results["limit"] = limit
-    if message is not None:
-        final_results["note"] = message
-    if isinstance(api_response, dict):
-        for key in ("next", "previous"):
-            if key in api_response and api_response[key] is not None:
-                final_results[key] = api_response[key]
-        for total_key in ("total_count", "total"):
-            if total_key in api_response and api_response[total_key] is not None:
-                final_results["total_count"] = api_response[total_key]
-                break
-    return final_results
 
 
 @tool_metadata(

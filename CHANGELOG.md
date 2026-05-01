@@ -5,8 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
-## 0.15.31
+## 0.15.33
 - `BaseAgent` accepts an optional `model` identifier. CrewAI, LangGraph, and LlamaIndex agents now use explicit named `__init__` parameters (instead of forwarding arbitrary kwargs).
+
+## 0.15.32
+- Implemented pagination for predictive model MCP tool
+
+## 0.15.31
+- Improved MCP lineage sync logic and made it always run during user MCP startup.
 
 ## 0.15.30
 - Implemented pagination for predictive data MCP tools

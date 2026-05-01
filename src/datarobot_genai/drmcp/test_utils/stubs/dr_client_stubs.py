@@ -99,6 +99,10 @@ class StubProject:
         """Stub get_models (matches real API: no arguments)."""
         return self._models
 
+    def get_model_records(self, limit: int = 100, offset: int = 0, **kwargs: Any) -> list:
+        """Stub paginated model list (matches ``Project.get_model_records`` slice semantics)."""
+        return self._models[offset : offset + limit]
+
     def upload_dataset_from_catalog(self, dataset_id: str, **kwargs: Any) -> Any:
         """Stub ``Project.upload_dataset_from_catalog`` (used by score_dataset_with_model)."""
         return SimpleNamespace(id=f"prediction_dataset_for_{dataset_id}")
