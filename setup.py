@@ -97,6 +97,11 @@ dragent = nat + [
 
 # Eventually NAT will be merged into dragent
 
+# NAT + DRAgent + DataRobot moderations (moderation_config.yaml, prescore/postscore guards).
+moderation = dragent + [
+    "datarobot-moderations>=11.2.24,<12",
+]
+
 # auth is standalone set of dependencies for auth utilities only
 auth = [
   "datarobot[auth]>=3.10.0,<4.0.0",
@@ -154,6 +159,7 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
+    "moderation": moderation,
     "memory": memory,
 }
 

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## 0.15.31
+- Added NAT `datarobot_moderation` middleware (`datarobot_genai.nat.datarobot_moderation_middleware`) for DataRobot prescore/postscore guardrails on DRAgent runs. Install the `moderation` extra (`datarobot-genai[moderation]`) and reference `moderation_config.yaml` as in the agent application recipe.
+- Raised the uv `override-dependencies` OpenTelemetry stack to `>=1.39` / `opentelemetry-instrumentation` `0.60b1` so `datarobot-moderations` resolves together with CrewAI-backed extras.
+
 ## 0.15.30
 - Implemented pagination for predictive data MCP tools
 
