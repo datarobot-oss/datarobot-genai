@@ -339,7 +339,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 # LangGraph expects a RunnableConfig, but our config is a plain dict.
                 # Cast to Any to avoid leaking LangGraph internals into this interface.
                 config=cast(Any, self.build_langgraph_runnable_config(run_agent_input)),
-                debug=self.debug,
+                debug=self.debug or self.verbose,
                 # Streaming updates and messages from all the nodes
                 stream_mode=["updates", "messages"],
                 subgraphs=True,
