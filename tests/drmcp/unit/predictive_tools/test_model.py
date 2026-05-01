@@ -118,6 +118,68 @@ async def test_get_best_model_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_models_success() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
+    mock_model2 = MagicMock(
+        id="m2", model_type="Random Forest", metrics={"AUC": {"validation": 0.8}}
+    )
+    mock_project.get_model_records.return_value = [mock_model1, mock_model2]
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.list_models(project_id="pid")
+    mock_project.get_model_records.assert_called_once_with(limit=100, offset=0)
+    assert result["project_id"] == "pid"
+    assert result["count"] == 2
+    assert len(result["models"]) == 2
+    assert result["models"][0]["id"] == "m1"
+    assert result["may_have_more"] is False
+    assert result["limit"] == 100
+
+
+@pytest.mark.asyncio
+async def test_list_models_pagination_offset_limit() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.get_model_records.return_value = []
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.list_models(project_id="pid", offset=25, limit=10)
+    mock_project.get_model_records.assert_called_once_with(limit=10, offset=25)
+    assert result["offset"] == 25
+    assert result["limit"] == 10
+    assert result["count"] == 0
+    assert result["may_have_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_models_negative_offset() -> None:
+    with pytest.raises(ToolError, match="offset must be non-negative"):
+        await model.list_models(project_id="pid", offset=-1)
+
+
+@pytest.mark.asyncio
+async def test_list_models_clamp_limit_applies_note() -> None:
+    mock_client = MagicMock()
+    mock_project = MagicMock()
+    mock_project.get_model_records.return_value = [MagicMock(id="m1", model_type="T", metrics={})]
+    mock_client.Project.get.return_value = mock_project
+    p1, p2 = _patch_model_client(mock_client)
+    with p1, p2 as mock_drc:
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await model.list_models(project_id="pid", limit=500)
+    mock_project.get_model_records.assert_called_once_with(limit=100, offset=0)
+    assert result["limit"] == 100
+    assert "note" in result
+    assert "100" in result["note"]
+
+
+@pytest.mark.asyncio
 async def test_score_dataset_with_model_success() -> None:
     mock_client = MagicMock()
     mock_project = MagicMock()
