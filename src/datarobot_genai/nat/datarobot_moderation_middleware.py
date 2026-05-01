@@ -583,6 +583,23 @@ def _user_content_to_openai(content: object) -> object:
     return str(content)
 
 
+def _replace_last_message_content(messages: list[Any], new_content: Any) -> None:
+    """Update the last chat message's ``content`` for downstream invocation.
+
+    NAT passes AG-UI Pydantic ``Message`` models (not dicts); item assignment
+    (``msgs[-1]["content"] = ...``) raises ``TypeError``.
+    """
+    last = messages[-1]
+    model_copy = getattr(last, "model_copy", None)
+    if callable(model_copy):
+        messages[-1] = model_copy(update={"content": new_content})
+        return
+    if isinstance(last, dict):
+        last["content"] = new_content
+        return
+    setattr(last, "content", new_content)
+
+
 def run_agent_input_to_completion_dict(rai: RunAgentInput) -> dict[str, Any]:
     ccp: dict[str, Any] = {
         "messages": [],
@@ -759,8 +776,10 @@ class DataRobotModerationMiddleware(
         ):
             # PII kind of guard could have modified the prompt, so use that modified prompt
             # for the user chat function
-            _modified_chat = context.modified_args[0].messages
-            _modified_chat[-1]["content"] = filtered_df.loc[0, prompt_column_name]
+            _replace_last_message_content(
+                context.modified_args[0].messages,
+                filtered_df.loc[0, prompt_column_name],
+            )
             return context
         else:
             return None
