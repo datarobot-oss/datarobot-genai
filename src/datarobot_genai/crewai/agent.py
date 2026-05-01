@@ -60,6 +60,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
@@ -78,8 +79,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     Subclasses should define the ``agents`` and ``tasks`` properties
     and may override ``crew`` to customize the workflow construction.
 
-    Optional keyword arguments may be passed to :meth:`__init__` after
-    ``BaseAgent`` parameters:
+    Framework-specific parameters:
 
     - ``roles``, ``goals``, ``backstories``: sequences with length
       ``len(agents)`` for CrewAI identity; omitted or ``None`` leaves agents
@@ -89,18 +89,41 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
       to the corresponding ``set_*`` methods; omitted or ``None`` skips.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        roles = kwargs.pop("roles", None)
-        goals = kwargs.pop("goals", None)
-        backstories = kwargs.pop("backstories", None)
-        max_iter = kwargs.pop("max_iter", None)
-        max_rpm = kwargs.pop("max_rpm", None)
-        max_execution_time = kwargs.pop("max_execution_time", None)
-        allow_delegation = kwargs.pop("allow_delegation", None)
-        max_retry_limit = kwargs.pop("max_retry_limit", None)
-        reasoning = kwargs.pop("reasoning", None)
-        max_reasoning_attempts = kwargs.pop("max_reasoning_attempts", None)
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[BaseTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+        model: str | None = None,
+        roles: Sequence[str] | None = None,
+        goals: Sequence[str] | None = None,
+        backstories: Sequence[str] | None = None,
+        max_iter: int | None = None,
+        max_rpm: int | None = None,
+        max_execution_time: int | None = None,
+        allow_delegation: bool | None = None,
+        max_retry_limit: int | None = None,
+        reasoning: bool | None = None,
+        max_reasoning_attempts: int | None = None,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            llm=llm,
+            tools=tools,
+            verbose=verbose,
+            timeout=timeout,
+            forwarded_headers=forwarded_headers,
+            max_history_messages=max_history_messages,
+            memory_client=memory_client,
+            model=model,
+        )
         if roles is not None:
             self.set_roles(roles)
         if goals is not None:
@@ -607,8 +630,8 @@ def datarobot_agent_class_from_crew(
         configurations (e.g. ``{topic}``). Include a ``"chat_history"`` key
         with an empty string value to opt into automatic history injection.
 
-    The returned class accepts optional ``roles``, ``goals``, and ``backstories``
-    keyword arguments on instantiation (see :class:`CrewAIAgent`).
+    The returned class accepts the same parameters as :class:`CrewAIAgent`
+    (including optional ``roles``, ``goals``, and ``backstories``).
 
     Returns
     -------
@@ -620,11 +643,50 @@ def datarobot_agent_class_from_crew(
     class DataRobotAgent(CrewAIAgent):
         def __init__(
             self,
-            *args: Any,
-            **kwargs: Any,
+            api_key: str | None = None,
+            api_base: str | None = None,
+            llm: Any | None = None,
+            tools: list[BaseTool] | None = None,
+            verbose: bool = True,
+            timeout: int = 90,
+            forwarded_headers: dict[str, str] | None = None,
+            max_history_messages: int | None = None,
+            memory_client: BaseMemoryClient | None = None,
+            model: str | None = None,
+            roles: Sequence[str] | None = None,
+            goals: Sequence[str] | None = None,
+            backstories: Sequence[str] | None = None,
+            max_iter: int | None = None,
+            max_rpm: int | None = None,
+            max_execution_time: int | None = None,
+            allow_delegation: bool | None = None,
+            max_retry_limit: int | None = None,
+            reasoning: bool | None = None,
+            max_reasoning_attempts: int | None = None,
         ) -> None:
             self._original_agent_tools = {agent: agent.tools for agent in agents}
-            super().__init__(*args, **kwargs)
+            super().__init__(
+                api_key=api_key,
+                api_base=api_base,
+                llm=llm,
+                tools=tools,
+                verbose=verbose,
+                timeout=timeout,
+                forwarded_headers=forwarded_headers,
+                max_history_messages=max_history_messages,
+                memory_client=memory_client,
+                model=model,
+                roles=roles,
+                goals=goals,
+                backstories=backstories,
+                max_iter=max_iter,
+                max_rpm=max_rpm,
+                max_execution_time=max_execution_time,
+                allow_delegation=allow_delegation,
+                max_retry_limit=max_retry_limit,
+                reasoning=reasoning,
+                max_reasoning_attempts=max_reasoning_attempts,
+            )
 
         def set_tools(self, tools: list[BaseTool]) -> None:
             super().set_tools(tools)

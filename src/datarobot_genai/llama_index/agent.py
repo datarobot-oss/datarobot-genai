@@ -73,7 +73,13 @@ class DataRobotLiteLLM(LiteLLM):
 
 
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
-    """Abstract base agent for LlamaIndex workflows."""
+    """Abstract base agent for LlamaIndex workflows.
+
+    Framework-specific parameters:
+
+    - ``allow_parallel_tool_calls``: when true (default), LlamaIndex workflow
+      agents that support it may issue parallel tool calls
+    """
 
     def __init__(
         self,
@@ -86,6 +92,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
+        model: str | None = None,
         allow_parallel_tool_calls: bool = True,
     ) -> None:
         super().__init__(
@@ -98,6 +105,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             forwarded_headers=forwarded_headers,
             max_history_messages=max_history_messages,
             memory_client=memory_client,
+            model=model,
         )
         self.allow_parallel_tool_calls = allow_parallel_tool_calls
 
@@ -446,6 +454,7 @@ def datarobot_agent_class_from_llamaindex(
             forwarded_headers: dict[str, str] | None = None,
             max_history_messages: int | None = None,
             memory_client: BaseMemoryClient | None = None,
+            model: str | None = None,
             allow_parallel_tool_calls: bool = True,
         ) -> None:
             super().__init__(
@@ -458,6 +467,7 @@ def datarobot_agent_class_from_llamaindex(
                 forwarded_headers=forwarded_headers,
                 max_history_messages=max_history_messages,
                 memory_client=memory_client,
+                model=model,
                 allow_parallel_tool_calls=allow_parallel_tool_calls,
             )
             for agent in agents:
