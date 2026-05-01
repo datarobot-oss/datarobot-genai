@@ -73,6 +73,7 @@ from nat.data_models.api_server import Usage as NATUsage
 from nat.data_models.api_server import UserMessageContentRoleType
 from nat.data_models.middleware import FunctionMiddlewareBaseConfig
 from nat.middleware.function_middleware import FunctionMiddleware
+from nat.middleware.middleware import CallNext
 from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
@@ -645,6 +646,7 @@ class DataRobotModerationMiddleware(
         self.prescore_df = None
         self.association_id = None
         self.assembled_response: list[str] = []
+        self._prescore_blocked_completion: ChatCompletion | None = None
 
     @property
     def enabled(self) -> bool:
@@ -659,8 +661,10 @@ class DataRobotModerationMiddleware(
         Returns
         -------
             InvocationContext if modified, or None to pass through unchanged.
-            Default implementation does nothing.
+            When prescore blocks the prompt, returns None and sets
+            ``_prescore_blocked_completion`` for the invoke/stream handlers to emit.
         """
+        self._prescore_blocked_completion = None
         run_agent_input: DRAgentRunAgentInput | None = (
             context.original_args[0] if context.original_args else None
         )
@@ -745,7 +749,8 @@ class DataRobotModerationMiddleware(
                 pipeline, chat_completion, result_df, association_id=association_id
             )
             report_otel_evaluation_set_metric(pipeline, result_df)
-            return completion  # TBD: how to handle blocked prompt
+            self._prescore_blocked_completion = completion
+            return None
 
         replaced_prompt_column_name = f"replaced_{prompt_column_name}"
         if (
@@ -831,6 +836,39 @@ class DataRobotModerationMiddleware(
         context.output = chat_completion_to_dragent_event_response(final_completion)
         return context
 
+    async def function_middleware_invoke(
+        self,
+        *args: Any,
+        call_next: CallNext,
+        context: FunctionMiddlewareContext,
+        **kwargs: Any,
+    ) -> Any:
+        ctx = InvocationContext(
+            function_context=context,
+            original_args=args,
+            original_kwargs=dict(kwargs),
+            modified_args=args,
+            modified_kwargs=dict(kwargs),
+            output=None,
+        )
+
+        result = await self.pre_invoke(ctx)
+        if result is not None:
+            ctx = result
+
+        blocked = self._prescore_blocked_completion
+        if blocked is not None:
+            self._prescore_blocked_completion = None
+            return chat_completion_to_dragent_event_response(blocked)
+
+        ctx.output = await call_next(*ctx.modified_args, **ctx.modified_kwargs)
+
+        result = await self.post_invoke(ctx)
+        if result is not None:
+            ctx = result
+
+        return ctx.output
+
     async def function_middleware_stream(
         self,
         *args: Any,
@@ -871,6 +909,12 @@ class DataRobotModerationMiddleware(
         result = await self.pre_invoke(ctx)
         if result is not None:
             ctx = result
+
+        blocked = self._prescore_blocked_completion
+        if blocked is not None:
+            self._prescore_blocked_completion = None
+            yield chat_completion_to_dragent_event_response(blocked)
+            return
 
         streaming_context = (
             StreamingContextBuilder()
