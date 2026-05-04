@@ -425,7 +425,7 @@ class OktaTokenExchangeAuthProvider(
         if CrossAppAccessFlow is None:
             raise ImportError(
                 "okta-client-python is required for the Okta cross-app access flow. "
-                "Install it with: pip install datarobot-genai[auth-okta]"
+                "Install it with: pip install datarobot-genai[auth]"
             )
 
         assert self._flow_params is not None  # validated by authenticate() before this call

@@ -102,10 +102,7 @@ auth = [
   "datarobot[auth]>=3.10.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
-]
-
-auth_okta = auth + [
-    "okta-client-python>=0.2.0,<1.0.0",
+  "okta-client-python>=0.2.0,<1.0.0",
 ]
 
 # drtools: no subpackages dependencies other than auth.
@@ -155,7 +152,6 @@ extras_require = {
     "llamaindex": llamaindex,
     "nat": nat,
     "auth": auth,
-    "auth-okta": auth_okta,
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
