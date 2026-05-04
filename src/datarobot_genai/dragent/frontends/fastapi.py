@@ -30,11 +30,11 @@ from pydantic import Field
 from datarobot_genai.core.utils.logging import setup_logging
 
 from .a2a import A2A_MOUNT_PATH
+from .a2a import CROSS_APP_EXTENSION_DESCRIPTION  # noqa: F401 (re-exported)
+from .a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF  # noqa: F401 (re-exported)
+from .a2a import CROSS_APP_SECURITY_SCHEME_REF  # noqa: F401 (re-exported)
+from .a2a import JWT_BEARER_GRANT_TYPE_URI  # noqa: F401 (re-exported)
 from .a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE  # noqa: F401 (re-exported)
-from .a2a import RFC8693_GRANT_TYPE_URI  # noqa: F401 (re-exported)
-from .a2a import RFC8693_SECURITY_SCHEME_FLOW_REF  # noqa: F401 (re-exported)
-from .a2a import RFC8693_SECURITY_SCHEME_REF  # noqa: F401 (re-exported)
-from .a2a import RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION  # noqa: F401 (re-exported)
 from .a2a import (
     PerUserCompatibleAgentExecutor as _PerUserCompatibleAgentExecutor,  # noqa: F401 (re-exported)
 )
@@ -84,14 +84,16 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
-        token_exchange = (
-            self.front_end_config.a2a.oauth_token_exchange if self.front_end_config.a2a else None
+        cross_app_access = (
+            self.front_end_config.a2a.cross_application_access
+            if self.front_end_config.a2a
+            else None
         )
         skills = self.front_end_config.a2a.skills if self.front_end_config.a2a else []
 
         agent_card = await create_agent_card(
             frontend_config=self._a2a_worker.front_end_config,
-            token_exchange=token_exchange,
+            cross_app_access=cross_app_access,
             skills=skills,
         )
         session_manager = await DRAgentAGUISessionManager.create(

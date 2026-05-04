@@ -124,7 +124,7 @@ def _get_default_private_jwk() -> SecretStr | None:
 # Constants
 # ---------------------------------------------------------------------------
 
-_RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
+_JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
 
 # ---------------------------------------------------------------------------
@@ -134,24 +134,57 @@ _RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
 
 @dataclass
 class _CrossAppFlowParams:
-    """Parameters parsed from the agent card for the Okta Cross App Access flow.
+    """Full configuration context parsed from the agent card for the Okta XAA flow.
 
-    Populated by :meth:`OktaTokenExchangeAuthProvider.set_agent_card` from the
-    agent card's ``securitySchemes`` and RFC 8693 capability extension.
+    Populated by :meth:`OktaTokenExchangeAuthProvider.set_agent_card` from
+    the agent card's ``securitySchemes`` (OpenAPI layer) and JWT Bearer
+    ``capabilities.extensions`` (A2A layer).
+
+    Every field used by the Okta SDK during the two-step Cross-Application
+    Access flow is extracted here so that the authentication handler never
+    needs to hardcode or derive values at runtime.
     """
 
-    issuer: str
-    """Org-level authorization server issuer (``trusted_issuer`` from the RFC 8693
-    extension). Used as ``issuer`` in :class:`OAuth2ClientConfiguration` and as
-    the base for the JWT client assertion ``audience`` claim."""
+    token_url: str
+    """Token endpoint URL from
+    ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``.
+    Represents the resource AS token endpoint.  Stored for reference; the SDK
+    discovers the endpoint automatically from ``exchange_audience``."""
 
-    target_issuer: str
-    """Custom authorization server base URL (agent token URL with ``/v1/token``
-    stripped). Passed to :class:`CrossAppAccessTarget` and used as the ``audience``
-    argument in ``CrossAppAccessFlow.start()``."""
+    trusted_issuer: str
+    """**Originating** authorization server issuer
+    (``capabilities.extensions[].params.token_exchange.trusted_issuer``).
+    Passed to ``OAuth2ClientConfiguration(issuer=...)`` — this is the AS
+    that runs Step 1 (RFC 8693 token exchange) and validates the JWT client
+    assertion.  The assertion ``audience`` claim is derived as
+    ``trusted_issuer + "/oauth2/v1/token"``."""
+
+    exchange_audience: str
+    """**Resource** authorization server issuer
+    (``capabilities.extensions[].params.token_exchange.audience``).
+    Serves a dual role in the SDK:
+
+    * ``CrossAppAccessTarget(issuer=...)`` — structural config that tells
+      ``resume()`` which server to talk to for Step 2 (JWT bearer grant).
+    * ``flow.start(audience=...)`` — logical parameter that tells the
+      originating AS what audience to embed in the ID-JAG.
+
+    Per Okta SDK docs these are the same issuer URL in the common case."""
+
+    target_audience: str
+    """Final resource identifier for the agent being called
+    (``capabilities.extensions[].params.target_audience``).
+    A2A-level metadata; not passed to the Okta SDK directly."""
+
+    token_endpoint_auth_method: str
+    """Client authentication method
+    (``capabilities.extensions[].params.token_endpoint_auth_method``).
+    When ``"private_key_jwt"``, :class:`ClientAssertionAuthorization` with
+    :class:`LocalKeyProvider` is initialized for JWT client assertions."""
 
     id_jag_scopes: list[str]
-    """OAuth scopes for Step 1 (ID-JAG request). Defaults to ``["read_data"]``."""
+    """OAuth scopes for Step 1 (ID-JAG request). Defaults to ``["read_data"]``.
+    Sourced from the provider config, not the agent card."""
 
 
 # ---------------------------------------------------------------------------
@@ -269,13 +302,16 @@ class OktaTokenExchangeAuthProvider(
         ------
         ValueError
             If the card does not contain the expected security schemes or
-            RFC 8693 capability extension.
+            JWT Bearer capability extension.
         """
         self._flow_params = _parse_cross_app_params(card, id_jag_scopes=self.config.id_jag_scopes)
         logger.info(
-            "Agent card parsed: issuer=%s, target_issuer=%s",
-            self._flow_params.issuer,
-            self._flow_params.target_issuer,
+            "Agent card parsed: trusted_issuer=%s, exchange_audience=%s, "
+            "target_audience=%s, token_endpoint_auth_method=%s",
+            self._flow_params.trusted_issuer,
+            self._flow_params.exchange_audience,
+            self._flow_params.target_audience,
+            self._flow_params.token_endpoint_auth_method,
         )
 
     # ------------------------------------------------------------------
@@ -310,15 +346,17 @@ class OktaTokenExchangeAuthProvider(
         flow = self._build_cross_app_flow(private_jwk=private_jwk)
 
         logger.info(
-            "Step 1: exchanging access token for ID-JAG (issuer=%s, user_id=%s)",
-            self._flow_params.issuer,
+            "Step 1: exchanging access token for ID-JAG (trusted_issuer=%s, "
+            "exchange_audience=%s, user_id=%s)",
+            self._flow_params.trusted_issuer,
+            self._flow_params.exchange_audience,
             user_id,
         )
-        await flow.start(token=access_token, audience=self._flow_params.target_issuer)
+        await flow.start(token=access_token, audience=self._flow_params.exchange_audience)
 
         logger.info(
-            "Step 2: exchanging ID-JAG for scoped agent token (target=%s)",
-            self._flow_params.target_issuer,
+            "Step 2: exchanging ID-JAG for scoped agent token (target_audience=%s)",
+            self._flow_params.target_audience,
         )
         token_result = await flow.resume()
 
@@ -362,6 +400,23 @@ class OktaTokenExchangeAuthProvider(
     def _build_cross_app_flow(self, private_jwk: dict[str, Any]) -> Any:
         """Construct a :class:`CrossAppAccessFlow` from the Okta Client SDK.
 
+        Mapping from :attr:`_flow_params` (agent card) to SDK constructor args
+        follows Okta's ``target`` vs ``audience`` distinction:
+
+        * ``trusted_issuer`` → ``OAuth2ClientConfiguration(issuer=...)`` — the
+          **originating** authorization server that runs Step 1 (RFC 8693 token
+          exchange).  The JWT client assertion ``audience`` claim targets this
+          server's token endpoint (``trusted_issuer + "/oauth2/v1/token"``).
+        * ``token_endpoint_auth_method`` → when ``"private_key_jwt"``,
+          ``ClientAssertionAuthorization`` with ``LocalKeyProvider`` is used.
+        * ``exchange_audience`` → ``CrossAppAccessTarget(issuer=...)`` — the
+          **resource** authorization server that ``resume()`` talks to (Step 2).
+          The SDK uses its issuer to discover the token endpoint and rewrite the
+          client assertion ``aud`` claim for the JWT bearer exchange.
+        * ``exchange_audience`` is also the ``audience`` arg in
+          ``flow.start()`` — tells the originating AS what audience the ID-JAG
+          should carry so the resource AS will accept it.
+
         Parameters
         ----------
         private_jwk:
@@ -375,13 +430,11 @@ class OktaTokenExchangeAuthProvider(
 
         assert self._flow_params is not None  # validated by authenticate() before this call
 
-        key_provider = LocalKeyProvider.from_jwk(private_jwk, algorithm="RS256")
-        token_endpoint = self._flow_params.issuer.rstrip("/") + "/oauth2/v1/token"
-
-        config = OAuth2ClientConfiguration(
-            issuer=self._flow_params.issuer,
-            scope=self._flow_params.id_jag_scopes,
-            client_authorization=ClientAssertionAuthorization(
+        client_authorization = None
+        if self._flow_params.token_endpoint_auth_method == "private_key_jwt":
+            key_provider = LocalKeyProvider.from_jwk(private_jwk, algorithm="RS256")
+            token_endpoint = self._flow_params.trusted_issuer.rstrip("/") + "/oauth2/v1/token"
+            client_authorization = ClientAssertionAuthorization(
                 assertion_claims=JWTBearerClaims(
                     issuer=self.config.principal_id,
                     subject=self.config.principal_id,
@@ -389,11 +442,16 @@ class OktaTokenExchangeAuthProvider(
                     expires_in=60,
                 ),
                 key_provider=key_provider,
-            ),
+            )
+
+        config = OAuth2ClientConfiguration(
+            issuer=self._flow_params.trusted_issuer,
+            scope=self._flow_params.id_jag_scopes,
+            client_authorization=client_authorization,
         )
 
         oauth_client = OAuth2Client(configuration=config)
-        target = CrossAppAccessTarget(issuer=self._flow_params.target_issuer)
+        target = CrossAppAccessTarget(issuer=self._flow_params.exchange_audience)
         return CrossAppAccessFlow(client=oauth_client, target=target)
 
 
@@ -408,13 +466,14 @@ def _parse_cross_app_params(
 ) -> _CrossAppFlowParams:
     """Extract :class:`_CrossAppFlowParams` from a fetched :class:`AgentCard`.
 
-    Reads:
-    - ``securitySchemes["oauth2"].root.flows.client_credentials.token_url``
-    - ``capabilities.extensions[uri=RFC8693_GRANT_TYPE_URI].params``
+    Combines fields from two locations in the card:
 
-    All required RFC 8693 fields are validated to be present even though only
-    ``trusted_issuer`` is stored — this ensures the remote agent card is
-    well-formed before the flow begins.
+    * **OpenAPI layer** — ``securitySchemes.oauth2.flows.clientCredentials``
+      provides the ``tokenUrl`` (needed to initialize the ``OAuth2Client``).
+    * **Extension layer** — ``capabilities.extensions`` (JWT Bearer entry)
+      provides the remaining negotiation parameters: ``trusted_issuer``,
+      ``exchange_audience``, ``target_audience``, and
+      ``token_endpoint_auth_method``.
 
     Parameters
     ----------
@@ -423,16 +482,15 @@ def _parse_cross_app_params(
     id_jag_scopes:
         Scopes to request in Step 1.  When *None*, defaults to ``["read_data"]``.
     """
-    agent_token_url, _ = _parse_security_schemes(card)
-    # Validate full RFC 8693 extension; only trusted_issuer is needed by the SDK.
-    trusted_issuer, *_ = _parse_rfc8693_extension(card)
-
-    # Custom-AS base URL: strip the /v1/token suffix from the token endpoint.
-    target_issuer = agent_token_url.rstrip("/").removesuffix("/v1/token")
+    token_url, _ = _parse_security_schemes(card)
+    ext = _parse_cross_app_extension(card)
 
     return _CrossAppFlowParams(
-        issuer=trusted_issuer,
-        target_issuer=target_issuer,
+        token_url=token_url,
+        trusted_issuer=ext.trusted_issuer,
+        exchange_audience=ext.exchange_audience,
+        target_audience=ext.target_audience,
+        token_endpoint_auth_method=ext.token_endpoint_auth_method,
         id_jag_scopes=id_jag_scopes if id_jag_scopes is not None else ["read_data"],
     )
 
@@ -460,60 +518,85 @@ def _parse_security_schemes(card: AgentCard) -> tuple[str, list[str]]:
     return token_url, scopes
 
 
-def _parse_rfc8693_extension(
-    card: AgentCard,
-) -> tuple[str, str, str, str, str]:
-    """Return RFC 8693 token-exchange fields from the agent card extension.
+@dataclass
+class _CrossAppExtensionFields:
+    """Raw fields extracted from the JWT Bearer capability extension."""
 
-    Tuple elements are ``trusted_issuer``, ``agent_audience``,
-    ``subject_token_type``, ``requested_token_type``,
-    ``token_endpoint_auth_method``.
+    trusted_issuer: str
+    exchange_audience: str
+    target_audience: str
+    token_endpoint_auth_method: str
+
+
+def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
+    """Extract all Cross-Application Access fields from the JWT Bearer extension.
+
+    Reads the ``capabilities.extensions`` entry whose
+    ``uri == "urn:ietf:params:oauth:grant-type:jwt-bearer"`` and returns a
+    :class:`_CrossAppExtensionFields` containing every parameter required by
+    the Okta Cross-Application Access SDK:
+
+    - ``params.target_audience`` — final resource identifier.
+    - ``params.token_endpoint_auth_method`` — client auth method.
+    - ``params.token_exchange.trusted_issuer`` — org-level AS for the ID-JAG.
+    - ``params.token_exchange.audience`` — Step 1 AS destination for
+      ``flow.start(audience=...)``.
+    - ``params.token_request.grant_type`` — validated present for card
+      well-formedness but not returned (always
+      ``urn:ietf:params:oauth:grant-type:jwt-bearer``).
+
+    Returns
+    -------
+    _CrossAppExtensionFields
+        All extracted extension parameters needed to configure the SDK.
+
+    Raises
+    ------
+    ValueError
+        If the extension is absent or any required field is missing.
     """
     extensions = (
         card.capabilities.extensions if card.capabilities and card.capabilities.extensions else []
     )
     for ext in extensions:
-        if ext.uri == _RFC8693_GRANT_TYPE_URI:
+        if ext.uri == _JWT_BEARER_GRANT_TYPE_URI:
             params = ext.params or {}
-            constraints = params.get("subject_token_constraints", {})
-            exchange_req = params.get("token_exchange_request", {})
+            token_exchange = params.get("token_exchange") or {}
+            token_request = params.get("token_request") or {}
 
-            trusted_issuer = constraints.get("trusted_issuer")
-            agent_audience = exchange_req.get("audience")
-            subject_token_type = exchange_req.get("subject_token_type")
-            requested_token_type = exchange_req.get("requested_token_type")
-            token_endpoint_auth_method = exchange_req.get("token_endpoint_auth_method")
+            target_audience = params.get("target_audience")
+            token_endpoint_auth_method = params.get("token_endpoint_auth_method")
+            trusted_issuer = token_exchange.get("trusted_issuer")
+            exchange_audience = token_exchange.get("audience")
+            grant_type = token_request.get("grant_type")
 
             missing = [
                 name
                 for name, val in [
-                    ("subject_token_constraints.trusted_issuer", trusted_issuer),
-                    ("token_exchange_request.audience", agent_audience),
-                    ("token_exchange_request.subject_token_type", subject_token_type),
-                    ("token_exchange_request.requested_token_type", requested_token_type),
-                    (
-                        "token_exchange_request.token_endpoint_auth_method",
-                        token_endpoint_auth_method,
-                    ),
+                    ("target_audience", target_audience),
+                    ("token_endpoint_auth_method", token_endpoint_auth_method),
+                    ("token_exchange.trusted_issuer", trusted_issuer),
+                    ("token_exchange.audience", exchange_audience),
+                    ("token_request.grant_type", grant_type),
                 ]
                 if not val
             ]
             if missing:
                 raise ValueError(
-                    f"Agent card RFC 8693 extension is missing required fields: {missing}"
+                    f"Agent card Cross-Application Access extension is missing required "
+                    f"fields: {missing}"
                 )
 
-            return (
-                trusted_issuer,
-                agent_audience,
-                subject_token_type,
-                requested_token_type,
-                token_endpoint_auth_method,
-            )  # type: ignore[return-value]
+            return _CrossAppExtensionFields(
+                trusted_issuer=trusted_issuer,  # type: ignore[arg-type]
+                exchange_audience=exchange_audience,  # type: ignore[arg-type]
+                target_audience=target_audience,  # type: ignore[arg-type]
+                token_endpoint_auth_method=token_endpoint_auth_method,  # type: ignore[arg-type]
+            )
 
     raise ValueError(
-        f"Agent card capabilities.extensions has no entry with uri='{_RFC8693_GRANT_TYPE_URI}'. "
-        "The remote agent must advertise the RFC 8693 token exchange extension."
+        f"Agent card capabilities.extensions has no entry with uri='{_JWT_BEARER_GRANT_TYPE_URI}'. "
+        "The remote agent must advertise the Cross-Application Access extension."
     )
 
 

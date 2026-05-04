@@ -28,11 +28,11 @@ from nat.data_models.config import GeneralConfig
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
+from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
+from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
+from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
+from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-from datarobot_genai.dragent.frontends.a2a import RFC8693_GRANT_TYPE_URI
-from datarobot_genai.dragent.frontends.a2a import RFC8693_SECURITY_SCHEME_FLOW_REF
-from datarobot_genai.dragent.frontends.a2a import RFC8693_SECURITY_SCHEME_REF
-from datarobot_genai.dragent.frontends.a2a import RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import (
     PerUserCompatibleAgentExecutor as _PerUserCompatibleAgentExecutor,
 )
@@ -43,9 +43,9 @@ from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlug
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
-from datarobot_genai.dragent.frontends.server_auth import OAuth2SubjectTokenConstraints
-from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeConfig
-from datarobot_genai.dragent.frontends.server_auth import OAuth2TokenExchangeRequest
+from datarobot_genai.dragent.frontends.server_auth import CrossApplicationAccessConfig
+from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenExchange
+from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
@@ -341,7 +341,7 @@ class TestPerUserCompatibleAgentExecutor:
 
 class TestCreateAgentCard:
     async def test_default_skill_when_skills_empty(self, a2a_frontend_config):
-        card = await create_agent_card(a2a_frontend_config, token_exchange=None, skills=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
         assert len(card.skills) == 1
         assert card.skills[0].id == "call"
         assert card.skills[0].name == "My Agent"
@@ -349,7 +349,7 @@ class TestCreateAgentCard:
 
     async def test_configured_skills_used_when_present(self, a2a_frontend_config):
         skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
-        card = await create_agent_card(a2a_frontend_config, token_exchange=None, skills=[skill])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
         assert len(card.skills) == 1
         assert card.skills[0].id == "summarize"
 
@@ -361,30 +361,30 @@ class TestCreateAgentCard:
             host="localhost",
             port=9000,
         )
-        card = await create_agent_card(cfg, token_exchange=None, skills=[])
+        card = await create_agent_card(cfg, cross_app_access=None, skills=[])
         assert card.name == "My Agent"
         assert card.description == "Does things"
         assert card.version == "2.0.0"
         assert card.url == "http://localhost:9000/a2a/"
 
-    async def test_security_schemes_set_when_oauth_token_exchange_present(
+    async def test_security_schemes_set_when_cross_application_access_present(
         self, a2a_frontend_config
     ):
-        token_exchange = OAuth2TokenExchangeConfig(
-            token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+        cross_app_access = CrossApplicationAccessConfig(
+            token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
             scopes=["blog:write"],
-            subject_token_constraints=OAuth2SubjectTokenConstraints(
-                trusted_issuer="https://id-jag.internal.datarobot.com",
+            target_audience="https://app.datarobot.com/dr_org_id/my_agent_id",
+            token_endpoint_auth_method="private_key_jwt",
+            token_exchange=CrossAppTokenExchange(
+                trusted_issuer="https://your-org.oktapreview.com",
+                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             ),
-            token_exchange_request=OAuth2TokenExchangeRequest(
-                audience="https://app.datarobot.com/dr_org_id/my_agent",
-                subject_token_type="urn:ietf:params:oauth:token-type:jwt",
-                requested_token_type="urn:ietf:params:oauth:token-type:access_token",
-                token_endpoint_auth_method="private_key_jwt",
+            token_request=CrossAppTokenRequest(
+                grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
             ),
         )
         card = await create_agent_card(
-            a2a_frontend_config, token_exchange=token_exchange, skills=[]
+            a2a_frontend_config, cross_app_access=cross_app_access, skills=[]
         )
 
         assert "oauth2" in card.security_schemes
@@ -395,32 +395,35 @@ class TestCreateAgentCard:
         # Only client_credentials flow, no authorization_code
         assert oauth_scheme.flows.authorization_code is None
         flow = oauth_scheme.flows.client_credentials
-        assert flow.token_url == "https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
+        assert flow.token_url == "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
         assert flow.scopes == {"blog:write": "Permission: blog:write"}
 
         assert card.security == [{"oauth2": ["blog:write"]}]
 
-        # RFC 8693 extension: ref + subject_token_constraints + token_exchange_request
+        # JWT Bearer extension: nested params — token_url/scopes must NOT appear here
         assert card.capabilities.extensions is not None
         assert len(card.capabilities.extensions) == 1
         ext = card.capabilities.extensions[0]
-        assert ext.uri == RFC8693_GRANT_TYPE_URI
-        assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
+        assert ext.uri == JWT_BEARER_GRANT_TYPE_URI
+        assert ext.description == CROSS_APP_EXTENSION_DESCRIPTION
         assert ext.params == {
             "ref": {
-                "scheme": RFC8693_SECURITY_SCHEME_REF,
-                "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+                "scheme": CROSS_APP_SECURITY_SCHEME_REF,
+                "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
             },
-            "subject_token_constraints": {
-                "trusted_issuer": "https://id-jag.internal.datarobot.com",
+            "target_audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
+            "token_endpoint_auth_method": "private_key_jwt",
+            "token_exchange": {
+                "trusted_issuer": "https://your-org.oktapreview.com",
+                "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             },
-            "token_exchange_request": {
-                "audience": "https://app.datarobot.com/dr_org_id/my_agent",
-                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-                "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
-                "token_endpoint_auth_method": "private_key_jwt",
+            "token_request": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
             },
         }
+        # Verify OpenAPI/extension strict separation: token_url and scopes are NOT in params
+        assert "token_url" not in ext.params
+        assert "scopes" not in ext.params
 
     async def test_security_schemes_from_server_auth(self, a2a_frontend_config):
         a2a_frontend_config.server_auth = MagicMock(
@@ -428,7 +431,7 @@ class TestCreateAgentCard:
             discovery_url=None,
             scopes=["read"],
         )
-        card = await create_agent_card(a2a_frontend_config, token_exchange=None, skills=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
 
         oauth_scheme = card.security_schemes["oauth2"].root
         assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
@@ -445,7 +448,7 @@ class TestCreateAgentCard:
         assert oauth_scheme.flows.client_credentials is None
         assert card.security == [{"oauth2": ["read"]}]
 
-    async def test_both_server_auth_and_token_exchange(self, a2a_frontend_config):
+    async def test_both_server_auth_and_cross_application_access(self, a2a_frontend_config):
         # server_auth → authorization_code flow
         a2a_frontend_config.server_auth = MagicMock(
             issuer_url="https://issuer.example.com",
@@ -453,23 +456,23 @@ class TestCreateAgentCard:
             scopes=["read"],
         )
 
-        # oauth_token_exchange → client_credentials flow
-        token_exchange = OAuth2TokenExchangeConfig(
-            token_url="https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+        # cross_application_access → client_credentials flow + JWT Bearer extension
+        cross_app_access = CrossApplicationAccessConfig(
+            token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
             scopes=["blog:write"],
-            subject_token_constraints=OAuth2SubjectTokenConstraints(
-                trusted_issuer="https://id-jag.internal.datarobot.com",
+            target_audience="https://app.datarobot.com/dr_org_id/my_agent_id",
+            token_endpoint_auth_method="private_key_jwt",
+            token_exchange=CrossAppTokenExchange(
+                trusted_issuer="https://your-org.oktapreview.com",
+                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             ),
-            token_exchange_request=OAuth2TokenExchangeRequest(
-                audience="https://app.datarobot.com/dr_org_id/my_agent",
-                subject_token_type="urn:ietf:params:oauth:token-type:jwt",
-                requested_token_type="urn:ietf:params:oauth:token-type:access_token",
-                token_endpoint_auth_method="private_key_jwt",
+            token_request=CrossAppTokenRequest(
+                grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
             ),
         )
 
         card = await create_agent_card(
-            a2a_frontend_config, token_exchange=token_exchange, skills=[]
+            a2a_frontend_config, cross_app_access=cross_app_access, skills=[]
         )
 
         # Single oauth2 scheme with both flows
@@ -486,35 +489,37 @@ class TestCreateAgentCard:
         assert oauth_scheme.flows.client_credentials is not None
         assert (
             oauth_scheme.flows.client_credentials.token_url
-            == "https://datarobot.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
+            == "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
         )
 
         # Merged scopes (deduplicated)
         assert card.security == [{"oauth2": ["read", "blog:write"]}]
 
-        # RFC 8693 extension: nested params; scopes only under OpenAPI flows
+        # JWT Bearer extension: nested params; token_url/scopes only under OpenAPI flows
         assert card.capabilities.extensions is not None
         ext = card.capabilities.extensions[0]
-        assert ext.uri == RFC8693_GRANT_TYPE_URI
-        assert ext.description == RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION
+        assert ext.uri == JWT_BEARER_GRANT_TYPE_URI
+        assert ext.description == CROSS_APP_EXTENSION_DESCRIPTION
         assert ext.params == {
             "ref": {
-                "scheme": RFC8693_SECURITY_SCHEME_REF,
-                "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+                "scheme": CROSS_APP_SECURITY_SCHEME_REF,
+                "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
             },
-            "subject_token_constraints": {
-                "trusted_issuer": "https://id-jag.internal.datarobot.com",
+            "target_audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
+            "token_endpoint_auth_method": "private_key_jwt",
+            "token_exchange": {
+                "trusted_issuer": "https://your-org.oktapreview.com",
+                "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             },
-            "token_exchange_request": {
-                "audience": "https://app.datarobot.com/dr_org_id/my_agent",
-                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-                "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
-                "token_endpoint_auth_method": "private_key_jwt",
+            "token_request": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
             },
         }
+        assert "token_url" not in ext.params
+        assert "scopes" not in ext.params
 
     async def test_no_security_when_server_auth_absent(self, a2a_frontend_config):
-        card = await create_agent_card(a2a_frontend_config, token_exchange=None, skills=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
         assert card.security_schemes is None
         assert card.security is None
 
@@ -528,17 +533,17 @@ class TestDRAgentFastApiFrontEndConfig:
         assert config.a2a is None
 
     def test_custom_a2a_fields(self):
-        oauth = OAuth2TokenExchangeConfig(
+        cross_app = CrossApplicationAccessConfig(
             token_url="https://idp.example.com/oauth2/v1/token",
             scopes=["agent:use"],
-            subject_token_constraints=OAuth2SubjectTokenConstraints(
+            target_audience="api://my-agent",
+            token_endpoint_auth_method="private_key_jwt",
+            token_exchange=CrossAppTokenExchange(
                 trusted_issuer="https://id-jag.example.com",
+                audience="https://idp.example.com/oauth2/ausXXX",
             ),
-            token_exchange_request=OAuth2TokenExchangeRequest(
-                audience="api://my-agent",
-                subject_token_type="urn:ietf:params:oauth:token-type:jwt",
-                requested_token_type="urn:ietf:params:oauth:token-type:access_token",
-                token_endpoint_auth_method="private_key_jwt",
+            token_request=CrossAppTokenRequest(
+                grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
             ),
         )
         config = DRAgentFastApiFrontEndConfig(
@@ -548,13 +553,13 @@ class TestDRAgentFastApiFrontEndConfig:
                     description="Does things",
                     version="2.0.0",
                 ),
-                oauth_token_exchange=oauth,
+                cross_application_access=cross_app,
             )
         )
         assert config.a2a.server.name == "My Agent"
         assert config.a2a.server.description == "Does things"
         assert config.a2a.server.version == "2.0.0"
-        assert config.a2a.oauth_token_exchange == oauth
+        assert config.a2a.cross_application_access == cross_app
 
     def test_is_not_a2a_front_end_config(self):
         config = DRAgentFastApiFrontEndConfig()

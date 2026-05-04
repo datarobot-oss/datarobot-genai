@@ -19,59 +19,85 @@ from pydantic import BaseModel
 from pydantic import Field
 
 
-class OAuth2SubjectTokenConstraints(BaseModel):
-    """Constraints on the subject token used in RFC 8693 token exchange (e.g. trusted issuer)."""
+class CrossAppTokenExchange(BaseModel):
+    """Step 1 parameters: RFC 8693 Token Exchange prerequisite to obtain the ID-JAG."""
 
     trusted_issuer: str = Field(
         description=(
-            "Issuer URL of the internal passport JWT that must be validated before "
-            "the downstream Okta token exchange."
+            "Issuer URL of the trusted identity provider that must validate the "
+            "subject token before the downstream token exchange. Used as ``issuer`` "
+            "in the OAuth2 client configuration and as the base for JWT client "
+            "assertion audience claims."
         ),
     )
-
-
-class OAuth2TokenExchangeRequest(BaseModel):
-    """RFC 8693 token exchange request parameters for the authorization server."""
-
-    audience: str = Field(description="Expected resource / audience (`aud`) for the issued token.")
-    subject_token_type: str = Field(
+    audience: str = Field(
         description=(
-            "`subject_token_type` value for RFC 8693 (e.g. JWT access token vs id token URN)."
+            "Authorization Server destination for Step 1: the Okta custom AS token "
+            "endpoint base URL (e.g. ``https://your-org.okta.com/oauth2/<as-id>``). "
+            "This is where the ID-JAG prerequisite is fetched."
         ),
     )
-    requested_token_type: str = Field(
-        description="`requested_token_type` per RFC 8693 (usually an access token URN).",
+
+
+class CrossAppTokenRequest(BaseModel):
+    """Step 2 parameters: RFC 7523 JWT Bearer Grant to obtain the final access token."""
+
+    grant_type: str = Field(
+        description=(
+            "OAuth 2.0 grant type for the final token request. Must be "
+            "``urn:ietf:params:oauth:grant-type:jwt-bearer`` per RFC 7523."
+        ),
     )
-    token_endpoint_auth_method: str = Field(
-        description="OAuth 2.0 token endpoint client authentication method (e.g. private_key_jwt).",
-    )
 
 
-class OAuth2TokenExchangeConfig(AuthProviderBaseConfig):
-    """OAuth2 server-side auth for RFC 8693 token exchange surfaced on the AgentCard.
+class CrossApplicationAccessConfig(AuthProviderBaseConfig):
+    """OAuth2 server-side auth for Cross-Application Access surfaced on the AgentCard.
 
-    OpenAPI fields (`token_url`, `scopes`) populate ``securitySchemes.oauth2`` client
-    credentials flow.
-    ``subject_token_constraints`` and ``token_exchange_request`` are advertised in
-    ``capabilities.extensions`` for SDKs executing the flow.
+    Implements a hybrid RFC 8693 / RFC 7523 flow:
+
+    * **Step 1** (RFC 8693 Token Exchange): exchange an incoming access token for
+      an ID-JAG prerequisite via the authorization server specified in
+      ``token_exchange.audience``.
+    * **Step 2** (RFC 7523 JWT Bearer Grant): use the ID-JAG to obtain the final
+      scoped agent token.
+
+    **OpenAPI fields** (``token_url``, ``scopes``) populate
+    ``securitySchemes.oauth2.flows.clientCredentials`` in the Agent Card.
+    They are NOT included in ``capabilities.extensions.params``.
+
+    **Extension fields** (``target_audience``, ``token_endpoint_auth_method``,
+    ``token_exchange``, ``token_request``) are placed exclusively in the
+    ``capabilities.extensions`` block for SDK consumption.
     """
 
     token_url: str = Field(
         description=(
-            "Token URL for Token Exchange (RFC 8693). This is the endpoint to which "
-            "the client sends the exchange request for a scoped token for this agent."
+            "Token endpoint URL for the final RFC 7523 grant. Published under "
+            "OpenAPI ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``."
         ),
     )
     scopes: list[str] = Field(
         default=["read_data"],
         description=(
-            "Scopes advertised for this API. Listed under OpenAPI flows; validation ensures "
-            "the token grants required scopes."
+            "Scopes advertised for this API. Published under OpenAPI "
+            "``securitySchemes.oauth2.flows.clientCredentials.scopes``."
         ),
     )
-    subject_token_constraints: OAuth2SubjectTokenConstraints = Field(
-        description="Requirements for the subject token presented during token exchange.",
+    target_audience: str = Field(
+        description=(
+            "Final resource identifier for the agent being called. Published as "
+            "``capabilities.extensions[].params.target_audience`` in the Agent Card."
+        ),
     )
-    token_exchange_request: OAuth2TokenExchangeRequest = Field(
-        description="Token endpoint parameters for the token exchange request.",
+    token_endpoint_auth_method: str = Field(
+        description=(
+            "OAuth 2.0 token endpoint client authentication method "
+            "(e.g. ``private_key_jwt``). Published in the extension params."
+        ),
+    )
+    token_exchange: CrossAppTokenExchange = Field(
+        description="RFC 8693 Token Exchange parameters (Step 1: ID-JAG prerequisite).",
+    )
+    token_request: CrossAppTokenRequest = Field(
+        description="RFC 7523 JWT Bearer Grant parameters (Step 2: final access token).",
     )

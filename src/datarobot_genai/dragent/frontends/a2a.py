@@ -15,9 +15,9 @@
 """A2A server helpers for DataRobot-hosted agents.
 
 This module owns the A2A protocol layer: agent card construction, OAuth2
-security scheme assembly, RFC 8693 capability extensions, endpoint URL
-resolution, and the per-user executor adapter.  The FastAPI framework glue
-lives in :mod:`~datarobot_genai.dragent.frontends.fastapi`.
+security scheme assembly, Cross-Application Access capability extensions,
+endpoint URL resolution, and the per-user executor adapter.  The FastAPI
+framework glue lives in :mod:`~datarobot_genai.dragent.frontends.fastapi`.
 """
 
 import logging
@@ -42,7 +42,7 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
-from .server_auth import OAuth2TokenExchangeConfig
+from .server_auth import CrossApplicationAccessConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,19 +53,22 @@ logger = logging.getLogger(__name__)
 A2A_MOUNT_PATH = "a2a"
 
 OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
-    "OAuth 2.0 authorization utilizing RFC 8693 Token Exchange. Clients must "
-    "supply a valid internal passport JWT as the subject token. Refer to the "
-    "capabilities.extensions block for strict token exchange parameters and "
-    "audience specifications."
+    "OAuth 2.0 authorization utilizing RFC 7523 JWT Bearer Grant. Requires a prerequisite "
+    "identity assertion via RFC 8693 Token Exchange. Refer to the capabilities.extensions "
+    "block for strict execution parameters and routing."
 )
 
-# The extension explicitly references the security scheme key so SDKs can resolve
-# the RFC 8693 Token Exchange override without ambiguity.
-RFC8693_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
-RFC8693_SECURITY_SCHEME_REF = "oauth2"
-RFC8693_SECURITY_SCHEME_FLOW_REF = "clientCredentials"
-RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION = (
-    "Two-Step RFC 8693 Token Exchange execution parameters."
+# Extension URI for the RFC 7523 JWT Bearer Grant (outer grant type for the hybrid flow).
+JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+# Binding references linking the extension to the OpenAPI security scheme.
+CROSS_APP_SECURITY_SCHEME_REF = "oauth2"
+CROSS_APP_SECURITY_SCHEME_FLOW_REF = "clientCredentials"
+
+CROSS_APP_EXTENSION_DESCRIPTION = (
+    "Two-Step Cross-Application Access execution parameters. "
+    "Step 1: RFC 8693 Token Exchange prerequisite. "
+    "Step 2: RFC 7523 JWT Bearer Grant."
 )
 
 
@@ -135,7 +138,7 @@ def get_a2a_endpoint_url(host: str, port: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# OAuth2 / RFC 8693 security scheme helpers
+# OAuth2 / security scheme helpers
 # ---------------------------------------------------------------------------
 
 
@@ -189,14 +192,14 @@ async def build_oauth_flow_from_server_auth(
     return flow, list(server_auth.scopes)
 
 
-def build_oauth_flow_from_token_exchange(
-    config: OAuth2TokenExchangeConfig,
+def build_oauth_flow_from_cross_app_access(
+    config: CrossApplicationAccessConfig,
 ) -> tuple[ClientCredentialsOAuthFlow, list[str]]:
-    """Build the client_credentials flow and scopes from an OAuth2TokenExchangeConfig.
+    """Build the client_credentials flow and scopes from a CrossApplicationAccessConfig.
 
-    Token URL and scopes live only here (OpenAPI-compatible). RFC 8693 second-phase
-    requirements are signaled separately via
-    :func:`build_token_exchange_capability_extension`.
+    Extracts the OpenAPI-standard fields (``token_url``, ``scopes``) only.
+    Cross-Application Access extension parameters are handled separately by
+    :func:`build_cross_app_capability_extension` and MUST NOT appear here.
     """
     flow = ClientCredentialsOAuthFlow(
         token_url=config.token_url,
@@ -205,27 +208,39 @@ def build_oauth_flow_from_token_exchange(
     return flow, list(config.scopes)
 
 
-def build_token_exchange_capability_extension(
-    config: OAuth2TokenExchangeConfig,
+def build_cross_app_capability_extension(
+    config: CrossApplicationAccessConfig,
 ) -> list[AgentExtension]:
-    """Build the RFC 8693 agent card extension for OAuth2 token exchange.
+    """Build the Cross-Application Access agent card extension.
 
-    OpenAPI ``token_url`` / ``scopes`` remain on ``securitySchemes.oauth2.flows``.
-    ``params`` carries ``subject_token_constraints``, ``token_exchange_request``,
-    and a ``ref`` binding to the client-credentials flow.
+    Compiles the RFC 7523 JWT Bearer Grant extension entry for
+    ``capabilities.extensions``.  Only extension-bound fields are included in
+    ``params``; ``token_url`` and ``scopes`` are intentionally excluded because
+    they belong to the OpenAPI ``securitySchemes`` layer, not to this extension.
+
+    The ``params`` structure:
+
+    * ``ref`` — binds this extension to the ``oauth2 / clientCredentials`` scheme.
+    * ``target_audience`` — final resource identifier (the agent being called).
+    * ``token_endpoint_auth_method`` — client authentication method.
+    * ``token_exchange`` — nested RFC 8693 Step 1 params:
+      ``trusted_issuer`` and ``audience`` (Step 1 AS destination).
+    * ``token_request`` — nested RFC 7523 Step 2 params: ``grant_type``.
     """
-    params = {
+    params: dict = {
         "ref": {
-            "scheme": RFC8693_SECURITY_SCHEME_REF,
-            "flow": RFC8693_SECURITY_SCHEME_FLOW_REF,
+            "scheme": CROSS_APP_SECURITY_SCHEME_REF,
+            "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
         },
-        "subject_token_constraints": config.subject_token_constraints.model_dump(),
-        "token_exchange_request": config.token_exchange_request.model_dump(),
+        "target_audience": config.target_audience,
+        "token_endpoint_auth_method": config.token_endpoint_auth_method,
+        "token_exchange": config.token_exchange.model_dump(),
+        "token_request": config.token_request.model_dump(),
     }
     return [
         AgentExtension(
-            uri=RFC8693_GRANT_TYPE_URI,
-            description=RFC8693_TOKEN_EXCHANGE_EXTENSION_DESCRIPTION,
+            uri=JWT_BEARER_GRANT_TYPE_URI,
+            description=CROSS_APP_EXTENSION_DESCRIPTION,
             params=params,
         )
     ]
@@ -233,7 +248,7 @@ def build_token_exchange_capability_extension(
 
 async def build_security_schemes(
     frontend_config: A2AFrontEndConfig,
-    token_exchange: OAuth2TokenExchangeConfig | None,
+    cross_app_access: CrossApplicationAccessConfig | None,
 ) -> tuple[
     dict[str, SecurityScheme] | None,
     list[dict[str, list[str]]] | None,
@@ -245,8 +260,9 @@ async def build_security_schemes(
     security scheme with separate flows:
 
     * ``server_auth`` (OAuth2ResourceServerConfig) → authorization_code flow.
-    * ``token_exchange`` (OAuth2TokenExchangeConfig) → client_credentials flow
-      + RFC 8693 capability extension.
+    * ``cross_app_access`` (CrossApplicationAccessConfig) → client_credentials
+      flow (OpenAPI ``token_url``/``scopes``) + JWT Bearer capability extension
+      (all other negotiation params).
 
     Returns
     -------
@@ -256,20 +272,20 @@ async def build_security_schemes(
     """
     server_auth = frontend_config.server_auth
 
-    if not server_auth and not token_exchange:
+    if not server_auth and not cross_app_access:
         return None, None, None
 
     auth_code_flow, server_auth_scopes = (
         await build_oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
     )
-    client_creds_flow, token_exchange_scopes = (
-        build_oauth_flow_from_token_exchange(token_exchange) if token_exchange else (None, [])
+    client_creds_flow, cross_app_scopes = (
+        build_oauth_flow_from_cross_app_access(cross_app_access) if cross_app_access else (None, [])
     )
     extensions = (
-        build_token_exchange_capability_extension(token_exchange) if token_exchange else None
+        build_cross_app_capability_extension(cross_app_access) if cross_app_access else None
     )
 
-    all_scopes = list(dict.fromkeys(server_auth_scopes + token_exchange_scopes))
+    all_scopes = list(dict.fromkeys(server_auth_scopes + cross_app_scopes))
     security_schemes = {
         "oauth2": SecurityScheme(
             root=OAuth2SecurityScheme(
@@ -292,7 +308,7 @@ async def build_security_schemes(
 
 async def create_agent_card(
     frontend_config: A2AFrontEndConfig,
-    token_exchange: OAuth2TokenExchangeConfig | None,
+    cross_app_access: CrossApplicationAccessConfig | None,
     skills: list[AgentSkill],
 ) -> AgentCard:
     """Build an :class:`~a2a.types.AgentCard` for a DataRobot-hosted A2A agent.
@@ -301,14 +317,16 @@ async def create_agent_card(
     ----------
     frontend_config:
         NAT A2A frontend configuration (name, description, capabilities, etc.).
-    token_exchange:
-        Optional DR OAuth2 token exchange configuration for RFC 8693.
+    cross_app_access:
+        Optional Cross-Application Access configuration. When provided, populates
+        the OpenAPI ``clientCredentials`` security scheme and the JWT Bearer
+        capability extension.
     skills:
         Skills to advertise. When empty, a single default skill is generated
         from ``frontend_config.name`` and ``frontend_config.description``.
     """
     security_schemes, security, extensions = await build_security_schemes(
-        frontend_config, token_exchange
+        frontend_config, cross_app_access
     )
 
     resolved_skills = skills or [

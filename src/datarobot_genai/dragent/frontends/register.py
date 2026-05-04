@@ -33,7 +33,7 @@ from .converters import convert_dragent_run_agent_input_to_chat_request_or_messa
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
-from .server_auth import OAuth2TokenExchangeConfig
+from .server_auth import CrossApplicationAccessConfig
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)
@@ -48,13 +48,14 @@ class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
     server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
-    oauth_token_exchange: OAuth2TokenExchangeConfig | None = Field(
+    cross_application_access: CrossApplicationAccessConfig | None = Field(
         default=None,
         description=(
-            "Configuration for agent authorization using Token Exchange (RFC 8693). "
-            "If provided, `token_url` and `scopes` populate OpenAPI security schemes; "
-            "`passport_requirement` and `exchange_payload` describe the two-step flow "
-            "(ID-JAG passport, then Okta token exchange) in the agent card extension."
+            "Configuration for Cross-Application Access utilizing a hybrid RFC 8693 / "
+            "RFC 7523 flow. If provided, `token_url` and `scopes` populate the OpenAPI "
+            "``securitySchemes`` client credentials flow; `target_audience`, "
+            "`token_endpoint_auth_method`, `token_exchange`, and `token_request` are "
+            "advertised in ``capabilities.extensions`` for SDK consumption."
         ),
     )
     skills: list[AgentSkill] = Field(
