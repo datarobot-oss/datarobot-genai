@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.24
+## 0.15.34
 - Added Okta Cross-Application Access (XAA) support for A2A agent-to-agent calls via the new `okta_cross_app_access` auth provider.
 - Server-side XAA parameters are declared in `workflow.yaml` under `cross_application_access` and published on the AgentCard: OpenAPI `clientCredentials` security scheme plus a JWT Bearer capability extension containing the two-step flow parameters (RFC 8693 → RFC 7523).
 - Client-side: `OktaCrossApplicationAccessAuthProvider` reads the AgentCard extension at runtime, performs the two-step token exchange via `okta-client-python`, and requires only `PRINCIPAL_ID` / `PRIVATE_JWK` env vars.
