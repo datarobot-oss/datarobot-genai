@@ -402,9 +402,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         )
                     except Exception as exc:
                         logger.warning("CrewAI memory retrieval failed: %s", exc)
-            message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""
+            message_id = str(uuid.uuid4())
 
             if isinstance(crew_output, CrewStreamingOutput):
                 reasoning_started = False
@@ -415,6 +415,37 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     if chunk.agent_role != current_agent_role:
                         logger.info(f"[{chunk.agent_role}] Working on task: {chunk.task_name}")
                         if current_agent_role:
+                            # Close any open text/reasoning message scoped to the
+                            # outgoing step so each step gets its own AG-UI message
+                            # with a unique message_id.
+                            if text_started:
+                                yield (
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                text_started = False
+                            if reasoning_started:
+                                yield (
+                                    ReasoningMessageEndEvent(
+                                        type=EventType.REASONING_MESSAGE_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                yield (
+                                    ReasoningEndEvent(
+                                        type=EventType.REASONING_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                reasoning_started = False
                             yield (
                                 StepFinishedEvent(
                                     type=EventType.STEP_FINISHED,
@@ -423,6 +454,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 None,
                                 zero_metrics,
                             )
+                            message_id = str(uuid.uuid4())
                         yield (
                             StepStartedEvent(
                                 type=EventType.STEP_STARTED,

@@ -19,11 +19,18 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from crewai.types.streaming import CrewStreamingOutput
+from crewai.types.streaming import StreamChunk
+from crewai.types.streaming import StreamChunkType
 import pytest
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -31,6 +38,7 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.agent import CrewAIAgent
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
@@ -724,3 +732,120 @@ async def test_invoke_does_not_store_memory_when_run_fails(
         }
     ]
     assert memory_client.store_calls == []
+
+
+# --- Streaming AG-UI message-lifecycle tests ---
+
+
+def _text_chunk(content: str, agent_role: str) -> StreamChunk:
+    return StreamChunk(
+        content=content,
+        chunk_type=StreamChunkType.TEXT,
+        agent_role=agent_role,
+        task_name=f"{agent_role}-task",
+    )
+
+
+class _FakeStreamingOutput(CrewStreamingOutput):
+    """CrewStreamingOutput double that yields a fixed chunk list and a result."""
+
+    def __init__(self, chunks: list[StreamChunk], result: CrewOutput) -> None:
+        super().__init__(async_iterator=self._iter(chunks))
+        self._fixed_result = result
+
+    @staticmethod
+    async def _iter(chunks: list[StreamChunk]):  # type: ignore[no-untyped-def]
+        for c in chunks:
+            yield c
+
+    @property
+    def result(self) -> CrewOutput:  # type: ignore[override]
+        return self._fixed_result
+
+
+async def test_invoke_streaming_emits_separate_messages_per_agent_role(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that emits chunks under two different agent roles
+    chunks = [
+        _text_chunk("plan-a", "Planner"),
+        _text_chunk("plan-b", "Planner"),
+        _text_chunk("write-a", "Writer"),
+        _text_chunk("write-b", "Writer"),
+    ]
+    result = CrewOutput(
+        raw="ignored",
+        token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
+    )
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN each step gets its own TEXT_MESSAGE_START / _END pair
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(starts) == 2, "expected one TEXT_MESSAGE_START per agent role"
+    assert len(ends) == 2, "expected one TEXT_MESSAGE_END per agent role"
+
+    # THEN the two messages have distinct ids
+    assert starts[0].message_id != starts[1].message_id
+
+    # THEN content events are partitioned by message_id (no cross-agent leakage)
+    by_id: dict[str, list[str]] = {}
+    for c in contents:
+        by_id.setdefault(c.message_id, []).append(c.delta)
+    assert by_id[starts[0].message_id] == ["plan-a", "plan-b"]
+    assert by_id[starts[1].message_id] == ["write-a", "write-b"]
+
+    # THEN each step boundary is closed before the next one opens
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+    # THEN the Planner's TEXT_MESSAGE_END is emitted before STEP_FINISHED Planner,
+    # which is emitted before STEP_STARTED Writer.
+    planner_end_idx = events.index(ends[0])
+    planner_step_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    writer_step_start_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepStartedEvent) and e.step_name == "Writer"
+    )
+    assert planner_end_idx < planner_step_finish_idx < writer_step_start_idx
+
+
+async def test_invoke_streaming_single_agent_role_uses_single_message(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that only emits chunks for one agent role
+    chunks = [
+        _text_chunk("hello-", "Solo"),
+        _text_chunk("world", "Solo"),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and there is exactly one text message
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    assert len(starts) == 1
+    assert len(ends) == 1
+    assert starts[0].message_id == ends[0].message_id
