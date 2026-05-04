@@ -28,6 +28,9 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -362,15 +365,47 @@ async def test_llama_index_agent_invoke(
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: text message events contain the expected deltas (after step / lifecycle events)
+    # THEN: each agent step gets its own text message (Agent 1 streamed text,
+    # then Agent 2 streamed text after the tool call) with distinct message ids.
     text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
-    assert len(text_starts) == 1
+    text_ends = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
+    assert len(text_starts) == 2
+    assert len(text_ends) == 2
+    assert text_starts[0].message_id != text_starts[1].message_id
+    assert text_starts[0].message_id == text_ends[0].message_id
+    assert text_starts[1].message_id == text_ends[1].message_id
+
     content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
 
-    # THEN: TextMessageEnd is present
-    end_events = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
-    assert len(end_events) == 1
+    # THEN: each STEP_STARTED has a matching STEP_FINISHED for the same agent
+    step_started = [e for e in ag_events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in ag_events if isinstance(e, StepFinishedEvent)]
+    assert [e.step_name for e in step_started] == ["Agent 1", "Agent 2"]
+    assert [e.step_name for e in step_finished] == ["Agent 1", "Agent 2"]
+
+    # THEN: text messages live inside their step boundaries (END before STEP_FINISHED)
+    indexed = list(enumerate(ag_events))
+    end_idx = [i for i, e in indexed if isinstance(e, TextMessageEndEvent)]
+    finish_idx = [i for i, e in indexed if isinstance(e, StepFinishedEvent)]
+    assert end_idx[0] < finish_idx[0]
+    assert end_idx[1] < finish_idx[1]
+
+    # THEN: the tool call sits between the two agents' text messages
+    tool_start_idx = next(i for i, e in indexed if isinstance(e, ToolCallStartEvent))
+    tool_end_idx = next(i for i, e in indexed if isinstance(e, ToolCallEndEvent))
+    text_start_idx_1 = next(
+        i
+        for i, e in indexed
+        if isinstance(e, TextMessageStartEvent) and e.message_id == text_starts[1].message_id
+    )
+    assert end_idx[0] < tool_start_idx < tool_end_idx < text_start_idx_1
+
+    # THEN: the tool call result references the surrounding step's text message id,
+    # so the UI can anchor the tool call to the assistant message it came from.
+    tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
+    assert len(tool_results) == 1
+    assert tool_results[0].message_id == text_starts[1].message_id
 
     # THEN: last event is RunFinishedEvent with pipeline interactions
     assert isinstance(ag_events[-1], RunFinishedEvent)
@@ -421,6 +456,58 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["hey"]
     assert pipeline[-1] is not None
+
+
+async def test_invoke_tool_result_anchors_to_preceding_text_bubble(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Text -> tool -> text within one step: tool_result.message_id must match
+    the preceding text bubble (the assistant message that initiated the call),
+    not the following one.
+    """
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="go", role=MessageRole.USER)],
+                current_agent_name="A",
+            ),
+            AgentStream(delta="thinking ", response="", current_agent_name="A"),
+            AgentStream(delta="aloud", response="", current_agent_name="A"),
+            AgentOutput(
+                response=ChatMessage(content="thinking aloud", role=MessageRole.ASSISTANT),
+                current_agent_name="A",
+                tool_calls=[ToolSelection(tool_name="t", tool_kwargs={}, tool_id="t1")],
+            ),
+            ToolCall(tool_name="t", tool_kwargs={}, tool_id="t1"),
+            ToolCallResult(
+                tool_name="t",
+                tool_kwargs={},
+                tool_id="t1",
+                tool_output=ToolOutput(
+                    tool_name="t",
+                    content="ok",
+                    raw_input={},
+                    raw_output="ok",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+            AgentStream(delta="after tool", response="", current_agent_name="A"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
+    assert len(text_starts) == 2
+    assert len(tool_results) == 1
+    # Tool result references the bubble that came BEFORE it, not the next one.
+    assert tool_results[0].message_id == text_starts[0].message_id
+    assert tool_results[0].message_id != text_starts[1].message_id
 
 
 async def test_invoke_agent_stream_multiple_agents(
