@@ -21,6 +21,7 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
+import os
 
 import httpx
 from a2a.types import AgentCapabilities
@@ -81,11 +82,10 @@ def get_a2a_endpoint_url(host: str, port: int) -> str:
     / ``DATAROBOT_ENDPOINT``.  Otherwise falls back to the local
     ``http://{host}:{port}/a2a/`` URL.
     """
-    import os
-
     mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
     if mlops_deployment_id:
         datarobot_endpoint = resolve_datarobot_endpoint(require=True)
+        assert datarobot_endpoint is not None  # guaranteed by require=True
         return build_deployment_a2a_url(datarobot_endpoint, mlops_deployment_id)
     return f"http://{host}:{port}/{A2A_MOUNT_PATH}/"
 
