@@ -16,6 +16,10 @@ from enum import Enum
 from enum import auto
 
 
+class LRSEnvVarIsNotSetError(Exception):
+    """Exception raised when env var is missing in LRS container."""
+
+
 class LRSEnvVars(Enum):
     MLOPS_DEPLOYMENT_ID = auto()
 
@@ -24,5 +28,7 @@ class LRSEnvVars(Enum):
 
     def get_os_env_value(self) -> str:
         env_value = os.getenv(self.to_env_name())
-        assert env_value, f"Env var {self} is not assigned in the LRS container"
+        if not env_value:
+            error_message = f"Env var {self} is not assigned in the LRS container"
+            raise LRSEnvVarIsNotSetError(error_message)
         return env_value

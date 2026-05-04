@@ -74,7 +74,7 @@ class TestMCPDeploymentInfoIntegration:
             predict_file = test_data_dir / "text_classification_predict.csv"
             result = await session.call_tool(
                 "validate_prediction_data",
-                {"deployment_id": deployment_id, "file_path": str(predict_file)},
+                {"deployment_id": deployment_id, "csv_string": predict_file.read_text()},
             )
             assert not result.isError, (
                 f"validate_prediction_data failed: {result.content[0].text}"  # type: ignore[union-attr]
@@ -88,18 +88,18 @@ class TestMCPDeploymentInfoIntegration:
             assert data["summary"]["rows"] > 0
             assert data["summary"]["columns"] > 0
 
-    async def test_validate_prediction_data_invalid_file(
-        self, classification_project: dict[str, Any], test_data_dir: Any
+    async def test_validate_prediction_data_empty_csv(
+        self, classification_project: dict[str, Any]
     ) -> None:
-        """Integration test for validate_prediction_data with non-existent file."""
+        """Integration test for validate_prediction_data with empty csv_string."""
         async with integration_test_mcp_session() as session:
             deployment_id = classification_project["deployment_id"]
             result = await session.call_tool(
                 "validate_prediction_data",
                 {
                     "deployment_id": deployment_id,
-                    "file_path": str(test_data_dir / "nonexistent_file_12345.csv"),
+                    "csv_string": "   ",
                 },
             )
             assert result.isError
-            assert "FileNotFoundError" in result.content[0].text  # type: ignore[union-attr]
+            assert "csv_string" in result.content[0].text  # type: ignore[union-attr]

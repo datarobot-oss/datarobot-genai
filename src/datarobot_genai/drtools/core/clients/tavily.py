@@ -25,6 +25,7 @@ from tavily import AsyncTavilyClient
 
 from datarobot_genai.drtools.core.auth import get_api_key_from_headers
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,8 @@ async def get_tavily_access_token() -> str:
 
     logger.warning("Tavily API key not found in headers")
     raise ToolError(
-        "Tavily API key not found in headers. Please provide it via 'x-tavily-api-key' header."
+        "Tavily API key not found in headers. Please provide it via 'x-tavily-api-key' header.",
+        kind=ToolErrorKind.AUTHENTICATION,
     )
 
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -36,6 +37,38 @@ from datarobot_genai.core.agents import UsageMetrics
 from datarobot_genai.core.chat.completions import agent_chat_completion_wrapper
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.chat.completions import is_streaming
+
+
+def noop_mcp_tools_factory() -> Any:
+    """Async context manager factory that yields no MCP tools (unit tests)."""
+
+    @asynccontextmanager
+    async def _ctx() -> AsyncGenerator[list[Any], None]:
+        yield []
+
+    return _ctx()
+
+
+def _make_tracking_mcp_tools_factory(
+    trace: list[str],
+    mcp_tools: list[str],
+) -> Any:
+    """Return ``mcp_tools_factory`` that records lifecycle and yields ``mcp_tools``."""
+
+    def factory() -> Any:
+        trace.append("factory_called")
+
+        @asynccontextmanager
+        async def _ctx() -> AsyncGenerator[list[str], None]:
+            trace.append("context_entered")
+            try:
+                yield mcp_tools
+            finally:
+                trace.append("context_exited")
+
+        return _ctx()
+
+    return factory
 
 
 def test_is_streaming_false_by_default() -> None:
@@ -126,6 +159,67 @@ def test_convert_chat_completion_params_to_run_agent_input() -> None:
         "authorization_context": {"api_key": "test-api-key"},
         "forwarded_headers": {"X-Forwarded-For": "127.0.0.1"},
     }
+    assert len(run_agent_input.thread_id) == 36
+    assert len(run_agent_input.run_id) == 36
+
+
+def test_convert_chat_completion_params_to_run_agent_input_uses_thread_run_from_extra_body() -> (
+    None
+):
+    params = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "extra_body": {"thread_id": "thread-stable", "run_id": "run-second"},
+    }
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+    assert run_agent_input.thread_id == "thread-stable"
+    assert run_agent_input.run_id == "run-second"
+
+
+def test_convert_chat_completion_params_to_run_agent_input_uses_thread_run_top_level() -> None:
+    params = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "threadId": "t-camel",
+        "runId": "r-camel",
+    }
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+    assert run_agent_input.thread_id == "t-camel"
+    assert run_agent_input.run_id == "r-camel"
+
+
+def test_convert_chat_completion_params_to_run_agent_input_preserves_assistant_tool_calls() -> None:
+    # GIVEN a chat completion assistant message with tool calls
+    params = {
+        "messages": [
+            {"role": "user", "content": "Choose a location and check the weather"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_abc123",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"location": "Boston, MA"}',
+                        },
+                    }
+                ],
+            },
+        ]
+    }
+
+    # WHEN converting to run agent input
+    run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+
+    # THEN the assistant tool call metadata is preserved
+    assistant_message = run_agent_input.messages[1]
+    assert isinstance(assistant_message, AssistantMessage)
+    assert assistant_message.content is None
+    assert assistant_message.tool_calls is not None
+    assert len(assistant_message.tool_calls) == 1
+    assert assistant_message.tool_calls[0].id == "call_abc123"
+    assert assistant_message.tool_calls[0].function.name == "get_weather"
+    assert assistant_message.tool_calls[0].function.arguments == '{"location": "Boston, MA"}'
 
 
 class AGUIAgent(BaseAgent):
@@ -175,6 +269,100 @@ class AGUIAgent(BaseAgent):
             yield event
 
 
+class RecordingAgent(AGUIAgent):
+    """AGUIAgent that records ``set_tools`` arguments."""
+
+    def __init__(self, *, initial_tools: list[Any] | None = None) -> None:
+        self.set_tools_calls: list[list[Any]] = []
+        super().__init__(tools=initial_tools or [])
+
+    def set_tools(self, tools: list[Any]) -> None:  # type: ignore[override]
+        self.set_tools_calls.append(list(tools))
+        super().set_tools(tools)
+
+
+async def test_agent_chat_completion_wrapper_streaming_invokes_mcp_factory_and_sets_tools() -> None:
+    """Streaming: MCP factory runs once per stream and yielded tools are passed via `set_tools`."""
+    trace: list[str] = []
+    mcp_tools = ["mcp-alpha", "mcp-beta"]
+    mcp_factory = _make_tracking_mcp_tools_factory(trace, mcp_tools)
+    params: dict[str, Any] = {
+        "messages": [{"role": "user", "content": "Hello"}],
+        "stream": True,
+    }
+    agent = RecordingAgent()
+
+    generator = await agent_chat_completion_wrapper(agent, params, mcp_factory)
+
+    assert trace == [], "factory must not run until the async generator is consumed"
+
+    events = [e async for e in generator]
+
+    assert trace == [
+        "factory_called",
+        "context_entered",
+        "context_exited",
+    ]
+    assert agent.set_tools_calls == [[], mcp_tools]
+    assert agent.tools == mcp_tools
+    assert len(events) == 8
+
+
+@pytest.mark.parametrize("stream", [True, False])
+async def test_agent_chat_completion_wrapper_merges_mcp_tools_with_existing_agent_tools(
+    stream: bool,
+) -> None:
+    """MCP tools are prepended to tools already configured on the agent."""
+    trace: list[str] = []
+    mcp_tools = ["mcp-alpha", "mcp-beta"]
+    pre_existing = ["workflow-tool"]
+    mcp_factory = _make_tracking_mcp_tools_factory(trace, mcp_tools)
+    params: dict[str, Any] = {
+        "messages": [{"role": "user", "content": "Hello"}],
+        "stream": stream,
+    }
+    agent = RecordingAgent(initial_tools=list(pre_existing))
+    expected = [*mcp_tools, *pre_existing]
+
+    wrapper_result = await agent_chat_completion_wrapper(agent, params, mcp_factory)
+
+    if stream:
+        assert trace == []
+        assert isinstance(wrapper_result, AsyncGenerator)
+        async for _ in wrapper_result:
+            pass
+    else:
+        assert isinstance(wrapper_result, tuple)
+
+    assert trace == ["factory_called", "context_entered", "context_exited"]
+    assert agent.set_tools_calls == [pre_existing, expected]
+    assert agent.tools == expected
+
+
+async def test_agent_chat_completion_wrapper_non_streaming_invokes_mcp_factory_and_sets_tools() -> (
+    None
+):
+    """Non-streaming: MCP factory runs once and yielded tools are passed via ``set_tools``."""
+    trace: list[str] = []
+    mcp_tools = ["mcp-alpha", "mcp-beta"]
+    mcp_factory = _make_tracking_mcp_tools_factory(trace, mcp_tools)
+    params: dict[str, Any] = {
+        "messages": [{"role": "user", "content": "Hello"}],
+        "stream": False,
+    }
+    agent = RecordingAgent()
+
+    await agent_chat_completion_wrapper(agent, params, mcp_factory)
+
+    assert trace == [
+        "factory_called",
+        "context_entered",
+        "context_exited",
+    ]
+    assert agent.set_tools_calls == [[], mcp_tools]
+    assert agent.tools == mcp_tools
+
+
 async def test_agent_chat_completion_wrapper_streaming() -> None:
     # GIVEN a chat completion parameters
     params = {
@@ -185,7 +373,7 @@ async def test_agent_chat_completion_wrapper_streaming() -> None:
     }
 
     # WHEN calling the agent chat completion wrapper
-    generator = await agent_chat_completion_wrapper(AGUIAgent(), params)
+    generator = await agent_chat_completion_wrapper(AGUIAgent(), params, noop_mcp_tools_factory)
 
     # THEN the generator returns an async generator
     assert isinstance(generator, AsyncGenerator)
@@ -221,7 +409,7 @@ async def test_agent_chat_completion_wrapper_non_streaming() -> None:
 
     # WHEN calling the agent chat completion wrapper
     response, pipeline_interactions, usage_metrics = await agent_chat_completion_wrapper(
-        AGUIAgent(), params
+        AGUIAgent(), params, noop_mcp_tools_factory
     )
 
     # THEN the response is the expected response

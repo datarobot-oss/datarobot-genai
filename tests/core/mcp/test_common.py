@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pytest
 from datarobot.models.genai.agent.auth import set_authorization_context
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
 
 
 class TestMCPConfig:

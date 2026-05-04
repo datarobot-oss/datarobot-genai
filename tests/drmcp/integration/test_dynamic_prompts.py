@@ -45,7 +45,7 @@ class TestMCPDRPromptManagementIntegration:
             # Check if it tells that prompt does not exist
             assert (
                 e.value.error.message
-                == "Unknown prompt: drmcp-integration-test-prompt-without-version"
+                == "Unknown prompt: 'drmcp-integration-test-prompt-without-version'"
             )
 
     async def test_prompt_with_version_without_variables(

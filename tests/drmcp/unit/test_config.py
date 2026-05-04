@@ -101,13 +101,11 @@ class TestDuplicateBehavior:
 
             test_mcp = DataRobotMCP(
                 name=config.mcp_server_name,
-                on_duplicate_tools=config.tool_registration_duplicate_behavior,
-                on_duplicate_prompts=config.prompt_registration_duplicate_behavior,
+                on_duplicate=config.tool_registration_duplicate_behavior,
             )
 
             # Verify the setting was applied correctly
-            assert test_mcp._tool_manager.duplicate_behavior == value
-            assert test_mcp._prompt_manager.duplicate_behavior == value
+            assert test_mcp._on_duplicate == value
 
 
 class TestToolConfiguration:

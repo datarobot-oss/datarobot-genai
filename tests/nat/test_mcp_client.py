@@ -85,7 +85,7 @@ async def test_datarobot_mcp_client():
             return _FakeMCPClient(tools=fake_tools, url=url)
 
         mock_client.side_effect = make_fake_client
-        server_config = DataRobotMCPServerConfig()
+        server_config = DataRobotMCPServerConfig(auth_provider=None)
         config = DataRobotMCPClientConfig(server=server_config)
         async with WorkflowBuilder() as builder:
             await builder.add_function_group("datarobot_mcp_tools", config)

@@ -14,10 +14,11 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import Mock
 
 import pytest
 from ag_ui.core import AssistantMessage
+from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -31,20 +32,21 @@ from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
 from llama_index.core.agent.workflow import AgentStream
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.agent.workflow import ToolCall
 from llama_index.core.agent.workflow import ToolCallResult
 from llama_index.core.agent.workflow.workflow_events import AgentWorkflowStartEvent
 from llama_index.core.llms import ChatMessage
 from llama_index.core.llms import MessageRole
+from llama_index.core.llms.mock import MockLLM
 from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
 
-from datarobot_genai.llama_index import agent as agent_mod
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
-
-# --- Test helpers ---
+from datarobot_genai.llama_index.agent import datarobot_agent_class_from_llamaindex
 
 
 class Handler:
@@ -74,6 +76,82 @@ class Workflow:
 
     def run(self, *, user_msg: str) -> Handler:  # noqa: ARG002
         return Handler(self._events, self._state)
+
+
+class CapturingWorkflow(Workflow):
+    def __init__(self, events: list[Any], state: Any) -> None:
+        super().__init__(events, state)
+        self.captured_user_msgs: list[str] = []
+
+    def run(self, *, user_msg: str) -> Handler:
+        self.captured_user_msgs.append(user_msg)
+        return super().run(user_msg=user_msg)
+
+
+class FakeMemoryClient(BaseMemoryClient):
+    def __init__(self, retrieved: str = "saved memory") -> None:
+        self.retrieved = retrieved
+        self.retrieve_calls: list[dict[str, Any]] = []
+        self.store_calls: list[dict[str, Any]] = []
+
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        self.retrieve_calls.append(
+            {
+                "prompt": prompt,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+        return self.retrieved
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        self.store_calls.append(
+            {
+                "user_message": user_message,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+
+
+class FailingMemoryClient(BaseMemoryClient):
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        raise RuntimeError("mem0 retrieve unavailable")
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        raise RuntimeError("mem0 store unavailable")
 
 
 class MyLlamaAgent(LlamaIndexAgent):
@@ -107,6 +185,86 @@ def test_datarobot_litellm_metadata_properties() -> None:
 
 def test_create_pipeline_interactions_from_events_none() -> None:
     assert LlamaIndexAgent.create_pipeline_interactions_from_events(None) is None
+
+
+# --- Tests for datarobot_agent_class_from_llamaindex ---
+
+
+@pytest.mark.asyncio
+async def test_datarobot_agent_class_from_llamaindex_build_workflow_returns_bound_workflow() -> (
+    None
+):
+    workflow = Mock(name="agent_workflow")
+    cls = datarobot_agent_class_from_llamaindex(workflow, [], lambda _s, _e: "")
+    agent = cls()
+    assert await agent.build_workflow() is workflow
+
+
+def test_datarobot_agent_class_from_llamaindex_set_llm_propagates_to_agents() -> None:
+    a1 = Mock()
+    a1.name = "planner"
+    a1.tools = []
+    a2 = Mock()
+    a2.name = "writer"
+    a2.tools = []
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [a1, a2], lambda _s, _e: "")
+    llm = object()
+    _ = cls(llm=llm)
+    assert a1.llm is llm
+    assert a2.llm is llm
+
+
+def test_datarobot_agent_class_from_llamaindex_allow_parallel_tool_calls_on_function_agents() -> (
+    None
+):
+    planner = FunctionAgent(name="planner", llm=MockLLM(), tools=[])
+    writer = FunctionAgent(name="writer", llm=MockLLM(), tools=[])
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [planner, writer], lambda _s, _e: "")
+    agent = cls(allow_parallel_tool_calls=False)
+    assert agent.allow_parallel_tool_calls is False
+    assert planner.allow_parallel_tool_calls is False
+    assert writer.allow_parallel_tool_calls is False
+
+
+def test_datarobot_agent_class_from_llamaindex_set_tools_merges_original_plus_mcp() -> None:
+    orig1 = Mock(name="static_tool_1")
+    orig2 = Mock(name="static_tool_2")
+    a1 = Mock()
+    a1.name = "planner"
+    a1.tools = [orig1]
+    a2 = Mock()
+    a2.name = "writer"
+    a2.tools = [orig2]
+    mcp = Mock(name="mcp_tool")
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [a1, a2], lambda _s, _e: "")
+    agent = cls(tools=[mcp])
+    assert a1.tools == [orig1, mcp]
+    assert a2.tools == [orig2, mcp]
+    assert agent.tools == [mcp]
+
+
+def test_datarobot_agent_class_from_llamaindex_delegates_extract_response_text() -> None:
+    captured: list[tuple[Any, int]] = []
+
+    def extract(state: Any, events: list[Any]) -> str:
+        captured.append((state, len(events)))
+        return "extracted"
+
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [], extract)
+    agent = cls()
+    assert agent.extract_response_text("final_state", [1, 2, 3]) == "extracted"
+    assert captured == [("final_state", 3)]
+
+
+@pytest.mark.asyncio
+async def test_datarobot_agent_class_from_llamaindex_invoke_streams(
+    workflow: Workflow, run_agent_input: RunAgentInput
+) -> None:
+    cls = datarobot_agent_class_from_llamaindex(workflow, [], lambda _s, _e: "")
+    agent = cls(forwarded_headers={"x-datarobot-api-key": "scoped-token-123"})
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    assert events_out
+    assert events_out[-1][0].type == EventType.RUN_FINISHED
 
 
 # --- Tests for LlamaIndexAgent ---
@@ -187,15 +345,6 @@ def agent(workflow: Workflow) -> MyLlamaAgent:
     return MyLlamaAgent(workflow, forwarded_headers=forwarded_headers)
 
 
-@pytest.fixture
-def mock_load_mcp_tools(monkeypatch: Any) -> None:
-    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
-        return []
-
-    monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
-
-
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_llama_index_agent_invoke(
     agent: MyLlamaAgent, run_agent_input: RunAgentInput
 ) -> None:
@@ -231,58 +380,18 @@ async def test_llama_index_agent_invoke(
     assert usage[-1] == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
 
-async def test_llama_index_agent_invoke_with_mcp_tools(
-    monkeypatch: Any, agent: MyLlamaAgent, run_agent_input: RunAgentInput
-) -> None:
-    """Test that MCP tools are loaded and available via mcp_tools property."""
-    # GIVEN: fake mcp tools
-    mock_tools = [MagicMock(), MagicMock()]
-
-    mcp_calls = []
-
-    async def fake_load_mcp_tools(*args: Any, **kwargs: Any) -> list[Any]:  # noqa: ARG001, ANN401
-        mcp_calls.append(kwargs)
-        return mock_tools
-
-    monkeypatch.setattr(agent_mod, "load_mcp_tools", fake_load_mcp_tools, raising=True)
-
-    # WHEN: invoke the agent with a run agent input and get the events
-    gen = agent.invoke(run_agent_input)
-    [event async for event in gen]
-
-    # THEN: MCP tools were loaded and are accessible
-    assert agent.mcp_tools == mock_tools
-    assert len(agent.mcp_tools) == 2
-
-    # THEN: load_mcp_tools was called with forwarded headers
-    assert len(mcp_calls) == 1
-    assert mcp_calls[0]["forwarded_headers"] == {
-        "x-datarobot-api-key": "scoped-token-123",
-    }
-
-
-def test_make_input_message_includes_history_summary(run_agent_input_with_history) -> None:
-    """By default, LlamaIndexAgent.make_input_message should NOT include history."""
-    workflow = Workflow(events=[], state="S")
+async def test_invoke_uses_raw_user_prompt(run_agent_input_with_history) -> None:
+    # GIVEN a llamaindex agent without prompt placeholders
+    workflow = CapturingWorkflow(events=[], state="S")
     agent = MyLlamaAgent(workflow)
 
-    text = agent.make_input_message(run_agent_input_with_history)
+    # WHEN invoking the agent
+    _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
-    assert text == "Follow-up"
-
-
-def test_make_input_message_zero_history_disables_summary(
-    run_agent_input_with_history,
-) -> None:
-    """When max_history_messages is 0, history should be disabled."""
-    workflow = Workflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow, max_history_messages=0)
-
-    text = agent.make_input_message(run_agent_input_with_history)
-    assert text == "Follow-up"
+    # THEN the workflow receives the raw final user prompt
+    assert workflow.captured_user_msgs == ["Follow-up"]
 
 
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_agent_output_with_dict_tool_calls(
     run_agent_input: RunAgentInput,
 ) -> None:
@@ -314,7 +423,6 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     assert pipeline[-1] is not None
 
 
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_agent_stream_multiple_agents(
     run_agent_input: RunAgentInput,
 ) -> None:
@@ -347,30 +455,17 @@ async def test_invoke_agent_stream_multiple_agents(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
-@pytest.mark.usefixtures("mock_load_mcp_tools")
 async def test_invoke_replaces_chat_history_placeholder() -> None:
-    """invoke() replaces {chat_history} placeholder with actual history."""
-    captured_msgs: list[str] = []
-
-    class CapturingWorkflow(Workflow):
-        def run(self, *, user_msg: str) -> Handler:
-            captured_msgs.append(user_msg)
-            return super().run(user_msg=user_msg)
-
-    class AgentWithPlaceholder(MyLlamaAgent):
-        def make_input_message(self, run_agent_input: Any) -> str:
-            user_prompt = super().make_input_message(run_agent_input)
-            return f"History:\n{{chat_history}}\n\nLatest: {user_prompt}"
-
+    """invoke() replaces {chat_history} inside the raw user prompt."""
     workflow = CapturingWorkflow(events=[], state="S")
-    agent = AgentWithPlaceholder(workflow)
+    agent = MyLlamaAgent(workflow)
 
     run_agent_input = RunAgentInput(
         messages=[
             AgSystemMessage(id="sys_1", content="You are a helper."),
             UserMessage(id="user_1", content="First question"),
             AssistantMessage(id="asst_1", content="First answer"),
-            UserMessage(id="user_2", content="Follow-up"),
+            UserMessage(id="user_2", content="History:\n{chat_history}\n\nLatest: Follow-up"),
         ],
         tools=[],
         forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
@@ -382,9 +477,123 @@ async def test_invoke_replaces_chat_history_placeholder() -> None:
 
     _ = [event async for event in agent.invoke(run_agent_input)]
 
-    assert len(captured_msgs) == 1
-    text = captured_msgs[0]
+    assert workflow.captured_user_msgs
+    text = workflow.captured_user_msgs[0]
     assert "system: You are a helper." in text
     assert "user: First question" in text
     assert "assistant: First answer" in text
     assert "{chat_history}" not in text
+
+
+async def test_invoke_retrieves_and_stores_memory(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a llamaindex agent whose raw user prompt opts into memory
+    workflow = CapturingWorkflow(events=[], state="S")
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = MyLlamaAgent(workflow, memory_client=memory_client)
+    run_agent_input.messages = [
+        UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")
+    ]
+
+    # WHEN invoking the agent
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN the run completes, the prompt includes retrieved memory, and the turn is stored
+    expected_user_msg = "Memory:\nUse concise answers.\n\nLatest: Follow-up"
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert workflow.captured_user_msgs == [expected_user_msg]
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": "Memory:\n{memory}\n\nLatest: Follow-up",
+            "run_id": None,
+            "agent_id": "MyLlamaAgent",
+            "app_id": "tests.llamaindex.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == [
+        {
+            "user_message": "Memory:\n{memory}\n\nLatest: Follow-up",
+            "run_id": "run_id",
+            "agent_id": "MyLlamaAgent",
+            "app_id": "tests.llamaindex.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+async def test_invoke_skips_memory_when_placeholder_is_absent(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a llamaindex agent whose raw user prompt does not opt into memory
+    workflow = Workflow(events=[], state="S")
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = MyLlamaAgent(workflow, memory_client=memory_client)
+
+    # WHEN invoking the agent
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN memory retrieval and storage are both skipped
+    assert memory_client.retrieve_calls == []
+    assert memory_client.store_calls == []
+
+
+async def test_invoke_gracefully_degrades_when_memory_fails(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a llamaindex agent whose raw user prompt opts into memory
+    workflow = CapturingWorkflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow, memory_client=FailingMemoryClient())
+    run_agent_input.messages = [
+        UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")
+    ]
+
+    # WHEN invoking the agent
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN the run still completes and the unresolved placeholder is removed
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert workflow.captured_user_msgs == ["Memory:\n\n\nLatest: Follow-up"]
+    assert "{memory}" not in workflow.captured_user_msgs[0]
+
+
+async def test_invoke_does_not_store_memory_when_workflow_fails(
+    run_agent_input: RunAgentInput,
+) -> None:
+    class FailingWorkflow(CapturingWorkflow):
+        def run(self, *, user_msg: str) -> Handler:
+            self.captured_user_msgs.append(user_msg)
+
+            class FailingHandler:
+                async def stream_events(self) -> AsyncGenerator[Any, None]:
+                    raise RuntimeError("workflow failed")
+                    yield  # pragma: no cover
+
+            return FailingHandler()
+
+    # GIVEN a llamaindex agent whose workflow fails after memory retrieval
+    workflow = FailingWorkflow(events=[], state="S")
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = MyLlamaAgent(workflow, memory_client=memory_client)
+    run_agent_input.messages = [
+        UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")
+    ]
+
+    # WHEN invoking the agent and the workflow fails
+    with pytest.raises(RuntimeError, match="workflow failed"):
+        _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN retrieval happens, but storage is skipped because the run never finishes
+    expected_user_msg = "Memory:\nUse concise answers.\n\nLatest: Follow-up"
+    assert workflow.captured_user_msgs == [expected_user_msg]
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": "Memory:\n{memory}\n\nLatest: Follow-up",
+            "run_id": None,
+            "agent_id": "MyLlamaAgent",
+            "app_id": "tests.llamaindex.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == []

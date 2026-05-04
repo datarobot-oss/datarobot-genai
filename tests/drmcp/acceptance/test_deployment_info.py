@@ -13,14 +13,20 @@
 # limitations under the License.
 
 import inspect
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
+from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
+from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
+
+# Matches text classification deployment features; no tricky quoting so the LLM can copy it.
+INLINE_CSV_FOR_VALIDATE = "text_review,product_category\nhello world,electronics\n"
 
 
 @pytest.fixture(scope="session")
@@ -53,10 +59,7 @@ def expectations_for_generate_prediction_data_template_success(
         tool_calls_expected=[
             ToolCallTestExpectations(
                 name="generate_prediction_data_template",
-                parameters={
-                    "deployment_id": deployment_id,
-                    "n_rows": 5,
-                },
+                parameters={"deployment_id": deployment_id},
                 result={
                     "deployment_id": "",
                     "model_type": "",
@@ -81,13 +84,14 @@ def expectations_for_validate_prediction_data_success(
     deployment_id: str,
     diabetes_scoring_small_file_path: str,
 ) -> ETETestExpectations:
+    csv_string = Path(diabetes_scoring_small_file_path).read_text()
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
                 name="validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
-                    "file_path": str(diabetes_scoring_small_file_path),
+                    "csv_string": csv_string,
                 },
                 result={"status": "valid"},
             ),
@@ -102,9 +106,8 @@ def expectations_for_validate_prediction_data_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_validate_prediction_data_failure(
+def expectations_for_validate_prediction_data_inline_csv(
     deployment_id: str,
-    nonexistent_file_path: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
@@ -112,16 +115,39 @@ def expectations_for_validate_prediction_data_failure(
                 name="validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
-                    "file_path": nonexistent_file_path,
+                    "csv_string": ANY_NONEMPTY_STRING,
                 },
-                result="No such file or directory",
+                result=SHOULD_NOT_BE_EMPTY,
             ),
         ],
         llm_response_content_contains_expectations=[
-            "file does not exist",
-            "cannot find the file",
-            "not found",
-            nonexistent_file_path,
+            "valid",
+            "validate",
+            "deployment",
+            "csv",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
+def expectations_for_validate_prediction_data_failure(
+    deployment_id: str,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="validate_prediction_data",
+                parameters={
+                    "deployment_id": deployment_id,
+                    "csv_string": "",
+                },
+                result="csv_string",
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "csv_string",
+            "empty",
+            "cannot be empty",
         ],
     )
 
@@ -192,6 +218,44 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
                 test_name,
             )
 
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+            I have a DataRobot deployment with ID '{deployment_id}' for a text classification
+            model. Check whether this exact multi-line CSV is valid for scoring (preserve
+            newlines; do not add a file path):
+
+            {csv_inline}
+            """
+        ],
+    )
+    async def test_validate_prediction_data_inline_csv_success(
+        self,
+        llm_client: Any,
+        expectations_for_validate_prediction_data_inline_csv: ETETestExpectations,
+        deployment_id: str,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            csv_inline=INLINE_CSV_FOR_VALIDATE,
+        )
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_validate_prediction_data_inline_csv_success"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_validate_prediction_data_inline_csv,
+                llm_client,
+                session,
+                test_name,
+            )
+
     @pytest.mark.skip(
         reason=(
             "Skipping this test for now until we have a way to validate score file for the "
@@ -236,9 +300,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-            I have a DataRobot deployment with ID '{deployment_id}' and I need to validate a
-            CSV file at '{file_path}'. Can you check if this file is suitable for making
-            predictions?
+            DataRobot deployment_id is '{deployment_id}'.
+            Try to validate scoring data where the inline CSV body is completely empty: pass
+            csv_string as exactly an empty string (length zero, no spaces, no placeholder text).
+            Do not use file paths. We expect a clear validation or argument error for empty input.
             """
         ],
     )
@@ -247,13 +312,9 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
         llm_client: Any,
         expectations_for_validate_prediction_data_failure: ETETestExpectations,
         deployment_id: str,
-        nonexistent_file_path: str,
         prompt_template: str,
     ) -> None:
-        prompt = prompt_template.format(
-            deployment_id=deployment_id,
-            file_path=nonexistent_file_path,
-        )
+        prompt = prompt_template.format(deployment_id=deployment_id)
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()

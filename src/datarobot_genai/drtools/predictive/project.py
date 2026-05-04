@@ -16,17 +16,28 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"predictive", "project", "read", "management", "list"})
+@tool_metadata(
+    tags={"predictive", "project", "read", "management", "list"},
+    description=(
+        "[Project—discover ids] Use when the user needs their modeling projects as id-to-name "
+        "map (no single project_id yet). Read-only. Not for datasets inside one project "
+        "(get_project_dataset_by_name), not catalog datasets (list_ai_catalog_items), not "
+        "deployments (list_deployments)."
+    ),
+)
 async def list_projects() -> dict[str, Any]:
-    """List all DataRobot projects for the authenticated user."""
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
     projects = client.Project.list()
@@ -35,24 +46,33 @@ async def list_projects() -> dict[str, Any]:
     return projects
 
 
-@tool_metadata(tags={"predictive", "project", "read", "data", "info"})
+@tool_metadata(
+    tags={"predictive", "project", "read", "data", "info"},
+    description=(
+        "[Project—resolve dataset by name] Use when the user names or describes a dataset "
+        "already attached to a modeling project (e.g. 'get the holdout dataset', 'dataset named "
+        "X') and you need its dataset_id: pass project_id plus dataset_name as a case-insensitive "
+        "substring of the dataset display name. Read-only. Returns dataset_id and whether it is "
+        "the project source or a prediction upload. Not for listing all projects "
+        "(list_projects) or arbitrary catalog lookup."
+    ),
+)
 async def get_project_dataset_by_name(
     *,
-    project_id: Annotated[str, "The ID of the DataRobot project."],
-    dataset_name: Annotated[str, "The name of the dataset to find (e.g., 'training', 'holdout')."],
+    project_id: Annotated[str, "DataRobot modeling project id."],
+    dataset_name: Annotated[str, "Substring to match against dataset display names."],
 ) -> dict[str, Any]:
-    """Get a dataset ID by name for a given project.
-
-    The dataset ID and the dataset type (source or prediction) as a string, or an error message.
-    """
     if not project_id:
-        raise ToolError("Project ID is required.")
+        raise ToolError("Project ID is required.", kind=ToolErrorKind.VALIDATION)
     if not dataset_name:
-        raise ToolError("Dataset name is required.")
+        raise ToolError("Dataset name is required.", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    project = client.Project.get(project_id)
+    try:
+        project = client.Project.get(project_id)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
     all_datasets = []
     source_dataset = project.get_dataset()
     if source_dataset:
@@ -67,5 +87,6 @@ async def get_project_dataset_by_name(
                 "dataset_type": ds["type"],
             }
     raise ToolError(
-        f"Dataset with name containing '{dataset_name}' not found in project {project_id}."
+        f"Dataset with name containing '{dataset_name}' not found in project {project_id}.",
+        kind=ToolErrorKind.NOT_FOUND,
     )

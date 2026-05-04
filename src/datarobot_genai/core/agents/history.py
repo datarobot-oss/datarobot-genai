@@ -67,24 +67,30 @@ def _summarize_tool_calls(tool_calls: Any) -> str:
     if not tool_calls:
         return "[tool_calls]"
 
-    names: list[str] = []
+    summaries: list[str] = []
     if isinstance(tool_calls, list):
         for tc in tool_calls:
             name: Any = None
+            arguments: Any = None
             if isinstance(tc, Mapping):
                 fn = tc.get("function")
                 if isinstance(fn, Mapping):
                     name = fn.get("name")
+                    arguments = fn.get("arguments")
                 name = name or tc.get("name") or tc.get("tool_name")
             else:
                 fn = getattr(tc, "function", None)
                 name = getattr(fn, "name", None) if fn is not None else None
+                arguments = getattr(fn, "arguments", None) if fn is not None else None
                 name = name or getattr(tc, "name", None) or getattr(tc, "tool_name", None)
             if name:
-                names.append(str(name))
+                label = str(name)
+                if arguments not in (None, ""):
+                    label = f"{label}({arguments})"
+                summaries.append(label)
 
-    if names:
-        return "[tool_calls] " + ", ".join(names)
+    if summaries:
+        return "[tool_calls] " + ", ".join(summaries)
     return "[tool_calls]"
 
 

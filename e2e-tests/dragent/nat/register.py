@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datarobot_genai.drtools.calculator import calculator
 from datarobot_genai.nat.tool import nat_tool
 
-nat_tool(calculator, "calculator")
+from dragent.tool import generate_objectid
+
+nat_tool(generate_objectid, "generate_objectid")

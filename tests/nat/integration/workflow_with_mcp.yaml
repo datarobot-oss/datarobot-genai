@@ -17,19 +17,23 @@ functions:
     llm_name: datarobot_llm
     system_prompt: |
       You are a helpful assistant.
+
 function_groups:
   mcp_tools:
     _type: datarobot_mcp_client
+
 authentication:
   datarobot_mcp_auth:
     _type: datarobot_mcp_auth
+
 llms:
   datarobot_llm:
     _type: datarobot-llm-gateway
     model_name: azure/gpt-4o-2024-11-20
     temperature: 0.0
+
 workflow:
-  _type: react_agent
+  _type: per_user_react_agent
   llm_name: datarobot_llm
   tool_names:
     - mcp_tools

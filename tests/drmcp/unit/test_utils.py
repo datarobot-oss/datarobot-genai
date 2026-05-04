@@ -213,7 +213,7 @@ class TestGetToolTags:
         """Test get_tool_tags with MCPTool that has tags in meta._fastmcp.tags."""
         # Create a mock MCPTool with tags in meta
         tool = Mock(spec=MCPTool)
-        tool.meta = {"_fastmcp": {"tags": ["tag1", "tag2", "tag3"]}}
+        tool.meta = {"fastmcp": {"tags": ["tag1", "tag2", "tag3"]}}
 
         result = get_tool_tags(tool)
 
@@ -223,7 +223,7 @@ class TestGetToolTags:
         """Test get_tool_tags with MCPTool that has empty tags list."""
         # Create a mock MCPTool with empty tags list
         tool = Mock(spec=MCPTool)
-        tool.meta = {"_fastmcp": {"tags": []}}
+        tool.meta = {"fastmcp": {"tags": []}}
 
         result = get_tool_tags(tool)
 
@@ -263,7 +263,7 @@ class TestGetToolTags:
         """Test get_tool_tags with MCPTool that has _fastmcp but no tags."""
         # Create a mock MCPTool with _fastmcp but no tags
         tool = Mock(spec=MCPTool)
-        tool.meta = {"_fastmcp": {"other_key": "value"}}
+        tool.meta = {"fastmcp": {"other_key": "value"}}
 
         result = get_tool_tags(tool)
 
@@ -273,7 +273,7 @@ class TestGetToolTags:
         """Test get_tool_tags with MCPTool that has _fastmcp=None."""
         # Create a mock MCPTool with _fastmcp=None
         tool = Mock(spec=MCPTool)
-        tool.meta = {"_fastmcp": None}
+        tool.meta = {"fastmcp": None}
 
         result = get_tool_tags(tool)
 
@@ -283,7 +283,7 @@ class TestGetToolTags:
         """Test get_tool_tags with MCPTool that has _fastmcp as non-dict."""
         # Create a mock MCPTool with _fastmcp as string (not dict)
         tool = Mock(spec=MCPTool)
-        tool.meta = {"_fastmcp": "not_a_dict"}
+        tool.meta = {"fastmcp": "not_a_dict"}
 
         result = get_tool_tags(tool)
 
@@ -425,7 +425,7 @@ class TestFilterToolsByTags:
 
         # Create MCPTool
         mcptool = Mock(spec=MCPTool)
-        mcptool.meta = {"_fastmcp": {"tags": ["tag2", "tag3"]}}
+        mcptool.meta = {"fastmcp": {"tags": ["tag2", "tag3"]}}
 
         tools = [fastmcp_tool, mcptool]
 
@@ -499,7 +499,7 @@ class TestGetPromptTags:
         """Test get_prompt_tags with MCPPrompt that has tags in meta._fastmcp.tags."""
         # Create a mock MCPPrompt with tags in meta
         prompt = Mock(spec=MCPPrompt)
-        prompt.meta = {"_fastmcp": {"tags": ["tag1", "tag2", "tag3"]}}
+        prompt.meta = {"fastmcp": {"tags": ["tag1", "tag2", "tag3"]}}
 
         result = get_prompt_tags(prompt)
 
@@ -509,7 +509,7 @@ class TestGetPromptTags:
         """Test get_prompt_tags with MCPPrompt that has empty tags list."""
         # Create a mock MCPPrompt with empty tags list
         prompt = Mock(spec=MCPPrompt)
-        prompt.meta = {"_fastmcp": {"tags": []}}
+        prompt.meta = {"fastmcp": {"tags": []}}
 
         result = get_prompt_tags(prompt)
 
@@ -549,7 +549,7 @@ class TestGetPromptTags:
         """Test get_prompt_tags with MCPPrompt that has _fastmcp but no tags."""
         # Create a mock MCPPrompt with _fastmcp but no tags
         prompt = Mock(spec=MCPPrompt)
-        prompt.meta = {"_fastmcp": {"other_key": "value"}}
+        prompt.meta = {"fastmcp": {"other_key": "value"}}
 
         result = get_prompt_tags(prompt)
 
@@ -559,7 +559,7 @@ class TestGetPromptTags:
         """Test get_prompt_tags with MCPPrompt that has _fastmcp=None."""
         # Create a mock MCPPrompt with _fastmcp=None
         prompt = Mock(spec=MCPPrompt)
-        prompt.meta = {"_fastmcp": None}
+        prompt.meta = {"fastmcp": None}
 
         result = get_prompt_tags(prompt)
 
@@ -569,7 +569,7 @@ class TestGetPromptTags:
         """Test get_prompt_tags with MCPPrompt that has _fastmcp as non-dict."""
         # Create a mock MCPPrompt with _fastmcp as string (not dict)
         prompt = Mock(spec=MCPPrompt)
-        prompt.meta = {"_fastmcp": "not_a_dict"}
+        prompt.meta = {"fastmcp": "not_a_dict"}
 
         result = get_prompt_tags(prompt)
 
@@ -593,7 +593,7 @@ class TestGetResourceTags:
         """Test get_resource_tags with MCPResource that has tags in meta._fastmcp.tags."""
         # Create a mock MCPResource with tags in meta
         resource = Mock(spec=MCPResource)
-        resource.meta = {"_fastmcp": {"tags": ["tag1", "tag2", "tag3"]}}
+        resource.meta = {"fastmcp": {"tags": ["tag1", "tag2", "tag3"]}}
 
         result = get_resource_tags(resource)
 
@@ -603,7 +603,7 @@ class TestGetResourceTags:
         """Test get_resource_tags with MCPResource that has empty tags list."""
         # Create a mock MCPResource with empty tags list
         resource = Mock(spec=MCPResource)
-        resource.meta = {"_fastmcp": {"tags": []}}
+        resource.meta = {"fastmcp": {"tags": []}}
 
         result = get_resource_tags(resource)
 
@@ -643,7 +643,7 @@ class TestGetResourceTags:
         """Test get_resource_tags with MCPResource that has _fastmcp but no tags."""
         # Create a mock MCPResource with _fastmcp but no tags
         resource = Mock(spec=MCPResource)
-        resource.meta = {"_fastmcp": {"other_key": "value"}}
+        resource.meta = {"fastmcp": {"other_key": "value"}}
 
         result = get_resource_tags(resource)
 
@@ -653,7 +653,7 @@ class TestGetResourceTags:
         """Test get_resource_tags with MCPResource that has _fastmcp=None."""
         # Create a mock MCPResource with _fastmcp=None
         resource = Mock(spec=MCPResource)
-        resource.meta = {"_fastmcp": None}
+        resource.meta = {"fastmcp": None}
 
         result = get_resource_tags(resource)
 
@@ -663,7 +663,7 @@ class TestGetResourceTags:
         """Test get_resource_tags with MCPResource that has _fastmcp as non-dict."""
         # Create a mock MCPResource with _fastmcp as string (not dict)
         resource = Mock(spec=MCPResource)
-        resource.meta = {"_fastmcp": "not_a_dict"}
+        resource.meta = {"fastmcp": "not_a_dict"}
 
         result = get_resource_tags(resource)
 

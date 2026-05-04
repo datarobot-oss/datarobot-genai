@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 import typing
 import warnings
 from collections.abc import AsyncGenerator
@@ -27,41 +26,19 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from .converters import convert_chat_request_to_run_agent_input
+from .converters import convert_dragent_event_response_to_chat_response_chunk
 from .converters import convert_dragent_event_response_to_str
 from .converters import convert_dragent_run_agent_input_to_chat_request
 from .converters import convert_dragent_run_agent_input_to_chat_request_or_message
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
-from .patches import patch_crewai_callback_handler
-
-# Patch nvidia-nat-crewai callback handler for crewai >= 1.1.0 compatibility.
-# Must run before NAT's instrument() is called. Safe no-op if crewai not installed.
-patch_crewai_callback_handler()
+from .logging import logging_handler_setup
+from .server_auth import OAuth2TokenExchangeConfig
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)
 # because root-logger filters are skipped during log propagation.
-_SUPPRESSED_NAT_MESSAGES = [
-    "StepAdaptor is disabled",
-    "Dask is not installed",
-    "Dask is not available",
-    "feature is experimental and the API may change",
-    "Using provided input_schema for multi-argument function",
-]
-_orig_handler_handle = logging.Handler.handle
-
-
-def _filtered_handle(self: logging.Handler, record: logging.LogRecord) -> bool | None:
-    try:
-        msg = record.getMessage()
-    except Exception:
-        return _orig_handler_handle(self, record)
-    if any(s in msg for s in _SUPPRESSED_NAT_MESSAGES):
-        return None
-    return _orig_handler_handle(self, record)
-
-
-logging.Handler.handle = _filtered_handle  # type: ignore[assignment]
+logging_handler_setup()
 
 # Suppress UserWarning from langchain about non-default parameters (uses warnings.warn, not logging)
 warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
@@ -71,6 +48,15 @@ class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
     server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
+    oauth_token_exchange: OAuth2TokenExchangeConfig | None = Field(
+        default=None,
+        description=(
+            "Configuration for agent authorization using Token Exchange (RFC 8693). "
+            "If provided, `token_url` and `scopes` populate OpenAPI security schemes; "
+            "`passport_requirement` and `exchange_payload` describe the two-step flow "
+            "(ID-JAG passport, then Okta token exchange) in the agent card extension."
+        ),
+    )
     skills: list[AgentSkill] = Field(
         default=[],
         description="Skills to advertise in the A2A agent card. "
@@ -85,6 +71,17 @@ class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"
         description="Expose this agent via the Agent2Agent protocol. "
         "A2A server endpoints are mounted under /a2a/.",
     )
+    workflow: typing.Annotated[
+        FastApiFrontEndConfig.EndpointBase,
+        Field(description="Endpoint for the default workflow."),
+    ] = FastApiFrontEndConfig.EndpointBase(
+        method="POST",
+        path="/v1/workflow",
+        openai_api_v1_path="/chat/completions",
+        legacy_path="/generate",
+        legacy_openai_api_path="/chat",
+        description="Executes the default NAT workflow from the loaded configuration ",
+    )
 
 
 @register_front_end(config_type=DRAgentFastApiFrontEndConfig)
@@ -96,6 +93,19 @@ async def dragent_fastapi_front_end(
     yield DRAgentFastApiFrontEndPlugin(full_config=full_config)
 
 
+# Register console frontend for `nat dragent run`
+from .console import DRAgentConsoleFrontEndConfig  # noqa: E402
+
+
+@register_front_end(config_type=DRAgentConsoleFrontEndConfig)
+async def dragent_console_front_end(
+    config: DRAgentConsoleFrontEndConfig, full_config: Config
+) -> AsyncGenerator[typing.Any, None]:
+    from .console import DRAgentConsoleFrontEndPlugin
+
+    yield DRAgentConsoleFrontEndPlugin(full_config=full_config)
+
+
 # Register converters
 GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request)
 GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
@@ -103,3 +113,4 @@ GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_r
 GlobalTypeConverter.register_converter(convert_tool_message_to_str)
 GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
 GlobalTypeConverter.register_converter(convert_dragent_event_response_to_str)
+GlobalTypeConverter.register_converter(convert_dragent_event_response_to_chat_response_chunk)

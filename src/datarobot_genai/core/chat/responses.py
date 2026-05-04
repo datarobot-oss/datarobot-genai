@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import queue
 import time
 import traceback as tb
@@ -32,7 +33,6 @@ from typing import TypeVar
 
 from ag_ui.core import BaseEvent
 from ag_ui.core import Event
-from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -49,6 +49,8 @@ from datarobot_genai.core.agents import default_usage_metrics
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
+
+logger = logging.getLogger(__name__)
 
 
 class CustomModelChatResponse(ChatCompletion):
@@ -144,8 +146,12 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip run lifecycle only; step events are emitted for client step boundaries.
-                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                # Skip only RunStarted: the OpenAI client stream does not replace the
+                # API gateway's own RunStarted (e.g. Fastapi AG-UI layer may emit one first).
+                # Do **not** skip RunFinished: HttpAgent / useAgUiChat rely on RUN_FINISHED
+                # arriving with the model stream; otherwise the UI can stay in "running"
+                # and never process follow-up turns.
+                if isinstance(event, RunStartedEvent):
                     continue
 
                 if isinstance(event, BaseEvent):
@@ -171,6 +177,18 @@ def to_custom_model_streaming_response(
                     )
             except StopAsyncIteration:
                 break
+            except RuntimeError as e:
+                if "Attempted to exit cancel scope" in str(e):
+                    # Known issue: MCP/AnyIO cancel scope may be torn down in a different
+                    # asyncio Task than the one that entered it when streaming is driven via
+                    # repeated run_until_complete(anext(...)). Full async execution avoids this;
+                    # log and continue until a sync-free execution path is available.
+                    logger.warning(
+                        "Ignoring MCP context teardown RuntimeError during streaming: %s",
+                        e,
+                    )
+                    continue
+                raise
         event_loop.run_until_complete(streaming_response_generator.aclose())
         # Yield final chunk indicating end of stream
         choice = ChunkChoice(
@@ -238,8 +256,12 @@ def streaming_iterator_to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip run lifecycle only; step events are emitted for client step boundaries.
-                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                # Skip only RunStarted: the OpenAI client stream does not replace the
+                # API gateway's own RunStarted (e.g. Fastapi AG-UI layer may emit one first).
+                # Do **not** skip RunFinished: HttpAgent / useAgUiChat rely on RUN_FINISHED
+                # arriving with the model stream; otherwise the UI can stay in "running"
+                # and never process follow-up turns.
+                if isinstance(event, RunStartedEvent):
                     continue
 
                 if isinstance(event, BaseEvent):

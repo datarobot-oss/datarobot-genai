@@ -45,9 +45,9 @@ class TestCoreUtilsIntegration:
                 # Tags should be a set (empty or with values)
                 assert isinstance(tags, set)
 
-                # If tool has meta with _fastmcp.tags, verify extraction
+                # If tool has meta with fastmcp.tags, verify extraction
                 if tool.meta and isinstance(tool.meta, dict):
-                    fastmcp_meta = tool.meta.get("_fastmcp")
+                    fastmcp_meta = tool.meta.get("fastmcp")
                     if fastmcp_meta and isinstance(fastmcp_meta, dict):
                         meta_tags = fastmcp_meta.get("tags")
                         if meta_tags:
@@ -57,7 +57,7 @@ class TestCoreUtilsIntegration:
                             # No tags in meta, should return empty set
                             assert tags == set()
                     else:
-                        # No _fastmcp in meta, should return empty set
+                        # No fastmcp in meta, should return empty set
                         assert tags == set()
                 else:
                     # No meta or meta is not dict, should return empty set
@@ -81,7 +81,7 @@ class TestCoreUtilsIntegration:
 
                 # Verify tags match what's in meta if present
                 if tool.meta and isinstance(tool.meta, dict):
-                    fastmcp_meta = tool.meta.get("_fastmcp")
+                    fastmcp_meta = tool.meta.get("fastmcp")
                     if fastmcp_meta and isinstance(fastmcp_meta, dict):
                         meta_tags = fastmcp_meta.get("tags")
                         if meta_tags:

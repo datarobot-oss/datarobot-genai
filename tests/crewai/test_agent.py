@@ -15,14 +15,27 @@
 # ruff: noqa: I001
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from crewai.types.streaming import CrewStreamingOutput
+from crewai.types.streaming import StreamChunk
+from crewai.types.streaming import StreamChunkType
 import pytest
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
+from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -30,10 +43,22 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.verify import validate_sequence
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.agent import CrewAIAgent
+from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
 
 
 # --- Test helpers ---
+
+
+def _mock_crewai_agent() -> MagicMock:
+    agent = MagicMock()
+    agent.llm = None
+    agent.function_calling_llm = None
+    agent.tools = []
+    agent.verbose = True
+    return agent
 
 
 class CrewForTest:
@@ -41,6 +66,7 @@ class CrewForTest:
         self.args = args
         self.kwargs = kwargs
         self.output = output
+        self.verbose = True
 
     async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[name-defined]
         return self.output or CrewOutput(raw="final-output")
@@ -53,6 +79,72 @@ class ListenerForTest:
 
     def setup_listeners(self, crewai_event_bus: Any) -> None:
         self.called_setup = True
+
+
+class FakeMemoryClient(BaseMemoryClient):
+    def __init__(self, retrieved: str = "saved memory") -> None:
+        self.retrieved = retrieved
+        self.retrieve_calls: list[dict[str, Any]] = []
+        self.store_calls: list[dict[str, Any]] = []
+
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        self.retrieve_calls.append(
+            {
+                "prompt": prompt,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+        return self.retrieved
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        self.store_calls.append(
+            {
+                "user_message": user_message,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+
+
+class FailingMemoryClient(BaseMemoryClient):
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        raise RuntimeError("mem0 retrieve unavailable")
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        raise RuntimeError("mem0 store unavailable")
 
 
 @pytest.fixture
@@ -68,23 +160,28 @@ def mock_ragas_event_listener() -> ListenerForTest:
 
 
 class AgentForTest(CrewAIAgent):
-    def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any) -> None:
+        crew_kw = kwargs.pop("crew", None)
         self.crew_output = crew_output
+        self._crew_for_test: Any = crew_kw if crew_kw is not None else CrewForTest(crew_output)
+        self._agents_for_test: list[MagicMock] = [_mock_crewai_agent(), _mock_crewai_agent()]
+        self._tasks_for_test: list[MagicMock] = [MagicMock(), MagicMock()]
+        super().__init__(*args, **kwargs)
 
     @property
     def agents(self) -> list[Any]:
-        return [object()]
+        return self._agents_for_test
 
     @property
     def tasks(self) -> list[Any]:
-        return [object()]
+        return self._tasks_for_test
 
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
         return {"topic": user_prompt_content}
 
+    @property
     def crew(self) -> Any:
-        return CrewForTest(self.crew_output)
+        return self._crew_for_test
 
 
 # --- Tests for create_pipeline_interactions_from_messages ---
@@ -105,13 +202,6 @@ def test_create_pipeline_interactions_from_messages_returns_sample() -> None:
 
 
 @pytest.fixture
-def patch_mcp_tools_context() -> None:
-    with patch("datarobot_genai.crewai.agent.mcp_tools_context") as mock_mcp_tools_context:
-        mock_mcp_tools_context.return_value.__enter__.return_value = ["tool1"]
-        yield mock_mcp_tools_context
-
-
-@pytest.fixture
 def run_agent_input() -> RunAgentInput:
     return RunAgentInput(
         messages=[UserMessage(content="{}", id="message_id")],
@@ -124,21 +214,32 @@ def run_agent_input() -> RunAgentInput:
     )
 
 
-async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event_listener) -> None:
+@pytest.fixture
+def run_agent_input_with_structured_prompt() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[UserMessage(content='{"topic": "AI"}', id="message_id")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+async def test_invoke(run_agent_input, mock_ragas_event_listener) -> None:
     # GIVEN agent with predefined crew output and forwarded headers
     out = CrewOutput(
         raw="agent result",
         token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
     )
     forwarded_headers = {"header-name": "header-value"}
-    authorization_context = {"x-datarobot-api-key": "scoped-token-123"}
     agent = AgentForTest(
         out,
         api_base="https://x/",
         api_key="k",
         verbose=True,
         forwarded_headers=forwarded_headers,
-        authorization_context=authorization_context,
     )
 
     # WHEN invoke agent is called
@@ -147,15 +248,6 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
     # THEN response is an async generator
     assert isinstance(gen, AsyncGenerator)
     events = [event async for event in gen]
-
-    # THEN MCP context was called with forwarded headers and authorization context
-    patch_mcp_tools_context.assert_called_once_with(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
-
-    # THEN MCP tools are set
-    assert agent.mcp_tools == ["tool1"]
 
     # THEN ragas event listener was setup
     assert mock_ragas_event_listener.called_setup
@@ -190,7 +282,7 @@ async def test_invoke(run_agent_input, patch_mcp_tools_context, mock_ragas_event
 
 
 async def test_invoke_does_not_include_chat_history_by_default(
-    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -200,8 +292,9 @@ async def test_invoke_does_not_include_chat_history_by_default(
             return super().kickoff_async(inputs=inputs)
 
     out = CrewOutput(raw="agent result")
-    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    agent = AgentForTest(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
@@ -210,7 +303,7 @@ async def test_invoke_does_not_include_chat_history_by_default(
 
 
 async def test_invoke_overwrites_blank_chat_history_placeholder(
-    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -224,8 +317,9 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
             return {"topic": user_prompt_content, "chat_history": ""}
 
     out = CrewOutput(raw="agent result")
-    agent = AgentWithPlaceholder(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    agent = AgentWithPlaceholder(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
@@ -240,7 +334,7 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
 
 
 async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
-    patch_mcp_tools_context, mock_ragas_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -254,9 +348,608 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
             return {"topic": user_prompt_content, "chat_history": "CUSTOM OVERRIDE"}
 
     out = CrewOutput(raw="agent result")
-    agent = AgentWithOverride(out, api_base="https://x/", api_key="k", verbose=False)
-    agent.crew = lambda: CapturingCrew(out)  # type: ignore[assignment]
+    agent = AgentWithOverride(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
 
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
 
     assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
+
+
+# --- datarobot_agent_class_from_crew ---
+
+
+def test_datarobot_agent_class_from_crew_subclass_and_kickoff_inputs() -> None:
+    crew = MagicMock()
+    crew.verbose = True
+    ca = _mock_crewai_agent()
+    cb = _mock_crewai_agent()
+    ta, tb = MagicMock(), MagicMock()
+
+    def kickoff(u: str) -> dict[str, Any]:
+        return {"topic": u, "extra": 1}
+
+    agent_cls = datarobot_agent_class_from_crew(crew, [ca, cb], [ta, tb], kickoff)
+    assert issubclass(agent_cls, CrewAIAgent)
+
+    instance = agent_cls(api_base="https://x/", api_key="k", verbose=False)
+    assert instance.crew is crew
+    assert instance.agents == [ca, cb]
+    assert instance.tasks == [ta, tb]
+    assert instance.make_kickoff_inputs("hello") == {"topic": "hello", "extra": 1}
+
+
+def test_datarobot_agent_class_from_crew_set_tools_merges_with_original() -> None:
+    crew = MagicMock()
+    crew.verbose = True
+    orig_a = MagicMock()
+    orig_b = MagicMock()
+    mcp_tool = MagicMock()
+
+    ca = _mock_crewai_agent()
+    ca.tools = [orig_a]
+    cb = _mock_crewai_agent()
+    cb.tools = [orig_b]
+
+    agent_cls = datarobot_agent_class_from_crew(
+        crew, [ca, cb], [MagicMock(), MagicMock()], lambda u: {"topic": u}
+    )
+    instance = agent_cls()
+    instance.set_tools([mcp_tool])
+
+    assert ca.tools == [orig_a, mcp_tool]
+    assert cb.tools == [orig_b, mcp_tool]
+    assert instance.tools == [mcp_tool]
+
+
+def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
+    """Pre-built CrewAI agents keep their LLM when BaseAgent is constructed without llm."""
+
+    class _Agent(CrewAIAgent):
+        def __init__(self) -> None:
+            self._preserved = object()
+            self._inner = _mock_crewai_agent()
+            self._inner.llm = self._preserved
+            self._inner.function_calling_llm = self._preserved
+            self._test_crew = CrewForTest()
+            super().__init__(api_key="k", api_base="https://x/", verbose=False)
+
+        @property
+        def agents(self) -> list[Any]:
+            return [self._inner]
+
+        @property
+        def tasks(self) -> list[Any]:
+            return [MagicMock()]
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content}
+
+        @property
+        def crew(self) -> Any:
+            return self._test_crew
+
+    agent = _Agent()
+    assert agent._inner.llm is agent._preserved
+    assert agent._inner.function_calling_llm is agent._preserved
+
+
+def test_crewai_agent_init_accepts_roles_goals_backstories() -> None:
+    agent = AgentForTest(
+        verbose=False,
+        roles=["R0", "R1"],
+        goals=["G0", "G1"],
+        backstories=["B0", "B1"],
+    )
+    a0, a1 = agent._agents_for_test
+    assert a0.role == "R0" and a1.role == "R1"
+    assert a0.goal == "G0" and a1.goal == "G1"
+    assert a0.backstory == "B0" and a1.backstory == "B1"
+
+
+def test_crewai_agent_init_accepts_execution_settings() -> None:
+    agent = AgentForTest(
+        verbose=False,
+        max_iter=12,
+        max_rpm=15,
+        max_execution_time=120,
+        allow_delegation=False,
+        max_retry_limit=3,
+        reasoning=True,
+        max_reasoning_attempts=2,
+    )
+    a0, a1 = agent._agents_for_test
+    assert a0.max_iter == 12 and a1.max_iter == 12
+    assert a0.max_rpm == 15 and a1.max_rpm == 15
+    assert a0.max_execution_time == 120 and a1.max_execution_time == 120
+    assert a0.allow_delegation is False and a1.allow_delegation is False
+    assert a0.max_retry_limit == 3 and a1.max_retry_limit == 3
+    assert a0.reasoning is True and a1.reasoning is True
+    assert a0.max_reasoning_attempts == 2 and a1.max_reasoning_attempts == 2
+
+
+def test_crewai_agent_set_roles_goals_backstories_per_agent() -> None:
+    agent = AgentForTest(verbose=False)
+    a0, a1 = agent._agents_for_test
+    a0.role = a0.goal = a0.backstory = "orig0"
+    a1.role = a1.goal = a1.backstory = "orig1"
+
+    agent.set_roles(["Planner", "Writer"])
+    agent.set_goals(["Plan {topic}", "Write about {topic}"])
+    agent.set_backstories(["bs0", "bs1"])
+
+    assert a0.role == "Planner"
+    assert a1.role == "Writer"
+    assert a0.goal == "Plan {topic}"
+    assert a1.goal == "Write about {topic}"
+    assert a0.backstory == "bs0"
+    assert a1.backstory == "bs1"
+
+
+def test_crewai_agent_set_roles_length_mismatch() -> None:
+    agent = AgentForTest(verbose=False)
+    with pytest.raises(ValueError, match="roles length"):
+        agent.set_roles(["only-one"])
+
+
+def test_crewai_agent_singular_setters_require_index_when_multiple_agents() -> None:
+    agent = AgentForTest(verbose=False)
+    with pytest.raises(ValueError, match="set_role"):
+        agent.set_role("X")
+
+
+def test_crewai_agent_singular_setters_with_agent_index() -> None:
+    agent = AgentForTest(verbose=False)
+    a0, a1 = agent._agents_for_test
+    agent.set_role("R1", agent_index=1)
+    agent.set_goal("G0", agent_index=0)
+    agent.set_backstory("B1", agent_index=1)
+    assert a0.role != "R1"
+    assert a1.role == "R1"
+    assert a0.goal == "G0"
+    assert a1.backstory == "B1"
+
+
+def test_crewai_agent_singular_setters_single_agent_without_index() -> None:
+    class SingleAgentForTest(CrewAIAgent):
+        def __init__(self) -> None:
+            self._only = _mock_crewai_agent()
+            super().__init__(verbose=False)
+
+        @property
+        def agents(self) -> list[Any]:
+            return [self._only]
+
+        @property
+        def tasks(self) -> list[Any]:
+            return [MagicMock()]
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content}
+
+        @property
+        def crew(self) -> Any:
+            return CrewForTest()
+
+    agent = SingleAgentForTest()
+    agent.set_role("Solo")
+    agent.set_goal("Do {topic}")
+    agent.set_backstory("solo-bs")
+    assert agent._only.role == "Solo"
+    assert agent._only.goal == "Do {topic}"
+    assert agent._only.backstory == "solo-bs"
+
+
+async def test_invoke_retrieves_and_stores_memory(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    class AgentWithMemory(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": ""}
+
+    # GIVEN a CrewAI agent whose kickoff inputs opt into memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemory(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+        crew=CapturingCrew(out),
+    )
+
+    # WHEN invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN the retrieved memory is injected and the user prompt is persisted after success
+    assert captured_inputs["memory"] == "Use concise answers."
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": '{"topic": "AI"}',
+            "run_id": None,
+            "agent_id": "AgentWithMemory",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == [
+        {
+            "user_message": '{"topic": "AI"}',
+            "run_id": "run_id",
+            "agent_id": "AgentWithMemory",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+async def test_invoke_skips_memory_when_prompt_does_not_use_it(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    # GIVEN a CrewAI agent whose kickoff inputs do not opt into memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentForTest(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+    )
+
+    # WHEN invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN memory retrieval and storage are both skipped
+    assert memory_client.retrieve_calls == []
+    assert memory_client.store_calls == []
+
+
+async def test_invoke_does_not_overwrite_non_empty_memory_override(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    class AgentWithMemoryOverride(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": "CUSTOM MEMORY"}
+
+    # GIVEN a CrewAI agent that provides its own memory override
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemoryOverride(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+        crew=CapturingCrew(out),
+    )
+
+    # WHEN invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN the explicit override is preserved and the turn is still stored
+    assert captured_inputs["memory"] == "CUSTOM MEMORY"
+    assert memory_client.retrieve_calls == []
+    assert memory_client.store_calls == [
+        {
+            "user_message": '{"topic": "AI"}',
+            "run_id": "run_id",
+            "agent_id": "AgentWithMemoryOverride",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+async def test_invoke_gracefully_degrades_when_memory_fails(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return await super().kickoff_async(inputs=inputs)
+
+    class AgentWithMemory(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": ""}
+
+    # GIVEN a CrewAI agent whose memory provider errors at runtime
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemory(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=FailingMemoryClient(),
+        crew=CapturingCrew(out),
+    )
+
+    # WHEN invoke is called
+    events = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN the run still completes and the memory placeholder remains empty
+    assert events
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert captured_inputs["memory"] == ""
+
+
+async def test_invoke_does_not_store_memory_when_run_fails(
+    mock_ragas_event_listener, run_agent_input_with_structured_prompt
+) -> None:
+    class FailingCrew(CrewForTest):
+        async def kickoff_async(
+            self, *, inputs: dict[str, Any]
+        ) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            raise RuntimeError("crew failed")
+
+    class AgentWithMemory(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "memory": ""}
+
+    # GIVEN a CrewAI agent whose run fails after retrieving memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithMemory(
+        out,
+        api_base="https://x/",
+        api_key="k",
+        verbose=False,
+        memory_client=memory_client,
+        crew=FailingCrew(out),
+    )
+
+    # WHEN invoke is called and the crew fails
+    with pytest.raises(RuntimeError, match="crew failed"):
+        _ = [event async for event in agent.invoke(run_agent_input_with_structured_prompt)]
+
+    # THEN retrieval may happen, but storage is skipped because the run never finishes
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": '{"topic": "AI"}',
+            "run_id": None,
+            "agent_id": "AgentWithMemory",
+            "app_id": "tests.crewai.test_agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == []
+
+
+# --- Streaming AG-UI message-lifecycle tests ---
+
+
+def _text_chunk(content: str, agent_role: str) -> StreamChunk:
+    return StreamChunk(
+        content=content,
+        chunk_type=StreamChunkType.TEXT,
+        agent_role=agent_role,
+        task_name=f"{agent_role}-task",
+    )
+
+
+class _FakeStreamingOutput(CrewStreamingOutput):
+    """CrewStreamingOutput double that yields a fixed chunk list and a result."""
+
+    def __init__(self, chunks: list[StreamChunk], result: CrewOutput) -> None:
+        super().__init__(async_iterator=self._iter(chunks))
+        self._fixed_result = result
+
+    @staticmethod
+    async def _iter(chunks: list[StreamChunk]):  # type: ignore[no-untyped-def]
+        for c in chunks:
+            yield c
+
+    @property
+    def result(self) -> CrewOutput:  # type: ignore[override]
+        return self._fixed_result
+
+
+async def test_invoke_streaming_emits_separate_messages_per_agent_role(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that emits chunks under two different agent roles
+    chunks = [
+        _text_chunk("plan-a", "Planner"),
+        _text_chunk("plan-b", "Planner"),
+        _text_chunk("write-a", "Writer"),
+        _text_chunk("write-b", "Writer"),
+    ]
+    result = CrewOutput(
+        raw="ignored",
+        token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
+    )
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN each step gets its own TEXT_MESSAGE_START / _END pair
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(starts) == 2, "expected one TEXT_MESSAGE_START per agent role"
+    assert len(ends) == 2, "expected one TEXT_MESSAGE_END per agent role"
+
+    # THEN the two messages have distinct ids
+    assert starts[0].message_id != starts[1].message_id
+
+    # THEN content events are partitioned by message_id (no cross-agent leakage)
+    by_id: dict[str, list[str]] = {}
+    for c in contents:
+        by_id.setdefault(c.message_id, []).append(c.delta)
+    assert by_id[starts[0].message_id] == ["plan-a", "plan-b"]
+    assert by_id[starts[1].message_id] == ["write-a", "write-b"]
+
+    # THEN each step boundary is closed before the next one opens
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+    # THEN the Planner's TEXT_MESSAGE_END is emitted before STEP_FINISHED Planner,
+    # which is emitted before STEP_STARTED Writer.
+    planner_end_idx = events.index(ends[0])
+    planner_step_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    writer_step_start_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepStartedEvent) and e.step_name == "Writer"
+    )
+    assert planner_end_idx < planner_step_finish_idx < writer_step_start_idx
+
+
+async def test_invoke_streaming_single_agent_role_uses_single_message(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that only emits chunks for one agent role
+    chunks = [
+        _text_chunk("hello-", "Solo"),
+        _text_chunk("world", "Solo"),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and there is exactly one text message
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    assert len(starts) == 1
+    assert len(ends) == 1
+    assert starts[0].message_id == ends[0].message_id
+
+
+async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew where the first agent emits a reasoning chunk and
+    # the second agent emits a normal text chunk. The agent_role transition
+    # must close REASONING_MESSAGE_END and REASONING_END for the outgoing step
+    # before STEP_FINISHED is emitted.
+    planner_chunk = _text_chunk("plan-thoughts", "Planner")
+    writer_chunk = _text_chunk("write-text", "Writer")
+    result = CrewOutput(raw="ignored")
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.step_event = False
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _ReasoningTransitionStreamingOutput(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            captured[0].reasoning_event = True
+            yield planner_chunk
+            captured[0].reasoning_event = False
+            yield writer_chunk
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return result
+
+    streaming = _ReasoningTransitionStreamingOutput()
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        _CapturingStreamingListener,
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN the Planner emits exactly one reasoning lifecycle and the Writer
+    # emits exactly one text lifecycle
+    reasoning_starts = [e for e in events if isinstance(e, ReasoningStartEvent)]
+    reasoning_msg_starts = [e for e in events if isinstance(e, ReasoningMessageStartEvent)]
+    reasoning_contents = [e for e in events if isinstance(e, ReasoningMessageContentEvent)]
+    reasoning_msg_ends = [e for e in events if isinstance(e, ReasoningMessageEndEvent)]
+    reasoning_ends = [e for e in events if isinstance(e, ReasoningEndEvent)]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    text_contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(reasoning_starts) == 1
+    assert len(reasoning_msg_starts) == 1
+    assert len(reasoning_msg_ends) == 1
+    assert len(reasoning_ends) == 1
+    assert len(text_starts) == 1
+    assert len(text_ends) == 1
+
+    # THEN reasoning content is on the Planner's message_id and text content
+    # is on a fresh message_id (no cross-agent leakage)
+    planner_id = reasoning_starts[0].message_id
+    writer_id = text_starts[0].message_id
+    assert planner_id != writer_id
+    assert reasoning_msg_starts[0].message_id == planner_id
+    assert reasoning_msg_ends[0].message_id == planner_id
+    assert reasoning_ends[0].message_id == planner_id
+    assert [c.delta for c in reasoning_contents if c.message_id == planner_id] == ["plan-thoughts"]
+    assert text_ends[0].message_id == writer_id
+    assert [c.delta for c in text_contents if c.message_id == writer_id] == ["write-text"]
+
+    # THEN REASONING_MESSAGE_END and REASONING_END are emitted before
+    # STEP_FINISHED Planner, which is emitted before STEP_STARTED Writer
+    reasoning_msg_end_idx = events.index(reasoning_msg_ends[0])
+    reasoning_end_idx = events.index(reasoning_ends[0])
+    planner_step_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    writer_step_start_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepStartedEvent) and e.step_name == "Writer"
+    )
+    assert (
+        reasoning_msg_end_idx < reasoning_end_idx < planner_step_finish_idx < writer_step_start_idx
+    )

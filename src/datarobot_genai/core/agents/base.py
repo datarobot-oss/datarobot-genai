@@ -18,6 +18,7 @@ import abc
 import json
 import logging
 import os
+import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
@@ -29,6 +30,7 @@ from typing import TypeVar
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -50,14 +52,95 @@ class BaseAgent(Generic[TTool], abc.ABC):
     Fields:
       - api_key: DataRobot API token
       - api_base: Endpoint for DataRobot, normalized for LLM Gateway usage
-      - model: Preferred model name
+      - llm: Framework-specific LLM client (constructed outside the agent and passed in)
       - timeout: Request timeout
       - verbose: Verbosity flag
-      - authorization_context: Authorization context for downstream agents/tools
+      - forwarded_headers: Forwarded headers for the agent
       - max_history_messages: Maximum number of prior messages to include in chat history
+      - memory_client: Memory client for the agent
     """
 
-    _max_history_messages: int | None = None
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[TTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+    ) -> None:
+        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
+        self.api_base = (
+            api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
+        )
+        self.set_llm(llm)
+        self.set_tools(tools or [])
+        self.set_timeout(timeout)
+        self.set_verbose(verbose)
+        self.set_memory_client(memory_client)
+        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
+        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
+        self._max_history_messages = max_history_messages
+
+    def set_llm(self, llm: Any | None) -> None:
+        self._llm = llm
+
+    @property
+    def llm(self) -> Any | None:
+        return self._llm
+
+    def set_timeout(self, timeout: int) -> None:
+        self._timeout = timeout
+
+    @property
+    def timeout(self) -> int:
+        return self._timeout
+
+    def set_verbose(self, verbose: bool) -> None:
+        self._verbose = verbose
+
+    @property
+    def verbose(self) -> bool:
+        return self._verbose
+
+    def set_memory_client(self, memory_client: BaseMemoryClient | None) -> None:
+        self._memory_client = memory_client
+
+    @property
+    def memory_client(self) -> BaseMemoryClient | None:
+        return self._memory_client
+
+    def set_tools(self, tools: list[TTool]) -> None:
+        self._tools = tools
+
+    @property
+    def tools(self) -> list[TTool]:
+        """Return the list of tools available to this agent.
+
+        Subclasses can use this to wire tools into the agent.
+        """
+        return self._tools
+
+    def _memory_agent_id(self) -> str:
+        return self.__class__.__name__  # Placeholder for now
+
+    def _memory_app_id(self) -> str:
+        return self.__class__.__module__  # Placeholder for now
+
+    def _memory_attributes(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
+        return {"thread_id": run_agent_input.thread_id}
+
+    @staticmethod
+    def _stringify_memory_value(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(value, sort_keys=True)
+        except TypeError:
+            return str(value)
 
     @property
     def max_history_messages(self) -> int:
@@ -71,56 +154,6 @@ class BaseAgent(Generic[TTool], abc.ABC):
             return self._max_history_messages
         return get_max_history_messages_default()
 
-    def __init__(
-        self,
-        *,
-        api_key: str | None = None,
-        api_base: str | None = None,
-        model: str | None = None,
-        verbose: bool | str | None = True,
-        timeout: int | None = 90,
-        authorization_context: dict[str, Any] | None = None,
-        forwarded_headers: dict[str, str] | None = None,
-        max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
-        **_: Any,
-    ) -> None:
-        self._max_history_messages = max_history_messages
-        self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
-        self.api_base = (
-            api_base or os.environ.get("DATAROBOT_ENDPOINT") or "https://app.datarobot.com"
-        )
-        self.model = model
-        self.timeout = timeout if timeout is not None else 90
-        if isinstance(verbose, str):
-            self.verbose = verbose.lower() == "true"
-        elif verbose is None:
-            self.verbose = True
-        else:
-            self.verbose = bool(verbose)
-        self._mcp_tools: list[TTool] = []
-        self._authorization_context = authorization_context or {}
-        self._forwarded_headers: dict[str, str] = forwarded_headers or {}
-        self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
-        self._memory_client: BaseMemoryClient | None = memory_client
-
-    def set_mcp_tools(self, tools: list[TTool]) -> None:
-        self._mcp_tools = tools
-
-    @property
-    def mcp_tools(self) -> list[TTool]:
-        """Return the list of MCP tools available to this agent.
-
-        Subclasses can use this to wire tools into CrewAI agents/tasks during
-        workflow construction inside ``crew``.
-        """
-        return self._mcp_tools
-
-    @property
-    def authorization_context(self) -> dict[str, Any]:
-        """Return the authorization context for this agent."""
-        return self._authorization_context
-
     @property
     def forwarded_headers(self) -> dict[str, str]:
         """Return the forwarded headers for this agent."""
@@ -132,6 +165,33 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @abc.abstractmethod
     def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
+
+    async def invoke_single_message(self, user_message: str) -> InvokeReturn:
+        """
+        Invoke the agent without chat history with a single user message.
+
+        Parameters
+        ----------
+        user_message: str
+            The user message to invoke the agent with.
+
+        Returns
+        -------
+        InvokeReturn
+            Same async stream as :meth:`invoke` for a fresh run with a single user turn.
+        """
+        # Generate a new thread and run ID
+        run_input = RunAgentInput(
+            thread_id=str(uuid.uuid4()),
+            run_id=str(uuid.uuid4()),
+            messages=[UserMessage(id=str(uuid.uuid4()), role="user", content=user_message)],
+            state=[],
+            tools=[],
+            context=[],
+            forwardedProps=None,
+        )
+        async for output in self.invoke(run_input):
+            yield output
 
     def build_history_summary(
         self,
@@ -196,6 +256,31 @@ class BaseAgent(Generic[TTool], abc.ABC):
             agent_id=agent_id,
             app_id=app_id,
             attributes=attributes,
+        )
+
+    async def retrieve_memory_for_run(
+        self,
+        prompt: Any,
+        run_agent_input: RunAgentInput,
+    ) -> str:
+        return await self.retrieve_memory(
+            prompt=self._stringify_memory_value(prompt),
+            agent_id=self._memory_agent_id(),
+            app_id=self._memory_app_id(),
+            attributes=self._memory_attributes(run_agent_input),
+        )
+
+    async def store_memory_for_run(
+        self,
+        user_message: Any,
+        run_agent_input: RunAgentInput,
+    ) -> None:
+        await self.store_memory(
+            user_message=self._stringify_memory_value(user_message),
+            run_id=run_agent_input.run_id,
+            agent_id=self._memory_agent_id(),
+            app_id=self._memory_app_id(),
+            attributes=self._memory_attributes(run_agent_input),
         )
 
     @classmethod

@@ -25,6 +25,7 @@ import aiohttp
 from aiohttp import ClientTimeout
 from aiohttp_retry import ExponentialRetry
 from aiohttp_retry import RetryClient
+from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools.tool import Tool
 from fastmcp.tools.tool import ToolResult
@@ -157,6 +158,17 @@ def _external_tool_callable_factory(
                 headers=headers,
             ) as response:
                 content = await response.read()
+
+                if response.status >= 400:
+                    error_body = content.decode(response.charset or "utf-8", errors="replace")
+                    logger.warning(
+                        f"External tool request failed with status {response.status}",
+                        extra={
+                            "url": url,
+                            "error_body": error_body,
+                        },
+                    )
+                    raise ToolError(f"HTTP {response.status} error from deployment: {error_body}")
 
                 return format_response_as_tool_result(
                     data=content,

@@ -23,13 +23,12 @@ from typing import Any
 from typing import Literal
 
 import httpx
-from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from pypdf import PdfReader
 
-from datarobot_genai.drtools.core.auth import get_access_token
+from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
@@ -80,6 +79,8 @@ async def get_gdrive_access_token() -> str | ToolError:
     """
     Get Google Drive OAuth access token with error handling.
 
+    Uses DataRobot OBO when available; otherwise ``x-datarobot-google-drive-access-token``.
+
     Returns
     -------
         Access token string on success, ToolError on failure
@@ -93,21 +94,11 @@ async def get_gdrive_access_token() -> str | ToolError:
         # Use token
         ```
     """
-    try:
-        access_token = await get_access_token("google")
-        if not access_token:
-            logger.warning("Empty access token received")
-            return ToolError("Received empty access token. Please complete the OAuth flow.")
-        return access_token
-    except OAuthServiceClientErr as e:
-        logger.error(f"OAuth client error: {e}", exc_info=True)
-        return ToolError(
-            "Could not obtain access token for Google. Make sure the OAuth "
-            "permission was granted for the application to act on your behalf."
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error obtaining access token: {e}", exc_info=True)
-        return ToolError("An unexpected error occurred while obtaining access token for Google.")
+    return await get_oauth_access_token_with_header_fallback(
+        "google",
+        display_name="Google",
+        access_token_header_segment="google-drive",
+    )
 
 
 class GoogleDriveError(Exception):

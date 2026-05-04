@@ -16,7 +16,9 @@ from __future__ import annotations
 import abc
 import inspect
 import json
+import logging
 import uuid
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -34,6 +36,9 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
+from llama_index.core.agent.workflow import AgentWorkflow
+from llama_index.core.agent.workflow import BaseWorkflowAgent
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -44,11 +49,12 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-
-from .mcp import load_mcp_tools
+from datarobot_genai.core.memory.base import BaseMemoryClient
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
+
+logger = logging.getLogger(__name__)
 
 
 class DataRobotLiteLLM(LiteLLM):
@@ -69,22 +75,31 @@ class DataRobotLiteLLM(LiteLLM):
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     """Abstract base agent for LlamaIndex workflows."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._mcp_tools: list[Any] = []
-
-    def set_mcp_tools(self, tools: list[Any]) -> None:
-        """Set MCP tools for this agent."""
-        self._mcp_tools = tools
-
-    @property
-    def mcp_tools(self) -> list[Any]:
-        """Return the list of MCP tools available to this agent.
-
-        Subclasses can use this to wire tools into LlamaIndex agents during
-        workflow construction inside ``build_workflow``.
-        """
-        return self._mcp_tools
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[BaseTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+        allow_parallel_tool_calls: bool = True,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            llm=llm,
+            tools=tools,
+            verbose=verbose,
+            timeout=timeout,
+            forwarded_headers=forwarded_headers,
+            max_history_messages=max_history_messages,
+            memory_client=memory_client,
+        )
+        self.allow_parallel_tool_calls = allow_parallel_tool_calls
 
     @abc.abstractmethod
     async def build_workflow(self) -> Any:
@@ -96,14 +111,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Extract final response text from workflow state and/or events."""
         raise NotImplementedError
 
-    def make_input_message(self, run_agent_input: RunAgentInput) -> str:
-        """Create an input string for the workflow from the user prompt."""
-        user_prompt_content = extract_user_prompt_content(run_agent_input)
-        return str(user_prompt_content)
-
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
-        input_message = self.make_input_message(run_agent_input)
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
+        input_message = str(user_prompt_content)
+        uses_memory = "{memory}" in input_message
 
         # Handle {chat_history} placeholder replacement for subclass templates
         if "{chat_history}" in input_message:
@@ -112,20 +124,15 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
             )
             input_message = input_message.replace("{chat_history}", formatted_history)
+        if uses_memory:
+            memory = ""
+            try:
+                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
+            except Exception as exc:
+                logger.warning("LlamaIndex memory retrieval failed: %s", exc)
+            input_message = input_message.replace("{memory}", memory)
 
-        # Load MCP tools (if configured) asynchronously before building workflow
-        mcp_tools = await load_mcp_tools(
-            authorization_context=self.authorization_context,
-            forwarded_headers=self.forwarded_headers,
-        )
-        self.set_mcp_tools(mcp_tools)
-
-        # Preserve prior template startup print for CLI parity
-        try:
-            print("Running agent with user prompt:", input_message, flush=True)
-        except Exception:
-            # Printing is best-effort; proceed regardless
-            pass
+        logger.info(f"Running agent with user prompt: {input_message}")
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
@@ -200,19 +207,35 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     )
                     current_agent_name = agent
                     agent = None
-                    # Print banner for agent switch (do not emit as streamed content)
-                    print("\n" + "=" * 50, flush=True)
-                    print(f"🤖 Agent: {current_agent_name}", flush=True)
-                    print("=" * 50 + "\n", flush=True)
+                    logger.info(f"Agent: {current_agent_name}")
 
             event_type = type(event).__name__
             if event_type == "AgentInput" and hasattr(event, "input"):
-                print("📥 Input:", getattr(event, "input"), flush=True)
+                logger.info(f"Input: {getattr(event, 'input')}")
             elif event_type == "AgentOutput":
                 # Output content
                 resp = getattr(event, "response", None)
                 if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                    print("📤 Output:", getattr(resp, "content"), flush=True)
+                    content_str = str(getattr(resp, "content"))
+                    logger.info(f"Output: {content_str}")
+                    if not text_started:
+                        yield (
+                            TextMessageStartEvent(
+                                type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        text_started = True
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message_id,
+                                delta=content_str,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -227,15 +250,15 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         except Exception:
                             pass
                     if names:
-                        print("🛠️  Planning to use tools:", names, flush=True)
+                        logger.info(f"Planning to use tools: {names}")
             elif event_type == "ToolCallResult":
                 tname = getattr(event, "tool_name", None)
                 tid = getattr(event, "tool_id", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
                 tout = getattr(event, "tool_output", None)
-                print(f"🔧 Tool Result ({tname}):", flush=True)
-                print(f"  Arguments: {tkwargs}", flush=True)
-                print(f"  Output: {tout}", flush=True)
+                logger.info(f"Tool Result: {tname}")
+                logger.debug(f"Arguments: {tkwargs}")
+                logger.debug(f"Output: {tout}")
                 yield (
                     ToolCallEndEvent(
                         type=EventType.TOOL_CALL_END,
@@ -259,8 +282,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
                 tid = getattr(event, "tool_id", None)
-                print(f"🔨 Calling Tool: {tname}", flush=True)
-                print(f"  With arguments: {tkwargs}", flush=True)
+                logger.info(f"Calling Tool: {tname}")
+                logger.debug(f"With arguments: {tkwargs}")
                 yield (
                     ToolCallStartEvent(
                         type=EventType.TOOL_CALL_START,
@@ -313,10 +336,39 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         except (AttributeError, TypeError):
             state = None
 
-        # Run subclass-defined response extraction (not streamed) for completeness
-        _ = self.extract_response_text(state, events)
+        # Use subclass-defined response extraction as final fallback when no text was streamed
+        fallback_text = self.extract_response_text(state, events)
+        if not text_started and fallback_text:
+            yield (
+                TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
+                None,
+                usage_metrics,
+            )
+            yield (
+                TextMessageContentEvent(
+                    type=EventType.TEXT_MESSAGE_CONTENT,
+                    message_id=message_id,
+                    delta=fallback_text,
+                ),
+                None,
+                usage_metrics,
+            )
+            yield (
+                TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=message_id,
+                ),
+                None,
+                usage_metrics,
+            )
+            text_started = True
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
+        if uses_memory:
+            try:
+                await self.store_memory_for_run(user_prompt_content, run_agent_input)
+            except Exception as exc:
+                logger.warning("LlamaIndex memory storage failed: %s", exc)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
@@ -342,3 +394,96 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         ragas_trace = convert_to_ragas_messages(list(events))
         ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
         return MultiTurnSample(user_input=ragas_messages)
+
+
+def datarobot_agent_class_from_llamaindex(
+    workflow: AgentWorkflow,
+    agents: list[BaseWorkflowAgent],
+    extract_response_text: Callable[[Any, list[Any]], str],
+) -> type[LlamaIndexAgent]:
+    """Create a LlamaIndex agent class from a pre-built workflow and agents.
+
+    This is a convenience helper that dynamically builds a concrete
+    :class:`LlamaIndexAgent` subclass so that callers can define an agent
+    entirely from an existing :class:`AgentWorkflow` and its constituent
+    agents without writing a class by hand.
+
+    When the returned class is instantiated, calling ``set_llm`` or
+    ``set_tools`` propagates the LLM / tools to every agent in *agents*
+    while preserving each agent's originally configured tools.
+
+    Parameters
+    ----------
+    workflow : AgentWorkflow
+        A fully configured LlamaIndex :class:`AgentWorkflow` instance that
+        orchestrates the provided agents.
+    agents : list[BaseWorkflowAgent]
+        The list of LlamaIndex workflow agents participating in the workflow.
+        Their ``llm`` and ``tools`` attributes are updated at runtime when the
+        DataRobot platform injects the LLM and MCP tools.
+    extract_response_text : Callable[[Any, list[Any]], str]
+        A callback that extracts the final human-readable response from the
+        workflow result state and the list of streamed events.  Receives
+        ``(result_state, events)`` and must return a ``str``.
+
+    Returns
+    -------
+    type[LlamaIndexAgent]
+        A new :class:`LlamaIndexAgent` subclass wired to the provided
+        workflow, agents, and response extractor.
+    """
+    original_agent_tools = {agent.name: agent.tools for agent in agents}
+
+    class DataRobotLlamaIndexAgent(LlamaIndexAgent):
+        def __init__(
+            self,
+            api_key: str | None = None,
+            api_base: str | None = None,
+            llm: Any | None = None,
+            tools: list[BaseTool] | None = None,
+            verbose: bool = True,
+            timeout: int = 90,
+            forwarded_headers: dict[str, str] | None = None,
+            max_history_messages: int | None = None,
+            memory_client: BaseMemoryClient | None = None,
+            allow_parallel_tool_calls: bool = True,
+        ) -> None:
+            super().__init__(
+                api_key=api_key,
+                api_base=api_base,
+                llm=llm,
+                tools=tools,
+                verbose=verbose,
+                timeout=timeout,
+                forwarded_headers=forwarded_headers,
+                max_history_messages=max_history_messages,
+                memory_client=memory_client,
+                allow_parallel_tool_calls=allow_parallel_tool_calls,
+            )
+            for agent in agents:
+                if isinstance(agent, FunctionAgent):
+                    agent.allow_parallel_tool_calls = allow_parallel_tool_calls
+
+        def set_llm(self, llm: Any) -> None:
+            super().set_llm(llm)
+            for agent in agents:
+                agent.llm = llm
+
+        def set_tools(self, tools: list[BaseTool]) -> None:
+            super().set_tools(tools)
+            for agent in agents:
+                agent.tools = original_agent_tools[agent.name] + tools
+
+        def set_allow_parallel_tool_calls(self, allow_parallel_tool_calls: bool) -> None:
+            self.allow_parallel_tool_calls = allow_parallel_tool_calls
+            for agent in agents:
+                if isinstance(agent, FunctionAgent):
+                    agent.allow_parallel_tool_calls = allow_parallel_tool_calls
+
+        async def build_workflow(self) -> AgentWorkflow:
+            return workflow
+
+        def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
+            return extract_response_text(result_state, events)
+
+    return DataRobotLlamaIndexAgent

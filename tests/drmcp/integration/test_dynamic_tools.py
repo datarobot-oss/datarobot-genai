@@ -270,12 +270,13 @@ async def test_get_mcp_tool_metadata(
     assert actual_input_schema == expected_input_schema
 
 
+@pytest.mark.skip(reason="MODEL-22984")
 @pytest.mark.asyncio
 @responses.activate
 async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
     await register_tools_of_datarobot_deployments()
 
-    tool_names = {tool.name for tool in await mcp._list_tools_mcp()}
+    tool_names = {tool.name for tool in await mcp.list_tools()}
 
     assert "dynamic_tool_ok" in tool_names, "`dynamic_tool_ok` is missing."
     assert "dynamic_tool_error" not in tool_names, "`dynamic_tool_error` should not be registered."

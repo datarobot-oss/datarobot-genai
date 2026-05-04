@@ -24,13 +24,18 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import logging
 import uuid
+from collections.abc import Callable
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from typing import Any
 
 from ag_ui.core import EventType
 from ag_ui.core import ReasoningEndEvent
 from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
@@ -41,8 +46,11 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from crewai import Agent
 from crewai import Crew
+from crewai import Task
 from crewai.events import crewai_event_bus
+from crewai.llm import LLM
 from crewai.tools import BaseTool
 from crewai.types.streaming import CrewStreamingOutput
 from crewai.types.streaming import StreamChunkType
@@ -55,13 +63,13 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
-from .mcp import mcp_tools_context
-
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
     from ragas.messages import AIMessage
     from ragas.messages import HumanMessage
     from ragas.messages import ToolMessage
+
+logger = logging.getLogger(__name__)
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
@@ -69,25 +77,200 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
     Subclasses should define the ``agents`` and ``tasks`` properties
     and may override ``crew`` to customize the workflow construction.
+
+    Optional keyword arguments may be passed to :meth:`__init__` after
+    ``BaseAgent`` parameters:
+
+    - ``roles``, ``goals``, ``backstories``: sequences with length
+      ``len(agents)`` for CrewAI identity; omitted or ``None`` leaves agents
+      unchanged.
+    - ``max_iter``, ``max_rpm``, ``max_execution_time``, ``allow_delegation``,
+      ``max_retry_limit``, ``reasoning``, ``max_reasoning_attempts``: forwarded
+      to the corresponding ``set_*`` methods; omitted or ``None`` skips.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        roles = kwargs.pop("roles", None)
+        goals = kwargs.pop("goals", None)
+        backstories = kwargs.pop("backstories", None)
+        max_iter = kwargs.pop("max_iter", None)
+        max_rpm = kwargs.pop("max_rpm", None)
+        max_execution_time = kwargs.pop("max_execution_time", None)
+        allow_delegation = kwargs.pop("allow_delegation", None)
+        max_retry_limit = kwargs.pop("max_retry_limit", None)
+        reasoning = kwargs.pop("reasoning", None)
+        max_reasoning_attempts = kwargs.pop("max_reasoning_attempts", None)
+        super().__init__(*args, **kwargs)
+        if roles is not None:
+            self.set_roles(roles)
+        if goals is not None:
+            self.set_goals(goals)
+        if backstories is not None:
+            self.set_backstories(backstories)
+        if max_iter is not None:
+            self.set_max_iter(max_iter)
+        if max_rpm is not None:
+            self.set_max_rpm(max_rpm)
+        if max_execution_time is not None:
+            self.set_max_execution_time(max_execution_time)
+        if allow_delegation is not None:
+            self.set_allow_delegation(allow_delegation)
+        if max_retry_limit is not None:
+            self.set_max_retry_limit(max_retry_limit)
+        if reasoning is not None:
+            self.set_reasoning(reasoning)
+        if max_reasoning_attempts is not None:
+            self.set_max_reasoning_attempts(max_reasoning_attempts)
+
+    def set_llm(self, llm: LLM | None) -> None:
+        super().set_llm(llm)
+        if llm is None:
+            return
+        for agent in self.agents:
+            agent.llm = llm
+            agent.function_calling_llm = llm
+
+    def set_tools(self, tools: list[BaseTool]) -> None:
+        super().set_tools(tools)
+        for agent in self.agents:
+            agent.tools = tools
+
+    def set_verbose(self, verbose: bool) -> None:
+        super().set_verbose(verbose)
+        for agent in self.agents:
+            agent.verbose = verbose
+
+        self.crew.verbose = verbose
+
+    def set_roles(self, roles: Sequence[str]) -> None:
+        """Set each agent's ``role``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(roles) != len(agents):
+            raise ValueError(
+                f"roles length ({len(roles)}) must match number of agents ({len(agents)})"
+            )
+        for agent, role in zip(agents, roles, strict=True):
+            agent.role = role
+
+    def set_goals(self, goals: Sequence[str]) -> None:
+        """Set each agent's ``goal``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(goals) != len(agents):
+            raise ValueError(
+                f"goals length ({len(goals)}) must match number of agents ({len(agents)})"
+            )
+        for agent, goal in zip(agents, goals, strict=True):
+            agent.goal = goal
+
+    def set_backstories(self, backstories: Sequence[str]) -> None:
+        """Set each agent's ``backstory``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(backstories) != len(agents):
+            raise ValueError(
+                f"backstories ({len(backstories)}) must match number of agents ({len(agents)})"
+            )
+        for agent, backstory in zip(agents, backstories, strict=True):
+            agent.backstory = backstory
+
+    def set_role(self, role: str, *, agent_index: int | None = None) -> None:
+        """Set ``role`` on one agent.
+
+        With multiple agents, pass ``agent_index`` (0-based). If omitted and there is
+        exactly one agent, that agent is updated. With multiple agents and no index,
+        use :meth:`set_roles` instead.
+        """
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_role(role) without agent_index requires exactly one agent; "
+                    "use set_roles() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].role = role
+
+    def set_goal(self, goal: str, *, agent_index: int | None = None) -> None:
+        """Set ``goal`` on one agent. See :meth:`set_role`."""
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_goal(goal) without agent_index requires exactly one agent; "
+                    "use set_goals() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].goal = goal
+
+    def set_backstory(self, backstory: str, *, agent_index: int | None = None) -> None:
+        """Set ``backstory`` on one agent. See :meth:`set_role`."""
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_backstory(backstory) without agent_index requires exactly one agent; "
+                    "use set_backstories() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].backstory = backstory
+
+    def set_max_iter(self, max_iter: int) -> None:
+        for agent in self.agents:
+            agent.max_iter = max_iter
+
+    def set_max_rpm(self, max_rpm: int) -> None:
+        for agent in self.agents:
+            agent.max_rpm = max_rpm
+
+    def set_max_execution_time(self, max_execution_time: int | None) -> None:
+        for agent in self.agents:
+            agent.max_execution_time = max_execution_time
+
+    def set_allow_delegation(self, allow_delegation: bool) -> None:
+        for agent in self.agents:
+            agent.allow_delegation = allow_delegation
+
+    def set_max_retry_limit(self, max_retry_limit: int) -> None:
+        for agent in self.agents:
+            agent.max_retry_limit = max_retry_limit
+
+    def set_reasoning(self, reasoning: bool) -> None:
+        for agent in self.agents:
+            agent.reasoning = reasoning
+
+    def set_max_reasoning_attempts(self, max_reasoning_attempts: int | None) -> None:
+        for agent in self.agents:
+            agent.max_reasoning_attempts = max_reasoning_attempts
+
     @property
     @abc.abstractmethod
-    def agents(self) -> list[Any]:  # CrewAI Agent list
+    def agents(self) -> list[Agent]:  # CrewAI Agent list
         raise NotImplementedError
 
     @property
     @abc.abstractmethod
-    def tasks(self) -> list[Any]:  # CrewAI Task list
+    def tasks(self) -> list[Task]:  # CrewAI Task list
         raise NotImplementedError
 
+    @property
     def crew(self) -> Crew:
         """Create a CrewAI workflow instance.
 
         Default implementation constructs a Crew with provided agents and tasks.
         Subclasses can override to customize Crew options.
         """
-        return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose)
+        return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True)
 
     @abc.abstractmethod
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -107,6 +290,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
           present, the base class will populate it with a plain-text summary
           of prior conversation turns. Use ``{chat_history}`` in agent
           goals/backstories or task descriptions to reference it.
+
+        - ``memory`` (optional): Include this key with an empty string value
+          (``""``) to opt into automatic memory retrieval. When present, the
+          base class will populate it with relevant long-term memory before
+          kickoff and store the user turn after a successful run. Use
+          ``{memory}`` in agent goals/backstories or task descriptions to
+          reference it.
 
         Returns
         -------
@@ -162,12 +352,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
-        # Preserve prior template startup print for CLI parity
-        try:
-            print("Running agent with user prompt:", user_prompt_content, flush=True)
-        except Exception:
-            # Printing is best-effort; proceed regardless
-            pass
+        logger.info(
+            f"Running agent with user prompt: {user_prompt_content}",
+        )
 
         thread_id = run_agent_input.thread_id
         run_id = run_agent_input.run_id
@@ -187,171 +374,310 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         pipeline_interactions: MultiTurnSample | None = None
         usage_metrics = default_usage_metrics()
 
-        # Use MCP context manager to handle connection lifecycle
-        with mcp_tools_context(
-            authorization_context=self.authorization_context,
-            forwarded_headers=self.forwarded_headers,
-        ) as mcp_tools:
-            # Set MCP tools for all agents if MCP is not configured this is effectively a no-op
-            self.set_mcp_tools(mcp_tools)
+        with crewai_event_bus.scoped_handlers():
+            ragas_event_listener = CrewAIRagasEventListener()
+            ragas_event_listener.setup_listeners(crewai_event_bus)
+            streaming_event_listener = CrewAIStreamingEventListener()
+            streaming_event_listener.setup_listeners(crewai_event_bus)
 
-            with crewai_event_bus.scoped_handlers():
-                ragas_event_listener = CrewAIRagasEventListener()
-                ragas_event_listener.setup_listeners(crewai_event_bus)
-                streaming_event_listener = CrewAIStreamingEventListener()
-                streaming_event_listener.setup_listeners(crewai_event_bus)
+            crew = self.crew
 
-                crew = self.crew()
+            kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
+            # Chat history is opt-in: only populate it if the agent/template
+            # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
+            # in prompts).
+            if "chat_history" in kickoff_inputs:
+                history_summary = self.build_history_summary(run_agent_input)
+                existing_history_text = str(kickoff_inputs.get("chat_history") or "")
 
-                kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
-                # Chat history is opt-in: only populate it if the agent/template
-                # declares a `chat_history` kickoff input (i.e. it uses `{chat_history}`
-                # in prompts).
-                if "chat_history" in kickoff_inputs:
-                    history_summary = self.build_history_summary(run_agent_input)
-                    existing_history_text = str(kickoff_inputs.get("chat_history") or "")
-
-                    if history_summary and not existing_history_text.strip():
-                        kickoff_inputs["chat_history"] = (
-                            f"\n\nPrior conversation:\n{history_summary}"
+                if history_summary and not existing_history_text.strip():
+                    kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
+            if "memory" in kickoff_inputs:
+                existing_memory_text = str(kickoff_inputs.get("memory") or "")
+                if not existing_memory_text.strip():
+                    try:
+                        kickoff_inputs["memory"] = await self.retrieve_memory_for_run(
+                            user_prompt_content,
+                            run_agent_input,
                         )
-                message_id = str(uuid.uuid4())
-                crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
+                    except Exception as exc:
+                        logger.warning("CrewAI memory retrieval failed: %s", exc)
+            crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
+            current_agent_role = ""
+            message_id = str(uuid.uuid4())
 
-                if isinstance(crew_output, CrewStreamingOutput):
-                    current_task = ""
-                    reasoning_started = False
-                    step_started = False
-                    text_started = False
-                    async for chunk in crew_output:
-                        # Show task transitions
-                        if chunk.task_name != current_task:
-                            current_task = chunk.task_name
-                            print(f"\n[{chunk.agent_role}] Working on: {chunk.task_name}")
-                            print("-" * 60)
-
-                        if streaming_event_listener.reasoning_event:
-                            if not reasoning_started:
+            if isinstance(crew_output, CrewStreamingOutput):
+                reasoning_started = False
+                text_started = False
+                async for chunk in crew_output:
+                    # Show task transitions
+                    logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
+                    if chunk.agent_role != current_agent_role:
+                        logger.info(f"[{chunk.agent_role}] Working on task: {chunk.task_name}")
+                        if current_agent_role:
+                            # Close any open text/reasoning message scoped to the
+                            # outgoing step so each step gets its own AG-UI message
+                            # with a unique message_id.
+                            if text_started:
                                 yield (
-                                    ReasoningStartEvent(
-                                        type=EventType.REASONING_START,
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
                                         message_id=message_id,
                                     ),
                                     None,
                                     zero_metrics,
                                 )
-                                reasoning_started = True
-                        elif reasoning_started:
+                                text_started = False
+                            if reasoning_started:
+                                yield (
+                                    ReasoningMessageEndEvent(
+                                        type=EventType.REASONING_MESSAGE_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                yield (
+                                    ReasoningEndEvent(
+                                        type=EventType.REASONING_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                reasoning_started = False
                             yield (
-                                ReasoningEndEvent(
-                                    type=EventType.REASONING_END,
+                                StepFinishedEvent(
+                                    type=EventType.STEP_FINISHED,
+                                    step_name=current_agent_role,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
+                            message_id = str(uuid.uuid4())
+                        yield (
+                            StepStartedEvent(
+                                type=EventType.STEP_STARTED,
+                                step_name=chunk.agent_role,
+                            ),
+                            None,
+                            zero_metrics,
+                        )
+                        current_agent_role = chunk.agent_role
+
+                    if streaming_event_listener.reasoning_event:
+                        if not reasoning_started:
+                            yield (
+                                ReasoningStartEvent(
+                                    type=EventType.REASONING_START,
                                     message_id=message_id,
                                 ),
                                 None,
                                 zero_metrics,
                             )
-                            reasoning_started = False
-
-                        if streaming_event_listener.step_event:
-                            if not step_started:
-                                yield (
-                                    StepStartedEvent(
-                                        type=EventType.STEP_STARTED,
-                                        step_name=current_task,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                                step_started = True
-                        elif step_started:
                             yield (
-                                StepFinishedEvent(
-                                    type=EventType.STEP_FINISHED,
-                                    step_name=current_task,
+                                ReasoningMessageStartEvent(
+                                    type=EventType.REASONING_MESSAGE_START,
+                                    message_id=message_id,
+                                    role="reasoning",
                                 ),
                                 None,
                                 zero_metrics,
                             )
-                            step_started = False
-
-                        # Display text chunks
-                        if chunk.chunk_type == StreamChunkType.TEXT:
-                            if streaming_event_listener.reasoning_event:
-                                yield (
-                                    ReasoningMessageContentEvent(
-                                        type=EventType.REASONING_MESSAGE_CONTENT,
-                                        message_id=message_id,
-                                        delta=chunk.content,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                            else:
-                                if not text_started:
-                                    yield (
-                                        TextMessageStartEvent(
-                                            type=EventType.TEXT_MESSAGE_START,
-                                            message_id=message_id,
-                                        ),
-                                        None,
-                                        zero_metrics,
-                                    )
-                                text_started = True
-                                yield (
-                                    TextMessageContentEvent(
-                                        type=EventType.TEXT_MESSAGE_CONTENT,
-                                        message_id=message_id,
-                                        delta=chunk.content,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                        # Display tool calls
-                        elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
-                            print(f"\nUsing tool: {chunk.tool_call.tool_name}")
-                    pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                        ragas_event_listener.messages
-                    )
-                    usage_metrics = self._extract_usage_metrics(crew_output.result)
-                    if text_started:
+                            reasoning_started = True
+                    elif reasoning_started:
                         yield (
-                            TextMessageEndEvent(
-                                type=EventType.TEXT_MESSAGE_END, message_id=message_id
-                            ),
-                            None,
-                            usage_metrics,
-                        )
-                    if step_started:
-                        yield (
-                            StepFinishedEvent(
-                                type=EventType.STEP_FINISHED,
-                                step_name=current_task,
-                            ),
-                            None,
-                            usage_metrics,
-                        )
-                else:
-                    response_text = str(crew_output.raw)
-                    pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                        ragas_event_listener.messages
-                    )
-                    usage_metrics = self._extract_usage_metrics(crew_output)
-
-                    if response_text:
-                        yield (
-                            TextMessageChunkEvent(
-                                type=EventType.TEXT_MESSAGE_CHUNK,
+                            ReasoningMessageEndEvent(
+                                type=EventType.REASONING_MESSAGE_END,
                                 message_id=message_id,
-                                delta=response_text,
                             ),
                             None,
-                            usage_metrics,
+                            zero_metrics,
                         )
+                        yield (
+                            ReasoningEndEvent(
+                                type=EventType.REASONING_END,
+                                message_id=message_id,
+                            ),
+                            None,
+                            zero_metrics,
+                        )
+                        reasoning_started = False
 
+                    # Display text chunks
+                    if chunk.chunk_type == StreamChunkType.TEXT:
+                        if streaming_event_listener.reasoning_event:
+                            yield (
+                                ReasoningMessageContentEvent(
+                                    type=EventType.REASONING_MESSAGE_CONTENT,
+                                    message_id=message_id,
+                                    delta=chunk.content,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
+                        else:
+                            if not text_started:
+                                yield (
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                            text_started = True
+                            yield (
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
+                                    message_id=message_id,
+                                    delta=chunk.content,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
+                    # Display tool calls
+                    elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
+                        logger.info(f"Using tool: {chunk.tool_call.tool_name}")
+                pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                    ragas_event_listener.messages
+                )
+                usage_metrics = self._extract_usage_metrics(crew_output.result)
+                if text_started:
+                    yield (
+                        TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                        None,
+                        usage_metrics,
+                    )
+                if reasoning_started:
+                    yield (
+                        ReasoningMessageEndEvent(
+                            type=EventType.REASONING_MESSAGE_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    yield (
+                        ReasoningEndEvent(
+                            type=EventType.REASONING_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+            else:
+                response_text = str(crew_output.raw)
+                pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                    ragas_event_listener.messages
+                )
+                usage_metrics = self._extract_usage_metrics(crew_output)
+
+                if response_text:
+                    yield (
+                        TextMessageChunkEvent(
+                            type=EventType.TEXT_MESSAGE_CHUNK,
+                            message_id=message_id,
+                            delta=response_text,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+
+            if current_agent_role:
                 yield (
-                    RunFinishedEvent(
-                        type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
+                    StepFinishedEvent(
+                        type=EventType.STEP_FINISHED,
+                        step_name=current_agent_role,
                     ),
-                    pipeline_interactions,
+                    None,
                     usage_metrics,
                 )
+            if "memory" in kickoff_inputs:
+                try:
+                    await self.store_memory_for_run(user_prompt_content, run_agent_input)
+                except Exception as exc:
+                    logger.warning("CrewAI memory storage failed: %s", exc)
+            yield (
+                RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
+                pipeline_interactions,
+                usage_metrics,
+            )
+
+
+def datarobot_agent_class_from_crew(
+    crew: Crew,
+    agents: list[Agent],
+    tasks: list[Task],
+    kickoff_inputs: Callable[[str], dict[str, Any]],
+) -> type[CrewAIAgent]:
+    """Create a CrewAI agent class from a pre-built crew, agents, and tasks.
+
+    This is a convenience helper that dynamically builds a concrete
+    :class:`CrewAIAgent` subclass so that callers can define an agent
+    entirely from existing CrewAI objects without writing a class by hand.
+
+    When the returned class is instantiated, calling ``set_tools``
+    propagates the platform-injected tools to every agent in *agents*
+    while preserving each agent's originally configured tools.
+
+    Parameters
+    ----------
+    crew : Crew
+        A fully configured CrewAI :class:`Crew` instance that orchestrates
+        the provided agents and tasks.
+    agents : list[Agent]
+        The list of CrewAI :class:`Agent` instances participating in the crew.
+        Their ``llm`` and ``tools`` attributes are updated at runtime when the
+        DataRobot platform injects the LLM and MCP tools.
+    tasks : list[Task]
+        The list of CrewAI :class:`Task` instances that define the work to be
+        performed during kickoff.
+    kickoff_inputs : Callable[[str], dict[str, Any]]
+        A callable that receives the raw user prompt string and returns a
+        dictionary of inputs for ``Crew.kickoff()``. The dictionary keys
+        should match placeholder names used in task descriptions and agent
+        configurations (e.g. ``{topic}``). Include a ``"chat_history"`` key
+        with an empty string value to opt into automatic history injection.
+
+    The returned class accepts optional ``roles``, ``goals``, and ``backstories``
+    keyword arguments on instantiation (see :class:`CrewAIAgent`).
+
+    Returns
+    -------
+    type[CrewAIAgent]
+        A new :class:`CrewAIAgent` subclass wired to the provided crew,
+        agents, tasks, and kickoff-input builder.
+    """
+
+    class DataRobotAgent(CrewAIAgent):
+        def __init__(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> None:
+            self._original_agent_tools = {agent: agent.tools for agent in agents}
+            super().__init__(*args, **kwargs)
+
+        def set_tools(self, tools: list[BaseTool]) -> None:
+            super().set_tools(tools)
+            for agent in agents:
+                # make sure we don't overwrite the original tools
+                agent.tools = self._original_agent_tools[agent] + tools
+
+        @property
+        def crew(self) -> Crew:
+            return crew
+
+        @property
+        def agents(self) -> list[Agent]:
+            return agents
+
+        @property
+        def tasks(self) -> list[Task]:
+            return tasks
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return kickoff_inputs(user_prompt_content)
+
+    return DataRobotAgent

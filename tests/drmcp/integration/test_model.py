@@ -97,9 +97,9 @@ class TestMCPToolsIntegration:
                 if hasattr(result.content[0], "text")
                 else str(result.content[0])
             )
-            # Stub returns "not found"; real API returns ClientError 404
-            assert "Error in get_best_model" in result_text
-            assert "nonexistent_project" in result_text or "Not Found" in result_text
+            # Stub returns not_found; real API returns ClientError 404
+            assert "nonexistent_project" in result_text
+            assert "not found" in result_text.lower() or "not_found" in result_text.lower()
 
             # 5 Test metric-based sorting of models
             result = await session.call_tool(
@@ -120,14 +120,13 @@ class TestMCPToolsIntegration:
             )
             assert "LogLoss" in data["best_model"]["metrics"]
 
-            # 6 Test scoring dataset with specified model /
-            # nonexistent dataset (stub raises for example.com URL)
+            # 6 Test scoring: unknown AI Catalog dataset id (stub Dataset.get raises)
             result = await session.call_tool(
                 "score_dataset_with_model",
                 {
                     "project_id": project_id,
                     "model_id": "standalone_model",
-                    "dataset_url": "https://example.com/dataset.csv",
+                    "dataset_id": "nonexistent_dataset",
                 },
             )
 

@@ -11,11 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from collections.abc import Generator
+from collections.abc import Iterator
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+
+from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 
 
 @pytest.fixture(autouse=True)
@@ -64,3 +69,36 @@ def mock_all_telemetry(request: pytest.FixtureRequest) -> Generator[None, None, 
         ),
     ):
         yield
+
+
+@pytest.fixture
+def mock_is_mcp_tools_gallery_support_enabled() -> Iterator[Mock]:
+    with patch.object(FeatureFlag, "is_mcp_tools_gallery_support_enabled") as mock_func:
+        yield mock_func
+
+
+@pytest.fixture
+def mock_lineage_manager_init() -> Iterator[Mock]:
+    with patch.object(LineageManager, "__init__") as mock_func:
+        mock_func.return_value = None
+        yield mock_func
+
+
+@pytest.fixture
+def mock_sync_mcp_tools() -> Iterator[AsyncMock]:
+    with patch.object(
+        LineageManager,
+        "sync_mcp_tools",
+        new_callable=AsyncMock,
+    ) as mock_func:
+        yield mock_func
+
+
+@pytest.fixture
+def mock_sync_mcp_prompts() -> Iterator[AsyncMock]:
+    with patch.object(
+        LineageManager,
+        "sync_mcp_prompts",
+        new_callable=AsyncMock,
+    ) as mock_func:
+        yield mock_func

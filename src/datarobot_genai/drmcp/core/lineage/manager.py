@@ -30,7 +30,6 @@ from datarobot._experimental.models.user_mcp_server_deployment import (
     TypeOfToolInUserMCPServerDeployment,
 )
 from datarobot.errors import ClientError as DataRobotAPIClientError
-from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.clients import (
     setup_and_return_dr_api_client_with_static_config_in_container,
@@ -40,12 +39,13 @@ from datarobot_genai.drmcp.core.lineage.entities import MCPPromptMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPResourceMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVars
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 
 logger = logging.getLogger(__name__)
 
 
 class LineageManager:
-    def __init__(self, mcp_server_instance: FastMCP) -> None:
+    def __init__(self, mcp_server_instance: DataRobotMCP) -> None:
         setup_and_return_dr_api_client_with_static_config_in_container()
         self.mcp_server_deployment_id = LRSEnvVars.MLOPS_DEPLOYMENT_ID.get_os_env_value()
         self.mcp_server_instance = mcp_server_instance
@@ -113,15 +113,15 @@ class LineageManager:
         ]
 
     async def get_mcp_tools_in_mcp_server(self) -> list[MCPToolMetadata]:
-        mcp_tools = await self.mcp_server_instance._list_tools_mcp()
+        mcp_tools = await self.mcp_server_instance.list_tools()
         return [MCPToolMetadata.from_fastmcp_item(mcp_tool) for mcp_tool in mcp_tools]
 
     async def get_mcp_prompts_in_mcp_server(self) -> list[MCPPromptMetadata]:
-        mcp_prompts = await self.mcp_server_instance._list_prompts_mcp()
+        mcp_prompts = await self.mcp_server_instance.list_prompts()
         return [MCPPromptMetadata.from_fastmcp_item(mcp_prompt) for mcp_prompt in mcp_prompts]
 
     async def get_mcp_resources_in_mcp_server(self) -> list[MCPResourceMetadata]:
-        mcp_resources = await self.mcp_server_instance._list_resources_mcp()
+        mcp_resources = await self.mcp_server_instance.list_resources()
         return [
             MCPResourceMetadata.from_fastmcp_item(mcp_resource) for mcp_resource in mcp_resources
         ]

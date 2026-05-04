@@ -15,56 +15,54 @@
 from typing import Any
 
 from datarobot_genai.core.agents import make_system_prompt
-from datarobot_genai.drtools.calculator import calculator as _calculator_fn
-from datarobot_genai.llama_index.agent import LlamaIndexAgent
+from datarobot_genai.llama_index.agent import datarobot_agent_class_from_llamaindex
+from datarobot_genai.llama_index.llm import get_llm
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.tools import FunctionTool
 
-calculator = FunctionTool.from_defaults(fn=_calculator_fn, name="calculator")
+from dragent.tool import generate_objectid
+
+generate_objectid_tool = FunctionTool.from_defaults(fn=generate_objectid, name="generate_objectid")
+
+llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
+
+planner = FunctionAgent(
+    name="planner",
+    description="Creates short bullet-point outlines",
+    system_prompt=make_system_prompt(
+        "You are a content planner. Given a topic, produce a short bullet-point "
+        "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
+        "Use the generate_objectid tool when asked to generate an object ID for a "
+        "deployment."
+    ),
+    llm=llm,
+    tools=[generate_objectid_tool],
+    can_handoff_to=["writer"],
+)
+writer = FunctionAgent(
+    name="writer",
+    description="Writes concise responses based on outlines",
+    system_prompt=make_system_prompt(
+        "You are a concise writer. Using the planner's outline, write a short response "
+        "in 2-3 sentences. Use the generate_objectid tool when asked to "
+        "generate an object ID for a deployment."
+    ),
+    llm=llm,
+    tools=[generate_objectid_tool],
+)
+agents = [planner, writer]
+workflow = AgentWorkflow(agents=agents, root_agent="planner")
 
 
-class MyAgent(LlamaIndexAgent):
-    """Planner -> Writer LlamaIndex agent with calculator tool for e2e testing."""
+def extract_response_text(result_state: Any, events: list[Any]) -> str:
+    for event in reversed(events):
+        resp = getattr(event, "response", None)
+        if resp is not None:
+            content = getattr(resp, "content", None)
+            if content:
+                return str(content)
+    return ""
 
-    def __init__(
-        self,
-        llm: Any = None,
-        **kwargs: Any,
-    ):
-        super().__init__(**kwargs)
-        self._llm = llm
 
-    async def build_workflow(self) -> AgentWorkflow:
-        planner = FunctionAgent(
-            name="planner",
-            description="Creates short bullet-point outlines",
-            system_prompt=make_system_prompt(
-                "You are a content planner. Given a topic, produce a short bullet-point "
-                "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
-                "When done, hand off to the writer agent."
-            ),
-            llm=self._llm,
-            tools=[calculator] + self.mcp_tools,
-            can_handoff_to=["writer"],
-        )
-        writer = FunctionAgent(
-            name="writer",
-            description="Writes concise responses based on outlines",
-            system_prompt=make_system_prompt(
-                "You are a concise writer. Using the planner's outline, write a short response "
-                "in 2-3 sentences. Use the calculator tool when asked to compute math."
-            ),
-            llm=self._llm,
-            tools=[calculator] + self.mcp_tools,
-        )
-        return AgentWorkflow(agents=[planner, writer], root_agent="planner")
-
-    def extract_response_text(self, result_state: Any, events: list[Any]) -> str:
-        for event in reversed(events):
-            resp = getattr(event, "response", None)
-            if resp is not None:
-                content = getattr(resp, "content", None)
-                if content:
-                    return str(content)
-        return ""
+MyAgent = datarobot_agent_class_from_llamaindex(workflow, agents, extract_response_text)

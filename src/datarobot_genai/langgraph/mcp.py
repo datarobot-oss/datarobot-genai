@@ -12,19 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from langchain.tools import BaseTool
 from langchain_core.tools import StructuredTool
+from langchain_core.tools.base import ToolException
 from langchain_mcp_adapters.sessions import SSEConnection
 from langchain_mcp_adapters.sessions import StreamableHttpConnection
 from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import PrivateAttr
 
-from datarobot_genai.core.mcp.config import MCPConfig
+from datarobot_genai.core.mcp import MCPConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
@@ -42,9 +47,17 @@ def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
     async def _invoke_inner(**kwargs: Any) -> Any:
         # Call the inner tool's coroutine so we return (content, artifact), not the
         # formatted output that ainvoke() would return.
-        if getattr(inner, "coroutine", None) is not None:
-            return await inner.coroutine(**kwargs)
-        return await inner.ainvoke(kwargs)
+        try:
+            if getattr(inner, "coroutine", None) is not None:
+                return await inner.coroutine(**kwargs)
+            return await inner.ainvoke(kwargs)
+        except ToolException as exc:
+            logger.warning("MCP tool '%s' raised ToolException: %s", inner.name, exc)
+            error_content = f"Tool '{inner.name}' failed: {exc}"
+            response_format = getattr(inner, "response_format", "content_and_artifact")
+            if response_format == "content_and_artifact":
+                return error_content, None
+            return error_content
 
     class _MCPToolWrapper(StructuredTool):
         """Thin wrapper that adds 'runtime' to injected args for callback filtering."""
@@ -72,8 +85,7 @@ def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
 
 @asynccontextmanager
 async def mcp_tools_context(
-    authorization_context: dict[str, Any] | None = None,
-    forwarded_headers: dict[str, str] | None = None,
+    mcp_config: MCPConfig,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """Yield a list of LangChain BaseTool instances loaded via MCP.
 
@@ -86,19 +98,18 @@ async def mcp_tools_context(
     forwarded_headers : dict[str, str] | None
         Forwarded headers, e.g. x-datarobot-api-key to use for MCP authentication
     """
-    mcp_config = MCPConfig(
-        authorization_context=authorization_context,
-        forwarded_headers=forwarded_headers,
-    )
     server_config = mcp_config.server_config
 
     if not server_config:
-        print("No MCP server configured, using empty tools list", flush=True)
+        logger.info("No MCP server configured, using empty tools list")
         yield []
         return
 
+    # Prevent mutation of the original server_config
+    server_config = copy.deepcopy(server_config)
+
     url = server_config["url"]
-    print(f"Connecting to MCP server: {url}", flush=True)
+    logger.info("Connecting to MCP server: %s", url)
 
     # Pop transport from server_config to avoid passing it twice
     # Use .pop() with default to never error
@@ -111,11 +122,19 @@ async def mcp_tools_context(
     else:
         raise RuntimeError("Unsupported MCP transport specified.")
 
-    async with create_session(connection=connection) as session:
-        # Use the connection to load available MCP tools
-        raw_tools = await load_mcp_tools(session=session)
-        # Wrap so LangGraph-injected 'runtime' is filtered from callback inputs (avoids
-        # copy.deepcopy of non-serializable ToolRuntime in NAT profiler).
-        tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
-        print(f"Successfully loaded {len(tools)} MCP tools", flush=True)
-        yield tools
+    # Graceful fallback: if we can't connect to the MCP server, yield empty tools
+    # instead of crashing. The try/except wraps only the connect+load phase (before
+    # yield) to avoid double-yielding -- an asynccontextmanager must yield exactly once.
+    try:
+        async with create_session(connection=connection) as session:
+            raw_tools = await load_mcp_tools(session=session)
+            tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
+            logger.info("Successfully loaded %d MCP tools", len(tools))
+            yield tools
+    except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+        logger.warning(
+            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            url,
+            exc,
+        )
+        yield []

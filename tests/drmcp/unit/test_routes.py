@@ -986,9 +986,9 @@ class TestMetadataRoute:
         mock_resource2.name = "resource2"
 
         # Setup mocks on self.mock_mcp
-        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[mock_tool1, mock_tool2])
-        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[mock_prompt1, mock_prompt2])
-        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[mock_resource1, mock_resource2])
+        self.mock_mcp.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        self.mock_mcp.list_prompts = AsyncMock(return_value=[mock_prompt1, mock_prompt2])
+        self.mock_mcp.list_resources = AsyncMock(return_value=[mock_resource1, mock_resource2])
 
         mock_get_tool_tags.side_effect = lambda tool: (
             {"tag1", "tag2"} if tool == mock_tool1 else {"tag3"}
@@ -1108,9 +1108,9 @@ class TestMetadataRoute:
     ):
         """Test metadata route with empty lists."""
         # Setup mocks with empty lists
-        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
-        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
-        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+        self.mock_mcp.list_tools = AsyncMock(return_value=[])
+        self.mock_mcp.list_prompts = AsyncMock(return_value=[])
+        self.mock_mcp.list_resources = AsyncMock(return_value=[])
 
         # Create mock config
         mock_config = Mock()
@@ -1175,9 +1175,9 @@ class TestMetadataRoute:
     ):
         """Test metadata route with OAuth-enabled tools."""
         # Setup mocks with empty lists
-        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
-        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
-        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+        self.mock_mcp.list_tools = AsyncMock(return_value=[])
+        self.mock_mcp.list_prompts = AsyncMock(return_value=[])
+        self.mock_mcp.list_resources = AsyncMock(return_value=[])
 
         # Create mock config with OAuth-enabled tools
         mock_config = Mock()
@@ -1239,7 +1239,7 @@ class TestMetadataRoute:
     async def test_metadata_route_error_scenario(self):
         """Test metadata route when error occurs."""
         # Setup mock to raise exception
-        self.mock_mcp._list_tools_mcp = AsyncMock(side_effect=ValueError("Test error"))
+        self.mock_mcp.list_tools = AsyncMock(side_effect=ValueError("Test error"))
 
         register_routes(self.mock_mcp)
 
@@ -1265,9 +1265,9 @@ class TestMetadataRoute:
     ):
         """Test metadata route with OAuth-required tools but OAuth not configured."""
         # Setup mocks with empty lists
-        self.mock_mcp._list_tools_mcp = AsyncMock(return_value=[])
-        self.mock_mcp._list_prompts_mcp = AsyncMock(return_value=[])
-        self.mock_mcp._list_resources_mcp = AsyncMock(return_value=[])
+        self.mock_mcp.list_tools = AsyncMock(return_value=[])
+        self.mock_mcp.list_prompts = AsyncMock(return_value=[])
+        self.mock_mcp.list_resources = AsyncMock(return_value=[])
 
         # Create mock config with OAuth-required tools but OAuth not configured
         mock_config = Mock()
