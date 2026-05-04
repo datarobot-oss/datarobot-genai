@@ -91,8 +91,6 @@ async def test_query_vector_database_success() -> None:
     mock_rest_client.post.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    mock_deployment = MagicMock(id="dep1")
-    mock_dr_module.Deployment.get.return_value = mock_deployment
     with (
         patch(
             "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
