@@ -22,6 +22,11 @@ from crewai.types.streaming import CrewStreamingOutput
 from crewai.types.streaming import StreamChunk
 from crewai.types.streaming import StreamChunkType
 import pytest
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
+from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -849,3 +854,102 @@ async def test_invoke_streaming_single_agent_role_uses_single_message(
     assert len(starts) == 1
     assert len(ends) == 1
     assert starts[0].message_id == ends[0].message_id
+
+
+async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew where the first agent emits a reasoning chunk and
+    # the second agent emits a normal text chunk. The agent_role transition
+    # must close REASONING_MESSAGE_END and REASONING_END for the outgoing step
+    # before STEP_FINISHED is emitted.
+    planner_chunk = _text_chunk("plan-thoughts", "Planner")
+    writer_chunk = _text_chunk("write-text", "Writer")
+    result = CrewOutput(raw="ignored")
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.step_event = False
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _ReasoningTransitionStreamingOutput(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            captured[0].reasoning_event = True
+            yield planner_chunk
+            captured[0].reasoning_event = False
+            yield writer_chunk
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return result
+
+    streaming = _ReasoningTransitionStreamingOutput()
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        _CapturingStreamingListener,
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN the Planner emits exactly one reasoning lifecycle and the Writer
+    # emits exactly one text lifecycle
+    reasoning_starts = [e for e in events if isinstance(e, ReasoningStartEvent)]
+    reasoning_msg_starts = [e for e in events if isinstance(e, ReasoningMessageStartEvent)]
+    reasoning_contents = [e for e in events if isinstance(e, ReasoningMessageContentEvent)]
+    reasoning_msg_ends = [e for e in events if isinstance(e, ReasoningMessageEndEvent)]
+    reasoning_ends = [e for e in events if isinstance(e, ReasoningEndEvent)]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    text_contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(reasoning_starts) == 1
+    assert len(reasoning_msg_starts) == 1
+    assert len(reasoning_msg_ends) == 1
+    assert len(reasoning_ends) == 1
+    assert len(text_starts) == 1
+    assert len(text_ends) == 1
+
+    # THEN reasoning content is on the Planner's message_id and text content
+    # is on a fresh message_id (no cross-agent leakage)
+    planner_id = reasoning_starts[0].message_id
+    writer_id = text_starts[0].message_id
+    assert planner_id != writer_id
+    assert reasoning_msg_starts[0].message_id == planner_id
+    assert reasoning_msg_ends[0].message_id == planner_id
+    assert reasoning_ends[0].message_id == planner_id
+    assert [c.delta for c in reasoning_contents if c.message_id == planner_id] == ["plan-thoughts"]
+    assert text_ends[0].message_id == writer_id
+    assert [c.delta for c in text_contents if c.message_id == writer_id] == ["write-text"]
+
+    # THEN REASONING_MESSAGE_END and REASONING_END are emitted before
+    # STEP_FINISHED Planner, which is emitted before STEP_STARTED Writer
+    reasoning_msg_end_idx = events.index(reasoning_msg_ends[0])
+    reasoning_end_idx = events.index(reasoning_ends[0])
+    planner_step_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    writer_step_start_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepStartedEvent) and e.step_name == "Writer"
+    )
+    assert (
+        reasoning_msg_end_idx < reasoning_end_idx < planner_step_finish_idx < writer_step_start_idx
+    )
