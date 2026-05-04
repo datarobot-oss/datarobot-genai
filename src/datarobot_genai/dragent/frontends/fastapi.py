@@ -202,6 +202,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                     }
                 },
             )
+
             logger.info(f"Added health check endpoint at {path}")
 
 
