@@ -155,10 +155,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         message_id = str(uuid.uuid4())
         text_started = False
         any_text_emitted = False
-        # Id of the most recently opened text bubble in the current step. Used
-        # to anchor TOOL_CALL_RESULT.message_id to the assistant message that
-        # contained the tool call (per AG-UI spec). Resets on step transition.
-        last_text_message_id: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
@@ -190,9 +186,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
                 current_agent_name = new_agent
-                # Fresh id for the new step; anchor for tool results resets too.
+                # Fresh id for the new step's first text bubble.
                 message_id = str(uuid.uuid4())
-                last_text_message_id = None
                 logger.info(f"Agent: {current_agent_name}")
 
             # Best-effort extraction of incremental text from LlamaIndex events
@@ -218,7 +213,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     )
                     text_started = True
                     any_text_emitted = True
-                    last_text_message_id = message_id
                 yield (
                     TextMessageContentEvent(
                         type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=delta
@@ -248,7 +242,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         )
                         text_started = True
                         any_text_emitted = True
-                        last_text_message_id = message_id
                         yield (
                             TextMessageContentEvent(
                                 type=EventType.TEXT_MESSAGE_CONTENT,
@@ -292,10 +285,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 yield (
                     ToolCallResultEvent(
                         type=EventType.TOOL_CALL_RESULT,
-                        # Anchor to the assistant text bubble that initiated the
-                        # tool call. Falls back to the step's current id when
-                        # the step never emitted text (tool-only turn).
-                        message_id=last_text_message_id or message_id,
+                        message_id=tid,
                         tool_call_id=tid,
                         content=json.dumps(tout, default=str),
                         role="tool",
@@ -304,11 +294,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
             elif event_type == "ToolCall":
-                # Close the open text message before the tool widget commits so
-                # the tool renders chronologically below the preceding text and
-                # the next text run starts a fresh bubble. ToolCallResult below
-                # uses the regenerated message_id, which matches the upcoming
-                # text bubble (or stays unreferenced if no more text follows).
+                # Close any open text message so the tool widget renders below
+                # the preceding text and the next text run starts a fresh bubble.
                 if text_started:
                     yield (
                         TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),

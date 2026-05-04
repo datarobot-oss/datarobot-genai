@@ -401,11 +401,13 @@ async def test_llama_index_agent_invoke(
     )
     assert end_idx[0] < tool_start_idx < tool_end_idx < text_start_idx_1
 
-    # THEN: the tool call result references the surrounding step's text message id,
-    # so the UI can anchor the tool call to the assistant message it came from.
+    # THEN: the tool call result has its own unique message_id (the tool_call_id),
+    # independent of any text bubble.
     tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
     assert len(tool_results) == 1
-    assert tool_results[0].message_id == text_starts[1].message_id
+    assert tool_results[0].message_id == tool_results[0].tool_call_id
+    assert tool_results[0].message_id != text_starts[0].message_id
+    assert tool_results[0].message_id != text_starts[1].message_id
 
     # THEN: last event is RunFinishedEvent with pipeline interactions
     assert isinstance(ag_events[-1], RunFinishedEvent)
@@ -458,12 +460,11 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     assert pipeline[-1] is not None
 
 
-async def test_invoke_tool_result_anchors_to_preceding_text_bubble(
+async def test_invoke_tool_result_message_id_is_distinct_from_text_bubbles(
     run_agent_input: RunAgentInput,
 ) -> None:
-    """Text -> tool -> text within one step: tool_result.message_id must match
-    the preceding text bubble (the assistant message that initiated the call),
-    not the following one.
+    """Text -> tool -> text within one step: tool_result.message_id is the
+    tool_call_id and does not collide with either surrounding text bubble.
     """
     workflow = Workflow(
         events=[
@@ -505,9 +506,11 @@ async def test_invoke_tool_result_anchors_to_preceding_text_bubble(
     tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
     assert len(text_starts) == 2
     assert len(tool_results) == 1
-    # Tool result references the bubble that came BEFORE it, not the next one.
-    assert tool_results[0].message_id == text_starts[0].message_id
+    assert tool_results[0].message_id == tool_results[0].tool_call_id == "t1"
+    assert tool_results[0].message_id != text_starts[0].message_id
     assert tool_results[0].message_id != text_starts[1].message_id
+    # The two text bubbles within the step still have distinct ids.
+    assert text_starts[0].message_id != text_starts[1].message_id
 
 
 async def test_invoke_agent_stream_multiple_agents(
