@@ -23,18 +23,12 @@ class CrossAppTokenExchange(BaseModel):
     """Step 1 parameters: RFC 8693 Token Exchange prerequisite to obtain the ID-JAG."""
 
     trusted_issuer: str = Field(
-        description=(
-            "Issuer URL of the trusted identity provider that must validate the "
-            "subject token before the downstream token exchange. Used as ``issuer`` "
-            "in the OAuth2 client configuration and as the base for JWT client "
-            "assertion audience claims."
-        ),
+        description="Org-level AS issuer URL. Validates the subject token in Step 1.",
     )
     audience: str = Field(
         description=(
-            "Authorization Server destination for Step 1: the Okta custom AS token "
-            "endpoint base URL (e.g. ``https://your-org.okta.com/oauth2/<as-id>``). "
-            "This is where the ID-JAG prerequisite is fetched."
+            "Step 1 AS base URL (e.g. ``https://your-org.okta.com/oauth2/<as-id>``). "
+            "ID-JAG is fetched from here."
         ),
     )
 
@@ -43,56 +37,34 @@ class CrossAppTokenRequest(BaseModel):
     """Step 2 parameters: RFC 7523 JWT Bearer Grant to obtain the final access token."""
 
     grant_type: str = Field(
-        description=(
-            "OAuth 2.0 grant type for the final token request. Must be "
-            "``urn:ietf:params:oauth:grant-type:jwt-bearer`` per RFC 7523."
-        ),
+        description="Must be ``urn:ietf:params:oauth:grant-type:jwt-bearer`` (RFC 7523).",
     )
 
 
 class CrossApplicationAccessConfig(AuthProviderBaseConfig):
-    """OAuth2 server-side auth for Cross-Application Access surfaced on the AgentCard.
+    """Server-side Cross-Application Access config surfaced on the AgentCard.
 
-    Implements a hybrid RFC 8693 / RFC 7523 flow:
+    Hybrid RFC 8693 / RFC 7523 flow: Step 1 exchanges the incoming access token for
+    an ID-JAG via ``token_exchange.audience``; Step 2 uses the ID-JAG for the final token.
 
-    * **Step 1** (RFC 8693 Token Exchange): exchange an incoming access token for
-      an ID-JAG prerequisite via the authorization server specified in
-      ``token_exchange.audience``.
-    * **Step 2** (RFC 7523 JWT Bearer Grant): use the ID-JAG to obtain the final
-      scoped agent token.
-
-    **OpenAPI fields** (``token_url``, ``scopes``) populate
-    ``securitySchemes.oauth2.flows.clientCredentials`` in the Agent Card.
-    They are NOT included in ``capabilities.extensions.params``.
-
-    **Extension fields** (``target_audience``, ``token_endpoint_auth_method``,
-    ``token_exchange``, ``token_request``) are placed exclusively in the
-    ``capabilities.extensions`` block for SDK consumption.
+    ``token_url`` / ``scopes`` → ``securitySchemes.oauth2.flows.clientCredentials`` only.
+    All other fields → ``capabilities.extensions.params`` only.
     """
 
     token_url: str = Field(
-        description=(
-            "Token endpoint URL for the final RFC 7523 grant. Published under "
-            "OpenAPI ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``."
-        ),
+        description="Published as ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``.",
     )
     scopes: list[str] = Field(
         default=["read_data"],
-        description=(
-            "Scopes advertised for this API. Published under OpenAPI "
-            "``securitySchemes.oauth2.flows.clientCredentials.scopes``."
-        ),
+        description="Published as ``securitySchemes.oauth2.flows.clientCredentials.scopes``.",
     )
     target_audience: str = Field(
-        description=(
-            "Final resource identifier for the agent being called. Published as "
-            "``capabilities.extensions[].params.target_audience`` in the Agent Card."
-        ),
+        description="Published as ``capabilities.extensions[].params.target_audience``.",
     )
     token_endpoint_auth_method: str = Field(
         description=(
-            "OAuth 2.0 token endpoint client authentication method "
-            "(e.g. ``private_key_jwt``). Published in the extension params."
+            "Client auth method (e.g. ``private_key_jwt``). "
+            "Published in ``capabilities.extensions[].params``."
         ),
     )
     token_exchange: CrossAppTokenExchange = Field(

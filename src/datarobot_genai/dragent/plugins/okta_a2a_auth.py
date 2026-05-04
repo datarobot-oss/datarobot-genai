@@ -134,57 +134,36 @@ _JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
 @dataclass
 class _CrossAppFlowParams:
-    """Full configuration context parsed from the agent card for the Okta XAA flow.
+    """Agent card parameters needed for the Okta XAA flow.
 
     Populated by :meth:`OktaTokenExchangeAuthProvider.set_agent_card` from
-    the agent card's ``securitySchemes`` (OpenAPI layer) and JWT Bearer
-    ``capabilities.extensions`` (A2A layer).
-
-    Every field used by the Okta SDK during the two-step Cross-Application
-    Access flow is extracted here so that the authentication handler never
-    needs to hardcode or derive values at runtime.
+    ``securitySchemes`` (OpenAPI layer) and ``capabilities.extensions`` (A2A layer).
     """
 
     token_url: str
-    """Token endpoint URL from
-    ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``.
-    Represents the resource AS token endpoint.  Stored for reference; the SDK
-    discovers the endpoint automatically from ``exchange_audience``."""
+    """From ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``.
+    Stored for reference; the SDK discovers the endpoint from ``exchange_audience``."""
 
     trusted_issuer: str
-    """**Originating** authorization server issuer
-    (``capabilities.extensions[].params.token_exchange.trusted_issuer``).
-    Passed to ``OAuth2ClientConfiguration(issuer=...)`` — this is the AS
-    that runs Step 1 (RFC 8693 token exchange) and validates the JWT client
-    assertion.  The assertion ``audience`` claim is derived as
-    ``trusted_issuer + "/oauth2/v1/token"``."""
+    """Org-level AS issuer (``token_exchange.trusted_issuer``); runs Step 1 (RFC 8693).
+    Passed to ``OAuth2ClientConfiguration(issuer=...)``.  JWT assertion ``aud`` is
+    derived as ``trusted_issuer + "/oauth2/v1/token"``."""
 
     exchange_audience: str
-    """**Resource** authorization server issuer
-    (``capabilities.extensions[].params.token_exchange.audience``).
-    Serves a dual role in the SDK:
-
-    * ``CrossAppAccessTarget(issuer=...)`` — structural config that tells
-      ``resume()`` which server to talk to for Step 2 (JWT bearer grant).
-    * ``flow.start(audience=...)`` — logical parameter that tells the
-      originating AS what audience to embed in the ID-JAG.
-
-    Per Okta SDK docs these are the same issuer URL in the common case."""
+    """Resource AS issuer (``token_exchange.audience``); dual role in the SDK:
+    ``CrossAppAccessTarget(issuer=...)`` for Step 2 and ``flow.start(audience=...)``
+    so the originating AS embeds the right audience in the ID-JAG."""
 
     target_audience: str
-    """Final resource identifier for the agent being called
-    (``capabilities.extensions[].params.target_audience``).
-    A2A-level metadata; not passed to the Okta SDK directly."""
+    """Final resource identifier for the agent (``params.target_audience``).
+    A2A metadata; not passed to the Okta SDK."""
 
     token_endpoint_auth_method: str
-    """Client authentication method
-    (``capabilities.extensions[].params.token_endpoint_auth_method``).
-    When ``"private_key_jwt"``, :class:`ClientAssertionAuthorization` with
-    :class:`LocalKeyProvider` is initialized for JWT client assertions."""
+    """Client auth method (``params.token_endpoint_auth_method``).
+    ``"private_key_jwt"`` triggers ``ClientAssertionAuthorization`` with ``LocalKeyProvider``."""
 
     id_jag_scopes: list[str]
-    """OAuth scopes for Step 1 (ID-JAG request). Defaults to ``["read_data"]``.
-    Sourced from the provider config, not the agent card."""
+    """Step 1 scopes; sourced from provider config, not the agent card."""
 
 
 # ---------------------------------------------------------------------------
@@ -198,45 +177,38 @@ class OktaTokenExchangeAuthProviderConfig(
 ):  # type: ignore[call-arg]
     """Configuration for :class:`OktaTokenExchangeAuthProvider`.
 
-    Credential fields (``principal_id``, ``private_jwk``) are populated
-    automatically from environment variables / Runtime Parameters / ``.env`` /
-    ``file_secrets`` via :class:`_OktaSettings` and do **not** need to appear
-    in ``workflow.yaml``.
-
-    Override any field explicitly in the YAML when you need to supply a value
-    that is not in the environment (e.g. in unit tests).
+    ``principal_id`` and ``private_jwk`` are auto-loaded from env vars /
+    Runtime Parameters / ``.env`` / ``file_secrets`` — no ``workflow.yaml``
+    entries needed for credentials.
     """
 
     okta_token_header: str = Field(
         default="x-datarobot-okta-access-token",
         description=(
-            "Name of the incoming request header that carries the caller's Okta access "
-            "token. Used for agent card discovery and as the subject token in Step 1. "
-            "Header names are matched case-insensitively."
+            "Incoming header carrying the caller's Okta access token. "
+            "Forwarded as Bearer for discovery; used as subject token in Step 1. "
+            "Matched case-insensitively."
         ),
     )
     principal_id: str | None = Field(
         default_factory=_get_default_principal_id,
         description=(
-            "Okta AI agent principal ID (env: ``PRINCIPAL_ID``). Used as ``iss`` and "
-            "``sub`` claims in the JWT client assertion when "
-            "``token_endpoint_auth_method`` is ``private_key_jwt``."
+            "Okta AI agent principal ID (env: ``PRINCIPAL_ID``). "
+            "Used as ``iss``/``sub`` in the JWT client assertion."
         ),
     )
     private_jwk: SecretStr | None = Field(
         default_factory=_get_default_private_jwk,
         description=(
-            "Base64-encoded private JWK or raw JSON string (env: ``PRIVATE_JWK``). "
-            "Used to sign JWT client assertions when ``token_endpoint_auth_method`` "
-            "is ``private_key_jwt``."
+            "Base64-encoded or raw-JSON private JWK (env: ``PRIVATE_JWK``). "
+            "Signs JWT client assertions."
         ),
     )
     id_jag_scopes: list[str] = Field(
         default=["read_data"],
         description=(
-            "OAuth scopes to request in Step 1 of the token exchange (ID-JAG request). "
-            "Defaults to ``['read_data']`` which matches Okta XAA reference implementations. "
-            "Override when the authorization server requires a different scope set."
+            "Scopes for the Step 1 ID-JAG request. ``['read_data']`` matches "
+            "Okta XAA reference implementations."
         ),
     )
 
@@ -250,15 +222,10 @@ class OktaTokenExchangeAuthProvider(
     A2ADiscoveryAuthMixin,
     AuthProviderBase[OktaTokenExchangeAuthProviderConfig],
 ):
-    """Auth provider for Okta-authenticated A2A agent communication.
+    """Auth provider for Okta XAA A2A calls.
 
-    Implements :class:`~datarobot_genai.dragent.plugins.auth_a2a_client.A2ADiscoveryAuthMixin`
-    so that agent card discovery and A2A RPC calls use separate credentials:
-
-    * **Discovery** — forwards the incoming Okta bearer token from the request
-      context as ``Authorization: Bearer <token>``.
-    * **Call** — executes the two-step Okta XAA token exchange via the
-      ``okta-client-python`` SDK using parameters parsed from the agent card.
+    * **Discovery** — forwards the incoming Okta bearer token as ``Authorization: Bearer``.
+    * **Call** — two-step XAA token exchange (RFC 8693 → RFC 7523) via ``okta-client-python``.
     """
 
     def __init__(self, config: OktaTokenExchangeAuthProviderConfig) -> None:
@@ -272,13 +239,7 @@ class OktaTokenExchangeAuthProvider(
     async def authenticate_for_discovery(self, user_id: str | None = None) -> dict[str, str]:
         """Return the incoming Okta token as ``Authorization: Bearer`` headers.
 
-        Reads the header named by :attr:`~OktaTokenExchangeAuthProviderConfig.okta_token_header`
-        from the current NAT request context (case-insensitive).
-
-        Raises
-        ------
-        RuntimeError
-            If the expected header is absent from the request context.
+        Raises ``RuntimeError`` if ``okta_token_header`` is absent from the request context.
         """
         token = self._extract_okta_token()
         logger.info(
@@ -294,15 +255,8 @@ class OktaTokenExchangeAuthProvider(
     def set_agent_card(self, card: AgentCard) -> None:
         """Parse the agent card and store :class:`_CrossAppFlowParams`.
 
-        Called by
-        :class:`~datarobot_genai.dragent.plugins.auth_a2a_client._AuthenticatedA2ABaseClient`
-        immediately after the card is resolved, before ``authenticate()`` is invoked.
-
-        Raises
-        ------
-        ValueError
-            If the card does not contain the expected security schemes or
-            JWT Bearer capability extension.
+        Called before ``authenticate()``.  Raises ``ValueError`` if security
+        schemes or the JWT Bearer capability extension are missing.
         """
         self._flow_params = _parse_cross_app_params(card, id_jag_scopes=self.config.id_jag_scopes)
         logger.info(
@@ -322,12 +276,6 @@ class OktaTokenExchangeAuthProvider(
         """Obtain a scoped agent token via the two-step Okta XAA token exchange.
 
         Requires :meth:`set_agent_card` to have been called first.
-
-        Returns
-        -------
-        AuthResult
-            Contains a single :class:`~nat.data_models.authentication.BearerTokenCred`
-            with the final scoped agent token.
         """
         if self._flow_params is None:
             raise RuntimeError(
@@ -398,29 +346,11 @@ class OktaTokenExchangeAuthProvider(
         )
 
     def _build_cross_app_flow(self, private_jwk: dict[str, Any]) -> Any:
-        """Construct a :class:`CrossAppAccessFlow` from the Okta Client SDK.
+        """Construct a :class:`CrossAppAccessFlow` from the Okta SDK.
 
-        Mapping from :attr:`_flow_params` (agent card) to SDK constructor args
-        follows Okta's ``target`` vs ``audience`` distinction:
-
-        * ``trusted_issuer`` → ``OAuth2ClientConfiguration(issuer=...)`` — the
-          **originating** authorization server that runs Step 1 (RFC 8693 token
-          exchange).  The JWT client assertion ``audience`` claim targets this
-          server's token endpoint (``trusted_issuer + "/oauth2/v1/token"``).
-        * ``token_endpoint_auth_method`` → when ``"private_key_jwt"``,
-          ``ClientAssertionAuthorization`` with ``LocalKeyProvider`` is used.
-        * ``exchange_audience`` → ``CrossAppAccessTarget(issuer=...)`` — the
-          **resource** authorization server that ``resume()`` talks to (Step 2).
-          The SDK uses its issuer to discover the token endpoint and rewrite the
-          client assertion ``aud`` claim for the JWT bearer exchange.
-        * ``exchange_audience`` is also the ``audience`` arg in
-          ``flow.start()`` — tells the originating AS what audience the ID-JAG
-          should carry so the resource AS will accept it.
-
-        Parameters
-        ----------
-        private_jwk:
-            Parsed private JWK dict used to sign JWT client assertions.
+        ``trusted_issuer`` → Step 1 AS (``OAuth2ClientConfiguration(issuer=...)``).
+        ``exchange_audience`` → Step 2 AS (``CrossAppAccessTarget(issuer=...)``) and
+        the ``audience`` arg for ``flow.start()``.
         """
         if CrossAppAccessFlow is None:
             raise ImportError(
@@ -466,21 +396,8 @@ def _parse_cross_app_params(
 ) -> _CrossAppFlowParams:
     """Extract :class:`_CrossAppFlowParams` from a fetched :class:`AgentCard`.
 
-    Combines fields from two locations in the card:
-
-    * **OpenAPI layer** — ``securitySchemes.oauth2.flows.clientCredentials``
-      provides the ``tokenUrl`` (needed to initialize the ``OAuth2Client``).
-    * **Extension layer** — ``capabilities.extensions`` (JWT Bearer entry)
-      provides the remaining negotiation parameters: ``trusted_issuer``,
-      ``exchange_audience``, ``target_audience``, and
-      ``token_endpoint_auth_method``.
-
-    Parameters
-    ----------
-    card:
-        Fetched agent card.
-    id_jag_scopes:
-        Scopes to request in Step 1.  When *None*, defaults to ``["read_data"]``.
+    Combines ``securitySchemes.oauth2.flows.clientCredentials`` (``tokenUrl``) and
+    ``capabilities.extensions`` (JWT Bearer entry) into a single params object.
     """
     token_url, _ = _parse_security_schemes(card)
     ext = _parse_cross_app_extension(card)
@@ -529,31 +446,12 @@ class _CrossAppExtensionFields:
 
 
 def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
-    """Extract all Cross-Application Access fields from the JWT Bearer extension.
+    """Extract Cross-Application Access fields from the JWT Bearer capability extension.
 
-    Reads the ``capabilities.extensions`` entry whose
-    ``uri == "urn:ietf:params:oauth:grant-type:jwt-bearer"`` and returns a
-    :class:`_CrossAppExtensionFields` containing every parameter required by
-    the Okta Cross-Application Access SDK:
+    Finds the extension with ``uri == _JWT_BEARER_GRANT_TYPE_URI`` and validates
+    required fields.  ``token_request.grant_type`` is validated but not returned.
 
-    - ``params.target_audience`` — final resource identifier.
-    - ``params.token_endpoint_auth_method`` — client auth method.
-    - ``params.token_exchange.trusted_issuer`` — org-level AS for the ID-JAG.
-    - ``params.token_exchange.audience`` — Step 1 AS destination for
-      ``flow.start(audience=...)``.
-    - ``params.token_request.grant_type`` — validated present for card
-      well-formedness but not returned (always
-      ``urn:ietf:params:oauth:grant-type:jwt-bearer``).
-
-    Returns
-    -------
-    _CrossAppExtensionFields
-        All extracted extension parameters needed to configure the SDK.
-
-    Raises
-    ------
-    ValueError
-        If the extension is absent or any required field is missing.
+    Raises ``ValueError`` if the extension is missing or any required field is absent.
     """
     extensions = (
         card.capabilities.extensions if card.capabilities and card.capabilities.extensions else []

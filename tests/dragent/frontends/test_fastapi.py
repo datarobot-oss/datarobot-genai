@@ -33,14 +33,12 @@ from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
 from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-from datarobot_genai.dragent.frontends.a2a import (
-    PerUserCompatibleAgentExecutor as _PerUserCompatibleAgentExecutor,
-)
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.server_auth import CrossApplicationAccessConfig

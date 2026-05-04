@@ -16,15 +16,13 @@
 
 This module owns the A2A protocol layer: agent card construction, OAuth2
 security scheme assembly, Cross-Application Access capability extensions,
-endpoint URL resolution, and the per-user executor adapter.  The FastAPI
-framework glue lives in :mod:`~datarobot_genai.dragent.frontends.fastapi`.
+and endpoint URL resolution.  The FastAPI framework glue lives in
+:mod:`~datarobot_genai.dragent.frontends.fastapi`.
 """
 
 import logging
 
 import httpx
-from a2a.server.agent_execution import RequestContext
-from a2a.server.events import EventQueue
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
@@ -35,8 +33,6 @@ from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
-from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
-from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
@@ -73,49 +69,6 @@ CROSS_APP_EXTENSION_DESCRIPTION = (
 
 
 # ---------------------------------------------------------------------------
-# Per-user executor adapter
-# ---------------------------------------------------------------------------
-
-
-class PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
-    """Subclass of NATWorkflowAgentExecutor that supports per-user workflows.
-
-    Two problems with the parent class for per-user workflows:
-
-    1. ``__init__`` accesses ``session_manager.workflow`` which raises ``ValueError``
-       for per-user workflows.  We bypass it and log via ``config.workflow.type`` instead.
-
-    2. ``execute`` calls ``self.session_manager.session()`` with no ``user_id``, which
-       raises ``ValueError`` for per-user workflows.  We override it to pass the A2A
-       ``context_id`` as the ``user_id``, giving each conversation its own isolated
-       per-user workflow instance.
-    """
-
-    def __init__(self, session_manager: SessionManager) -> None:
-        # Bypass parent __init__ to avoid session_manager.workflow access,
-        # which raises ValueError for per-user workflows.
-        self.session_manager = session_manager
-        logger.info(
-            "Initialized NATWorkflowAgentExecutor (message-only) for workflow: %s",
-            session_manager.config.workflow.type,
-        )
-
-    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
-        # Inject the A2A context_id as user_id before delegating to the parent execute.
-        # The parent calls self.session_manager.session() with no user_id, which raises
-        # ValueError for per-user workflows.  Setting the context var here means the
-        # SessionManager's _get_user_id_from_context() will find it automatically.
-        token = None
-        if context.context_id:
-            token = self.session_manager._context_state.user_id.set(context.context_id)
-        try:
-            await super().execute(context, event_queue)
-        finally:
-            if token is not None:
-                self.session_manager._context_state.user_id.reset(token)
-
-
-# ---------------------------------------------------------------------------
 # Endpoint URL
 # ---------------------------------------------------------------------------
 
@@ -145,15 +98,9 @@ def get_a2a_endpoint_url(host: str, port: int) -> str:
 async def resolve_oauth_endpoints(
     server_auth_config: OAuth2ResourceServerConfig,
 ) -> tuple[str, str]:
-    """Resolve authorization and token URLs from an OAuth2ResourceServerConfig.
+    """Resolve ``(authorization_url, token_url)`` from an OAuth2ResourceServerConfig.
 
-    Uses OIDC discovery when ``discovery_url`` is set, otherwise derives URLs
-    from ``issuer_url``.
-
-    Returns
-    -------
-    tuple[str, str]
-        ``(authorization_url, token_url)``
+    Uses OIDC discovery when ``discovery_url`` is set, otherwise derives from ``issuer_url``.
     """
     if server_auth_config.discovery_url:
         try:
@@ -211,21 +158,10 @@ def build_oauth_flow_from_cross_app_access(
 def build_cross_app_capability_extension(
     config: CrossApplicationAccessConfig,
 ) -> list[AgentExtension]:
-    """Build the Cross-Application Access agent card extension.
+    """Build the JWT Bearer Grant extension entry for ``capabilities.extensions``.
 
-    Compiles the RFC 7523 JWT Bearer Grant extension entry for
-    ``capabilities.extensions``.  Only extension-bound fields are included in
-    ``params``; ``token_url`` and ``scopes`` are intentionally excluded because
-    they belong to the OpenAPI ``securitySchemes`` layer, not to this extension.
-
-    The ``params`` structure:
-
-    * ``ref`` — binds this extension to the ``oauth2 / clientCredentials`` scheme.
-    * ``target_audience`` — final resource identifier (the agent being called).
-    * ``token_endpoint_auth_method`` — client authentication method.
-    * ``token_exchange`` — nested RFC 8693 Step 1 params:
-      ``trusted_issuer`` and ``audience`` (Step 1 AS destination).
-    * ``token_request`` — nested RFC 7523 Step 2 params: ``grant_type``.
+    Only extension-bound fields go in ``params``; ``token_url`` and ``scopes``
+    are intentionally omitted — they belong to OpenAPI ``securitySchemes``.
     """
     params: dict = {
         "ref": {
@@ -254,21 +190,13 @@ async def build_security_schemes(
     list[dict[str, list[str]]] | None,
     list[AgentExtension] | None,
 ]:
-    """Assemble A2A security schemes from a frontend configuration.
+    """Assemble A2A security schemes, merging up to two auth sources.
 
-    Supports two independent auth sources merged into a single ``oauth2``
-    security scheme with separate flows:
+    * ``server_auth`` → authorization_code flow.
+    * ``cross_app_access`` → client_credentials flow + JWT Bearer capability extension.
 
-    * ``server_auth`` (OAuth2ResourceServerConfig) → authorization_code flow.
-    * ``cross_app_access`` (CrossApplicationAccessConfig) → client_credentials
-      flow (OpenAPI ``token_url``/``scopes``) + JWT Bearer capability extension
-      (all other negotiation params).
-
-    Returns
-    -------
-    tuple
-        ``(security_schemes, security_requirements, capability_extensions)`` —
-        all ``None`` when neither auth source is configured.
+    Returns ``(security_schemes, security_requirements, extensions)``, all ``None``
+    when neither source is configured.
     """
     server_auth = frontend_config.server_auth
 
@@ -313,17 +241,8 @@ async def create_agent_card(
 ) -> AgentCard:
     """Build an :class:`~a2a.types.AgentCard` for a DataRobot-hosted A2A agent.
 
-    Parameters
-    ----------
-    frontend_config:
-        NAT A2A frontend configuration (name, description, capabilities, etc.).
-    cross_app_access:
-        Optional Cross-Application Access configuration. When provided, populates
-        the OpenAPI ``clientCredentials`` security scheme and the JWT Bearer
-        capability extension.
-    skills:
-        Skills to advertise. When empty, a single default skill is generated
-        from ``frontend_config.name`` and ``frontend_config.description``.
+    When ``skills`` is empty, a single default skill is generated from
+    ``frontend_config.name`` / ``frontend_config.description``.
     """
     security_schemes, security, extensions = await build_security_schemes(
         frontend_config, cross_app_access

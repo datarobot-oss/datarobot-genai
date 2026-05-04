@@ -16,11 +16,14 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from a2a.server.agent_execution import RequestContext
+from a2a.server.events import EventQueue
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
@@ -35,9 +38,6 @@ from .a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF  # noqa: F401 (re-exported)
 from .a2a import CROSS_APP_SECURITY_SCHEME_REF  # noqa: F401 (re-exported)
 from .a2a import JWT_BEARER_GRANT_TYPE_URI  # noqa: F401 (re-exported)
 from .a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE  # noqa: F401 (re-exported)
-from .a2a import (
-    PerUserCompatibleAgentExecutor as _PerUserCompatibleAgentExecutor,  # noqa: F401 (re-exported)
-)
 from .a2a import create_agent_card
 from .session import DRAgentAGUISessionManager
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
@@ -45,6 +45,44 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
 logger = logging.getLogger(__name__)
+
+
+class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
+    """Subclass of NATWorkflowAgentExecutor that supports per-user workflows.
+
+    Two problems with the parent class for per-user workflows:
+
+    1. ``__init__`` accesses ``session_manager.workflow`` which raises ``ValueError``
+       for per-user workflows.  We bypass it and log via ``config.workflow.type`` instead.
+
+    2. ``execute`` calls ``self.session_manager.session()`` with no ``user_id``, which
+       raises ``ValueError`` for per-user workflows.  We override it to pass the A2A
+       ``context_id`` as the ``user_id``, giving each conversation its own isolated
+       per-user workflow instance.
+    """
+
+    def __init__(self, session_manager: SessionManager) -> None:
+        # Bypass parent __init__ to avoid session_manager.workflow access,
+        # which raises ValueError for per-user workflows. Log via config instead.
+        self.session_manager = session_manager
+        logger.info(
+            "Initialized NATWorkflowAgentExecutor (message-only) for workflow: %s",
+            session_manager.config.workflow.type,
+        )
+
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
+        # Inject the A2A context_id as user_id before delegating to the parent execute.
+        # The parent calls self.session_manager.session() with no user_id, which raises
+        # ValueError for per-user workflows.  Setting the context var here means the
+        # SessionManager's _get_user_id_from_context() will find it automatically.
+        token = None
+        if context.context_id:
+            token = self.session_manager._context_state.user_id.set(context.context_id)
+        try:
+            await super().execute(context, event_queue)
+        finally:
+            if token is not None:
+                self.session_manager._context_state.user_id.reset(token)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):

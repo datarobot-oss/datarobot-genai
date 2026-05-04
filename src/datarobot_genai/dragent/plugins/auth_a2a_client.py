@@ -53,34 +53,23 @@ def _extract_auth_headers(auth_result: Any) -> dict[str, str]:
 
 @runtime_checkable
 class AgentCardAware(Protocol):
-    """Auth providers that need the resolved agent card before ``authenticate()``.
+    """Protocol for auth providers that need the agent card before ``authenticate()``.
 
-    Implement this protocol on an auth provider to receive the fetched
-    :class:`~a2a.types.AgentCard` before the first ``authenticate()`` call.
-    :class:`_AuthenticatedA2ABaseClient` checks for this protocol via
-    ``isinstance`` and calls :meth:`set_agent_card` automatically.
+    :class:`_AuthenticatedA2ABaseClient` checks for this via ``isinstance``
+    and calls :meth:`set_agent_card` automatically after card resolution.
     """
 
     def set_agent_card(self, card: AgentCard) -> None:
-        """Receive the resolved agent card.
-
-        Called by :class:`_AuthenticatedA2ABaseClient` immediately after the
-        card is fetched, before ``authenticate()`` is ever invoked.
-        """
+        """Receive the resolved agent card before ``authenticate()`` is invoked."""
         ...
 
 
 class A2ADiscoveryAuthMixin(abc.ABC):
     """Mixin for auth providers that need different credentials for agent card discovery.
 
-    By default :meth:`_AuthenticatedA2ABaseClient._resolve_agent_card` calls
-    ``authenticate()`` and extracts the resulting credentials as HTTP headers.
-    Implement this mixin to return different headers for the agent card GET
-    without affecting the call-phase ``authenticate()`` used by ``AuthInterceptor``.
-
-    Example: :class:`~datarobot_genai.dragent.plugins.okta_a2a_auth.OktaTokenExchangeAuthProvider`
-    uses this to forward the incoming Okta bearer token for discovery while
-    performing a two-step RFC 8693 exchange for the actual A2A calls.
+    Without this mixin, ``_AuthenticatedA2ABaseClient`` calls ``authenticate()`` for
+    both discovery and call phases.  Implement ``authenticate_for_discovery()`` to
+    supply separate headers for the agent card GET.
     """
 
     @abc.abstractmethod
@@ -95,19 +84,11 @@ class A2ADiscoveryAuthMixin(abc.ABC):
 
 
 class _AuthenticatedA2ABaseClient(A2ABaseClient):
-    """A2A client that authenticates agent card discovery and A2A RPC independently.
+    """A2A client with independent auth for card discovery and RPC calls.
 
-    * **Agent card** ``GET`` — two mutually exclusive paths:
-
-      1. *Discovery mixin*: if the configured ``auth_provider`` implements
-         :class:`A2ADiscoveryAuthMixin`, ``authenticate_for_discovery()`` is called
-         and its result is used as headers on a short-lived ``httpx.AsyncClient``.
-      2. *Default*: ``authenticate()`` is called and its credentials are extracted
-         as headers (e.g. ``DataRobotAPIKeyAuthProvider``).  When no provider is
-         set the card is fetched unauthenticated.
-
-    * **Task / message** traffic uses NAT's ``AuthInterceptor`` +
-      ``A2ACredentialService``, which calls ``authenticate()`` per-request.
+    Discovery uses ``authenticate_for_discovery()`` when the provider implements
+    :class:`A2ADiscoveryAuthMixin`, otherwise falls back to ``authenticate()``.
+    Task traffic always uses ``AuthInterceptor`` + ``A2ACredentialService``.
     """
 
     async def _resolve_agent_card(self) -> None:
@@ -190,12 +171,8 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
 class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_client"):  # type: ignore[call-arg]
     """A2A client config with separate discovery and call-phase auth.
 
-    Inherits all fields from :class:`~nat.plugins.a2a.client.client_config.A2AClientConfig`
-    (``url``, ``auth_provider``, ``agent_card_path``, ``task_timeout``, ``streaming``).
-
-    If the referenced ``auth_provider`` implements :class:`A2ADiscoveryAuthMixin`,
-    it supplies different credentials for agent card discovery vs A2A RPC calls.
-    Otherwise the same ``authenticate()`` result is used for both phases.
+    If ``auth_provider`` implements :class:`A2ADiscoveryAuthMixin`, it supplies
+    different credentials for discovery vs RPC calls.
     """
 
 
@@ -250,12 +227,6 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
 async def authenticated_a2a_client(
     config: AuthenticatedA2AClientConfig, _builder: Builder
 ) -> AsyncGenerator[Any, None]:
-    """A2A function group with authenticated agent card discovery and RPC.
-
-    The ``auth_provider`` field controls both phases.  If the provider
-    implements :class:`A2ADiscoveryAuthMixin` it supplies separate credentials
-    for agent card discovery; otherwise the same ``authenticate()`` is used
-    for both phases.
-    """
+    """NAT factory for :class:`AuthenticatedA2AClientFunctionGroup`."""
     async with AuthenticatedA2AClientFunctionGroup(config, _builder) as group:
         yield group
