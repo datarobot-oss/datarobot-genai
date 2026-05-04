@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Server-side XAA parameters are declared in `workflow.yaml` under `cross_application_access` and published on the AgentCard: OpenAPI `clientCredentials` security scheme plus a JWT Bearer capability extension containing the two-step flow parameters (RFC 8693 → RFC 7523).
 - Client-side: `OktaCrossApplicationAccessAuthProvider` reads the AgentCard extension at runtime, performs the two-step token exchange via `okta-client-python`, and requires only `PRINCIPAL_ID` / `PRIVATE_JWK` env vars.
 - Added `okta-client-python` dependency into the `auth` extra.
+- Server-side config tag was renamed from `oauth_token_exchange` into `cross_application_access`.
 
 ## 0.15.33
 - Fixed CrewAI AG-UI streaming so each agent role in a multi-agent crew emits its own assistant message with a unique `messageId`. Previously, `TEXT_MESSAGE_END` was missing at agent-role boundaries and a single `messageId` was reused across the whole run, collapsing every agent's output into one merged message.
