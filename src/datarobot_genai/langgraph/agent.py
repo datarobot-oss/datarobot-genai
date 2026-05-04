@@ -117,19 +117,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         debug: bool = False,
         name: str | None = None,
     ) -> None:
-        """Initialize the agent and LangGraph compile settings.
-
-        LangGraph-only parameters:
-
-        - ``checkpointer``: forwarded to ``compile(...)``. Required for ``interrupt()``
-          resume across requests; without it, pending-interrupt detection is a no-op.
-          Pair with a stable ``RunAgentInput.thread_id`` from the caller.
-        - ``interrupt_before`` / ``interrupt_after``: passed to
-          :meth:`langgraph.graph.state.StateGraph.compile`.
-        - ``debug``: passed to ``compile(debug=...)``; for ``astream``, when this is
-          false, ``debug`` follows ``verbose`` (previous behavior).
-        - ``name``: optional graph name for ``compile(name=...)``.
-        """
         self.checkpointer = checkpointer
         self.interrupt_before = interrupt_before
         self.interrupt_after = interrupt_after

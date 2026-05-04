@@ -81,12 +81,21 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
     Framework-specific parameters:
 
-    - ``roles``, ``goals``, ``backstories``: sequences with length
-      ``len(agents)`` for CrewAI identity; omitted or ``None`` leaves agents
-      unchanged.
-    - ``max_iter``, ``max_rpm``, ``max_execution_time``, ``allow_delegation``,
-      ``max_retry_limit``, ``reasoning``, ``max_reasoning_attempts``: forwarded
-      to the corresponding ``set_*`` methods; omitted or ``None`` skips.
+    - ``roles``: One role string per crew agent (length ``len(agents)``); sets
+      each agent's ``role``.
+    - ``goals``: One goal string per agent; sets each agent's ``goal``.
+    - ``backstories``: One backstory string per agent; sets each agent's
+      ``backstory``.
+    - ``max_iter``: Upper bound on iterations (tool / act loops) per agent.
+    - ``max_rpm``: Requests-per-minute limit per agent.
+    - ``max_execution_time``: Wall-clock seconds cap per agent (only applied
+      when not ``None``).
+    - ``allow_delegation``: Whether agents may delegate work to other crew
+      members.
+    - ``max_retry_limit``: Retries per agent after recoverable failures.
+    - ``reasoning``: Turns CrewAI structured reasoning on or off per agent.
+    - ``max_reasoning_attempts``: Maximum reasoning passes per agent (only
+      applied when not ``None``).
     """
 
     def __init__(
