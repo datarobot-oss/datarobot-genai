@@ -5,8 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
-## 0.15.33
+## 0.15.34
 - `BaseAgent` accepts an optional `model` identifier. CrewAI, LangGraph, and LlamaIndex agents now use explicit named `__init__` parameters (instead of forwarding arbitrary kwargs).
+
+## 0.15.33
+- Fixed CrewAI AG-UI streaming so each agent role in a multi-agent crew emits its own assistant message with a unique `messageId`. Previously, `TEXT_MESSAGE_END` was missing at agent-role boundaries and a single `messageId` was reused across the whole run, collapsing every agent's output into one merged message.
 
 ## 0.15.32
 - Implemented pagination for predictive model MCP tool
