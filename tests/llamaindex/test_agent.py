@@ -46,6 +46,7 @@ from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
 
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
@@ -362,6 +363,9 @@ async def test_llama_index_agent_invoke(
     # THEN: the events follow AG-UI lifecycle pattern
     ag_events, pipeline_interactions, usage = zip(*events)
 
+    # THEN: the sequence is valid per the AG-UI verifier
+    validate_sequence(ag_events)
+
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
@@ -454,6 +458,7 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, pipeline, _ = zip(*events_out)
 
+    validate_sequence(ag_events)
     assert isinstance(ag_events[-1], RunFinishedEvent)
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["hey"]
@@ -502,6 +507,7 @@ async def test_invoke_tool_result_message_id_is_distinct_from_text_bubbles(
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, _, _ = zip(*events_out)
 
+    validate_sequence(ag_events)
     text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
     tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
     assert len(text_starts) == 2
@@ -530,6 +536,7 @@ async def test_invoke_agent_stream_multiple_agents(
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, _, _ = zip(*events_out)
 
+    validate_sequence(ag_events)
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["one", " two"]
     assert any(isinstance(e, TextMessageStartEvent) for e in ag_events)

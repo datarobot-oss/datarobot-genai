@@ -6,10 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 ## 0.15.34
-- Fixed AG-UI event lifecycle in the LlamaIndex agent adapter: each agent step now emits its own `TEXT_MESSAGE_START`/`END`-bounded bubbles in chronological order with tool calls between them, the final step always emits a matching `STEP_FINISHED`, and `ToolCallResultEvent.message_id` anchors to the preceding text bubble per AG-UI spec.
+- Fixed AG-UI event lifecycle in the LlamaIndex agent adapter: each agent step emits its own message bubble and a matching `STEP_FINISHED`.
 
 ## 0.15.33
-- Fixed CrewAI AG-UI streaming so each agent role in a multi-agent crew emits its own assistant message with a unique `messageId`. Previously, `TEXT_MESSAGE_END` was missing at agent-role boundaries and a single `messageId` was reused across the whole run, collapsing every agent's output into one merged message.
+- Fixed CrewAI AG-UI streaming so each agent role in a multi-agent crew emits its own assistant message with a unique `messageId`.
 
 ## 0.15.32
 - Implemented pagination for predictive model MCP tool
