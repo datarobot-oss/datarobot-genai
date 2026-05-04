@@ -101,6 +101,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             config=self._config, shared_builder=builder, entry_function=entry_function
         )
         self._session_managers.append(sm)
+
         return sm
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
