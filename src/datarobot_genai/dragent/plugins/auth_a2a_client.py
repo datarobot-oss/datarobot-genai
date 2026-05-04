@@ -143,8 +143,9 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
         if not self._agent_card:
             raise RuntimeError("Agent card not resolved")
 
-        # Allow auth providers that need agent-card parameters (e.g. OktaTokenExchangeAuthProvider)
-        # to receive the resolved card before the interceptor is set up.
+        # Allow auth providers that need agent-card parameters
+        # (e.g. OktaCrossApplicationAccessAuthProvider) to receive
+        # the resolved card before the interceptor is set up.
         if isinstance(self._auth_provider, AgentCardAware):
             self._auth_provider.set_agent_card(self._agent_card)
 

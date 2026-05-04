@@ -14,7 +14,7 @@
 
 """Okta token exchange auth provider for A2A agent communication.
 
-Registered as ``_type: okta_token_exchange`` in workflow YAML.
+Registered as ``_type: okta_cross_app_access`` in workflow YAML.
 
 Discovery phase: forwards the incoming ``x-datarobot-okta-access-token`` header
 directly to the agent card endpoint as a Bearer token.
@@ -35,7 +35,7 @@ environment variables / Runtime Parameters / ``.env`` / ``file_secrets`` via
 
     authentication:
       okta_auth:
-        _type: okta_token_exchange
+        _type: okta_cross_app_access
 
     function_groups:
       remote_agent:
@@ -136,7 +136,7 @@ _JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 class _CrossAppFlowParams:
     """Agent card parameters needed for the Okta XAA flow.
 
-    Populated by :meth:`OktaTokenExchangeAuthProvider.set_agent_card` from
+    Populated by :meth:`OktaCrossApplicationAccessAuthProvider.set_agent_card` from
     ``securitySchemes`` (OpenAPI layer) and ``capabilities.extensions`` (A2A layer).
     """
 
@@ -167,15 +167,15 @@ class _CrossAppFlowParams:
 
 
 # ---------------------------------------------------------------------------
-# OktaTokenExchangeAuthProviderConfig
+# OktaCrossApplicationAccessAuthProviderConfig
 # ---------------------------------------------------------------------------
 
 
-class OktaTokenExchangeAuthProviderConfig(
+class OktaCrossApplicationAccessAuthProviderConfig(
     AuthProviderBaseConfig,
-    name="okta_token_exchange",
+    name="okta_cross_app_access",
 ):  # type: ignore[call-arg]
-    """Configuration for :class:`OktaTokenExchangeAuthProvider`.
+    """Configuration for :class:`OktaCrossApplicationAccessAuthProvider`.
 
     ``principal_id`` and ``private_jwk`` are auto-loaded from env vars /
     Runtime Parameters / ``.env`` / ``file_secrets`` — no ``workflow.yaml``
@@ -214,13 +214,13 @@ class OktaTokenExchangeAuthProviderConfig(
 
 
 # ---------------------------------------------------------------------------
-# OktaTokenExchangeAuthProvider
+# OktaCrossApplicationAccessAuthProvider
 # ---------------------------------------------------------------------------
 
 
-class OktaTokenExchangeAuthProvider(
+class OktaCrossApplicationAccessAuthProvider(
     A2ADiscoveryAuthMixin,
-    AuthProviderBase[OktaTokenExchangeAuthProviderConfig],
+    AuthProviderBase[OktaCrossApplicationAccessAuthProviderConfig],
 ):
     """Auth provider for Okta XAA A2A calls.
 
@@ -228,7 +228,7 @@ class OktaTokenExchangeAuthProvider(
     * **Call** — two-step XAA token exchange (RFC 8693 → RFC 7523) via ``okta-client-python``.
     """
 
-    def __init__(self, config: OktaTokenExchangeAuthProviderConfig) -> None:
+    def __init__(self, config: OktaCrossApplicationAccessAuthProviderConfig) -> None:
         super().__init__(config)
         self._flow_params: _CrossAppFlowParams | None = None
 
@@ -279,8 +279,9 @@ class OktaTokenExchangeAuthProvider(
         """
         if self._flow_params is None:
             raise RuntimeError(
-                "OktaTokenExchangeAuthProvider.authenticate() called before set_agent_card(). "
-                "Ensure the provider is used with authenticated_a2a_client."
+                "OktaCrossApplicationAccessAuthProvider.authenticate() called "
+                "before set_agent_card(). Ensure the provider is used with "
+                "authenticated_a2a_client."
             )
 
         if not self.config.principal_id:
@@ -503,9 +504,9 @@ def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
 # ---------------------------------------------------------------------------
 
 
-@register_auth_provider(config_type=OktaTokenExchangeAuthProviderConfig)
-async def okta_token_exchange_auth_provider(
-    config: OktaTokenExchangeAuthProviderConfig, builder: Builder
-) -> AsyncGenerator[OktaTokenExchangeAuthProvider, None]:
-    """NAT auth provider factory for Okta XAA token exchange."""
-    yield OktaTokenExchangeAuthProvider(config=config)
+@register_auth_provider(config_type=OktaCrossApplicationAccessAuthProviderConfig)
+async def okta_cross_app_access_auth_provider(
+    config: OktaCrossApplicationAccessAuthProviderConfig, builder: Builder
+) -> AsyncGenerator[OktaCrossApplicationAccessAuthProvider, None]:
+    """NAT auth provider factory for Okta Cross-Application Access."""
+    yield OktaCrossApplicationAccessAuthProvider(config=config)
