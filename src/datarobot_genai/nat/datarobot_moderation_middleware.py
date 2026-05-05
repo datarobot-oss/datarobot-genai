@@ -791,6 +791,37 @@ def skip_event_type(event: Event) -> bool:
     }
 
 
+def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
+    """Check if the payload includes assistant text AG-UI deltas
+    (possibly after lifecycle events).
+    """
+    return any(
+        isinstance(ev, (TextMessageContentEvent, TextMessageChunkEvent)) for ev in response.events
+    )
+
+
+def _assistant_text_joined_from_ag_ui(response: DRAgentEventResponse) -> str:
+    return "".join(
+        ev.delta
+        for ev in response.events
+        if isinstance(ev, (TextMessageContentEvent, TextMessageChunkEvent))
+    )
+
+
+def _merge_moderations_into_multi_event_response(
+    incoming: DRAgentEventResponse,
+    moderated_completion_response: DRAgentEventResponse,
+) -> DRAgentEventResponse:
+    """Attach serialized moderations (and optional usage/model) without dropping envelope events."""
+    return incoming.model_copy(
+        update={
+            "datarobot_moderations": moderated_completion_response.datarobot_moderations,
+            "usage_metrics": moderated_completion_response.usage_metrics or incoming.usage_metrics,
+            "model": moderated_completion_response.model or incoming.model,
+        }
+    )
+
+
 def _defer_until_after_moderated_chunk(event: Event) -> bool:
     """Defer START/END until after the moderated chunk: late moderated deltas still use the prior message_id.
 
@@ -1002,13 +1033,13 @@ class DataRobotModerationMiddleware(
             InvocationContext if modified, or None to pass through unchanged.
             Default implementation does nothing.
         """
-        response: DRAgentEventResponse = context.output
-        if skip_event_type(response.events[0]):
+        incoming: DRAgentEventResponse = context.output
+        if not _response_has_assistant_text_deltas(incoming):
             return None
         if self._moderation is None:
             return None
 
-        chat_completion = dragent_event_response_to_chat_completion(response)
+        chat_completion = dragent_event_response_to_chat_completion(incoming)
 
         pipeline = self._moderation._pipeline
 
@@ -1022,10 +1053,10 @@ class DataRobotModerationMiddleware(
         predictions_df, extra_attributes = build_predictions_df_from_completion(
             self.data, pipeline, chat_completion
         )
-        response = predictions_df.loc[0, response_column_name]
+        response_text = predictions_df.loc[0, response_column_name]
         prompt_for_eval = predictions_df.loc[0, prompt_column_name]
 
-        if response is not None:
+        if response_text is not None:
             none_predictions_df = None
             postscore_df, _ = run_postscore_guards(pipeline, predictions_df)
         else:
@@ -1035,7 +1066,7 @@ class DataRobotModerationMiddleware(
         # ``run_postscore_guards`` feeds ``format_result_df`` / OTEL; ``evaluate_response``
         # returns the public ``EvaluationResult`` for the completion (mirrors ``evaluate_prompt``).
         response_eval, _ = self._moderation.evaluate_response(
-            _text_for_moderation_eval(response),
+            _text_for_moderation_eval(response_text),
             prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
         )
 
@@ -1082,7 +1113,19 @@ class DataRobotModerationMiddleware(
         final_completion = set_moderation_attribute_to_completion(
             pipeline, final_completion, result_df, association_id=self.association_id
         )
-        context.output = chat_completion_to_dragent_event_response(final_completion)
+        moderated_dr = chat_completion_to_dragent_event_response(final_completion)
+
+        preserve_ag_ui_envelope = (
+            len(incoming.events) > 1
+            and finish_reason == "stop"
+            and not response_eval.blocked
+            and not (response_eval.replaced and response_eval.replacement is not None)
+            and response_message == _assistant_text_joined_from_ag_ui(incoming)
+        )
+        if preserve_ag_ui_envelope:
+            context.output = _merge_moderations_into_multi_event_response(incoming, moderated_dr)
+        else:
+            context.output = moderated_dr
         return context
 
     async def function_middleware_stream(

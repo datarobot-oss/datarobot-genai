@@ -256,6 +256,87 @@ async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -
     assert ctx.output is tool_first
 
 
+async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchanged(
+    builder_mock: MagicMock,
+) -> None:
+    """Non-streaming /generate aggregates lifecycle events; post_invoke must not drop them."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_response.return_value = (
+        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
+        None,
+    )
+
+    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["hi"]})
+    postscore = pd.DataFrame({RESPONSE_COL: ["hi"]})
+
+    mid = "msg-1"
+    aggregate = DRAgentEventResponse(
+        events=[
+            RunStartedEvent(type=EventType.RUN_STARTED, thread_id="t", run_id="r"),
+            TextMessageStartEvent(
+                type=EventType.TEXT_MESSAGE_START,
+                message_id=mid,
+                role="assistant",
+            ),
+            TextMessageContentEvent(
+                type=EventType.TEXT_MESSAGE_CONTENT, message_id=mid, delta="hi"
+            ),
+            TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=mid),
+            RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id="t", run_id="r"),
+        ],
+        usage_metrics=default_usage_metrics(),
+    )
+    run_input = _make_run_input("p")
+    ctx = _invocation(run_input, output=aggregate)
+
+    moderated_sidecar = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="x", delta="hi")],
+        datarobot_moderations={"token_count": 2},
+        usage_metrics=default_usage_metrics(),
+    )
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
+            return_value=(predictions, {}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
+            return_value=(postscore, 0.0),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
+            return_value=pd.DataFrame({"dummy": [1]}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
+            side_effect=lambda _p, completion, _df, association_id=None: completion,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.chat_completion_to_dragent_event_response",
+            return_value=moderated_sidecar,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
+        mw.prescore_df = mw.data.copy()
+
+        out = await mw.post_invoke(ctx)
+
+    assert out is not None
+    assert ctx.output.events[0].type == EventType.RUN_STARTED
+    assert ctx.output.datarobot_moderations == {"token_count": 2}
+    validate_sequence(ctx.output.events)
+
+
 async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     builder_mock: MagicMock,
 ) -> None:
