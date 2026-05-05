@@ -240,6 +240,19 @@ def test_aggregate_dragent_event_responses_combines_events() -> None:
     assert result.events[1].delta == "world"
 
 
+def test_aggregate_dragent_event_responses_keeps_last_datarobot_moderations() -> None:
+    # GIVEN pass-through chunks without moderation metadata and a text chunk with guards output
+    r1 = DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="Hello ")])
+    r2 = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="world")],
+        datarobot_moderations={"score": 0.1},
+    )
+
+    result = aggregate_dragent_event_responses([r1, r2])
+
+    assert result.datarobot_moderations == {"score": 0.1}
+
+
 def test_aggregate_dragent_event_responses_empty() -> None:
     # GIVEN an empty list
     result = aggregate_dragent_event_responses([])
