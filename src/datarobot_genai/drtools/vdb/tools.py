@@ -22,26 +22,56 @@ from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.utils import DR_PREDICTIVE_API_PAGINATION_MAX
+from datarobot_genai.drtools.predictive.utils import _clamp_limit
+from datarobot_genai.drtools.predictive.utils import _merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"vdb", "read", "list", "daria"})
-async def list_vector_databases() -> dict[str, Any]:
-    """List all deployed Vector Databases (VDBs) in DataRobot."""
+@tool_metadata(
+    tags={"vdb", "read", "list", "daria"},
+    description=(
+        "[VDB—discover deployments] Use when the user needs deployed Vector Databases (VDBs) as "
+        "id/label/status records. Read-only. Filters DataRobot deployments to "
+        "modelTargetType=VectorDatabase. Not predictive deployments (list_deployments), not "
+        "AI Catalog datasets (list_ai_catalog_items). Next step: query_vector_database."
+    ),
+)
+async def list_vector_databases(
+    offset: Annotated[
+        int | None,
+        "Skip this many VDBs (0-based). Use with limit for paged listing; omit for all.",
+    ] = None,
+    limit: Annotated[
+        int,
+        (
+            "Max VDBs to return (default 100). Values above 100 are rejected; "
+            "use offset to page."
+        ),
+    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+) -> dict[str, Any]:
+    if offset is not None and offset < 0:
+        raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
+
+    limit, message = _clamp_limit(limit)
+
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
 
-    response = rest_client.get(
-        "deployments/",
-        params={"limit": 100, "modelTargetType": "VectorDatabase"},
-    )
-    data = response.json()
-    vdbs = data.get("data", [])
-    next_page = data.get("next")
+    params: dict[str, Any] = {"limit": limit, "modelTargetType": "VectorDatabase"}
+    if offset is not None:
+        params["offset"] = offset
 
-    return {
+    response = rest_client.get("deployments/", params=params)
+    api_response = response.json()
+    vdbs = api_response.get("data", [])
+    if not isinstance(vdbs, list):
+        vdbs = []
+
+    final_results: dict[str, Any] = {
         "vector_databases": [
             {
                 "deployment_id": d["id"],
@@ -51,11 +81,25 @@ async def list_vector_databases() -> dict[str, Any]:
             for d in vdbs
         ],
         "count": len(vdbs),
-        "has_more": next_page is not None,
     }
+    return _merge_pagination_metadata(
+        final_results=final_results,
+        api_response=api_response,
+        message=message,
+        offset=offset,
+        limit=limit,
+    )
 
 
-@tool_metadata(tags={"vdb", "read", "query", "search", "daria"})
+@tool_metadata(
+    tags={"vdb", "read", "query", "search", "daria"},
+    description=(
+        "[VDB—semantic search] Use when the user wants to retrieve documents from a deployed "
+        "Vector Database via semantic similarity (deployment_id from list_vector_databases). "
+        "Returns matched documents with metadata. Read-only. Not deployment metadata "
+        "(get_deployment_info), not predictive scoring (predict_*)."
+    ),
+)
 async def query_vector_database(
     *,
     deployment_id: Annotated[str, "The deployment ID of the Vector Database"] | None = None,
@@ -65,11 +109,10 @@ async def query_vector_database(
         str, "Retrieval mode: 'similarity' or 'maximal_marginal_relevance'"
     ] = "similarity",
 ) -> dict[str, Any]:
-    """Query a DataRobot Vector Database with semantic search."""
     if not deployment_id:
-        raise ToolError("Deployment ID must be provided")
+        raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
     if not query:
-        raise ToolError("Query must be provided")
+        raise ToolError("Query must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()

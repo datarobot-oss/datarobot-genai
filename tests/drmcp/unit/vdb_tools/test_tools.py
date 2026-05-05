@@ -61,6 +61,41 @@ async def test_list_vector_databases_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_vector_databases_pagination_params() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": [], "next": "url", "total_count": 7}
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = mock_response
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    with (
+        patch(
+            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_dr_module
+
+        result = await tools.list_vector_databases(offset=10, limit=25)
+        mock_rest_client.get.assert_called_once_with(
+            "deployments/",
+            params={"limit": 25, "modelTargetType": "VectorDatabase", "offset": 10},
+        )
+        assert result["offset"] == 10
+        assert result["limit"] == 25
+        assert result["next"] == "url"
+        assert result["total_count"] == 7
+
+
+@pytest.mark.asyncio
+async def test_list_vector_databases_negative_offset_validation() -> None:
+    with pytest.raises(ToolError, match="offset must be non-negative"):
+        await tools.list_vector_databases(offset=-1)
+
+
+@pytest.mark.asyncio
 async def test_list_vector_databases_empty() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
