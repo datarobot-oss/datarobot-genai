@@ -88,6 +88,7 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.nat.moderation_pipeline_helpers import build_non_streaming_chat_completion
 from datarobot_genai.nat.moderation_pipeline_helpers import build_predictions_df_from_completion
 from datarobot_genai.nat.moderation_pipeline_helpers import filter_association_id
@@ -553,17 +554,95 @@ def _datarobot_moderations_from_completion(
     return raw if isinstance(raw, dict) else None
 
 
+def _infer_parent_message_id_for_tool_calls(
+    source_ag_ui_events: list[Any] | None,
+    built_text_events: list[Any],
+) -> str:
+    """Best-effort parent_message_id for ToolCallStart (matches stream_converter semantics)."""
+    for ev in reversed(built_text_events):
+        if isinstance(ev, (TextMessageContentEvent, TextMessageChunkEvent)):
+            return ev.message_id
+    if source_ag_ui_events:
+        for ev in reversed(source_ag_ui_events):
+            if isinstance(ev, (TextMessageContentEvent, TextMessageChunkEvent)):
+                return ev.message_id
+            if isinstance(ev, ToolCallStartEvent):
+                return ev.parent_message_id
+    return ""
+
+
+def _agui_tool_events_from_openai_delta_tool_calls(
+    tool_calls: list[OpenAIChoiceDeltaToolCall] | None,
+    *,
+    parent_message_id: str,
+    tool_index_map: dict[int, str],
+) -> list[Any]:
+    """Rebuild ToolCall* AG-UI events from one OpenAI streaming delta (per stream_converter)."""
+    events: list[Any] = []
+    if not tool_calls:
+        return events
+    for tc in tool_calls:
+        tc_id = tc.id or tool_index_map.get(tc.index)
+        if tc_id is None:
+            continue
+        is_new = tc.id is not None and tc.index not in tool_index_map
+        fn = tc.function
+        if is_new:
+            tool_index_map[tc.index] = tc_id
+            tool_name = (fn.name if fn else None) or ""
+            events.append(
+                ToolCallStartEvent(
+                    tool_call_id=tc_id,
+                    tool_call_name=tool_name,
+                    parent_message_id=parent_message_id,
+                )
+            )
+            if tool_name:
+                register_tool_call(tool_name, tc_id)
+        arguments = fn.arguments if fn else None
+        if arguments:
+            events.append(ToolCallArgsEvent(tool_call_id=tc_id, delta=arguments))
+    return events
+
+
 def chat_completion_to_dragent_event_response(
     completion: ChatCompletion | ChatCompletionChunk,
     *,
     source_ag_ui_events: list[Any] | None = None,
+    stream_tool_index_map: dict[int, str] | None = None,
 ) -> DRAgentEventResponse:
     """Convert OpenAI completion or streaming chunk back to DRAgentEventResponse."""
     if isinstance(completion, ChatCompletionChunk):
         chunk = _openai_chat_completion_chunk_to_nat_chat_response_chunk(completion)
-        events = _streaming_text_events_from_openai_chunk(
-            completion, source_ag_ui_events=source_ag_ui_events
-        )
+        d = completion.choices[0].delta
+        idx_map = stream_tool_index_map if stream_tool_index_map is not None else {}
+        events: list[Any] = []
+        if d.content:
+            idx_map.clear()
+            events.extend(
+                _streaming_text_events_from_openai_chunk(
+                    completion, source_ag_ui_events=source_ag_ui_events
+                )
+            )
+        elif not d.tool_calls:
+            events.extend(
+                _streaming_text_events_from_openai_chunk(
+                    completion, source_ag_ui_events=source_ag_ui_events
+                )
+            )
+        if d.tool_calls:
+            if d.content and events:
+                last = events[-1]
+                if isinstance(last, (TextMessageContentEvent, TextMessageChunkEvent)):
+                    events.append(TextMessageEndEvent(message_id=last.message_id))
+            parent_id = _infer_parent_message_id_for_tool_calls(source_ag_ui_events, events)
+            events.extend(
+                _agui_tool_events_from_openai_delta_tool_calls(
+                    d.tool_calls,
+                    parent_message_id=parent_id,
+                    tool_index_map=idx_map,
+                )
+            )
     else:
         chunk = _openai_chat_completion_to_nat_chat_response_chunk(completion)
         msg = completion.choices[0].message
@@ -723,6 +802,7 @@ class DataRobotModerationMiddleware(
         self.latency_so_far: float = 0.0
         self.association_id: str | None = None
         self.assembled_response: list[str] = []
+        self._stream_tool_index_map: dict[int, str] = {}
 
     @property
     def enabled(self) -> bool:
@@ -1016,6 +1096,8 @@ class DataRobotModerationMiddleware(
         moderation = self._moderation
         assert moderation is not None
 
+        self._stream_tool_index_map.clear()
+
         streaming_context = (
             StreamingContextBuilder()
             .set_pipeline(moderation._pipeline)
@@ -1135,7 +1217,9 @@ class DataRobotModerationMiddleware(
                     break
 
                 ctx.output = chat_completion_to_dragent_event_response(
-                    moderated, source_ag_ui_events=current_response.events
+                    moderated,
+                    source_ag_ui_events=current_response.events,
+                    stream_tool_index_map=self._stream_tool_index_map,
                 )
                 yield ctx.output
                 for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):

@@ -30,12 +30,20 @@ from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
 from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
+from openai.types.chat.chat_completion_chunk import Choice as OpenAIChunkChoice
+from openai.types.chat.chat_completion_chunk import ChoiceDelta as OpenAIChoiceDelta
+from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall as OpenAIChoiceDeltaToolCall
+from openai.types.chat.chat_completion_chunk import (
+    ChoiceDeltaToolCallFunction as OpenAIChoiceDeltaToolCallFunction,
+)
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.verify import validate_sequence
@@ -43,6 +51,9 @@ from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    chat_completion_to_dragent_event_response,
+)
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
@@ -602,3 +613,56 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
     end_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_END)
     finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
     assert end_idx < finished_idx
+
+
+def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
+    """Moderation rehydration must not drop tool AG-UI events bundled with a text delta."""
+    mid = "msg-1"
+    source = [
+        TextMessageContentEvent(message_id=mid, delta="call"),
+        TextMessageEndEvent(message_id=mid),
+        ToolCallStartEvent(
+            tool_call_id="call_1",
+            tool_call_name="generate_objectid",
+            parent_message_id=mid,
+        ),
+        ToolCallArgsEvent(tool_call_id="call_1", delta='{"x": 1}'),
+    ]
+    moderated_chunk = ChatCompletionChunk(
+        id="chunk-1",
+        choices=[
+            OpenAIChunkChoice(
+                index=0,
+                delta=OpenAIChoiceDelta(
+                    content="call",
+                    tool_calls=[
+                        OpenAIChoiceDeltaToolCall(
+                            index=0,
+                            id="call_1",
+                            type="function",
+                            function=OpenAIChoiceDeltaToolCallFunction(
+                                name="generate_objectid",
+                                arguments='{"x": 1}',
+                            ),
+                        )
+                    ],
+                ),
+                finish_reason=None,
+            )
+        ],
+        created=1700000000,
+        model="test-model",
+        object="chat.completion.chunk",
+    )
+    out = chat_completion_to_dragent_event_response(
+        moderated_chunk,
+        source_ag_ui_events=source,
+        stream_tool_index_map={},
+    )
+    types = [e.type for e in out.events]
+    assert EventType.TEXT_MESSAGE_CONTENT in types
+    assert EventType.TEXT_MESSAGE_END in types
+    assert EventType.TOOL_CALL_START in types
+    assert EventType.TOOL_CALL_ARGS in types
+    starts = [e for e in out.events if e.type == EventType.TOOL_CALL_START]
+    assert starts[0].tool_call_name == "generate_objectid"
