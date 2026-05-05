@@ -4,15 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.36
+- Fixed AG-UI tool call lifecycle in dragent frontends.
+
 ## 0.15.35
 - Added Okta Cross-Application Access (XAA) support for A2A agent-to-agent calls via the new `okta_cross_app_access` auth provider.
 - Server-side XAA parameters are declared in `workflow.yaml` under `cross_application_access` and published on the AgentCard: OpenAPI `clientCredentials` security scheme plus a JWT Bearer capability extension containing the two-step flow parameters (RFC 8693 → RFC 7523).
 - Client-side: `OktaCrossApplicationAccessAuthProvider` reads the AgentCard extension at runtime, performs the two-step token exchange via `okta-client-python`, and requires only `PRINCIPAL_ID` / `PRIVATE_JWK` env vars.
 - Added `okta-client-python` dependency into the `auth` extra.
 - Server-side config tag was renamed from `oauth_token_exchange` into `cross_application_access`.
-
-## 0.15.35
-- Fixed AG-UI tool call lifecycle in dragent frontends.
 
 ## 0.15.34
 - Fixed AG-UI event lifecycle in the LlamaIndex agent adapter: each agent step emits its own message bubble and a matching `STEP_FINISHED`.
