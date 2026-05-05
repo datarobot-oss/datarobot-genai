@@ -96,9 +96,6 @@ dragent = nat + [
     "datarobot-moderations>=11.2.24,<12.0.0",
 ]
 
-# Backward-compatible alias: same dependency set as dragent.
-moderation = dragent
-
 # Eventually NAT will be merged into dragent
 
 # auth is standalone set of dependencies for auth utilities only
@@ -159,7 +156,6 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
-    "moderation": moderation,
     "memory": memory,
 }
 
