@@ -51,3 +51,8 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     # THEN: there are events with text
     full_text = collect_text(ag_ui_events)
     assert len(full_text) > 0, "Expected non-empty text response"
+
+    # THEN: token-count guards attach serialized moderation metadata to at least one chunk
+    assert any(
+        chunk.datarobot_moderations is not None for chunk in sse_responses
+    ), "Expected streamed chunks to include datarobot_moderations when guards are configured"

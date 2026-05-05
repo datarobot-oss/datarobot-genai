@@ -22,9 +22,16 @@ llms:
   datarobot_llm:
     _type: datarobot-llm-component
 
+middleware:
+  datarobot_guardrails:
+    _type: datarobot_moderation
+    model_dir: ".."
+
 workflow:
   _type: llamaindex_agent
   llm_name: datarobot_llm
   description: LlamaIndex planner/writer agent
+  middleware:
+    - datarobot_guardrails
   verbose: True
   allow_parallel_tool_calls: True

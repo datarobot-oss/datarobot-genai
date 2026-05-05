@@ -22,7 +22,14 @@ llms:
   datarobot_llm:
     _type: datarobot-llm-component
 
+middleware:
+  datarobot_guardrails:
+    _type: datarobot_moderation
+    model_dir: ".."
+
 workflow:
   _type: base_agent
   llm_name: datarobot_llm
   description: Base agent example
+  middleware:
+    - datarobot_guardrails

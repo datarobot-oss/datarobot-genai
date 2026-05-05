@@ -29,9 +29,16 @@ llms:
         llm_default_model: azure/gpt-4o-2024-11-20
     num_retries: 1
 
+middleware:
+  datarobot_guardrails:
+    _type: datarobot_moderation
+    model_dir: ".."
+
 workflow:
   _type: llamaindex_agent
   llm_name: datarobot_llm
   description: LlamaIndex agent with router fallback
+  middleware:
+    - datarobot_guardrails
   verbose: true
   allow_parallel_tool_calls: true

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datarobot_genai.nat.datarobot_moderation_middleware  # noqa: F401
 from datarobot_genai.nat.tool import nat_tool
 
 from dragent.tool import generate_objectid
