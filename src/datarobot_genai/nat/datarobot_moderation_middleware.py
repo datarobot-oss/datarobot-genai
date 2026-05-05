@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import queue
 import threading
 import uuid
@@ -28,6 +29,7 @@ from typing import Any
 from typing import Literal
 from typing import cast
 
+import numpy as np
 import pandas as pd
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Event
@@ -533,6 +535,44 @@ def _openai_chat_completion_to_nat_chat_response_chunk(
     )
 
 
+def _json_safe_moderation_metadata(obj: Any) -> Any:  # noqa: PLR0911
+    """Recursively convert dome moderation metadata to JSON-safe values.
+
+    ``build_moderations_attribute_for_completion`` may attach numpy scalars or pandas
+    timestamps. Those values break ``DRAgentEventResponse.model_dump_json()`` during NAT
+    SSE serialization; the FastAPI layer then emits a bare workflow error JSON line (no
+    ``data:`` prefix), which e2e parses as an empty stream.
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {str(k): _json_safe_moderation_metadata(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe_moderation_metadata(v) for v in obj]
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, bool):
+        return obj
+    if isinstance(obj, bytes):
+        return obj.decode("utf-8", errors="replace")
+    if isinstance(obj, np.generic):
+        return _json_safe_moderation_metadata(obj.item())
+    if isinstance(obj, np.ndarray):
+        return _json_safe_moderation_metadata(obj.tolist())
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    if isinstance(obj, int):
+        return int(obj)
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if hasattr(obj, "item") and callable(obj.item):
+        try:
+            return _json_safe_moderation_metadata(obj.item())
+        except Exception:
+            pass
+    return str(obj)
+
+
 def _assistant_text_events_from_message(content: str | None) -> list[Any]:
     message_id = str(uuid.uuid4())
     events: list[Any] = [
@@ -551,7 +591,9 @@ def _datarobot_moderations_from_completion(
     completion: ChatCompletion | ChatCompletionChunk,
 ) -> dict[str, Any] | None:
     raw = getattr(completion, DATAROBOT_MODERATIONS_ATTR, None)
-    return raw if isinstance(raw, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    return cast(dict[str, Any], _json_safe_moderation_metadata(raw))
 
 
 def _infer_parent_message_id_for_tool_calls(
