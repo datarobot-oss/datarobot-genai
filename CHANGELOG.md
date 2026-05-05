@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.37
+- Added an optional `model` identifier to `BaseAgent`. Updated CrewAI, LangGraph, and LlamaIndex agents to use explicit named `__init__` parameters (instead of forwarding arbitrary kwargs). Possible breaking change moving away from `kwargs` to named parameters.
+
 ## 0.15.36
 - Fixed AG-UI tool call lifecycle in dragent frontends.
 

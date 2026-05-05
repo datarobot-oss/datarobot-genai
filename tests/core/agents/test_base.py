@@ -141,6 +141,16 @@ def test_base_agent_llm_optional() -> None:
     assert agent.llm is llm
 
 
+def test_base_agent_model_optional() -> None:
+    assert SimpleAgent().model is None
+
+    agent = SimpleAgent(model="datarobot/azure-openai-gpt-4")
+    assert agent.model == "datarobot/azure-openai-gpt-4"
+
+    agent.set_model(None)
+    assert agent.model is None
+
+
 def test_base_agent_timeout_default() -> None:
     assert SimpleAgent().timeout == 90
 
