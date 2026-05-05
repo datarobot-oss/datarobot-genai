@@ -40,6 +40,7 @@ from nat.data_models.api_server import ChatResponseChunk
 from datarobot_genai.core.agents import default_usage_metrics
 
 from .response import DRAgentEventResponse
+from .tool_call_registry import register_tool_call
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,12 @@ async def convert_chunks_to_agui_events(
     ``GeneratorExit`` (client disconnect), exits silently.
     """
     active_message_id: str | None = None
-    tool_call_message_id: str | None = None
+    # The most recently ended assistant text message id. Tool calls reference
+    # it as parent_message_id so the AG-UI client can thread them under the
+    # assistant message that issued them. Without this, tool calls reference
+    # a phantom uuid and the UI renders a synthetic message stub on top of
+    # the real text message (duplicate-card bug).
+    last_text_message_id: str | None = None
     active_tool_calls: set[str] = set()
     seen_tool_calls: bool = False
     tool_index_map: dict[int, str] = {}
@@ -70,14 +76,12 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
-                # Close any active tool calls before resuming text.
-                # The LLM may stream: text -> tool_call -> (execute) -> more text.
-                # AG-UI expects sequential blocks, not interleaved.
-                if active_tool_calls:
-                    for tc_id in active_tool_calls:
-                        events.append(ToolCallEndEvent(tool_call_id=tc_id))
-                    active_tool_calls.clear()
-                    tool_call_message_id = None
+                # Tool calls are closed by the step adaptor when their
+                # FUNCTION_END / TOOL_END fires (which happens before text
+                # resumes). Emitting End here would duplicate that and, more
+                # importantly, fire End AFTER Result — which leaves the UI
+                # stuck in "args streaming" state. Just drop the bookkeeping.
+                active_tool_calls.clear()
 
                 if active_message_id is None:
                     # After a tool call cycle, the LLM response is a new turn
@@ -91,16 +95,14 @@ async def convert_chunks_to_agui_events(
                 )
 
             if delta and delta.tool_calls:
-                # Close any active text message before starting tool calls.
+                # Close any active text message before starting tool calls,
+                # but remember its id so tool calls can reference it as their
+                # parent assistant message.
                 if active_message_id is not None:
                     events.append(TextMessageEndEvent(message_id=active_message_id))
+                    last_text_message_id = active_message_id
                     active_message_id = None
                 seen_tool_calls = True
-
-                # Create a dedicated message for tool calls so they don't
-                # merge with the preceding text message in storage.
-                if tool_call_message_id is None:
-                    tool_call_message_id = str(uuid.uuid4())
 
                 for tc in delta.tool_calls:
                     tc_id = tc.id or tool_index_map.get(tc.index)  # type: ignore[assignment]
@@ -114,13 +116,19 @@ async def convert_chunks_to_agui_events(
                     if is_new:
                         active_tool_calls.add(tc_id)
                         tool_index_map[tc.index] = tc_id
+                        tool_name = tc.function.name if tc.function else ""
                         events.append(
                             ToolCallStartEvent(
                                 tool_call_id=tc_id,
-                                tool_call_name=tc.function.name if tc.function else "",
-                                parent_message_id=tool_call_message_id,
+                                tool_call_name=tool_name,
+                                parent_message_id=last_text_message_id,
                             )
                         )
+                        # Publish (name → tool_call_id) so the step adaptor can
+                        # bind ToolCallResult to this LLM-issued id when the
+                        # subagent/tool completes.
+                        if tool_name:
+                            register_tool_call(tool_name, tc_id)
                     arguments = tc.function.arguments if tc.function else None
                     if arguments:
                         events.append(ToolCallArgsEvent(tool_call_id=tc_id, delta=arguments))

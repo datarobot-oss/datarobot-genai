@@ -30,6 +30,16 @@ from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 
 from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
+from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
+from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
+
+
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    reset_registry()
+    yield
+    reset_registry()
+
 
 # --- Helpers ---
 
@@ -231,3 +241,26 @@ class TestErrorHandling:
         gen = convert_chunks_to_agui_events(_slow_gen())
         await gen.__anext__()
         await gen.aclose()
+
+
+# --- Registry integration ---
+
+
+class TestToolCallRegistry:
+    @pytest.mark.asyncio
+    async def test_tool_call_start_publishes_to_registry(self):
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="planner", arguments="{}"),
+                )
+            ]
+        )
+        await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+
+        # The step adaptor pops the registered id by tool name on
+        # FUNCTION_END to bind ToolCallResult to the same id the LLM exposed.
+        assert pop_tool_call("planner") == "tc-1"
+        assert pop_tool_call("planner") is None
