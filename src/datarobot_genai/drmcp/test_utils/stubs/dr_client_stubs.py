@@ -366,7 +366,7 @@ def test_create_dr_client() -> StubDRClient:
             )
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
-        if url.rstrip("/") == "deployments" or url.rstrip("/").endswith("deployments"):
+        if url.rstrip("/") == "deployments":
             all_deployments: list[dict[str, Any]] = [
                 {
                     "id": STUB_VDB_DEPLOYMENT_ID,
