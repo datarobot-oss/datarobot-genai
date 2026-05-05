@@ -489,3 +489,41 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
     assert isinstance(chunks[0], DRAgentEventResponse)
     deltas = "".join(ev.delta for ev in chunks[0].events if isinstance(ev, TextMessageContentEvent))
     assert deltas == "delta-one"
+
+
+async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN pre_invoke returns before prescore (no first positional arg / no run input)
+    # WHEN function_middleware_stream runs
+    # THEN upstream chunks are yielded and ModerationIterator is never used
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+
+    async def upstream():
+        yield _text_response("passthrough")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",
+            side_effect=AssertionError("ModerationIterator should not run without prescore"),
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    stream_next.assert_called_once()
+    assert len(chunks) == 1
+    assert chunks[0].events == _text_response("passthrough").events

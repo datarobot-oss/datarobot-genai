@@ -719,6 +719,8 @@ class DataRobotModerationMiddleware(
         self._moderation = load_llm_moderation_pipeline(config.model_dir)
         self.data = None
         self.prescore_df = None
+        self.input_df: pd.DataFrame | None = None
+        self.latency_so_far: float = 0.0
         self.association_id: str | None = None
         self.assembled_response: list[str] = []
 
@@ -1002,6 +1004,13 @@ class DataRobotModerationMiddleware(
             ctx = result
         if ctx.output is not None:
             yield ctx.output
+            return
+
+        # Prescore populates ``input_df`` / ``latency_so_far``. If ``pre_invoke`` returned
+        # early (e.g. no ``DRAgentRunAgentInput``), pass the stream through unchanged.
+        if self.input_df is None:
+            async for chunk in call_next(*ctx.modified_args, **ctx.modified_kwargs):
+                yield chunk
             return
 
         moderation = self._moderation
