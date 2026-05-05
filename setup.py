@@ -95,6 +95,10 @@ dragent = nat + [
     "starlette<1.0.0",
 ]
 
+moderation = dragent + [
+    "datarobot-moderations>=11.2.24,<12.0.0",
+]
+
 # Eventually NAT will be merged into dragent
 
 # auth is standalone set of dependencies for auth utilities only
@@ -155,6 +159,7 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
+    "moderation": moderation,
     "memory": memory,
 }
 
