@@ -1097,12 +1097,17 @@ class DataRobotModerationMiddleware(
             pending_deferred_pass_through: list[DRAgentEventResponse] = []
 
             while True:
+                # Pass-through events read while advancing to the next moderation input chunk
+                # must follow the moderated output for ``current_response`` (ModerationIterator
+                # peeks one chunk ahead). Yielding them early breaks ordering (e.g. RUN_FINISHED
+                # before TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END).
+                pending_pass_through: list[DRAgentEventResponse] = []
                 peek = await read_upstream()
                 while peek is not None and (not peek.events or skip_event_type(peek.events[0])):
                     if peek.events and _defer_until_after_moderated_chunk(peek.events[0]):
                         pending_deferred_pass_through.append(peek)
                     else:
-                        yield peek
+                        pending_pass_through.append(peek)
                     peek = await read_upstream()
 
                 if peek is None:
@@ -1122,6 +1127,8 @@ class DataRobotModerationMiddleware(
                     for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):
                         yield item
                     pending_deferred_pass_through.clear()
+                    for item in pending_pass_through:
+                        yield item
                     worker_sentinel_received = True
                     if mod_errors:
                         raise mod_errors[0]
@@ -1134,6 +1141,8 @@ class DataRobotModerationMiddleware(
                 for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):
                     yield item
                 pending_deferred_pass_through.clear()
+                for item in pending_pass_through:
+                    yield item
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     break

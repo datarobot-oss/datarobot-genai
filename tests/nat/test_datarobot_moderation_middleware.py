@@ -24,7 +24,12 @@ import pytest
 
 pytest.importorskip("datarobot_dome")
 
+from ag_ui.core import EventType
+from ag_ui.core import RunFinishedEvent
+from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
@@ -33,6 +38,7 @@ from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
@@ -527,3 +533,72 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
     stream_next.assert_called_once()
     assert len(chunks) == 1
     assert chunks[0].events == _text_response("passthrough").events
+
+
+async def test_function_middleware_stream_defers_text_message_end_before_run_finished(
+    builder_mock: MagicMock,
+) -> None:
+    """Deferred TEXT_MESSAGE_END must be emitted before RUN_FINISHED (AG-UI ordering)."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_prompt.return_value = (
+        SimpleNamespace(blocked=False, blocked_message=None, replaced=False, replacement=None),
+        None,
+    )
+    prescore_df = pd.DataFrame({PROMPT_COL: ["hi"]})
+    mid = "msg-1"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid, delta="hi")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
+            return_value=(prescore_df, prescore_df, 0.0),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",
+            side_effect=lambda _sc, src: src,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    end_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_END)
+    finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
+    assert end_idx < finished_idx
