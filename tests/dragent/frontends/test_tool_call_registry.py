@@ -34,8 +34,6 @@ def test_pop_returns_none_when_nothing_registered() -> None:
 
 
 def test_bind_returns_none_when_no_pending_for_name() -> None:
-    # Internal NAT functions that were not dispatched as a tool by the LLM
-    # arrive with a name that has no registered tool_call_id.
     assert bind_tool_call("internal-helper", "nat-uuid-1") is None
 
 
@@ -48,9 +46,6 @@ def test_register_then_bind_then_pop_round_trip() -> None:
 
 
 def test_binds_in_dispatch_order_per_name() -> None:
-    # The LLM dispatches two same-name calls; FUNCTION_START fires for each
-    # in dispatch order, so registering and binding must pair them as
-    # tc-1->nat-1 and tc-2->nat-2 regardless of completion order.
     register_tool_call("planner", "tc-1")
     register_tool_call("planner", "tc-2")
 
@@ -65,7 +60,6 @@ def test_pop_by_uuid_tolerates_out_of_order_completion() -> None:
     bind_tool_call("planner", "nat-1")
     bind_tool_call("planner", "nat-2")
 
-    # Second dispatch finishes first.
     assert pop_tool_call("nat-2") == "tc-2"
     assert pop_tool_call("nat-1") == "tc-1"
 

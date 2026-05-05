@@ -54,9 +54,8 @@ async def convert_chunks_to_agui_events(
     ``GeneratorExit`` (client disconnect), exits silently.
     """
     active_message_id: str | None = None
-    # parent_message_id of subsequent tool calls; threads them under the
-    # assistant message that issued them. A synthetic uuid here renders
-    # an orphan message stub in the UI.
+    # parent_message_id for subsequent tool calls; a synthetic uuid here
+    # renders an orphan message stub in the UI.
     last_text_message_id: str | None = None
     active_tool_calls: set[str] = set()
     seen_tool_calls: bool = False
@@ -73,8 +72,7 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
-                # Step adaptor owns ToolCallEnd at FUNCTION_END / TOOL_END;
-                # emitting End here would fire after Result and strand the UI.
+                # Step adaptor owns ToolCallEnd at FUNCTION_END / TOOL_END.
                 active_tool_calls.clear()
 
                 if active_message_id is None:
@@ -116,8 +114,7 @@ async def convert_chunks_to_agui_events(
                                 parent_message_id=last_text_message_id or "",
                             )
                         )
-                        # Hand the LLM-issued id to the step adaptor; it
-                        # binds ToolCallResult to it on FUNCTION_END.
+                        # Hand the LLM-issued id to the step adaptor.
                         if tool_name:
                             register_tool_call(tool_name, tc_id)
                     arguments = tc.function.arguments if tc.function else None
@@ -136,9 +133,6 @@ async def convert_chunks_to_agui_events(
     # Emit end/error events after the stream completes (normally or on error).
     # Errors are surfaced to the AG-UI client via RunErrorEvent rather than
     # propagated as exceptions, so NAT's streaming infrastructure stays stable.
-    # The step adaptor owns ``ToolCallEndEvent`` at ``FUNCTION_END``; on stream
-    # error, ``RunErrorEvent`` is the terminal event for the run, so any
-    # in-flight tool call is implicitly closed by the client.
     end: list[Event] = []
     if active_message_id is not None:
         end.append(TextMessageEndEvent(message_id=active_message_id))

@@ -133,8 +133,6 @@ class TestToolCall:
         responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
         events = _flat_events(responses)
 
-        # Step adaptor owns ToolCallEnd at FUNCTION_END; converter only
-        # emits Start + Args.
         assert len(events) == 2
         assert isinstance(events[0], ToolCallStartEvent)
         assert events[0].tool_call_id == "tc-1"
@@ -190,9 +188,7 @@ class TestToolCall:
 
     @pytest.mark.asyncio
     async def test_tool_call_with_no_preceding_text_uses_empty_parent(self):
-        # When the LLM emits tool calls without any preceding text message,
-        # parent_message_id falls back to "" (matching langgraph adapter
-        # convention) rather than None or a phantom uuid.
+        # Falls back to "" (langgraph convention), not a phantom uuid.
         chunk = _make_chunk(
             tool_calls=[
                 ChoiceDeltaToolCall(
@@ -227,8 +223,6 @@ class TestToolCall:
         responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
         events = _flat_events(responses)
 
-        # Step adaptor closes each tool call at FUNCTION_END; converter
-        # only emits Start (and Args).
         start_events = [e for e in events if isinstance(e, ToolCallStartEvent)]
         end_events = [e for e in events if isinstance(e, ToolCallEndEvent)]
         assert len(start_events) == 2
@@ -286,9 +280,7 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_stream_ending_with_active_tool_calls_emits_no_end(self):
-        # The step adaptor closes tool calls at FUNCTION_END. The converter
-        # must not emit a duplicate ToolCallEndEvent in its post-loop, which
-        # would fire a second End for the same tool_call_id.
+        # Adaptor owns End; a post-loop End here would duplicate it.
         chunk = _make_chunk(
             tool_calls=[
                 ChoiceDeltaToolCall(
@@ -305,9 +297,7 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_stream_error_after_tool_call_emits_no_tool_call_end(self):
-        # On stream error mid-tool-call, RunErrorEvent terminates the run
-        # for the client; emitting ToolCallEndEvent here would duplicate the
-        # adaptor's End if the tool actually ran before the error.
+        # RunErrorEvent is terminal for the run; client closes any in-flight call.
         async def _failing_gen():
             yield _make_chunk(
                 tool_calls=[
@@ -344,9 +334,6 @@ class TestToolCallRegistry:
         )
         await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
 
-        # The step adaptor binds by name on FUNCTION_START to the NAT UUID,
-        # then pops by NAT UUID on FUNCTION_END to bind ToolCallResult to
-        # the same id the LLM exposed.
         assert bind_tool_call("planner", "nat-uuid-1") == "tc-1"
         assert pop_tool_call("nat-uuid-1") == "tc-1"
         assert bind_tool_call("planner", "nat-uuid-2") is None

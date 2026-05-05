@@ -778,12 +778,7 @@ class TestHandleToolArgsEncoding:
 
 
 class TestFunctionToolCorrelation:
-    """When the parent agent dispatches a function as a tool but NAT does not
-    fire ``TOOL_*`` events, the step adaptor binds the LLM's ``tool_call_id``
-    (published by the converter on ``ToolCallStartEvent``) to the NAT
-    ``payload.UUID`` at ``FUNCTION_START`` and emits ``ToolCallEndEvent`` +
-    ``ToolCallResultEvent`` keyed by that UUID at ``FUNCTION_END``.
-    """
+    """Sub-agents-as-tools fire only FUNCTION_*; adaptor closes via the registry."""
 
     @staticmethod
     def _function_step(
@@ -829,8 +824,7 @@ class TestFunctionToolCorrelation:
             )
         )
 
-        # End must precede Result; reversing them leaves the UI stuck in
-        # "args streaming" state.
+        # End before Result; reversed order strands the UI in args streaming.
         assert start is None
         assert len(end.events) == 2
         assert isinstance(end.events[0], ToolCallEndEvent)
@@ -838,15 +832,12 @@ class TestFunctionToolCorrelation:
         assert isinstance(end.events[1], ToolCallResultEvent)
         assert end.events[1].tool_call_id == llm_tool_call_id
         assert end.events[1].message_id == llm_tool_call_id
-        assert end.events[1].content == "planner output"
+        assert end.events[1].content == '"planner output"'
         assert end.events[1].role == "tool"
 
     def test_parallel_same_name_calls_correlate_by_uuid(
         self, step_adaptor: DRAgentNestedReasoningStepAdaptor
     ) -> None:
-        # The LLM dispatches two parallel calls to the same tool. NAT fires
-        # FUNCTION_START in dispatch order but FUNCTION_END can arrive in
-        # any order. Each result must bind to the matching LLM tool_call_id.
         register_tool_call("search", "tc-A")
         register_tool_call("search", "tc-B")
 
@@ -881,17 +872,15 @@ class TestFunctionToolCorrelation:
 
         assert end_b.events[0].tool_call_id == "tc-B"
         assert end_b.events[1].tool_call_id == "tc-B"
-        assert end_b.events[1].content == "result B"
+        assert end_b.events[1].content == '"result B"'
         assert end_a.events[0].tool_call_id == "tc-A"
         assert end_a.events[1].tool_call_id == "tc-A"
-        assert end_a.events[1].content == "result A"
+        assert end_a.events[1].content == '"result A"'
 
     def test_function_end_returns_none_when_unmatched(
         self, step_adaptor: DRAgentNestedReasoningStepAdaptor
     ) -> None:
-        # FUNCTION_END for a function not dispatched as a tool returns None.
-        # The legacy CustomEvent fall-through leaked the entire run's event
-        # stream via value.data.output, rendered as a duplicate thread.
+        # Legacy CustomEvent fall-through leaked the run via value.data.output.
         response = step_adaptor.process(
             self._function_step(IntermediateStepType.FUNCTION_END, "untracked", output="ignored")
         )

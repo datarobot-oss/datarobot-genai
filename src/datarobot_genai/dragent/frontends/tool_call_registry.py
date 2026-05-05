@@ -14,11 +14,10 @@
 
 """Per-run handoff of LLM-issued ``tool_call_id`` from converter to adaptor.
 
-LLM stream and NAT intermediate steps see different ids for the same call.
 Two-phase correlation tolerates parallel same-name calls completing out of
-order: ``register`` (converter) appends to a FIFO keyed by name; ``bind``
-(adaptor, ``FUNCTION_START``) pops the head into a UUID-keyed map; ``pop``
-(adaptor, ``FUNCTION_END``) drains by UUID.
+order: ``register`` (converter) appends to a per-name FIFO; ``bind`` (adaptor,
+``FUNCTION_START``) pops the head into a UUID-keyed map; ``pop`` (adaptor,
+``FUNCTION_END``) drains by UUID.
 """
 
 from __future__ import annotations
@@ -26,7 +25,6 @@ from __future__ import annotations
 from collections import deque
 from contextvars import ContextVar
 
-# (pending: name -> FIFO of tc_ids, bound: nat_uuid -> tc_id)
 _state: ContextVar[tuple[dict[str, deque[str]], dict[str, str]]] = ContextVar("dragent_tc")
 
 

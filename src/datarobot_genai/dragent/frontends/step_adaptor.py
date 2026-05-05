@@ -92,9 +92,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
             if step.event_category == IntermediateStepCategory.WORKFLOW:
                 result = self._handle_workflow(payload, ancestry)
-            # FUNCTION events are suppressed when _handle_function returns
-            # None; falling through leaks the entire run's event stream as
-            # a CustomEvent (data.output carries it).
+            # FUNCTION fall-through leaks the run as a CustomEvent.
             elif result is None and step.event_category != IntermediateStepCategory.FUNCTION:
                 result = self._handle_custom(payload, ancestry)
 
@@ -294,21 +292,16 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # Just track the function level so we can handle nested functions correctly
         if payload.event_type == IntermediateStepType.FUNCTION_START:
             self.function_level += 1
-            # Bind by name in dispatch order; ``FUNCTION_END`` looks up by
-            # ``payload.UUID`` so parallel same-name calls completing out
-            # of order still correlate correctly.
             bind_tool_call(payload.name, payload.UUID)
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
             self.function_level -= 1
             # Sub-agents dispatched as tools fire only FUNCTION_*, no TOOL_*.
-            # Close the LLM-issued tool call here so the UI doesn't hang.
             tool_call_id = pop_tool_call(payload.UUID)
             if tool_call_id is not None:
                 output = ""
                 if payload.data is not None and getattr(payload.data, "output", None) is not None:
-                    output = str(payload.data.output)
-                # End before Result; reversed order strands the UI in
-                # "args streaming".
+                    output = json.dumps(payload.data.output, default=str)
+                # End before Result; reversed order strands the UI in args streaming.
                 return DRAgentEventResponse(
                     events=[
                         ToolCallEndEvent(tool_call_id=tool_call_id),
