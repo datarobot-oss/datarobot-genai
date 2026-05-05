@@ -55,11 +55,9 @@ async def convert_chunks_to_agui_events(
     ``GeneratorExit`` (client disconnect), exits silently.
     """
     active_message_id: str | None = None
-    # The most recently ended assistant text message id. Tool calls reference
-    # it as parent_message_id so the AG-UI client can thread them under the
-    # assistant message that issued them. Without this, tool calls reference
-    # a phantom uuid and the UI renders a synthetic message stub on top of
-    # the real text message (duplicate-card bug).
+    # parent_message_id of subsequent tool calls; threads them under the
+    # assistant message that issued them. A synthetic uuid here renders
+    # an orphan message stub in the UI.
     last_text_message_id: str | None = None
     active_tool_calls: set[str] = set()
     seen_tool_calls: bool = False
@@ -76,11 +74,8 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
-                # Tool calls are closed by the step adaptor when their
-                # FUNCTION_END / TOOL_END fires (which happens before text
-                # resumes). Emitting End here would duplicate that and, more
-                # importantly, fire End AFTER Result — which leaves the UI
-                # stuck in "args streaming" state. Just drop the bookkeeping.
+                # Step adaptor owns ToolCallEnd at FUNCTION_END / TOOL_END;
+                # emitting End here would fire after Result and strand the UI.
                 active_tool_calls.clear()
 
                 if active_message_id is None:
@@ -95,9 +90,7 @@ async def convert_chunks_to_agui_events(
                 )
 
             if delta and delta.tool_calls:
-                # Close any active text message before starting tool calls,
-                # but remember its id so tool calls can reference it as their
-                # parent assistant message.
+                # Close any active text message before starting tool calls.
                 if active_message_id is not None:
                     events.append(TextMessageEndEvent(message_id=active_message_id))
                     last_text_message_id = active_message_id
@@ -121,12 +114,11 @@ async def convert_chunks_to_agui_events(
                             ToolCallStartEvent(
                                 tool_call_id=tc_id,
                                 tool_call_name=tool_name,
-                                parent_message_id=last_text_message_id,
+                                parent_message_id=last_text_message_id or "",
                             )
                         )
-                        # Publish (name → tool_call_id) so the step adaptor can
-                        # bind ToolCallResult to this LLM-issued id when the
-                        # subagent/tool completes.
+                        # Hand the LLM-issued id to the step adaptor; it
+                        # binds ToolCallResult to it on FUNCTION_END.
                         if tool_name:
                             register_tool_call(tool_name, tc_id)
                     arguments = tc.function.arguments if tc.function else None

@@ -14,12 +14,10 @@
 
 """Per-run handoff of LLM-issued ``tool_call_id`` from converter to adaptor.
 
-The outer LLM stream sees ``tool_call_id`` values from the upstream provider
-(``toolu_…`` / ``call_…``); the intermediate-step stream sees only the NAT
-``payload.UUID``. To emit ``ToolCallResultEvent`` bound to the LLM's id we
-publish ids by name in ``ToolCallStartEvent`` and pop them by name in
-``FUNCTION_END``. FIFO order assumes serial completion per name; parallel
-same-name calls finishing out of dispatch order would correlate incorrectly.
+The LLM stream and the intermediate-step stream see different ids for the
+same call (provider id vs. NAT ``payload.UUID``); ``ToolCallResult`` must
+bind to the LLM's id. FIFO by name; parallel same-name calls finishing
+out of dispatch order would correlate incorrectly.
 """
 
 from __future__ import annotations

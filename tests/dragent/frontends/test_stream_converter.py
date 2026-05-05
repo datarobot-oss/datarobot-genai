@@ -169,6 +169,44 @@ class TestToolCall:
         assert args_events[1].tool_call_id == "tc-1"
 
     @pytest.mark.asyncio
+    async def test_tool_call_after_text_threads_under_text_message_id(self):
+        text = _make_chunk(content="Let me check.", chunk_id="msg-1")
+        tool_call = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(text, tool_call)))
+        events = _flat_events(responses)
+
+        start = next(e for e in events if isinstance(e, ToolCallStartEvent))
+        assert start.parent_message_id == "msg-1"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_no_preceding_text_uses_empty_parent(self):
+        # When the LLM emits tool calls without any preceding text message,
+        # parent_message_id falls back to "" (matching langgraph adapter
+        # convention) rather than None or a phantom uuid.
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+        events = _flat_events(responses)
+
+        start = next(e for e in events if isinstance(e, ToolCallStartEvent))
+        assert start.parent_message_id == ""
+
+    @pytest.mark.asyncio
     async def test_multiple_parallel_tool_calls(self):
         chunk = _make_chunk(
             tool_calls=[

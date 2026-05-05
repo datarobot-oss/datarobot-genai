@@ -665,8 +665,6 @@ def test_step_adaptor_processes_nested_reasoning_steps(
     actual_responses = []
     for step in intermediate_steps_for_nested_reasoning:
         result = step_adaptor.process(step)
-        # FUNCTION_START / unmatched FUNCTION_END are suppressed by
-        # returning None so they don't fall through to _handle_custom.
         if result is None:
             continue
         assert isinstance(result, DRAgentEventResponse)

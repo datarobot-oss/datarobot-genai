@@ -91,12 +91,9 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
             if step.event_category == IntermediateStepCategory.WORKFLOW:
                 result = self._handle_workflow(payload, ancestry)
-            # Fall through to custom for unhandled non-function events.
-            # Function events are intentionally suppressed when
-            # _handle_function returns None: falling through would emit a
-            # CustomEvent whose value.data.output carries the entire run's
-            # event stream, which the dragent UI rendered as a duplicate
-            # message thread on top of the live stream.
+            # FUNCTION events are suppressed when _handle_function returns
+            # None; falling through leaks the entire run's event stream as
+            # a CustomEvent (data.output carries it).
             elif result is None and step.event_category != IntermediateStepCategory.FUNCTION:
                 result = self._handle_custom(payload, ancestry)
 
@@ -293,23 +290,20 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
     def _handle_function(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
-        # Track function nesting so _handle_llm can distinguish primary text
-        # from nested reasoning.
+        # Just track the function level so we can handle nested functions correctly
         if payload.event_type == IntermediateStepType.FUNCTION_START:
             self.function_level += 1
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
             self.function_level -= 1
-            # When the parent agent dispatched this function as a tool, NAT
-            # may only fire FUNCTION_START/END (no TOOL_*). Pop the pending
-            # tool_call_id published by the converter on ToolCallStartEvent
-            # and emit End + Result so AG-UI clients close the call.
+            # Sub-agents dispatched as tools fire only FUNCTION_*, no TOOL_*.
+            # Close the LLM-issued tool call here so the UI doesn't hang.
             tool_call_id = pop_tool_call(payload.name)
             if tool_call_id is not None:
                 output = ""
                 if payload.data is not None and getattr(payload.data, "output", None) is not None:
                     output = str(payload.data.output)
-                # End must precede Result; reversing them leaves the UI
-                # stuck in "args streaming" state.
+                # End before Result; reversed order strands the UI in
+                # "args streaming".
                 return DRAgentEventResponse(
                     events=[
                         ToolCallEndEvent(tool_call_id=tool_call_id),
