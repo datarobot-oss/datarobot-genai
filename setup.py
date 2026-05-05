@@ -93,11 +93,11 @@ dragent = nat + [
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "fastapi<0.133.0",
     "starlette<1.0.0",
-]
-
-moderation = dragent + [
     "datarobot-moderations>=11.2.24,<12.0.0",
 ]
+
+# Backward-compatible alias: same dependency set as dragent.
+moderation = dragent
 
 # Eventually NAT will be merged into dragent
 

@@ -48,9 +48,9 @@ override-dependencies = [
   "crewai[litellm]>=1.11.0",
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.3.8,<0.4.0",
-  # crewai pins OpenTelemetry <1.35; datarobot-moderations (optional `[moderation]` extra)
+  # crewai pins OpenTelemetry <1.35; datarobot-moderations (via `[dragent]` / `[moderation]`)
   # requires opentelemetry-instrumentation 0.60b1, which pulls otel-api 1.39.x. Align the
-  # stack so `--all-extras` / `[crewai,moderation]` resolves (same approach as the agent app recipe).
+  # stack so `--all-extras` / `[crewai,dragent]` resolves (same approach as the agent app recipe).
   "opentelemetry-api>=1.39.0,<2.0.0",
   "opentelemetry-sdk>=1.39.0,<2.0.0",
   "opentelemetry-exporter-otlp-proto-http>=1.39.0,<2.0.0",
