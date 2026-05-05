@@ -959,7 +959,6 @@ class DataRobotModerationMiddleware(
         self.input_df: pd.DataFrame | None = None
         self.latency_so_far: float = 0.0
         self.association_id: str | None = None
-        self.assembled_response: list[str] = []
         self._stream_tool_index_map: dict[int, str] = {}
 
     @property
