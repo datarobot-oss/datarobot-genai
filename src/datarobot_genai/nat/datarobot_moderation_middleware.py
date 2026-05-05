@@ -56,6 +56,8 @@ from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
+from nat.data_models.api_server import ChatRequest
+from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
@@ -88,7 +90,6 @@ from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_chat_response_chunk,
 )
-from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.nat.moderation_pipeline_helpers import build_non_streaming_chat_completion
@@ -761,6 +762,38 @@ def run_agent_input_to_completion_dict(rai: RunAgentInput) -> dict[str, Any]:
     return ccp
 
 
+def _normalize_nat_chat_request_completion_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """Normalize ChatRequest/ChatRequestOrMessage JSON dumps for moderation helpers.
+
+    ``get_chat_prompt`` expects ``tools`` to be absent or iterable; NAT dumps often
+    include ``tools: null``.
+    """
+    out = dict(d)
+    if out.get("tools") is None:
+        out["tools"] = []
+    return out
+
+
+def nat_chat_request_like_to_completion_dict(
+    request: ChatRequest | ChatRequestOrMessage,
+) -> dict[str, Any]:
+    """Build completion-style params from NAT chat request models (LLM Gateway path)."""
+    return _normalize_nat_chat_request_completion_dict(request.model_dump(mode="json"))
+
+
+def workflow_input_to_completion_dict(
+    workflow_input: RunAgentInput | ChatRequest | ChatRequestOrMessage,
+) -> dict[str, Any]:
+    """Build OpenAI-style completion params for prescore from AG-UI or NAT chat inputs."""
+    if isinstance(workflow_input, RunAgentInput):
+        return run_agent_input_to_completion_dict(workflow_input)
+    if isinstance(workflow_input, (ChatRequest, ChatRequestOrMessage)):
+        return nat_chat_request_like_to_completion_dict(workflow_input)
+    raise TypeError(
+        f"Unsupported workflow input type for moderation: {type(workflow_input).__name__}"
+    )
+
+
 def _apply_moderated_prompt_text_to_run_agent_input(
     run_agent_input: RunAgentInput, moderated_text: str
 ) -> bool:
@@ -781,6 +814,34 @@ def _apply_moderated_prompt_text_to_run_agent_input(
         "Prescore replaced the prompt but no UserMessage was found to apply it; "
         "leaving messages unchanged."
     )
+    return False
+
+
+def _apply_moderated_prompt_text_to_nat_chat_messages(
+    messages: list[Any], moderated_text: str
+) -> bool:
+    """Apply prescore replacement to the last NAT ``Message`` with user role."""
+    for idx in range(len(messages) - 1, -1, -1):
+        msg = messages[idx]
+        if getattr(msg, "role", None) == UserMessageContentRoleType.USER:
+            messages[idx] = msg.model_copy(update={"content": moderated_text})
+            return True
+    _logger.warning(
+        "Prescore replaced the prompt but no user-role NAT message was found; "
+        "leaving messages unchanged."
+    )
+    return False
+
+
+def _apply_moderated_prompt_text_to_workflow_input(
+    workflow_input: RunAgentInput | ChatRequest | ChatRequestOrMessage,
+    moderated_text: str,
+) -> bool:
+    if isinstance(workflow_input, RunAgentInput):
+        return _apply_moderated_prompt_text_to_run_agent_input(workflow_input, moderated_text)
+    messages = getattr(workflow_input, "messages", None)
+    if messages:
+        return _apply_moderated_prompt_text_to_nat_chat_messages(messages, moderated_text)
     return False
 
 
@@ -918,16 +979,16 @@ class DataRobotModerationMiddleware(
             InvocationContext if modified (including when the prompt is blocked and
             ``context.output`` holds the guard message), or None to pass through unchanged.
         """
-        run_agent_input: DRAgentRunAgentInput | None = (
+        workflow_input: RunAgentInput | ChatRequest | ChatRequestOrMessage | None = (
             context.original_args[0] if context.original_args else None
         )
-        if run_agent_input is None:
+        if workflow_input is None:
             return None
         if self._moderation is None:
             return None
 
         pipeline = self._moderation._pipeline
-        completion_create_params = run_agent_input_to_completion_dict(run_agent_input)
+        completion_create_params = workflow_input_to_completion_dict(workflow_input)
 
         # if association ID was included in extra_body, extract field name and value
         completion_create_params, eb_assoc_id_value = filter_association_id(
@@ -1017,7 +1078,7 @@ class DataRobotModerationMiddleware(
             # PII-style guards may redact the prompt; apply the replacement text to the
             # request and align downstream postscore input.
             moderated_prompt = prompt_eval.replacement
-            if _apply_moderated_prompt_text_to_run_agent_input(run_agent_input, moderated_prompt):
+            if _apply_moderated_prompt_text_to_workflow_input(workflow_input, moderated_prompt):
                 data.at[0, prompt_column_name] = moderated_prompt
             return context
         else:
@@ -1172,7 +1233,7 @@ class DataRobotModerationMiddleware(
             return
 
         # Prescore populates ``input_df`` / ``latency_so_far``. If ``pre_invoke`` returned
-        # early (e.g. no ``DRAgentRunAgentInput``), pass the stream through unchanged.
+        # early (e.g. no workflow input / prescore skipped), pass the stream through unchanged.
         if self.input_df is None:
             async for chunk in call_next(*ctx.modified_args, **ctx.modified_kwargs):
                 yield chunk

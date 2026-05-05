@@ -37,6 +37,8 @@ from ag_ui.core import UserMessage
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
+from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import Message as NATAPIMessage
 from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
@@ -56,6 +58,8 @@ from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerat
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     chat_completion_to_dragent_event_response,
 )
+from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
+from datarobot_genai.nat.moderation_pipeline_helpers import get_chat_prompt
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
@@ -121,6 +125,16 @@ def _moderation_mock(pipeline: MagicMock) -> MagicMock:
     mod = MagicMock()
     mod._pipeline = pipeline
     return mod
+
+
+def test_workflow_input_to_completion_dict_chat_request_or_message() -> None:
+    """NAT LLM Gateway passes ChatRequestOrMessage (no ``forwarded_props``);
+    prescore must accept it.
+    """
+    crm = ChatRequestOrMessage(messages=[NATAPIMessage(role="user", content="hello gateway")])
+    params = workflow_input_to_completion_dict(crm)
+    assert params["tools"] == []
+    assert get_chat_prompt(params) == "hello gateway"
 
 
 @pytest.fixture
