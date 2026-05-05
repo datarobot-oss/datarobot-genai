@@ -463,20 +463,20 @@ def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
             token_exchange = params.get("token_exchange") or {}
             token_request = params.get("token_request") or {}
 
-            target_audience = params.get("target_audience")
             token_endpoint_auth_method = params.get("token_endpoint_auth_method")
             trusted_issuer = token_exchange.get("trusted_issuer")
             exchange_audience = token_exchange.get("audience")
             grant_type = token_request.get("grant_type")
+            target_audience = token_request.get("audience")
 
             missing = [
                 name
                 for name, val in [
-                    ("target_audience", target_audience),
                     ("token_endpoint_auth_method", token_endpoint_auth_method),
                     ("token_exchange.trusted_issuer", trusted_issuer),
                     ("token_exchange.audience", exchange_audience),
                     ("token_request.grant_type", grant_type),
+                    ("token_request.audience", target_audience),
                 ]
                 if not val
             ]

@@ -88,7 +88,6 @@ def _make_agent_card() -> AgentCard:
         ),
         params={
             "ref": {"scheme": "oauth2", "flow": "clientCredentials"},
-            "target_audience": _TARGET_AUDIENCE,
             "token_endpoint_auth_method": _AUTH_METHOD,
             "token_exchange": {
                 "trusted_issuer": _TRUSTED_ISSUER,
@@ -96,6 +95,7 @@ def _make_agent_card() -> AgentCard:
             },
             "token_request": {
                 "grant_type": _GRANT_TYPE,
+                "audience": _TARGET_AUDIENCE,
             },
         },
     )

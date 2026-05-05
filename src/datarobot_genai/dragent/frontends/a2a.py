@@ -149,10 +149,10 @@ def build_oauth_flow_from_cross_app_access(
     :func:`build_cross_app_capability_extension` and MUST NOT appear here.
     """
     flow = ClientCredentialsOAuthFlow(
-        token_url=config.token_url,
-        scopes={scope: f"Permission: {scope}" for scope in config.scopes},
+        token_url=config.token_request.token_url,
+        scopes={scope: f"Permission: {scope}" for scope in config.token_request.scopes},
     )
-    return flow, list(config.scopes)
+    return flow, list(config.token_request.scopes)
 
 
 def build_cross_app_capability_extension(
@@ -168,10 +168,12 @@ def build_cross_app_capability_extension(
             "scheme": CROSS_APP_SECURITY_SCHEME_REF,
             "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
         },
-        "target_audience": config.target_audience,
         "token_endpoint_auth_method": config.token_endpoint_auth_method,
         "token_exchange": config.token_exchange.model_dump(),
-        "token_request": config.token_request.model_dump(),
+        "token_request": {
+            "grant_type": config.token_request.grant_type,
+            "audience": config.token_request.audience,
+        },
     }
     return [
         AgentExtension(

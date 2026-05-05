@@ -369,9 +369,6 @@ class TestCreateAgentCard:
         self, a2a_frontend_config
     ):
         cross_app_access = CrossApplicationAccessConfig(
-            token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-            scopes=["blog:write"],
-            target_audience="https://app.datarobot.com/dr_org_id/my_agent_id",
             token_endpoint_auth_method="private_key_jwt",
             token_exchange=CrossAppTokenExchange(
                 trusted_issuer="https://your-org.oktapreview.com",
@@ -379,6 +376,9 @@ class TestCreateAgentCard:
             ),
             token_request=CrossAppTokenRequest(
                 grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
+                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
+                scopes=["blog:write"],
             ),
         )
         card = await create_agent_card(
@@ -409,7 +409,6 @@ class TestCreateAgentCard:
                 "scheme": CROSS_APP_SECURITY_SCHEME_REF,
                 "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
             },
-            "target_audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             "token_endpoint_auth_method": "private_key_jwt",
             "token_exchange": {
                 "trusted_issuer": "https://your-org.oktapreview.com",
@@ -417,6 +416,7 @@ class TestCreateAgentCard:
             },
             "token_request": {
                 "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             },
         }
         # Verify OpenAPI/extension strict separation: token_url and scopes are NOT in params
@@ -456,9 +456,6 @@ class TestCreateAgentCard:
 
         # cross_application_access → client_credentials flow + JWT Bearer extension
         cross_app_access = CrossApplicationAccessConfig(
-            token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-            scopes=["blog:write"],
-            target_audience="https://app.datarobot.com/dr_org_id/my_agent_id",
             token_endpoint_auth_method="private_key_jwt",
             token_exchange=CrossAppTokenExchange(
                 trusted_issuer="https://your-org.oktapreview.com",
@@ -466,6 +463,9 @@ class TestCreateAgentCard:
             ),
             token_request=CrossAppTokenRequest(
                 grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
+                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
+                scopes=["blog:write"],
             ),
         )
 
@@ -503,7 +503,6 @@ class TestCreateAgentCard:
                 "scheme": CROSS_APP_SECURITY_SCHEME_REF,
                 "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
             },
-            "target_audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             "token_endpoint_auth_method": "private_key_jwt",
             "token_exchange": {
                 "trusted_issuer": "https://your-org.oktapreview.com",
@@ -511,6 +510,7 @@ class TestCreateAgentCard:
             },
             "token_request": {
                 "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             },
         }
         assert "token_url" not in ext.params
@@ -532,9 +532,6 @@ class TestDRAgentFastApiFrontEndConfig:
 
     def test_custom_a2a_fields(self):
         cross_app = CrossApplicationAccessConfig(
-            token_url="https://idp.example.com/oauth2/v1/token",
-            scopes=["agent:use"],
-            target_audience="api://my-agent",
             token_endpoint_auth_method="private_key_jwt",
             token_exchange=CrossAppTokenExchange(
                 trusted_issuer="https://id-jag.example.com",
@@ -542,6 +539,9 @@ class TestDRAgentFastApiFrontEndConfig:
             ),
             token_request=CrossAppTokenRequest(
                 grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
+                token_url="https://idp.example.com/oauth2/v1/token",
+                audience="api://my-agent",
+                scopes=["agent:use"],
             ),
         )
         config = DRAgentFastApiFrontEndConfig(

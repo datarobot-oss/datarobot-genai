@@ -52,10 +52,7 @@ class DRAgentA2AConfig(BaseModel):
         default=None,
         description=(
             "Configuration for Cross-Application Access utilizing a hybrid RFC 8693 / "
-            "RFC 7523 flow. If provided, `token_url` and `scopes` populate the OpenAPI "
-            "``securitySchemes`` client credentials flow; `target_audience`, "
-            "`token_endpoint_auth_method`, `token_exchange`, and `token_request` are "
-            "advertised in ``capabilities.extensions`` for SDK consumption."
+            "RFC 7523 flow."
         ),
     )
     skills: list[AgentSkill] = Field(

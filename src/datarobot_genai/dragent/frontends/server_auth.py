@@ -39,6 +39,25 @@ class CrossAppTokenRequest(BaseModel):
     grant_type: str = Field(
         description="Must be ``urn:ietf:params:oauth:grant-type:jwt-bearer`` (RFC 7523).",
     )
+    token_url: str = Field(
+        description=(
+            "Token endpoint of the resource AS. "
+            "Published as ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``."
+        ),
+    )
+    audience: str = Field(
+        description=(
+            "Final resource identifier for the agent. "
+            "Published in ``capabilities.extensions[].params.token_request.audience``."
+        ),
+    )
+    scopes: list[str] = Field(
+        default=["read_data"],
+        description=(
+            "Scopes requested in Step 2. "
+            "Published as ``securitySchemes.oauth2.flows.clientCredentials.scopes``."
+        ),
+    )
 
 
 class CrossApplicationAccessConfig(AuthProviderBaseConfig):
@@ -47,20 +66,11 @@ class CrossApplicationAccessConfig(AuthProviderBaseConfig):
     Hybrid RFC 8693 / RFC 7523 flow: Step 1 exchanges the incoming access token for
     an ID-JAG via ``token_exchange.audience``; Step 2 uses the ID-JAG for the final token.
 
-    ``token_url`` / ``scopes`` → ``securitySchemes.oauth2.flows.clientCredentials`` only.
+    ``token_request.token_url`` / ``token_request.scopes`` →
+    ``securitySchemes.oauth2.flows.clientCredentials`` only.
     All other fields → ``capabilities.extensions.params`` only.
     """
 
-    token_url: str = Field(
-        description="Published as ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``.",
-    )
-    scopes: list[str] = Field(
-        default=["read_data"],
-        description="Published as ``securitySchemes.oauth2.flows.clientCredentials.scopes``.",
-    )
-    target_audience: str = Field(
-        description="Published as ``capabilities.extensions[].params.target_audience``.",
-    )
     token_endpoint_auth_method: str = Field(
         description=(
             "Client auth method (e.g. ``private_key_jwt``). "
