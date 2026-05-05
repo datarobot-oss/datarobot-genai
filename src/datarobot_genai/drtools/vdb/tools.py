@@ -46,10 +46,7 @@ async def list_vector_databases(
     ] = None,
     limit: Annotated[
         int,
-        (
-            "Max VDBs to return (default 100). Values above 100 are rejected; "
-            "use offset to page."
-        ),
+        ("Max VDBs to return (default 100). Values above 100 are rejected; use offset to page."),
     ] = DR_PREDICTIVE_API_PAGINATION_MAX,
 ) -> dict[str, Any]:
     if offset is not None and offset < 0:
