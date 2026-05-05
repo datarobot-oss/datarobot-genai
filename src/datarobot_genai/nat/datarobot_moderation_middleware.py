@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import queue
 import threading
 import uuid
@@ -46,14 +47,31 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.chat_helper import run_postscore_guards
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
+from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
+from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.otel_helpers import report_otel_evaluation_set_metric
+from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
+from datarobot_moderation_interface.drum_integration import (
+    _handle_result_df_error_cases as handle_result_df_error_cases,
+)
+from datarobot_moderation_interface.drum_integration import (
+    _set_moderation_attribute_to_completion as set_moderation_attribute_to_completion,
+)
+from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
+from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
+from datarobot_moderation_interface.drum_integration import filter_association_id
+from datarobot_moderation_interface.drum_integration import filter_extra_body
+from datarobot_moderation_interface.drum_integration import format_result_df
+from datarobot_moderation_interface.drum_integration import get_chat_prompt
+from datarobot_moderation_interface.drum_integration import run_prescore_guards
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
@@ -93,18 +111,32 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
-from datarobot_genai.nat.moderation_pipeline_helpers import build_non_streaming_chat_completion
-from datarobot_genai.nat.moderation_pipeline_helpers import build_predictions_df_from_completion
-from datarobot_genai.nat.moderation_pipeline_helpers import filter_association_id
-from datarobot_genai.nat.moderation_pipeline_helpers import filter_extra_body
-from datarobot_genai.nat.moderation_pipeline_helpers import format_result_df
-from datarobot_genai.nat.moderation_pipeline_helpers import get_chat_prompt
-from datarobot_genai.nat.moderation_pipeline_helpers import handle_result_df_error_cases
-from datarobot_genai.nat.moderation_pipeline_helpers import load_llm_moderation_pipeline
-from datarobot_genai.nat.moderation_pipeline_helpers import run_prescore_guards
-from datarobot_genai.nat.moderation_pipeline_helpers import set_moderation_attribute_to_completion
 
 _logger = logging.getLogger(__name__)
+
+
+def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | None:
+    """Load YAML LLM moderation for NAT via ``ModerationPipeline.from_yaml`` (not DRUM ``init``)."""
+    if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
+        _logger.warning("Moderation is disabled via runtime parameter on the model")
+        return None
+
+    os.environ["RAGAS_DO_NOT_TRACK"] = "true"
+    os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
+
+    base = model_dir if model_dir is not None else os.getcwd()
+    guard_config_file = os.path.join(base, MODERATION_CONFIG_FILE_NAME)
+    if not os.path.exists(guard_config_file):
+        _logger.warning(
+            "Guard config file: %s not found; moderations will not be enforced",
+            guard_config_file,
+        )
+        return None
+
+    pipeline = ModerationPipeline.from_yaml(guard_config_file)
+    os.environ["PROMPT_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.PROMPT)
+    os.environ["RESPONSE_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.RESPONSE)
+    return pipeline
 
 
 def _text_for_moderation_eval(value: Any) -> str:

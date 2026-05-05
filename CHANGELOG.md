@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.42
-- Added NAT middleware for DataRobot LLM guardrails (`datarobot_genai.nat.datarobot_moderation_middleware`) and supporting helpers (`moderation_pipeline_helpers`), ported from the agent application recipe. The `dragent` extra includes `datarobot-moderations` (there is no separate `moderation` extra); import the middleware module in your NAT workflow registration so `@register_middleware` runs (same pattern as `import agent.datarobot_moderation_middleware` in app templates). Extended `DRAgentEventResponse` with optional `datarobot_moderations` for serialized pipeline metadata.
+- Added NAT middleware for DataRobot LLM guardrails (`datarobot_genai.nat.datarobot_moderation_middleware`), ported from the agent application recipe. The `dragent` extra includes `datarobot-moderations` (there is no separate `moderation` extra); import the middleware module in your NAT workflow registration so `@register_middleware` runs (same pattern as `import agent.datarobot_moderation_middleware` in app templates). Extended `DRAgentEventResponse` with optional `datarobot_moderations` for serialized pipeline metadata.
 - Declared `uv` `override-dependencies` for OpenTelemetry (`opentelemetry-api` / `sdk` / `instrumentation` and OTLP exporters at 1.39.x / 0.60b1) so `datarobot-moderations` can coexist with optional extras such as CrewAI when resolving `datarobot-genai[dragent]` together with other stacks.
 
 ## 0.15.41

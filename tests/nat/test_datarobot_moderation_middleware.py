@@ -39,6 +39,7 @@ from ag_ui.core import UserMessage
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
+from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChoice
@@ -65,7 +66,6 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
     chat_completion_to_dragent_event_response,
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
-from datarobot_genai.nat.moderation_pipeline_helpers import get_chat_prompt
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
