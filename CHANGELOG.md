@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added `okta-client-python` dependency into the `auth` extra.
 - Server-side config tag was renamed from `oauth_token_exchange` into `cross_application_access`.
 
+## 0.15.35
+- Fixed AG-UI tool call lifecycle in dragent frontends.
+
 ## 0.15.34
 - Fixed AG-UI event lifecycle in the LlamaIndex agent adapter: each agent step emits its own message bubble and a matching `STEP_FINISHED`.
 

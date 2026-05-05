@@ -15,7 +15,6 @@
 import json
 import uuid
 from types import SimpleNamespace
-from unittest import mock
 
 import pytest
 from ag_ui.core import CustomEvent
@@ -48,6 +47,15 @@ from nat.data_models.step_adaptor import StepAdaptorMode
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
+from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
+from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
+
+
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    reset_registry()
+    yield
+    reset_registry()
 
 
 @pytest.fixture
@@ -124,7 +132,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 StepStartedEvent(step_name="tool_calling_agent"),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[TextMessageStartEvent(message_id=intermediate_steps_ids["agent_message_id"])],
             model="vertex_ai/claude-3-5-haiku@20241022",
@@ -156,7 +163,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallStartEvent(
@@ -169,7 +175,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["planner_message_id"]),
@@ -195,7 +200,6 @@ def expected_responses(intermediate_steps_ids, payloads):
             ],
             model="claude-3-5-haiku@20241022",
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["planner_tool_call_id"]),
@@ -219,7 +223,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_START", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ReasoningStartEvent(message_id=intermediate_steps_ids["writer_message_id"]),
@@ -245,7 +248,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 "total_tokens": 700,
             },
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(tool_call_id=intermediate_steps_ids["writer_tool_call_id"]),
@@ -257,7 +259,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 ToolCallEndEvent(
@@ -271,7 +272,6 @@ def expected_responses(intermediate_steps_ids, payloads):
                 ),
             ]
         ),
-        DRAgentEventResponse(events=[CustomEvent(name="FUNCTION_END", value=mock.ANY)]),
         DRAgentEventResponse(
             events=[
                 StepFinishedEvent(step_name="tool_calling_agent"),
@@ -665,7 +665,8 @@ def test_step_adaptor_processes_nested_reasoning_steps(
     actual_responses = []
     for step in intermediate_steps_for_nested_reasoning:
         result = step_adaptor.process(step)
-        assert result is not None
+        if result is None:
+            continue
         assert isinstance(result, DRAgentEventResponse)
         actual_responses.append(result)
 
@@ -774,3 +775,123 @@ class TestHandleToolArgsEncoding:
         response = step_adaptor.process(step)
         args_event = next(e for e in response.events if isinstance(e, ToolCallArgsEvent))
         assert args_event.delta == "{}"
+
+
+class TestFunctionToolCorrelation:
+    """Sub-agents-as-tools fire only FUNCTION_*; adaptor closes via the registry."""
+
+    @staticmethod
+    def _function_step(
+        event_type: IntermediateStepType,
+        name: str,
+        output: object | None,
+        nat_uuid: str | None = None,
+    ) -> IntermediateStep:
+        return IntermediateStep(
+            parent_id="agent",
+            function_ancestry=InvocationNode(
+                function_id="agent",
+                function_name="agent",
+                parent_id=None,
+                parent_name=None,
+            ),
+            payload=IntermediateStepPayload(
+                event_type=event_type,
+                name=name,
+                UUID=nat_uuid if nat_uuid is not None else str(uuid.uuid4()),
+                data=StreamEventData(input=None, output=output),
+            ),
+        )
+
+    def test_function_end_emits_end_then_result_when_matched(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        llm_tool_call_id = "toolu_vrtx_planner"
+        nat_uuid = "nat-planner-1"
+        register_tool_call("planner", llm_tool_call_id)
+
+        start = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "planner", output=None, nat_uuid=nat_uuid
+            )
+        )
+        end = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_END,
+                "planner",
+                output="planner output",
+                nat_uuid=nat_uuid,
+            )
+        )
+
+        # End before Result; reversed order strands the UI in args streaming.
+        assert start is None
+        assert len(end.events) == 2
+        assert isinstance(end.events[0], ToolCallEndEvent)
+        assert end.events[0].tool_call_id == llm_tool_call_id
+        assert isinstance(end.events[1], ToolCallResultEvent)
+        assert end.events[1].tool_call_id == llm_tool_call_id
+        assert end.events[1].message_id == llm_tool_call_id
+        assert end.events[1].content == '"planner output"'
+        assert end.events[1].role == "tool"
+
+    def test_parallel_same_name_calls_correlate_by_uuid(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        register_tool_call("search", "tc-A")
+        register_tool_call("search", "tc-B")
+
+        step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "search", output=None, nat_uuid="nat-A"
+            )
+        )
+        step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "search", output=None, nat_uuid="nat-B"
+            )
+        )
+
+        # Second dispatch finishes first.
+        end_b = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_END,
+                "search",
+                output="result B",
+                nat_uuid="nat-B",
+            )
+        )
+        end_a = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_END,
+                "search",
+                output="result A",
+                nat_uuid="nat-A",
+            )
+        )
+
+        assert end_b.events[0].tool_call_id == "tc-B"
+        assert end_b.events[1].tool_call_id == "tc-B"
+        assert end_b.events[1].content == '"result B"'
+        assert end_a.events[0].tool_call_id == "tc-A"
+        assert end_a.events[1].tool_call_id == "tc-A"
+        assert end_a.events[1].content == '"result A"'
+
+    def test_function_end_returns_none_when_unmatched(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        # Legacy CustomEvent fall-through leaked the run via value.data.output.
+        response = step_adaptor.process(
+            self._function_step(IntermediateStepType.FUNCTION_END, "untracked", output="ignored")
+        )
+
+        assert response is None
+
+    def test_function_start_returns_none(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        response = step_adaptor.process(
+            self._function_step(IntermediateStepType.FUNCTION_START, "untracked", output=None)
+        )
+
+        assert response is None
