@@ -57,7 +57,6 @@ async def convert_chunks_to_agui_events(
     # parent_message_id for subsequent tool calls; a synthetic uuid here
     # renders an orphan message stub in the UI.
     last_text_message_id: str | None = None
-    active_tool_calls: set[str] = set()
     seen_tool_calls: bool = False
     tool_index_map: dict[int, str] = {}
     zero = default_usage_metrics()
@@ -72,8 +71,9 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
+                # Reset per-turn index tracking; the next round's index 0 is a new tool call.
                 # Step adaptor owns ToolCallEnd at FUNCTION_END / TOOL_END.
-                active_tool_calls.clear()
+                tool_index_map.clear()
 
                 if active_message_id is None:
                     # After a tool call cycle, the LLM response is a new turn
@@ -102,9 +102,8 @@ async def convert_chunks_to_agui_events(
                             tc.index,
                         )
                         continue
-                    is_new = tc.id is not None and tc_id not in active_tool_calls
+                    is_new = tc.id is not None and tc.index not in tool_index_map
                     if is_new:
-                        active_tool_calls.add(tc_id)
                         tool_index_map[tc.index] = tc_id
                         tool_name = tc.function.name if tc.function else ""
                         events.append(
