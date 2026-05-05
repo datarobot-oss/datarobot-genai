@@ -98,11 +98,9 @@ These are explicitly excluded via `[tool.uv] exclude-dependencies` in `pyproject
 | `langchain-milvus` | `nvidia-nat-langchain` | Milvus vector DB adapter; not used |
 | `llama-index-cli` | `llama-index` | CLI tool; not needed at runtime |
 | `openpyxl` | `crewai-tools` | Excel parser; not used |
-| `posthog` | `mem0ai` | Analytics/telemetry; not used |
 | `pymilvus` | `langchain-milvus` | Milvus client; not used |
 | `python-docx` | `crewai-tools` | Word doc parser; not used |
 | `pytube` | `crewai-tools` | YouTube downloader; not used |
-| `qdrant-client` | `mem0ai` | Optional vector DB backend; not used |
 | `scikit-network` | `ragas` | Graph analysis library; not used |
 | `stagehand` | `crewai-tools` | Playwright web automation; not used |
 | `uv` | `crewai` | Package manager bundled as a runtime dep; not needed |
