@@ -33,7 +33,6 @@ from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
-from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from nat.data_models.api_server import ChatResponseChunk
 
@@ -137,11 +136,12 @@ async def convert_chunks_to_agui_events(
     # Emit end/error events after the stream completes (normally or on error).
     # Errors are surfaced to the AG-UI client via RunErrorEvent rather than
     # propagated as exceptions, so NAT's streaming infrastructure stays stable.
+    # The step adaptor owns ``ToolCallEndEvent`` at ``FUNCTION_END``; on stream
+    # error, ``RunErrorEvent`` is the terminal event for the run, so any
+    # in-flight tool call is implicitly closed by the client.
     end: list[Event] = []
     if active_message_id is not None:
         end.append(TextMessageEndEvent(message_id=active_message_id))
-    for tc_id in active_tool_calls:
-        end.append(ToolCallEndEvent(tool_call_id=tc_id))
     if error is not None:
         end.append(RunErrorEvent(message=str(error), code="STREAM_ERROR"))
     if end:

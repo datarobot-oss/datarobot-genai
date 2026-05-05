@@ -133,13 +133,14 @@ class TestToolCall:
         responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
         events = _flat_events(responses)
 
-        assert len(events) == 3
+        # Step adaptor owns ToolCallEnd at FUNCTION_END; converter only
+        # emits Start + Args.
+        assert len(events) == 2
         assert isinstance(events[0], ToolCallStartEvent)
         assert events[0].tool_call_id == "tc-1"
         assert events[0].tool_call_name == "get_weather"
         assert isinstance(events[1], ToolCallArgsEvent)
         assert events[1].delta == '{"loc":'
-        assert isinstance(events[2], ToolCallEndEvent)
 
     @pytest.mark.asyncio
     async def test_tool_call_followup_chunks_use_index_lookup(self):
@@ -226,11 +227,13 @@ class TestToolCall:
         responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
         events = _flat_events(responses)
 
+        # Step adaptor closes each tool call at FUNCTION_END; converter
+        # only emits Start (and Args).
         start_events = [e for e in events if isinstance(e, ToolCallStartEvent)]
         end_events = [e for e in events if isinstance(e, ToolCallEndEvent)]
         assert len(start_events) == 2
         assert {e.tool_call_id for e in start_events} == {"tc-1", "tc-2"}
-        assert len(end_events) == 2
+        assert end_events == []
 
 
 # --- Edge cases ---
@@ -280,6 +283,48 @@ class TestErrorHandling:
         gen = convert_chunks_to_agui_events(_slow_gen())
         await gen.__anext__()
         await gen.aclose()
+
+    @pytest.mark.asyncio
+    async def test_stream_ending_with_active_tool_calls_emits_no_end(self):
+        # The step adaptor closes tool calls at FUNCTION_END. The converter
+        # must not emit a duplicate ToolCallEndEvent in its post-loop, which
+        # would fire a second End for the same tool_call_id.
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+        events = _flat_events(responses)
+
+        assert [e for e in events if isinstance(e, ToolCallEndEvent)] == []
+
+    @pytest.mark.asyncio
+    async def test_stream_error_after_tool_call_emits_no_tool_call_end(self):
+        # On stream error mid-tool-call, RunErrorEvent terminates the run
+        # for the client; emitting ToolCallEndEvent here would duplicate the
+        # adaptor's End if the tool actually ran before the error.
+        async def _failing_gen():
+            yield _make_chunk(
+                tool_calls=[
+                    ChoiceDeltaToolCall(
+                        index=0,
+                        id="tc-1",
+                        function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                    )
+                ]
+            )
+            raise RuntimeError("boom")
+
+        responses = await _collect(convert_chunks_to_agui_events(_failing_gen()))
+        events = _flat_events(responses)
+
+        assert [e for e in events if isinstance(e, ToolCallEndEvent)] == []
+        assert any(isinstance(e, RunErrorEvent) for e in events)
 
 
 # --- Registry integration ---
