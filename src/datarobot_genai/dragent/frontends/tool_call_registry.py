@@ -14,10 +14,11 @@
 
 """Per-run handoff of LLM-issued ``tool_call_id`` from converter to adaptor.
 
-The LLM stream and the intermediate-step stream see different ids for the
-same call (provider id vs. NAT ``payload.UUID``); ``ToolCallResult`` must
-bind to the LLM's id. FIFO by name; parallel same-name calls finishing
-out of dispatch order would correlate incorrectly.
+LLM stream and NAT intermediate steps see different ids for the same call.
+Two-phase correlation tolerates parallel same-name calls completing out of
+order: ``register`` (converter) appends to a FIFO keyed by name; ``bind``
+(adaptor, ``FUNCTION_START``) pops the head into a UUID-keyed map; ``pop``
+(adaptor, ``FUNCTION_END``) drains by UUID.
 """
 
 from __future__ import annotations
@@ -25,34 +26,36 @@ from __future__ import annotations
 from collections import deque
 from contextvars import ContextVar
 
-_pending: ContextVar[dict[str, deque[str]] | None] = ContextVar(
-    "dragent_tool_call_pending", default=None
-)
+# (pending: name -> FIFO of tc_ids, bound: nat_uuid -> tc_id)
+_state: ContextVar[tuple[dict[str, deque[str]], dict[str, str]]] = ContextVar("dragent_tc")
+
+
+def _get() -> tuple[dict[str, deque[str]], dict[str, str]]:
+    try:
+        return _state.get()
+    except LookupError:
+        s: tuple[dict[str, deque[str]], dict[str, str]] = ({}, {})
+        _state.set(s)
+        return s
 
 
 def register_tool_call(name: str, tool_call_id: str) -> None:
-    """Record ``tool_call_id`` for the next ``FUNCTION_END`` of ``name``."""
-    pending = _pending.get()
-    if pending is None:
-        pending = {}
-        _pending.set(pending)
+    pending, _ = _get()
     pending.setdefault(name, deque()).append(tool_call_id)
 
 
-def pop_tool_call(name: str) -> str | None:
-    """Pop the next pending ``tool_call_id`` for ``name``, or ``None``."""
-    pending = _pending.get()
-    if pending is None:
-        return None
+def bind_tool_call(name: str, nat_uuid: str) -> str | None:
+    pending, bound = _get()
     queue = pending.get(name)
     if not queue:
         return None
-    tool_call_id = queue.popleft()
-    if not queue:
-        pending.pop(name, None)
-    return tool_call_id
+    bound[nat_uuid] = tc_id = queue.popleft()
+    return tc_id
+
+
+def pop_tool_call(nat_uuid: str) -> str | None:
+    return _get()[1].pop(nat_uuid, None)
 
 
 def reset() -> None:
-    """Clear pending state for the current context. For tests."""
-    _pending.set({})
+    _state.set(({}, {}))

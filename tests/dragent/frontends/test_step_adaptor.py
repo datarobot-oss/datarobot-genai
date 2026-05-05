@@ -779,9 +779,10 @@ class TestHandleToolArgsEncoding:
 
 class TestFunctionToolCorrelation:
     """When the parent agent dispatches a function as a tool but NAT does not
-    fire ``TOOL_*`` events, the step adaptor pops the LLM's ``tool_call_id``
-    (published by the converter on ``ToolCallStartEvent``) at ``FUNCTION_END``
-    and emits ``ToolCallEndEvent`` + ``ToolCallResultEvent``.
+    fire ``TOOL_*`` events, the step adaptor binds the LLM's ``tool_call_id``
+    (published by the converter on ``ToolCallStartEvent``) to the NAT
+    ``payload.UUID`` at ``FUNCTION_START`` and emits ``ToolCallEndEvent`` +
+    ``ToolCallResultEvent`` keyed by that UUID at ``FUNCTION_END``.
     """
 
     @staticmethod
@@ -789,6 +790,7 @@ class TestFunctionToolCorrelation:
         event_type: IntermediateStepType,
         name: str,
         output: object | None,
+        nat_uuid: str | None = None,
     ) -> IntermediateStep:
         return IntermediateStep(
             parent_id="agent",
@@ -801,7 +803,7 @@ class TestFunctionToolCorrelation:
             payload=IntermediateStepPayload(
                 event_type=event_type,
                 name=name,
-                UUID=str(uuid.uuid4()),
+                UUID=nat_uuid if nat_uuid is not None else str(uuid.uuid4()),
                 data=StreamEventData(input=None, output=output),
             ),
         )
@@ -810,14 +812,20 @@ class TestFunctionToolCorrelation:
         self, step_adaptor: DRAgentNestedReasoningStepAdaptor
     ) -> None:
         llm_tool_call_id = "toolu_vrtx_planner"
+        nat_uuid = "nat-planner-1"
         register_tool_call("planner", llm_tool_call_id)
 
         start = step_adaptor.process(
-            self._function_step(IntermediateStepType.FUNCTION_START, "planner", output=None)
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "planner", output=None, nat_uuid=nat_uuid
+            )
         )
         end = step_adaptor.process(
             self._function_step(
-                IntermediateStepType.FUNCTION_END, "planner", output="planner output"
+                IntermediateStepType.FUNCTION_END,
+                "planner",
+                output="planner output",
+                nat_uuid=nat_uuid,
             )
         )
 
@@ -832,6 +840,51 @@ class TestFunctionToolCorrelation:
         assert end.events[1].message_id == llm_tool_call_id
         assert end.events[1].content == "planner output"
         assert end.events[1].role == "tool"
+
+    def test_parallel_same_name_calls_correlate_by_uuid(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        # The LLM dispatches two parallel calls to the same tool. NAT fires
+        # FUNCTION_START in dispatch order but FUNCTION_END can arrive in
+        # any order. Each result must bind to the matching LLM tool_call_id.
+        register_tool_call("search", "tc-A")
+        register_tool_call("search", "tc-B")
+
+        step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "search", output=None, nat_uuid="nat-A"
+            )
+        )
+        step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "search", output=None, nat_uuid="nat-B"
+            )
+        )
+
+        # Second dispatch finishes first.
+        end_b = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_END,
+                "search",
+                output="result B",
+                nat_uuid="nat-B",
+            )
+        )
+        end_a = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_END,
+                "search",
+                output="result A",
+                nat_uuid="nat-A",
+            )
+        )
+
+        assert end_b.events[0].tool_call_id == "tc-B"
+        assert end_b.events[1].tool_call_id == "tc-B"
+        assert end_b.events[1].content == "result B"
+        assert end_a.events[0].tool_call_id == "tc-A"
+        assert end_a.events[1].tool_call_id == "tc-A"
+        assert end_a.events[1].content == "result A"
 
     def test_function_end_returns_none_when_unmatched(
         self, step_adaptor: DRAgentNestedReasoningStepAdaptor

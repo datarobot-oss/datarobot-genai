@@ -30,6 +30,7 @@ from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 
 from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
+from datarobot_genai.dragent.frontends.tool_call_registry import bind_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
 
@@ -298,7 +299,9 @@ class TestToolCallRegistry:
         )
         await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
 
-        # The step adaptor pops the registered id by tool name on
-        # FUNCTION_END to bind ToolCallResult to the same id the LLM exposed.
-        assert pop_tool_call("planner") == "tc-1"
-        assert pop_tool_call("planner") is None
+        # The step adaptor binds by name on FUNCTION_START to the NAT UUID,
+        # then pops by NAT UUID on FUNCTION_END to bind ToolCallResult to
+        # the same id the LLM exposed.
+        assert bind_tool_call("planner", "nat-uuid-1") == "tc-1"
+        assert pop_tool_call("nat-uuid-1") == "tc-1"
+        assert bind_tool_call("planner", "nat-uuid-2") is None

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 ## 0.15.35
-- Fixed AG-UI tool call lifecycle in dragent frontends: tool calls now thread under the assistant message that issued them, `TOOL_CALL_END` and `TOOL_CALL_RESULT` fire at actual tool completion, and nested NAT `FUNCTION_*` events no longer leak as duplicate `CustomEvent`s.
+- Fixed AG-UI tool call lifecycle in dragent frontends: tool calls now thread under the assistant message that issued them, `TOOL_CALL_END` and `TOOL_CALL_RESULT` fire at actual tool completion, parallel same-name calls correlate by NAT `payload.UUID` so out-of-order completions bind to the correct `tool_call_id`, and nested NAT `FUNCTION_*` events no longer leak as duplicate `CustomEvent`s.
 
 ## 0.15.34
 - Fixed AG-UI event lifecycle in the LlamaIndex agent adapter: each agent step emits its own message bubble and a matching `STEP_FINISHED`.

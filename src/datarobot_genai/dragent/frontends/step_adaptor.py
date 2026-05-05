@@ -46,6 +46,7 @@ from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
 
 from .response import DRAgentEventResponse
+from .tool_call_registry import bind_tool_call
 from .tool_call_registry import pop_tool_call
 
 logger = logging.getLogger(__name__)
@@ -293,11 +294,15 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # Just track the function level so we can handle nested functions correctly
         if payload.event_type == IntermediateStepType.FUNCTION_START:
             self.function_level += 1
+            # Bind by name in dispatch order; ``FUNCTION_END`` looks up by
+            # ``payload.UUID`` so parallel same-name calls completing out
+            # of order still correlate correctly.
+            bind_tool_call(payload.name, payload.UUID)
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
             self.function_level -= 1
             # Sub-agents dispatched as tools fire only FUNCTION_*, no TOOL_*.
             # Close the LLM-issued tool call here so the UI doesn't hang.
-            tool_call_id = pop_tool_call(payload.name)
+            tool_call_id = pop_tool_call(payload.UUID)
             if tool_call_id is not None:
                 output = ""
                 if payload.data is not None and getattr(payload.data, "output", None) is not None:
