@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -38,7 +40,11 @@ from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import ChatResponseChoice
+from nat.data_models.api_server import ChoiceMessage
 from nat.data_models.api_server import Message as NATAPIMessage
+from nat.data_models.api_server import Usage as NATChatUsage
 from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
@@ -63,6 +69,22 @@ from datarobot_genai.nat.moderation_pipeline_helpers import get_chat_prompt
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
+
+
+def _nat_chat_response_assistant_text(content: str) -> ChatResponse:
+    return ChatResponse(
+        id="cr-id",
+        choices=[
+            ChatResponseChoice(
+                index=0,
+                finish_reason="stop",
+                message=ChoiceMessage(role="assistant", content=content),
+            )
+        ],
+        created=datetime.now(UTC),
+        model="test-model",
+        usage=NATChatUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3),
+    )
 
 
 def _make_run_input(content: str = "hello") -> DRAgentRunAgentInput:
@@ -405,6 +427,111 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     assert ctx.output is not None
     text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
     assert text == "final-out"
+
+
+async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
+    builder_mock: MagicMock,
+) -> None:
+    """NAT ``single_fn`` returns ``ChatResponse``, not ``DRAgentEventResponse``;
+    postscore still runs.
+    """
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_response.return_value = (
+        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
+        None,
+    )
+
+    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
+    postscore = pd.DataFrame({RESPONSE_COL: ["final-out"]})
+
+    nat_out = _nat_chat_response_assistant_text("model-out")
+    ctx = _invocation(_make_run_input(), output=nat_out)
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
+            return_value=(predictions, {}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
+            return_value=(postscore, 0.0),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
+            return_value=pd.DataFrame({"dummy": [1]}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
+            side_effect=lambda _p, completion, _df, association_id=None: completion,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
+        mw.prescore_df = mw.data.copy()
+
+        out = await mw.post_invoke(ctx)
+
+    assert out is not None
+    assert isinstance(ctx.output, ChatResponse)
+    assert ctx.output.choices[0].message.content == "final-out"
+
+
+async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
+    builder_mock: MagicMock,
+) -> None:
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_response.return_value = (
+        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
+        None,
+    )
+
+    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
+    postscore = pd.DataFrame({RESPONSE_COL: ["final-out"]})
+
+    ctx = _invocation(_make_run_input(), output="model-out")
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
+            return_value=(predictions, {}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
+            return_value=(postscore, 0.0),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
+            return_value=pd.DataFrame({"dummy": [1]}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
+            side_effect=lambda _p, completion, _df, association_id=None: completion,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
+        mw.prescore_df = mw.data.copy()
+
+        out = await mw.post_invoke(ctx)
+
+    assert out is not None
+    assert ctx.output == "final-out"
 
 
 async def test_post_invoke_uses_none_custom_response_when_postscore_empty(

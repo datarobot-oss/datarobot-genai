@@ -58,6 +58,7 @@ from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
@@ -861,6 +862,29 @@ def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     )
 
 
+def _openai_chat_completion_has_assistant_message_content(completion: ChatCompletion) -> bool:
+    if not completion.choices:
+        return False
+    content = completion.choices[0].message.content
+    return bool(content)
+
+
+def _final_openai_completion_to_nat_chat_response(
+    final_completion: ChatCompletion,
+    original_nat_response: ChatResponse,
+) -> ChatResponse:
+    """Map a moderated OpenAI completion back to NAT's model (usage is required on ``ChatResponse``)."""
+    data = final_completion.model_dump(mode="json")
+    if data.get("usage") is None:
+        if original_nat_response.usage is not None:
+            data["usage"] = original_nat_response.usage.model_dump(mode="json")
+        else:
+            data["usage"] = NATUsage(
+                prompt_tokens=0, completion_tokens=0, total_tokens=0
+            ).model_dump(mode="json")
+    return ChatResponse.model_validate(data)
+
+
 def _assistant_text_joined_from_ag_ui(response: DRAgentEventResponse) -> str:
     return "".join(
         ev.delta
@@ -1094,13 +1118,26 @@ class DataRobotModerationMiddleware(
             InvocationContext if modified, or None to pass through unchanged.
             Default implementation does nothing.
         """
-        incoming: DRAgentEventResponse = context.output
-        if not _response_has_assistant_text_deltas(incoming):
-            return None
+        original_output = context.output
         if self._moderation is None:
             return None
 
-        chat_completion = dragent_event_response_to_chat_completion(incoming)
+        incoming_agui: DRAgentEventResponse | None = None
+        if isinstance(original_output, DRAgentEventResponse):
+            incoming_agui = original_output
+            if not _response_has_assistant_text_deltas(incoming_agui):
+                return None
+            chat_completion = dragent_event_response_to_chat_completion(incoming_agui)
+        elif isinstance(original_output, ChatResponse):
+            chat_completion = ChatCompletion.model_validate(original_output.model_dump(mode="json"))
+            if not _openai_chat_completion_has_assistant_message_content(chat_completion):
+                return None
+        elif isinstance(original_output, str):
+            if not original_output.strip():
+                return None
+            chat_completion = build_non_streaming_chat_completion(original_output, "stop")
+        else:
+            return None
 
         pipeline = self._moderation._pipeline
 
@@ -1176,17 +1213,27 @@ class DataRobotModerationMiddleware(
         )
         moderated_dr = chat_completion_to_dragent_event_response(final_completion)
 
-        preserve_ag_ui_envelope = (
-            len(incoming.events) > 1
-            and finish_reason == "stop"
-            and not response_eval.blocked
-            and not (response_eval.replaced and response_eval.replacement is not None)
-            and response_message == _assistant_text_joined_from_ag_ui(incoming)
-        )
-        if preserve_ag_ui_envelope:
-            context.output = _merge_moderations_into_multi_event_response(incoming, moderated_dr)
+        if incoming_agui is not None:
+            preserve_ag_ui_envelope = (
+                len(incoming_agui.events) > 1
+                and finish_reason == "stop"
+                and not response_eval.blocked
+                and not (response_eval.replaced and response_eval.replacement is not None)
+                and response_message == _assistant_text_joined_from_ag_ui(incoming_agui)
+            )
+            if preserve_ag_ui_envelope:
+                context.output = _merge_moderations_into_multi_event_response(
+                    incoming_agui, moderated_dr
+                )
+            else:
+                context.output = moderated_dr
+        elif isinstance(original_output, ChatResponse):
+            context.output = _final_openai_completion_to_nat_chat_response(
+                final_completion, original_output
+            )
         else:
-            context.output = moderated_dr
+            context.output = response_message
+
         return context
 
     async def function_middleware_stream(
