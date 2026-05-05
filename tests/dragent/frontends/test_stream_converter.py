@@ -30,6 +30,17 @@ from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 
 from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
+from datarobot_genai.dragent.frontends.tool_call_registry import bind_tool_call
+from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
+from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
+
+
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    reset_registry()
+    yield
+    reset_registry()
+
 
 # --- Helpers ---
 
@@ -122,13 +133,12 @@ class TestToolCall:
         responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
         events = _flat_events(responses)
 
-        assert len(events) == 3
+        assert len(events) == 2
         assert isinstance(events[0], ToolCallStartEvent)
         assert events[0].tool_call_id == "tc-1"
         assert events[0].tool_call_name == "get_weather"
         assert isinstance(events[1], ToolCallArgsEvent)
         assert events[1].delta == '{"loc":'
-        assert isinstance(events[2], ToolCallEndEvent)
 
     @pytest.mark.asyncio
     async def test_tool_call_followup_chunks_use_index_lookup(self):
@@ -159,6 +169,42 @@ class TestToolCall:
         assert args_events[1].tool_call_id == "tc-1"
 
     @pytest.mark.asyncio
+    async def test_tool_call_after_text_threads_under_text_message_id(self):
+        text = _make_chunk(content="Let me check.", chunk_id="msg-1")
+        tool_call = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(text, tool_call)))
+        events = _flat_events(responses)
+
+        start = next(e for e in events if isinstance(e, ToolCallStartEvent))
+        assert start.parent_message_id == "msg-1"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_no_preceding_text_uses_empty_parent(self):
+        # Falls back to "" (langgraph convention), not a phantom uuid.
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+        events = _flat_events(responses)
+
+        start = next(e for e in events if isinstance(e, ToolCallStartEvent))
+        assert start.parent_message_id == ""
+
+    @pytest.mark.asyncio
     async def test_multiple_parallel_tool_calls(self):
         chunk = _make_chunk(
             tool_calls=[
@@ -181,7 +227,7 @@ class TestToolCall:
         end_events = [e for e in events if isinstance(e, ToolCallEndEvent)]
         assert len(start_events) == 2
         assert {e.tool_call_id for e in start_events} == {"tc-1", "tc-2"}
-        assert len(end_events) == 2
+        assert end_events == []
 
 
 # --- Edge cases ---
@@ -231,3 +277,63 @@ class TestErrorHandling:
         gen = convert_chunks_to_agui_events(_slow_gen())
         await gen.__anext__()
         await gen.aclose()
+
+    @pytest.mark.asyncio
+    async def test_stream_ending_with_active_tool_calls_emits_no_end(self):
+        # Adaptor owns End; a post-loop End here would duplicate it.
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+        events = _flat_events(responses)
+
+        assert [e for e in events if isinstance(e, ToolCallEndEvent)] == []
+
+    @pytest.mark.asyncio
+    async def test_stream_error_after_tool_call_emits_no_tool_call_end(self):
+        # RunErrorEvent is terminal for the run; client closes any in-flight call.
+        async def _failing_gen():
+            yield _make_chunk(
+                tool_calls=[
+                    ChoiceDeltaToolCall(
+                        index=0,
+                        id="tc-1",
+                        function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                    )
+                ]
+            )
+            raise RuntimeError("boom")
+
+        responses = await _collect(convert_chunks_to_agui_events(_failing_gen()))
+        events = _flat_events(responses)
+
+        assert [e for e in events if isinstance(e, ToolCallEndEvent)] == []
+        assert any(isinstance(e, RunErrorEvent) for e in events)
+
+
+# --- Registry integration ---
+
+
+class TestToolCallRegistry:
+    @pytest.mark.asyncio
+    async def test_tool_call_start_publishes_to_registry(self):
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="planner", arguments="{}"),
+                )
+            ]
+        )
+        await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+
+        assert bind_tool_call("planner", "nat-uuid-1") == "tc-1"
+        assert pop_tool_call("nat-uuid-1") == "tc-1"
+        assert bind_tool_call("planner", "nat-uuid-2") is None

@@ -46,6 +46,8 @@ from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
 
 from .response import DRAgentEventResponse
+from .tool_call_registry import bind_tool_call
+from .tool_call_registry import pop_tool_call
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +92,8 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
 
             if step.event_category == IntermediateStepCategory.WORKFLOW:
                 result = self._handle_workflow(payload, ancestry)
-            # If we have not handle it yet, handle it as custom
-            if result is None:
+            # FUNCTION fall-through leaks the run as a CustomEvent.
+            elif result is None and step.event_category != IntermediateStepCategory.FUNCTION:
                 result = self._handle_custom(payload, ancestry)
 
         except Exception as e:
@@ -290,8 +292,27 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # Just track the function level so we can handle nested functions correctly
         if payload.event_type == IntermediateStepType.FUNCTION_START:
             self.function_level += 1
+            bind_tool_call(payload.name, payload.UUID)
         elif payload.event_type == IntermediateStepType.FUNCTION_END:
             self.function_level -= 1
+            # Sub-agents dispatched as tools fire only FUNCTION_*, no TOOL_*.
+            tool_call_id = pop_tool_call(payload.UUID)
+            if tool_call_id is not None:
+                output = ""
+                if payload.data is not None and getattr(payload.data, "output", None) is not None:
+                    output = json.dumps(payload.data.output, default=str)
+                # End before Result; reversed order strands the UI in args streaming.
+                return DRAgentEventResponse(
+                    events=[
+                        ToolCallEndEvent(tool_call_id=tool_call_id),
+                        ToolCallResultEvent(
+                            message_id=tool_call_id,
+                            tool_call_id=tool_call_id,
+                            content=output,
+                            role="tool",
+                        ),
+                    ]
+                )
         else:
             raise self._unknown_step_type(payload)
 

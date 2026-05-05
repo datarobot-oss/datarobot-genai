@@ -33,13 +33,13 @@ from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
-from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from nat.data_models.api_server import ChatResponseChunk
 
 from datarobot_genai.core.agents import default_usage_metrics
 
 from .response import DRAgentEventResponse
+from .tool_call_registry import register_tool_call
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,9 @@ async def convert_chunks_to_agui_events(
     ``GeneratorExit`` (client disconnect), exits silently.
     """
     active_message_id: str | None = None
-    tool_call_message_id: str | None = None
-    active_tool_calls: set[str] = set()
+    # parent_message_id for subsequent tool calls; a synthetic uuid here
+    # renders an orphan message stub in the UI.
+    last_text_message_id: str | None = None
     seen_tool_calls: bool = False
     tool_index_map: dict[int, str] = {}
     zero = default_usage_metrics()
@@ -70,14 +71,9 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
-                # Close any active tool calls before resuming text.
-                # The LLM may stream: text -> tool_call -> (execute) -> more text.
-                # AG-UI expects sequential blocks, not interleaved.
-                if active_tool_calls:
-                    for tc_id in active_tool_calls:
-                        events.append(ToolCallEndEvent(tool_call_id=tc_id))
-                    active_tool_calls.clear()
-                    tool_call_message_id = None
+                # Reset per-turn index tracking; the next round's index 0 is a new tool call.
+                # Step adaptor owns ToolCallEnd at FUNCTION_END / TOOL_END.
+                tool_index_map.clear()
 
                 if active_message_id is None:
                     # After a tool call cycle, the LLM response is a new turn
@@ -94,13 +90,9 @@ async def convert_chunks_to_agui_events(
                 # Close any active text message before starting tool calls.
                 if active_message_id is not None:
                     events.append(TextMessageEndEvent(message_id=active_message_id))
+                    last_text_message_id = active_message_id
                     active_message_id = None
                 seen_tool_calls = True
-
-                # Create a dedicated message for tool calls so they don't
-                # merge with the preceding text message in storage.
-                if tool_call_message_id is None:
-                    tool_call_message_id = str(uuid.uuid4())
 
                 for tc in delta.tool_calls:
                     tc_id = tc.id or tool_index_map.get(tc.index)  # type: ignore[assignment]
@@ -110,17 +102,20 @@ async def convert_chunks_to_agui_events(
                             tc.index,
                         )
                         continue
-                    is_new = tc.id is not None and tc_id not in active_tool_calls
+                    is_new = tc.id is not None and tc.index not in tool_index_map
                     if is_new:
-                        active_tool_calls.add(tc_id)
                         tool_index_map[tc.index] = tc_id
+                        tool_name = tc.function.name if tc.function else ""
                         events.append(
                             ToolCallStartEvent(
                                 tool_call_id=tc_id,
-                                tool_call_name=tc.function.name if tc.function else "",
-                                parent_message_id=tool_call_message_id,
+                                tool_call_name=tool_name,
+                                parent_message_id=last_text_message_id or "",
                             )
                         )
+                        # Hand the LLM-issued id to the step adaptor.
+                        if tool_name:
+                            register_tool_call(tool_name, tc_id)
                     arguments = tc.function.arguments if tc.function else None
                     if arguments:
                         events.append(ToolCallArgsEvent(tool_call_id=tc_id, delta=arguments))
@@ -140,8 +135,6 @@ async def convert_chunks_to_agui_events(
     end: list[Event] = []
     if active_message_id is not None:
         end.append(TextMessageEndEvent(message_id=active_message_id))
-    for tc_id in active_tool_calls:
-        end.append(ToolCallEndEvent(tool_call_id=tc_id))
     if error is not None:
         end.append(RunErrorEvent(message=str(error), code="STREAM_ERROR"))
     if end:
