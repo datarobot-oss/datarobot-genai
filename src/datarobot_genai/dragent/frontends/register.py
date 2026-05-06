@@ -47,8 +47,12 @@ warnings.filterwarnings("ignore", message=".*stream_options is not default param
 class DRAgentA2AExternalConfig(BaseModel):
     """Customer-provided external identity and URL override for the agent card."""
 
-    id: str | None = Field(default=None, description="External agent identifier for catalog discovery.")
-    url: str | None = Field(default=None, description="Custom external URL override for the agent card endpoint.")
+    id: str | None = Field(
+        default=None, description="External agent identifier for catalog discovery."
+    )
+    url: str | None = Field(
+        default=None, description="Custom external URL override for the agent card endpoint."
+    )
 
 
 class DRAgentA2AConfig(BaseModel):

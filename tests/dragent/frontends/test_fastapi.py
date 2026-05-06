@@ -530,7 +530,8 @@ class TestCreateAgentCard:
 
     async def test_internal_identity_extension_when_deployment_id_set(self, a2a_frontend_config):
         """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN create_agent_card is called THEN the internal
-        identity extension is present with the deployment_id."""
+        identity extension is present with the deployment_id.
+        """
         env = {
             "MLOPS_DEPLOYMENT_ID": "dep-abc123",
             "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
@@ -547,7 +548,8 @@ class TestCreateAgentCard:
 
     async def test_no_internal_identity_extension_in_local_dev(self, a2a_frontend_config):
         """GIVEN MLOPS_DEPLOYMENT_ID is not set WHEN create_agent_card is called THEN the
-        internal identity extension is absent."""
+        internal identity extension is absent.
+        """
         with patch.dict(os.environ, {}, clear=True):
             card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
 
@@ -556,7 +558,8 @@ class TestCreateAgentCard:
 
     async def test_external_identity_extension_when_external_id_set(self, a2a_frontend_config):
         """GIVEN external.id is provided WHEN create_agent_card is called THEN the external
-        identity extension is present with the correct id."""
+        identity extension is present with the correct id.
+        """
         external = DRAgentA2AExternalConfig(id="catalog-id-xyz")
         card = await create_agent_card(
             a2a_frontend_config, cross_app_access=None, skills=[], external=external
@@ -571,7 +574,8 @@ class TestCreateAgentCard:
 
     async def test_no_external_identity_extension_when_external_absent(self, a2a_frontend_config):
         """GIVEN external is None WHEN create_agent_card is called THEN no external identity
-        extension is present."""
+        extension is present.
+        """
         card = await create_agent_card(
             a2a_frontend_config, cross_app_access=None, skills=[], external=None
         )
@@ -581,7 +585,8 @@ class TestCreateAgentCard:
 
     async def test_external_url_overrides_agent_card_url(self, a2a_frontend_config):
         """GIVEN external.url is set WHEN create_agent_card is called THEN the agent card url
-        uses the external URL exactly as provided."""
+        uses the external URL exactly as provided.
+        """
         external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent/")
         card = await create_agent_card(
             a2a_frontend_config, cross_app_access=None, skills=[], external=external
@@ -591,7 +596,8 @@ class TestCreateAgentCard:
 
     async def test_external_url_used_as_provided(self, a2a_frontend_config):
         """GIVEN external.url is set without a trailing slash WHEN create_agent_card is called
-        THEN the url is used exactly as provided, without modification."""
+        THEN the url is used exactly as provided, without modification.
+        """
         external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent")
         card = await create_agent_card(
             a2a_frontend_config, cross_app_access=None, skills=[], external=external
@@ -601,7 +607,8 @@ class TestCreateAgentCard:
 
     async def test_all_extensions_combined(self, a2a_frontend_config):
         """GIVEN cross_app_access, MLOPS_DEPLOYMENT_ID, and external.id are all set WHEN
-        create_agent_card is called THEN all three extensions are present."""
+        create_agent_card is called THEN all three extensions are present.
+        """
         cross_app_access = CrossApplicationAccessConfig(
             token_endpoint_auth_method="private_key_jwt",
             token_exchange=CrossAppTokenExchange(
