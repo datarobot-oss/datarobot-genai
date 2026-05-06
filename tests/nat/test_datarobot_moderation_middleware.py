@@ -38,6 +38,7 @@ from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
+from datarobot_dome.api import EvaluationResult
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
@@ -188,17 +189,6 @@ def _prescore_df_replaced(prompt: str, replacement: str) -> pd.DataFrame:
             f"blocked_{PROMPT_COL}": [False],
             f"replaced_{PROMPT_COL}": [True],
             f"replaced_message_{PROMPT_COL}": [replacement],
-        }
-    )
-
-
-def _postscore_df_with_response(prompt: str, response: str) -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            PROMPT_COL: [prompt],
-            RESPONSE_COL: [response],
-            f"blocked_{RESPONSE_COL}": [False],
-            f"replaced_{RESPONSE_COL}": [False],
         }
     )
 
@@ -428,10 +418,7 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation._executor.run_guards.return_value = (
-        _postscore_df_with_response("p", "hi"),
-        0.0,
-    )
+    moderation.evaluate_response.return_value = (EvaluationResult(blocked=False), 0.0)
 
     predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["hi"]})
 
@@ -513,8 +500,8 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation._executor.run_guards.return_value = (
-        _postscore_df_with_response("p", "final-out"),
+    moderation.evaluate_response.return_value = (
+        EvaluationResult(blocked=False, replaced=True, replacement="final-out"),
         0.0,
     )
 
@@ -571,8 +558,8 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation._executor.run_guards.return_value = (
-        _postscore_df_with_response("p", "final-out"),
+    moderation.evaluate_response.return_value = (
+        EvaluationResult(blocked=False, replaced=True, replacement="final-out"),
         0.0,
     )
 
@@ -625,8 +612,8 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation._executor.run_guards.return_value = (
-        _postscore_df_with_response("p", "final-out"),
+    moderation.evaluate_response.return_value = (
+        EvaluationResult(blocked=False, replaced=True, replacement="final-out"),
         0.0,
     )
 

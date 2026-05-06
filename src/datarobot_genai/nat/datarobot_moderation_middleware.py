@@ -174,6 +174,28 @@ def _postscore_evaluation_context_columns(
     return frozenset(cols)
 
 
+def _predictions_df_with_response_evaluation(
+    predictions_df: pd.DataFrame,
+    response_column_name: str,
+    response_eval: EvaluationResult,
+) -> pd.DataFrame:
+    """Merge ``ModerationPipeline.evaluate_response`` output into the predictions frame.
+
+    ``format_result_df`` / completion metadata need the postscore-shaped DataFrame produced
+    by the guard executor; ``evaluate_response`` returns only ``EvaluationResult``, so we
+    copy predictions and apply the evaluation fields and metric columns on row 0.
+    """
+    postscore_df = predictions_df.copy(deep=True)
+    postscore_df.index = predictions_df.index
+    postscore_df.loc[0, f"blocked_{response_column_name}"] = response_eval.blocked
+    postscore_df.loc[0, f"blocked_message_{response_column_name}"] = response_eval.blocked_message
+    postscore_df.loc[0, f"replaced_{response_column_name}"] = response_eval.replaced
+    postscore_df.loc[0, f"replaced_message_{response_column_name}"] = response_eval.replacement
+    for metric_key, metric_val in response_eval.metrics.items():
+        postscore_df.loc[0, metric_key] = metric_val
+    return postscore_df
+
+
 _FINISH_REASON = Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
 
 
@@ -1362,10 +1384,9 @@ class DataRobotModerationMiddleware(
             return None
 
         # ==================================================================
-        # Step 3: Postscore guards (single run when there is response text, same path as
-        # ``ModerationPipeline.evaluate_response`` / ``_run_stage``)
-        #
-        # Prompt column is already part of ``predictions_df`` for faithfulness-style guards.
+        # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
+        # ``_run_stage`` in dome). We merge ``EvaluationResult`` back onto ``predictions_df``
+        # for ``format_result_df`` / sidecar metadata when response text is present.
         response_column_name = pipeline.get_input_column(GuardStage.RESPONSE)
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         predictions_df, extra_attributes = build_predictions_df_from_completion(
@@ -1374,37 +1395,34 @@ class DataRobotModerationMiddleware(
         response_text = predictions_df.loc[0, response_column_name]
         prompt_for_eval = predictions_df.loc[0, prompt_column_name]
 
+        blocked_completion_column_name = f"blocked_{response_column_name}"
         if response_text is not None:
             none_predictions_df = None
-            postscore_guards = pipeline.get_postscore_guards()
-            blocked_completion_column_name = f"blocked_{response_column_name}"
-            input_df = predictions_df.copy(deep=True)
-            if len(postscore_guards) == 0:
-                postscore_df = input_df
+            try:
+                response_eval, _ = self._moderation.evaluate_response(
+                    _text_for_moderation_eval(response_text),
+                    prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
+                )
+            except Exception as exc:
+                _logger.error(
+                    "Failed to run postscore guards: %s",
+                    exc,
+                    exc_info=True,
+                )
+                postscore_df = predictions_df.copy(deep=True)
                 postscore_df[blocked_completion_column_name] = False
-            else:
-                try:
-                    postscore_df, _ = self._moderation._executor.run_guards(
-                        input_df,
-                        postscore_guards,
-                        GuardStage.RESPONSE,
-                    )
-                except Exception as exc:
-                    _logger.error(
-                        "Failed to run postscore guards: %s",
-                        exc,
-                        exc_info=True,
-                    )
-                    postscore_df = input_df
-                    postscore_df[blocked_completion_column_name] = False
                 postscore_df.index = predictions_df.index
-            response_eval = _from_dataframe(
-                postscore_df,
-                response_column_name,
-                _postscore_evaluation_context_columns(
-                    postscore_df, prompt_column_name, prompt_for_eval
-                ),
-            )
+                response_eval = _from_dataframe(
+                    postscore_df,
+                    response_column_name,
+                    _postscore_evaluation_context_columns(
+                        postscore_df, prompt_column_name, prompt_for_eval
+                    ),
+                )
+            else:
+                postscore_df = _predictions_df_with_response_evaluation(
+                    predictions_df, response_column_name, response_eval
+                )
         else:
             postscore_df = pd.DataFrame()
             none_predictions_df = predictions_df
