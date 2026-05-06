@@ -249,10 +249,6 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         try:
@@ -291,10 +287,6 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -465,10 +457,6 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
-        patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.chat_completion_to_dragent_event_response",
             return_value=moderated_sidecar,
         ),
@@ -526,10 +514,6 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -584,10 +568,6 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -637,10 +617,6 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -669,7 +645,9 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     moderation.evaluate_response.return_value = (
-        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
+        SimpleNamespace(
+            blocked=False, replaced=False, replacement=None, blocked_message=None, metrics={}
+        ),
         None,
     )
 
@@ -693,10 +671,6 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -756,10 +730,6 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -800,10 +770,6 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -864,10 +830,6 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
 
@@ -907,10 +869,6 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
-            side_effect=lambda _p, completion, _df, association_id=None: completion,
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
