@@ -1122,35 +1122,6 @@ def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     )
 
 
-def _openai_chat_completion_has_assistant_message_content(completion: ChatCompletion) -> bool:
-    if not completion.choices:
-        return False
-    content = completion.choices[0].message.content
-    return bool(content)
-
-
-def _openai_assistant_content_as_str(completion: ChatCompletion) -> str:
-    """Assistant message text from a completion (for moderation eval, not dataframe columns)."""
-    if not completion.choices:
-        return ""
-    content = completion.choices[0].message.content
-    if isinstance(content, str):
-        return content
-    if content is None:
-        return ""
-    joined: list[str] = []
-    for part in content:
-        text: str | None = None
-        if isinstance(part, dict):
-            if part.get("type") == "text":
-                text = part.get("text")  # type: ignore[assignment]
-        elif getattr(part, "type", None) == "text":
-            text = getattr(part, "text", None)
-        if text:
-            joined.append(str(text))
-    return "".join(joined)
-
-
 def _final_openai_completion_to_nat_chat_response(
     final_completion: ChatCompletion,
     original_nat_response: ChatResponse,
@@ -1406,10 +1377,11 @@ class DataRobotModerationMiddleware(
                 return None
             response_text = _assistant_text_joined_from_ag_ui(original_output)
         elif isinstance(original_output, ChatResponse):
-            chat_completion = ChatCompletion.model_validate(original_output.model_dump(mode="json"))
-            if not _openai_chat_completion_has_assistant_message_content(chat_completion):
+            if not original_output.choices:
                 return None
-            response_text = _openai_assistant_content_as_str(chat_completion)
+            response_text = original_output.choices[0].message.content or ""
+            if not response_text:
+                return None
         elif isinstance(original_output, str):
             if not original_output.strip():
                 return None
