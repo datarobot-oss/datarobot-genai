@@ -19,8 +19,8 @@
 This guide covers how to configure authentication for Agent-to-Agent (A2A)
 communication. There are two supported authentication methods:
 
-1. **DataRobot API Key** — simple bearer token auth for DataRobot-hosted agents.
-2. **Okta Cross-Application Access (XAA)** — two-step token exchange for
+1. **DataRobot API key** — simple bearer token auth for DataRobot-hosted agents.
+2. **Okta cross-application access (XAA)** — two-step token exchange for
    federated Okta environments (hybrid RFC 8693 / RFC 7523 flow).
 
 Both methods use the `authenticated_a2a_client` function group on the client
@@ -40,12 +40,12 @@ Replace `langgraph` with `crewai` or `llamaindex` depending on your framework.
 
 ---
 
-## Option 1: DataRobot API Key Authentication
+## Option 1: DataRobot API key authentication
 
 Use this when calling a DataRobot-hosted A2A agent that accepts a standard
 DataRobot API token.
 
-### Environment Variables
+### Environment variables
 
 | Variable | Description |
 |----------|-------------|
@@ -100,7 +100,7 @@ involved.
 
 ---
 
-## Option 2: Okta Cross-Application Access (XAA)
+## Option 2: Okta cross-application access (XAA)
 
 Use this when calling an agent protected by Okta's federated identity model.
 The flow obtains a scoped access token through a two-step exchange.
@@ -111,7 +111,7 @@ The flow obtains a scoped access token through a two-step exchange.
 - A registered AI agent principal in Okta with a private key pair.
 - The `auth` extra installed (`pip install "datarobot-genai[auth]"`).
 
-### Environment Variables
+### Environment variables
 
 | Variable | Description |
 |----------|-------------|
@@ -121,7 +121,7 @@ The flow obtains a scoped access token through a two-step exchange.
 Both are loaded automatically from env vars, `.env`, DataRobot Runtime
 Parameters, or `file_secrets`.
 
-### Full `workflow.yaml` Example
+### Full `workflow.yaml` example
 
 ```yaml
 general:
@@ -210,27 +210,27 @@ on the A2A agent card.
 
 | Field | Section | Purpose |
 |-------|---------|---------|
-| `token_endpoint_auth_method` | root | How the client authenticates to token endpoints (e.g. `private_key_jwt`) |
-| `token_exchange.trusted_issuer` | Step 1 | Org-level Authorization Server issuer URL |
-| `token_exchange.audience` | Step 1 | Resource AS base URL (where ID-JAG is fetched from) |
-| `token_request.grant_type` | Step 2 | Must be `urn:ietf:params:oauth:grant-type:jwt-bearer` |
-| `token_request.token_url` | Step 2 | Token endpoint of the resource AS |
-| `token_request.audience` | Step 2 | Final resource identifier for the agent |
-| `token_request.scopes` | Step 2 | Scopes the caller must request (default: `["read_data"]`) |
+| `token_endpoint_auth_method` | root | How the client authenticates to token endpoints (e.g. `private_key_jwt`). |
+| `token_exchange.trusted_issuer` | Step 1 | Org-level Authorization Server issuer URL. |
+| `token_exchange.audience` | Step 1 | Resource AS base URL (where ID-JAG is fetched from). |
+| `token_request.grant_type` | Step 2 | Must be `urn:ietf:params:oauth:grant-type:jwt-bearer`. |
+| `token_request.token_url` | Step 2 | Token endpoint of the resource AS. |
+| `token_request.audience` | Step 2 | Final resource identifier for the agent. |
+| `token_request.scopes` | Step 2 | Scopes the caller must request (default: `["read_data"]`). |
 
-### Client-side Configuration Reference: `okta_cross_app_access`
+### Client-side configuration reference: `okta_cross_app_access`
 
 These fields configure how the calling agent authenticates when invoking a
 remote XAA-protected agent.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `okta_token_header` | `x-datarobot-okta-access-token` | Incoming request header carrying the caller's Okta access token |
-| `principal_id` | `PRINCIPAL_ID` env var | Okta AI agent principal ID |
-| `private_jwk` | `PRIVATE_JWK` env var | Base64-encoded or raw-JSON private JWK |
-| `id_jag_scopes` | `["read_data"]` | Scopes for the Step 1 ID-JAG request |
+| `okta_token_header` | `x-datarobot-okta-access-token` | Incoming request header carrying the caller's Okta access token. |
+| `principal_id` | `PRINCIPAL_ID` env var | Okta AI agent principal ID. |
+| `private_jwk` | `PRIVATE_JWK` env var | Base64-encoded or raw-JSON private JWK. |
+| `id_jag_scopes` | `["read_data"]` | Scopes for the Step 1 ID-JAG request. |
 
-### Agent Card Mapping
+### Agent card mapping
 
 The `cross_application_access` configuration is split across two parts of the
 published A2A agent card:
@@ -249,15 +249,15 @@ in `securitySchemes`, while flow-specific parameters go in
 
 ---
 
-## Choosing Between the Two Methods
+## Choosing between the two methods
 
-| Criteria | DataRobot API Key | Okta XAA |
+| Criteria | DataRobot API key | Okta XAA |
 |----------|-------------------|----------|
-| Setup complexity | Minimal — one env var | Moderate — Okta principal + key pair |
-| Identity model | Service-level API token | User-delegated federated identity |
-| Token type | Static API key | Short-lived scoped access token |
-| Use case | Internal DataRobot agents | Cross-organization / federated agents |
-| Extra install | None | `auth` extra required |
+| Setup complexity | Minimal — one env var. | Moderate — Okta principal + key pair. |
+| Identity model | Service-level API token. | User-delegated federated identity. |
+| Token type | Static API key. | Short-lived scoped access token. |
+| Use case | Internal DataRobot agents. | Cross-organization / federated agents. |
+| Extra install | None. | `auth` extra required. |
 
 ---
 
@@ -267,8 +267,8 @@ in `securitySchemes`, while flow-specific parameters go in
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `RuntimeError: Header 'x-datarobot-okta-access-token' not found` | The incoming request doesn't carry the Okta token | Ensure the upstream caller forwards the Okta access token in the expected header |
-| `ValueError: principal_id is required` | `PRINCIPAL_ID` env var not set | Set `PRINCIPAL_ID` in your environment or Runtime Parameters |
-| `ValueError: Could not parse private_jwk` | `PRIVATE_JWK` is neither valid base64-encoded JSON nor raw JSON | Verify your JWK — try `echo $PRIVATE_JWK | base64 -d | python -m json.tool` |
-| `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension | Verify the remote agent has `cross_application_access` configured |
-| `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL | Check the `url` in your `function_groups` config and network connectivity |
+| `RuntimeError: Header 'x-datarobot-okta-access-token' not found` | The incoming request doesn't carry the Okta token. | Ensure the upstream caller forwards the Okta access token in the expected header. |
+| `ValueError: principal_id is required` | `PRINCIPAL_ID` env var not set. | Set `PRINCIPAL_ID` in your environment or Runtime Parameters. |
+| `ValueError: Could not parse private_jwk` | `PRIVATE_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $PRIVATE_JWK | base64 -d | python -m json.tool`. |
+| `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |
+| `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in your `function_groups` config and network connectivity. |
