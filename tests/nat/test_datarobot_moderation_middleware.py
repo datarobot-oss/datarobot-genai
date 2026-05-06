@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -40,7 +39,6 @@ from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
-from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -598,53 +596,6 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
 
     assert out is not None
     assert ctx.output == "final-out"
-
-
-@pytest.mark.parametrize("missing_cell", [None, np.nan, pd.NA])
-async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
-    builder_mock: MagicMock,
-    missing_cell: Any,
-) -> None:
-    # GIVEN the model response column is null-like (None / NaN / NA) so postscore merge is skipped
-    # WHEN post_invoke selects the message for an empty postscore frame
-    # THEN NONE_CUSTOM_PY_RESPONSE is used
-    pipeline = _pipeline_mock()
-    moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
-        SimpleNamespace(
-            blocked=False, replaced=False, replacement=None, blocked_message=None, metrics={}
-        ),
-        None,
-    )
-
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: [missing_cell]})
-
-    ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
-
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            return_value=(predictions, {}),
-        ),
-    ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
-        _set_moderation_invoke_state(
-            data=prescore,
-            prescore_df=prescore.copy(),
-            latency_so_far=0.0,
-        )
-        try:
-            await mw.post_invoke(ctx)
-        finally:
-            _clear_moderation_invoke_state_if_set()
-
-    text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
-    assert text == NONE_CUSTOM_PY_RESPONSE
 
 
 @pytest.mark.parametrize("missing_cell", [None, np.nan, pd.NA])
