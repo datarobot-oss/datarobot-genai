@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import math
 import os
@@ -24,6 +25,7 @@ import threading
 import uuid
 from collections.abc import AsyncIterator
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
 from typing import Any
@@ -1146,6 +1148,48 @@ _STREAM_INPUT_END = object()
 _WORKER_QUEUE_END = object()
 
 
+@dataclass
+class _ModerationInvokeState:
+    """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
+
+    data: pd.DataFrame
+    prescore_df: pd.DataFrame
+    input_df: pd.DataFrame
+    latency_so_far: float
+    association_id: str | None
+    ctx_token: contextvars.Token[_ModerationInvokeState | None] | None = None
+
+
+_moderation_invoke_state_ctx: contextvars.ContextVar[_ModerationInvokeState | None] = (
+    contextvars.ContextVar("datarobot_genai_moderation_invoke_state", default=None)
+)
+
+
+def _set_moderation_invoke_state(
+    *,
+    data: pd.DataFrame,
+    prescore_df: pd.DataFrame,
+    latency_so_far: float,
+    association_id: str | None = None,
+) -> None:
+    state = _ModerationInvokeState(
+        data=data,
+        prescore_df=prescore_df,
+        input_df=data,
+        latency_so_far=latency_so_far,
+        association_id=association_id,
+    )
+    token = _moderation_invoke_state_ctx.set(state)
+    state.ctx_token = token
+
+
+def _clear_moderation_invoke_state_if_set() -> None:
+    state = _moderation_invoke_state_ctx.get()
+    if state is None or state.ctx_token is None:
+        return
+    _moderation_invoke_state_ctx.reset(state.ctx_token)
+
+
 class DataRobotModerationConfig(
     FunctionMiddlewareBaseConfig,  # type: ignore[misc]
     name="datarobot_moderation",  # type: ignore[call-arg]
@@ -1164,12 +1208,6 @@ class DataRobotModerationMiddleware(
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
         super().__init__()
         self._moderation = load_llm_moderation_pipeline(config.model_dir)
-        self.data = None
-        self.prescore_df = None
-        self.input_df: pd.DataFrame | None = None
-        self.latency_so_far: float = 0.0
-        self.association_id: str | None = None
-        self._stream_tool_index_map: dict[int, str] = {}
 
     @property
     def enabled(self) -> bool:
@@ -1191,16 +1229,19 @@ class DataRobotModerationMiddleware(
             modified_kwargs=dict(kwargs),
             output=None,
         )
-        result = await self.pre_invoke(ctx)
-        if result is not None:
-            ctx = result
-        if ctx.output is not None:
+        try:
+            result = await self.pre_invoke(ctx)
+            if result is not None:
+                ctx = result
+            if ctx.output is not None:
+                return ctx.output
+            ctx.output = await call_next(*ctx.modified_args, **ctx.modified_kwargs)
+            result = await self.post_invoke(ctx)
+            if result is not None:
+                ctx = result
             return ctx.output
-        ctx.output = await call_next(*ctx.modified_args, **ctx.modified_kwargs)
-        result = await self.post_invoke(ctx)
-        if result is not None:
-            ctx = result
-        return ctx.output
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     async def pre_invoke(self, context: InvocationContext) -> InvocationContext | None:
         """Pre-invocation hook called before the function is invoked.
@@ -1248,10 +1289,12 @@ class DataRobotModerationMiddleware(
                 GuardStage.PROMPT,
             )
         prompt_eval = _from_dataframe(prescore_df, prompt_column_name)
-        self.data = data
-        self.input_df = data
-        self.prescore_df = prescore_df
-        self.latency_so_far = prescore_latency
+        _set_moderation_invoke_state(
+            data=data,
+            prescore_df=prescore_df,
+            latency_so_far=prescore_latency,
+            association_id=None,
+        )
 
         if prompt_eval.blocked:
             # If all prompts in the input are blocked, means history as well as the prompt
@@ -1301,6 +1344,9 @@ class DataRobotModerationMiddleware(
             return None
 
         pipeline = self._moderation._pipeline
+        state = _moderation_invoke_state_ctx.get()
+        if state is None:
+            return None
 
         # ==================================================================
         # Step 3: Postscore guards (single run when there is response text, same path as
@@ -1310,7 +1356,7 @@ class DataRobotModerationMiddleware(
         response_column_name = pipeline.get_input_column(GuardStage.RESPONSE)
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         predictions_df, extra_attributes = build_predictions_df_from_completion(
-            self.data, pipeline, chat_completion
+            state.data, pipeline, chat_completion
         )
         response_text = predictions_df.loc[0, response_column_name]
         prompt_for_eval = predictions_df.loc[0, prompt_column_name]
@@ -1360,9 +1406,9 @@ class DataRobotModerationMiddleware(
         #
         result_df = format_result_df(
             pipeline,
-            self.prescore_df,
+            state.prescore_df,
             postscore_df,
-            self.data,
+            state.data,
             none_predictions_df=none_predictions_df,
         )
 
@@ -1395,7 +1441,7 @@ class DataRobotModerationMiddleware(
             response_message, finish_reason, extra_attributes
         )
         final_completion = set_moderation_attribute_to_completion(
-            pipeline, final_completion, result_df, association_id=self.association_id
+            pipeline, final_completion, result_df, association_id=state.association_id
         )
         moderated_dr = chat_completion_to_dragent_event_response(final_completion)
 
@@ -1458,173 +1504,177 @@ class DataRobotModerationMiddleware(
             output=None,
         )
 
-        result = await self.pre_invoke(ctx)
-        if result is not None:
-            ctx = result
-        if ctx.output is not None:
-            yield ctx.output
-            return
-
-        # Prescore populates ``input_df`` / ``latency_so_far``. If ``pre_invoke`` returned
-        # early (e.g. no workflow input / prescore skipped), pass the stream through unchanged.
-        if self.input_df is None:
-            async for chunk in call_next(*ctx.modified_args, **ctx.modified_kwargs):
-                yield chunk
-            return
-
-        moderation = self._moderation
-        assert moderation is not None
-
-        self._stream_tool_index_map.clear()
-
-        streaming_context = (
-            StreamingContextBuilder()
-            .set_pipeline(moderation._pipeline)
-            .set_prescore_df(self.prescore_df)
-            .set_prescore_latency(self.latency_so_far)
-            .set_input_df(self.input_df)
-            .build()
-        )
-
-        in_q: queue.Queue[Any] = queue.Queue()
-        out_q: queue.Queue[Any] = queue.Queue()
-        mod_errors: list[BaseException] = []
-        worker: threading.Thread | None = None
-
-        def input_chunk_iter() -> Iterator[Any]:
-            while True:
-                item = in_q.get()
-                if item is _STREAM_INPUT_END:
-                    break
-                yield item
-
-        def moderation_worker() -> None:
-            try:
-                mit = ModerationIterator(streaming_context, input_chunk_iter())
-                for moderated_chunk in mit:
-                    out_q.put(moderated_chunk)
-            except BaseException as exc:
-                mod_errors.append(exc)
-            finally:
-                out_q.put(_WORKER_QUEUE_END)
-
-        def start_moderation_worker() -> threading.Thread:
-            t = threading.Thread(
-                target=moderation_worker,
-                name="datarobot-moderation-stream",
-                daemon=True,
-            )
-            t.start()
-            return t
-
-        upstream = call_next(*ctx.modified_args, **ctx.modified_kwargs).__aiter__()
-        loop = asyncio.get_running_loop()
-        worker_sentinel_received = False
-
-        async def read_upstream() -> DRAgentEventResponse | None:
-            try:
-                return cast(DRAgentEventResponse, await upstream.__anext__())
-            except StopAsyncIteration:
-                return None
-
         try:
-            # Leading pass-through (non–text-message) events
-            while True:
-                response = await read_upstream()
-                if response is None:
-                    return
-                if not response.events or skip_event_type(response.events[0]):
-                    yield response
-                    continue
-                break
+            result = await self.pre_invoke(ctx)
+            if result is not None:
+                ctx = result
+            if ctx.output is not None:
+                yield ctx.output
+                return
 
-            # ``ModerationIterator`` peeks one chunk ahead: each ``__next__`` pulls the next
-            # item from the iterable before returning the moderated current chunk. Feed that
-            # peek *before* awaiting each moderated output or the worker deadlocks.
-            worker = start_moderation_worker()
-            current_response = response
-            in_q.put(
-                cast(
-                    ChatCompletionChunk,
-                    dragent_event_response_to_chat_completion(
-                        current_response, as_streaming_chunk=True
-                    ),
-                )
+            # Prescore populates invoke state. If ``pre_invoke`` returned early (e.g. no
+            # workflow input / prescore skipped), pass the stream through unchanged.
+            stream_state = _moderation_invoke_state_ctx.get()
+            if stream_state is None:
+                async for chunk in call_next(*ctx.modified_args, **ctx.modified_kwargs):
+                    yield chunk
+                return
+
+            moderation = self._moderation
+            assert moderation is not None
+
+            stream_tool_index_map: dict[int, str] = {}
+
+            streaming_context = (
+                StreamingContextBuilder()
+                .set_pipeline(moderation._pipeline)
+                .set_prescore_df(stream_state.prescore_df)
+                .set_prescore_latency(stream_state.latency_so_far)
+                .set_input_df(stream_state.input_df)
+                .build()
             )
 
-            # Defer TEXT_MESSAGE_START/END until after the moderated chunk for this step.
-            # (See _defer_until_after_moderated_chunk.) Other pass-through events keep
-            # upstream order relative to non-text events.
-            pending_deferred_pass_through: list[DRAgentEventResponse] = []
+            in_q: queue.Queue[Any] = queue.Queue()
+            out_q: queue.Queue[Any] = queue.Queue()
+            mod_errors: list[BaseException] = []
+            worker: threading.Thread | None = None
 
-            while True:
-                # Pass-through events read while advancing to the next moderation input chunk
-                # must follow the moderated output for ``current_response`` (ModerationIterator
-                # peeks one chunk ahead). Yielding them early breaks ordering (e.g. RUN_FINISHED
-                # before TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END).
-                pending_pass_through: list[DRAgentEventResponse] = []
-                peek = await read_upstream()
-                while peek is not None and (not peek.events or skip_event_type(peek.events[0])):
-                    if peek.events and _defer_until_after_moderated_chunk(peek.events[0]):
-                        pending_deferred_pass_through.append(peek)
-                    else:
-                        pending_pass_through.append(peek)
-                    peek = await read_upstream()
+            def input_chunk_iter() -> Iterator[Any]:
+                while True:
+                    item = in_q.get()
+                    if item is _STREAM_INPUT_END:
+                        break
+                    yield item
 
-                if peek is None:
-                    in_q.put(_STREAM_INPUT_END)
-                else:
-                    in_q.put(
-                        cast(
-                            ChatCompletionChunk,
-                            dragent_event_response_to_chat_completion(
-                                peek, as_streaming_chunk=True
-                            ),
-                        )
+            def moderation_worker() -> None:
+                try:
+                    mit = ModerationIterator(streaming_context, input_chunk_iter())
+                    for moderated_chunk in mit:
+                        out_q.put(moderated_chunk)
+                except BaseException as exc:
+                    mod_errors.append(exc)
+                finally:
+                    out_q.put(_WORKER_QUEUE_END)
+
+            def start_moderation_worker() -> threading.Thread:
+                t = threading.Thread(
+                    target=moderation_worker,
+                    name="datarobot-moderation-stream",
+                    daemon=True,
+                )
+                t.start()
+                return t
+
+            upstream = call_next(*ctx.modified_args, **ctx.modified_kwargs).__aiter__()
+            loop = asyncio.get_running_loop()
+            worker_sentinel_received = False
+
+            async def read_upstream() -> DRAgentEventResponse | None:
+                try:
+                    return cast(DRAgentEventResponse, await upstream.__anext__())
+                except StopAsyncIteration:
+                    return None
+
+            try:
+                # Leading pass-through (non–text-message) events
+                while True:
+                    response = await read_upstream()
+                    if response is None:
+                        return
+                    if not response.events or skip_event_type(response.events[0]):
+                        yield response
+                        continue
+                    break
+
+                # ``ModerationIterator`` peeks one chunk ahead: each ``__next__`` pulls the next
+                # item from the iterable before returning the moderated current chunk. Feed that
+                # peek *before* awaiting each moderated output or the worker deadlocks.
+                worker = start_moderation_worker()
+                current_response = response
+                in_q.put(
+                    cast(
+                        ChatCompletionChunk,
+                        dragent_event_response_to_chat_completion(
+                            current_response, as_streaming_chunk=True
+                        ),
                     )
+                )
 
-                moderated = await loop.run_in_executor(None, out_q.get)
-                if moderated is _WORKER_QUEUE_END:
+                # Defer TEXT_MESSAGE_START/END until after the moderated chunk for this step.
+                # (See _defer_until_after_moderated_chunk.) Other pass-through events keep
+                # upstream order relative to non-text events.
+                pending_deferred_pass_through: list[DRAgentEventResponse] = []
+
+                while True:
+                    # Pass-through events read while advancing to the next moderation input chunk
+                    # must follow the moderated output for ``current_response`` (ModerationIterator
+                    # peeks one chunk ahead). Yielding them early breaks ordering (e.g. RUN_FINISHED
+                    # before TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END).
+                    pending_pass_through: list[DRAgentEventResponse] = []
+                    peek = await read_upstream()
+                    while peek is not None and (not peek.events or skip_event_type(peek.events[0])):
+                        if peek.events and _defer_until_after_moderated_chunk(peek.events[0]):
+                            pending_deferred_pass_through.append(peek)
+                        else:
+                            pending_pass_through.append(peek)
+                        peek = await read_upstream()
+
+                    if peek is None:
+                        in_q.put(_STREAM_INPUT_END)
+                    else:
+                        in_q.put(
+                            cast(
+                                ChatCompletionChunk,
+                                dragent_event_response_to_chat_completion(
+                                    peek, as_streaming_chunk=True
+                                ),
+                            )
+                        )
+
+                    moderated = await loop.run_in_executor(None, out_q.get)
+                    if moderated is _WORKER_QUEUE_END:
+                        for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):
+                            yield item
+                        pending_deferred_pass_through.clear()
+                        for item in pending_pass_through:
+                            yield item
+                        worker_sentinel_received = True
+                        if mod_errors:
+                            raise mod_errors[0]
+                        break
+
+                    ctx.output = chat_completion_to_dragent_event_response(
+                        moderated,
+                        source_ag_ui_events=current_response.events,
+                        stream_tool_index_map=stream_tool_index_map,
+                    )
+                    yield ctx.output
                     for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):
                         yield item
                     pending_deferred_pass_through.clear()
                     for item in pending_pass_through:
                         yield item
-                    worker_sentinel_received = True
-                    if mod_errors:
-                        raise mod_errors[0]
-                    break
+                    finish = moderated.choices[0].finish_reason if moderated.choices else None
+                    if finish == "content_filter":
+                        break
 
-                ctx.output = chat_completion_to_dragent_event_response(
-                    moderated,
-                    source_ag_ui_events=current_response.events,
-                    stream_tool_index_map=self._stream_tool_index_map,
-                )
-                yield ctx.output
-                for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):
-                    yield item
-                pending_deferred_pass_through.clear()
-                for item in pending_pass_through:
-                    yield item
-                finish = moderated.choices[0].finish_reason if moderated.choices else None
-                if finish == "content_filter":
-                    break
+                    if peek is None:
+                        break
 
-                if peek is None:
-                    break
-
-                current_response = peek
+                    current_response = peek
+            finally:
+                if worker is not None:
+                    in_q.put(_STREAM_INPUT_END)
+                    if not worker_sentinel_received:
+                        sentinel = await loop.run_in_executor(None, out_q.get)
+                        if sentinel is not _WORKER_QUEUE_END:
+                            _logger.warning(
+                                "Unexpected item from moderation worker queue: %r",
+                                sentinel,
+                            )
+                    worker.join(timeout=120.0)
         finally:
-            if worker is not None:
-                in_q.put(_STREAM_INPUT_END)
-                if not worker_sentinel_received:
-                    sentinel = await loop.run_in_executor(None, out_q.get)
-                    if sentinel is not _WORKER_QUEUE_END:
-                        _logger.warning(
-                            "Unexpected item from moderation worker queue: %r",
-                            sentinel,
-                        )
-                worker.join(timeout=120.0)
+            _clear_moderation_invoke_state_if_set()
 
 
 @register_middleware(  # type: ignore[untyped-decorator]

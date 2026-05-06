@@ -14,9 +14,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -62,6 +64,11 @@ from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    _clear_moderation_invoke_state_if_set,
+)
+from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
+from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     chat_completion_to_dragent_event_response,
 )
@@ -258,7 +265,10 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        out = await mw.pre_invoke(ctx)
+        try:
+            out = await mw.pre_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None
     assert out.output is not None
@@ -298,7 +308,10 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        out = await mw.pre_invoke(ctx)
+        try:
+            out = await mw.pre_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None and out.output is not None
     assert out.output.datarobot_moderations == {"token_count_prompt": 42}
@@ -324,13 +337,17 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        out = await mw.pre_invoke(ctx)
+        try:
+            out = await mw.pre_invoke(ctx)
+            st = _moderation_invoke_state_ctx.get()
+            assert st is not None
+            assert st.data.loc[0, PROMPT_COL] == "[redacted]"
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None
     assert out.output is None
     assert run_input.messages[-1].content == "[redacted]"
-    assert mw.data is not None
-    assert mw.data.loc[0, PROMPT_COL] == "[redacted]"
 
 
 async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -> None:
@@ -428,10 +445,16 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
-        mw.prescore_df = mw.data.copy()
-
-        out = await mw.post_invoke(ctx)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            out = await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None
     assert ctx.output.events[0].type == EventType.RUN_STARTED
@@ -480,10 +503,16 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
-        mw.prescore_df = mw.data.copy()
-
-        out = await mw.post_invoke(ctx)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            out = await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None
     assert ctx.output is not None
@@ -532,10 +561,16 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
-        mw.prescore_df = mw.data.copy()
-
-        out = await mw.post_invoke(ctx)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            out = await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None
     assert isinstance(ctx.output, ChatResponse)
@@ -579,10 +614,16 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
-        mw.prescore_df = mw.data.copy()
-
-        out = await mw.post_invoke(ctx)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            out = await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     assert out is not None
     assert ctx.output == "final-out"
@@ -627,10 +668,16 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
-        mw.data = pd.DataFrame({PROMPT_COL: ["p"]})
-        mw.prescore_df = mw.data.copy()
-
-        await mw.post_invoke(ctx)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
 
     text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
     assert text == NONE_CUSTOM_PY_RESPONSE
@@ -670,6 +717,76 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
 
     call_next.assert_not_awaited()
     assert isinstance(result, DRAgentEventResponse)
+
+
+async def test_function_middleware_invoke_preserves_prescore_data_across_concurrent_tasks(
+    builder_mock: MagicMock,
+) -> None:
+    """Each asyncio task must keep its own prescore frame across ``await call_next``."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+
+    def run_guards_side_effect(
+        data: pd.DataFrame, guards: Any, stage: Any
+    ) -> tuple[pd.DataFrame, float]:
+        prompt = str(data.loc[0, PROMPT_COL])
+        return _prescore_df_ok(prompt), 0.0
+
+    moderation._executor.run_guards.side_effect = run_guards_side_effect
+    seen_in_build: dict[asyncio.Task[Any], str] = {}
+
+    def build_df_side_effect(
+        data: pd.DataFrame, pipeline: Any, chat_completion: Any
+    ) -> tuple[pd.DataFrame, dict[Any, Any]]:
+        task = asyncio.current_task()
+        assert task is not None
+        seen_in_build[task] = str(data.loc[0, PROMPT_COL])
+        prompt = str(data.loc[0, PROMPT_COL])
+        predictions = pd.DataFrame({PROMPT_COL: [prompt], RESPONSE_COL: ["x"]})
+        return predictions, {}
+
+    async def slow_call_next(*_a: Any, **_k: Any) -> DRAgentEventResponse:
+        await asyncio.sleep(0.05)
+        return _text_response("x")
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
+            side_effect=build_df_side_effect,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
+            return_value=pd.DataFrame({"dummy": [1]}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
+            side_effect=lambda _p, completion, _df, association_id=None: completion,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+
+        async def run_one(prompt: str) -> None:
+            await mw.function_middleware_invoke(
+                _make_run_input(prompt),
+                call_next=slow_call_next,
+                context=_fn_context(),
+            )
+
+        t_aaa = asyncio.create_task(run_one("aaa-only"))
+        await asyncio.sleep(0)
+        t_bbb = asyncio.create_task(run_one("bbb-only"))
+        await asyncio.gather(t_aaa, t_bbb)
+
+    assert seen_in_build[t_aaa] == "aaa-only"
+    assert seen_in_build[t_bbb] == "bbb-only"
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(

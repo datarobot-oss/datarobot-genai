@@ -154,6 +154,7 @@ fixable = [
     "D406", # Ported Google-style sections vs numpy section naming
     "D407",
     "E501", # Long comments/docstrings carried over from upstream recipe
+    "PLR0911", # Ported post_invoke has many early exits mirroring upstream control flow
 ]
 "docs/**/*.py" = [
     "INP001", # implicit-namespace-package: standalone example scripts
