@@ -658,12 +658,14 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
     assert ctx.output == "final-out"
 
 
+@pytest.mark.parametrize("missing_cell", [None, np.nan, pd.NA])
 async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
     builder_mock: MagicMock,
+    missing_cell: Any,
 ) -> None:
-    # GIVEN the model response column is None so postscore is skipped
+    # GIVEN the model response column is null-like (None / NaN / NA) so postscore merge is skipped
     # WHEN post_invoke selects the message for an empty postscore frame
-    # THEN NONE_CUSTOM_PY_RESPONSE is used
+    # THEN NONE_CUSTOM_PY_RESPONSE is used and format_result_df sees empty postscore_df
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     moderation.evaluate_response.return_value = (
@@ -671,10 +673,11 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
         None,
     )
 
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: [None]})
+    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: [missing_cell]})
 
     ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
 
+    format_result_df_mock = MagicMock(return_value=pd.DataFrame())
     with (
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
@@ -686,7 +689,7 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame(),
+            format_result_df_mock,
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
@@ -707,6 +710,11 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
             await mw.post_invoke(ctx)
         finally:
             _clear_moderation_invoke_state_if_set()
+
+    format_result_df_mock.assert_called_once()
+    call = format_result_df_mock.call_args
+    assert call[0][2].empty
+    assert call.kwargs["none_predictions_df"] is predictions
 
     text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
     assert text == NONE_CUSTOM_PY_RESPONSE

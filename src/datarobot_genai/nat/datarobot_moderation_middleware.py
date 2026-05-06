@@ -148,6 +148,18 @@ def _text_for_moderation_eval(value: Any) -> str:
     return str(value)
 
 
+def _predictions_response_missing_for_postscore(value: Any) -> bool:
+    """Check if the response cell is null-like (``None`` or pandas missing), not merely falsy."""
+    if value is None:
+        return True
+    try:
+        if pd.isna(value):
+            return True
+    except TypeError:
+        pass
+    return False
+
+
 def _optional_prompt_for_moderation_eval(value: Any) -> str | None:
     if value is None:
         return None
@@ -1396,7 +1408,7 @@ class DataRobotModerationMiddleware(
         prompt_for_eval = predictions_df.loc[0, prompt_column_name]
 
         blocked_completion_column_name = f"blocked_{response_column_name}"
-        if response_text is not None:
+        if not _predictions_response_missing_for_postscore(response_text):
             none_predictions_df = None
             try:
                 response_eval, _ = self._moderation.evaluate_response(
