@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.38
-- Documentation: editorial pass on `docs/nat/a2a-auth.md` (sentence-case headings, end-of-sentence punctuation in description tables).
+- Added documentation `docs/nat/a2a-auth.md` on how to configure various auth options for A2A agents.
 
 ## 0.15.37
 - Added an optional `model` identifier to `BaseAgent`. Updated CrewAI, LangGraph, and LlamaIndex agents to use explicit named `__init__` parameters (instead of forwarding arbitrary kwargs). Possible breaking change moving away from `kwargs` to named parameters.
