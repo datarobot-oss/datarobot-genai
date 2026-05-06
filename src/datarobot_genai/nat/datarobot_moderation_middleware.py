@@ -67,8 +67,6 @@ from datarobot_moderation_interface.drum_integration import (
 )
 from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
 from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
-from datarobot_moderation_interface.drum_integration import filter_association_id
-from datarobot_moderation_interface.drum_integration import filter_extra_body
 from datarobot_moderation_interface.drum_integration import format_result_df
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from datarobot_moderation_interface.drum_integration import run_prescore_guards
@@ -1045,50 +1043,11 @@ class DataRobotModerationMiddleware(
         pipeline = self._moderation._pipeline
         completion_create_params = workflow_input_to_completion_dict(workflow_input)
 
-        # if association ID was included in extra_body, extract field name and value
-        completion_create_params, eb_assoc_id_value = filter_association_id(
-            completion_create_params
-        )
-
-        # extract any fields mentioned in "datarobot_metrics" to send as custom metrics later
-        completion_create_params, chat_extra_body_params = filter_extra_body(
-            completion_create_params
-        )
-
-        # define all pipeline-based and guard-based custom metrics (but not those from extra_body)
-        # note: this is usually partially done at pipeline init; see delayed_custom_metric_creation
-        pipeline.get_new_metrics_payload()
-
         # the chat request is not a dataframe, but we'll build a DF internally for moderation.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         prompt = get_chat_prompt(completion_create_params)
 
         data = pd.DataFrame({prompt_column_name: [prompt]})
-        # for association IDs (with or without extra_body): the column must be defined in the deployment
-        # (here, this means pipeline.get_association_id_column_name() ("standard name") is not empty.)
-        # there are 3 likely cases for association ID, and 1 corner case:
-        # 1. ID value not provided (drum or extra_body) => no association ID column
-        # 2. ID value provided by DRUM => new DF column with standard name and provided value
-        # 3. ID defined in extra_body => new DF column with standard name and extra_body value
-        # 4. ID in extra_body with empty value => no association ID column
-        # Moderation library no longer auto-generates an association ID for chat. However, DRUM does.
-        association_id_column_name = pipeline.get_association_id_column_name()
-        association_id = eb_assoc_id_value  # or association_id  # TBD: drum passes this
-        self.association_id = association_id
-        if association_id_column_name:
-            if association_id:
-                data[association_id_column_name] = [association_id]
-
-        # DRUM initializes the pipeline (which reads the deployment's list of custom metrics)
-        # at start time.
-        # If there are no extra_body fields (meaning no user-defined custom metrics to report),
-        # then the list does not need to be reread.
-        if chat_extra_body_params:
-            pipeline.lookup_custom_metric_ids()
-
-        # report any metrics from extra_body. They are not tied to a prompt or response phase.
-        _logger.debug("Report extra_body params as custom metrics")
-        pipeline.report_custom_metrics_from_extra_body(association_id, chat_extra_body_params)
 
         # ==================================================================
         # Step 1: Prescore Guards processing
@@ -1114,7 +1073,7 @@ class DataRobotModerationMiddleware(
                 prompt_column_name, prescore_df, prescore_latency
             )
             completion = set_moderation_attribute_to_completion(
-                pipeline, chat_completion, result_df, association_id=association_id
+                pipeline, chat_completion, result_df
             )
             report_otel_evaluation_set_metric(pipeline, result_df)
             context.output = chat_completion_to_dragent_event_response(completion)
