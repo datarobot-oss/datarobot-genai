@@ -1423,7 +1423,7 @@ class DataRobotModerationMiddleware(
         # for ``format_result_df`` / sidecar metadata when response text is present.
         response_column_name = pipeline.get_input_column(GuardStage.RESPONSE)
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        predictions_df, extra_attributes = build_predictions_df_from_completion(
+        predictions_df, _ = build_predictions_df_from_completion(
             state.data, pipeline, chat_completion
         )
         predictions_response_cell = predictions_df.loc[0, response_column_name]
@@ -1483,14 +1483,6 @@ class DataRobotModerationMiddleware(
             none_predictions_df=none_predictions_df,
         )
 
-        # ==================================================================
-        # Step 5: Additional metadata calculations
-        #
-        # TBD: handle latency
-        # result_df["datarobot_latency"] = (
-        #                                          score_latency + prescore_latency + postscore_latency
-        #                                  ) / result_df.shape[0]
-
         blocked_message_completion_column_name = f"blocked_message_{response_column_name}"
         if response_eval.blocked:
             response_message = response_eval.blocked_message
@@ -1513,9 +1505,7 @@ class DataRobotModerationMiddleware(
             finish_reason = "stop"
         report_otel_evaluation_set_metric(pipeline, result_df)
 
-        final_completion = build_non_streaming_chat_completion(
-            response_message, finish_reason, extra_attributes
-        )
+        final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
         final_completion = set_moderation_attribute_to_completion(
             pipeline, final_completion, result_df, association_id=state.association_id
         )
