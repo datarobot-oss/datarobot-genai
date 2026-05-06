@@ -27,8 +27,6 @@ Both methods use the `authenticated_a2a_client` function group on the client
 side and the `cross_application_access` server-side config to publish
 requirements in the agent card.
 
----
-
 ## Installation
 
 ```bash
@@ -37,8 +35,6 @@ pip install "datarobot-genai[dragent,langgraph,auth]>=0.15.35"
 ```
 
 Replace `langgraph` with `crewai` or `llamaindex` depending on your framework.
-
----
 
 ## Option 1: DataRobot API key authentication
 
@@ -97,8 +93,6 @@ authentication:
 
 This is the simplest setup — no agent card extensions or multi-step flows
 involved.
-
----
 
 ## Option 2: Okta cross-application access (XAA)
 
@@ -247,8 +241,6 @@ This separation follows the A2A spec convention: standard OAuth fields belong
 in `securitySchemes`, while flow-specific parameters go in
 `capabilities.extensions`.
 
----
-
 ## Choosing between the two methods
 
 | Criteria | DataRobot API key | Okta XAA |
@@ -258,8 +250,6 @@ in `securitySchemes`, while flow-specific parameters go in
 | Token type | Static API key. | Short-lived scoped access token. |
 | Use case | Internal DataRobot agents. | Cross-organization / federated agents. |
 | Extra install | None. | `auth` extra required. |
-
----
 
 ## Troubleshooting
 
