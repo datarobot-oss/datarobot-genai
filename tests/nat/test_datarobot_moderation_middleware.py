@@ -246,9 +246,6 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         try:
@@ -284,9 +281,6 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -450,13 +444,6 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
             return_value=(predictions, {}),
         ),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame({"dummy": [1]}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
-        patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.chat_completion_to_dragent_event_response",
             return_value=moderated_sidecar,
         ),
@@ -507,13 +494,6 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame({"dummy": [1]}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -561,13 +541,6 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame({"dummy": [1]}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -610,13 +583,6 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame({"dummy": [1]}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -641,7 +607,7 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
 ) -> None:
     # GIVEN the model response column is null-like (None / NaN / NA) so postscore merge is skipped
     # WHEN post_invoke selects the message for an empty postscore frame
-    # THEN NONE_CUSTOM_PY_RESPONSE is used and format_result_df sees empty postscore_df
+    # THEN NONE_CUSTOM_PY_RESPONSE is used
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     moderation.evaluate_response.return_value = (
@@ -655,7 +621,6 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
 
     ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
 
-    format_result_df_mock = MagicMock(return_value=pd.DataFrame())
     with (
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
@@ -664,13 +629,6 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            format_result_df_mock,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -684,11 +642,6 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
             await mw.post_invoke(ctx)
         finally:
             _clear_moderation_invoke_state_if_set()
-
-    format_result_df_mock.assert_called_once()
-    call = format_result_df_mock.call_args
-    assert call[0][2].empty
-    assert call.kwargs["none_predictions_df"] is predictions
 
     text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
     assert text == NONE_CUSTOM_PY_RESPONSE
@@ -722,13 +675,6 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame(),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -767,9 +713,6 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -823,13 +766,6 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             side_effect=build_df_side_effect,
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
-            return_value=pd.DataFrame({"dummy": [1]}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
 
@@ -866,9 +802,6 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
