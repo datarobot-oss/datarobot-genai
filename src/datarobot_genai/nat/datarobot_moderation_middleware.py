@@ -1426,6 +1426,7 @@ class DataRobotModerationMiddleware(
         if not guards:
             prescore_df = data.copy(deep=True)
             prescore_df[f"blocked_{prompt_column_name}"] = False
+            prescore_df[f"replaced_{prompt_column_name}"] = False
             prescore_latency = 0.0
         else:
             prescore_df, prescore_latency = self._moderation._executor.run_guards(

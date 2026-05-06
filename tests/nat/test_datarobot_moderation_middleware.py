@@ -226,6 +226,41 @@ def test_enabled_false_when_pipeline_not_loaded(builder_mock: MagicMock) -> None
     assert mw.enabled is False
 
 
+async def test_pre_invoke_no_prescore_guards_prescore_df_has_blocked_and_replaced_columns(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN the pipeline has no prescore guards (``run_guards`` is not used for prompt stage)
+    # WHEN pre_invoke runs
+    # THEN prescore_df matches the executor shape so downstream streaming/metadata sees both flags
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = []
+    moderation = _moderation_mock(pipeline)
+
+    run_input = _make_run_input("hello")
+    ctx = _invocation(run_input)
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        try:
+            await mw.pre_invoke(ctx)
+            st = _moderation_invoke_state_ctx.get()
+            assert st is not None
+            df = st.prescore_df
+            assert f"blocked_{PROMPT_COL}" in df.columns
+            assert bool(df.loc[0, f"blocked_{PROMPT_COL}"]) is False
+            assert f"replaced_{PROMPT_COL}" in df.columns
+            assert bool(df.loc[0, f"replaced_{PROMPT_COL}"]) is False
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    moderation._executor.run_guards.assert_not_called()
+
+
 async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> None:
     # GIVEN prescore ``run_guards`` marks the prompt blocked (single execution path)
     # WHEN pre_invoke runs
