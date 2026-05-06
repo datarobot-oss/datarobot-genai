@@ -267,6 +267,41 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         isinstance(ev, TextMessageContentEvent) and "blocked-by-test" in ev.delta
         for ev in out.output.events
     )
+    assert out.output.datarobot_moderations is None
+
+
+async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_metrics(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN prescore row carries guard metric columns (e.g. token counts) alongside blocked flags
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_blocked("bad", "blocked-by-test")
+    prescore_df["token_count_prompt"] = [42]
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+
+    run_input = _make_run_input("bad")
+    ctx = _invocation(run_input)
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
+            side_effect=lambda _p, completion, _df, association_id=None: completion,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        out = await mw.pre_invoke(ctx)
+
+    assert out is not None and out.output is not None
+    assert out.output.datarobot_moderations == {"token_count_prompt": 42}
 
 
 async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) -> None:

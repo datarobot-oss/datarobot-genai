@@ -47,6 +47,7 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
 from datarobot_dome.constants import AGENTIC_PIPELINE_INTERACTIONS_ATTR
@@ -60,9 +61,7 @@ from datarobot_dome.otel_helpers import report_otel_evaluation_set_metric
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
-from datarobot_moderation_interface.drum_integration import (
-    _handle_result_df_error_cases as handle_result_df_error_cases,
-)
+from datarobot_moderation_interface.drum_integration import MODERATION_MODEL_NAME
 from datarobot_moderation_interface.drum_integration import (
     _set_moderation_attribute_to_completion as set_moderation_attribute_to_completion,
 )
@@ -692,6 +691,51 @@ def _agui_tool_events_from_openai_delta_tool_calls(
     return events
 
 
+def _dragent_event_response_from_blocked_prompt_eval(
+    prompt_eval: EvaluationResult,
+) -> DRAgentEventResponse:
+    """Build AG-UI output for prescore prompt blocking without an intermediate ChatCompletion.
+
+    Serializes non-internal prescore columns from ``prompt_eval.metrics`` into
+    ``datarobot_moderations`` (JSON-safe), matching how streamed completions expose guard output.
+    """
+    content = prompt_eval.blocked_message or ""
+    events = _assistant_text_events_from_message(content)
+    completion_id = str(uuid.uuid4())
+    created_ts = int(datetime.now(tz=UTC).timestamp())
+    created_dt = datetime.fromtimestamp(created_ts, tz=UTC)
+    chunk = ChatResponseChunk(
+        id=completion_id,
+        choices=[
+            ChatResponseChunkChoice(
+                index=0,
+                delta=ChoiceDelta(
+                    content=content,
+                    role=UserMessageContentRoleType.ASSISTANT,
+                    tool_calls=None,
+                ),
+                finish_reason="content_filter",
+            )
+        ],
+        created=created_dt,
+        model=MODERATION_MODEL_NAME,
+        object="chat.completion.chunk",
+        usage=None,
+    )
+    datarobot_moderations: dict[str, Any] | None = None
+    if prompt_eval.metrics:
+        datarobot_moderations = cast(
+            dict[str, Any], _json_safe_moderation_metadata(prompt_eval.metrics)
+        )
+    return DRAgentEventResponse(
+        events=events,
+        usage_metrics=default_usage_metrics(),
+        original_chunk=chunk,
+        model=MODERATION_MODEL_NAME,
+        datarobot_moderations=datarobot_moderations,
+    )
+
+
 def chat_completion_to_dragent_event_response(
     completion: ChatCompletion | ChatCompletionChunk,
     *,
@@ -1210,21 +1254,9 @@ class DataRobotModerationMiddleware(
         self.latency_so_far = prescore_latency
 
         if prompt_eval.blocked:
-            pipeline.report_custom_metrics(prescore_df)
             # If all prompts in the input are blocked, means history as well as the prompt
             # are not worthy to be sent to LLM
-            chat_completion = build_non_streaming_chat_completion(
-                prompt_eval.blocked_message,
-                "content_filter",
-            )
-            result_df = handle_result_df_error_cases(
-                prompt_column_name, prescore_df, prescore_latency
-            )
-            completion = set_moderation_attribute_to_completion(
-                pipeline, chat_completion, result_df
-            )
-            report_otel_evaluation_set_metric(pipeline, result_df)
-            context.output = chat_completion_to_dragent_event_response(completion)
+            context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
             return context
 
         if prompt_eval.replaced and prompt_eval.replacement is not None:
