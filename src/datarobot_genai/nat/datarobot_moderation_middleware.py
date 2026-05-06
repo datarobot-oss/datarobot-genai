@@ -1396,26 +1396,24 @@ class DataRobotModerationMiddleware(
 
         Returns:
             InvocationContext if modified, or None to pass through unchanged.
-            Default implementation does nothing.
         """
         original_output = context.output
         if self._moderation is None:
             return None
 
-        incoming_agui: DRAgentEventResponse | None = None
         if isinstance(original_output, DRAgentEventResponse):
-            incoming_agui = original_output
-            if not _response_has_assistant_text_deltas(incoming_agui):
+            if not _response_has_assistant_text_deltas(original_output):
                 return None
-            chat_completion = dragent_event_response_to_chat_completion(incoming_agui)
+            response_text = _assistant_text_joined_from_ag_ui(original_output)
         elif isinstance(original_output, ChatResponse):
             chat_completion = ChatCompletion.model_validate(original_output.model_dump(mode="json"))
             if not _openai_chat_completion_has_assistant_message_content(chat_completion):
                 return None
+            response_text = _openai_assistant_content_as_str(chat_completion)
         elif isinstance(original_output, str):
             if not original_output.strip():
                 return None
-            chat_completion = build_non_streaming_chat_completion(original_output, "stop")
+            response_text = original_output
         else:
             return None
 
@@ -1429,13 +1427,6 @@ class DataRobotModerationMiddleware(
         # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         prompt_for_eval = state.data.loc[0, prompt_column_name]
-
-        if isinstance(original_output, DRAgentEventResponse):
-            response_text = _assistant_text_joined_from_ag_ui(original_output)
-        elif isinstance(original_output, str):
-            response_text = original_output
-        else:
-            response_text = _openai_assistant_content_as_str(chat_completion)
 
         response_eval, _ = self._moderation.evaluate_response(
             _text_for_moderation_eval(response_text),
@@ -1458,17 +1449,17 @@ class DataRobotModerationMiddleware(
             response_eval=response_eval,
         )
 
-        if incoming_agui is not None:
+        if isinstance(original_output, DRAgentEventResponse):
             preserve_ag_ui_envelope = (
-                len(incoming_agui.events) > 1
+                len(original_output.events) > 1
                 and finish_reason == "stop"
                 and not response_eval.blocked
                 and not (response_eval.replaced and response_eval.replacement is not None)
-                and response_message == _assistant_text_joined_from_ag_ui(incoming_agui)
+                and response_message == _assistant_text_joined_from_ag_ui(original_output)
             )
             if preserve_ag_ui_envelope:
                 context.output = _merge_moderations_into_multi_event_response(
-                    incoming_agui, moderated_dr
+                    original_output, moderated_dr
                 )
             else:
                 context.output = moderated_dr
