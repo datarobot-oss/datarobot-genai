@@ -14,6 +14,7 @@
 memory:
   mem0_memory:
     _type: dr_mem0_memory
+    api_key: ${MEM0_API_KEY}
 
 functions:
   probe_agent:

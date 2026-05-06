@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 from nat.memory.models import MemoryItem
+from pydantic import ValidationError
 
 from datarobot_genai.nat import datarobot_mem0_memory
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
@@ -164,8 +165,8 @@ async def test_remove_items_deletes_by_memory_id_or_user_id() -> None:
     assert mem0.delete_all_calls == [{"user_id": "user-123"}]
 
 
-async def test_registered_memory_client_uses_env_config_and_retry(monkeypatch: Any) -> None:
-    # GIVEN a configured NAT memory provider and MEM0_API_KEY.
+async def test_registered_memory_client_uses_config_api_key_and_retry(monkeypatch: Any) -> None:
+    # GIVEN a configured NAT memory provider with an explicit Mem0 API key.
     created_clients: list[dict[str, Any]] = []
     patched_editors: list[dict[str, Any]] = []
 
@@ -177,11 +178,11 @@ async def test_registered_memory_client_uses_env_config_and_retry(monkeypatch: A
         patched_editors.append({"editor": editor, "kwargs": kwargs})
         return editor
 
-    monkeypatch.setenv("MEM0_API_KEY", "secret-key")
     monkeypatch.setattr(datarobot_mem0_memory, "_create_mem0_client", fake_create_mem0_client)
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", fake_patch_with_retry)
 
     config = DRMem0MemoryClientConfig(
+        api_key="secret-key",
         host="https://mem0.example.com",
         org_id="org-123",
         project_id="project-123",
@@ -189,7 +190,7 @@ async def test_registered_memory_client_uses_env_config_and_retry(monkeypatch: A
 
     # WHEN NAT builds the memory client.
     async with datarobot_mem0_memory.dr_mem0_memory_client(config, object()) as editor:
-        # THEN it creates a DRMem0Editor with the env key and retry wrapper.
+        # THEN it creates a DRMem0Editor with the configured key and retry wrapper.
         assert isinstance(editor, DRMem0Editor)
 
     assert created_clients == [{"config": config, "api_key": "secret-key"}]
@@ -205,13 +206,7 @@ async def test_registered_memory_client_uses_env_config_and_retry(monkeypatch: A
     ]
 
 
-async def test_registered_memory_client_requires_mem0_api_key(monkeypatch: Any) -> None:
-    # GIVEN no MEM0_API_KEY in the environment.
-    monkeypatch.delenv("MEM0_API_KEY", raising=False)
-
-    # WHEN NAT builds the memory client, THEN it raises a clear configuration error.
-    with pytest.raises(RuntimeError, match="Mem0 API key is not set"):
-        async with datarobot_mem0_memory.dr_mem0_memory_client(
-            DRMem0MemoryClientConfig(), object()
-        ):
-            pass
+def test_memory_client_config_requires_api_key() -> None:
+    # GIVEN no api_key in the memory config, WHEN the config is validated, THEN it fails.
+    with pytest.raises(ValidationError, match="api_key"):
+        DRMem0MemoryClientConfig()

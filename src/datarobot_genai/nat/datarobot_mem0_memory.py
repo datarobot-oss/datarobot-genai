@@ -22,23 +22,17 @@ without relying on the upstream ``nvidia-nat-mem0ai`` plugin.
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
 from nat.builder.builder import Builder
-from nat.builder.context import Context
 from nat.cli.register_workflow import register_memory
 from nat.data_models.memory import MemoryBaseConfig
 from nat.data_models.retry_mixin import RetryMixin
 from nat.memory.interfaces import MemoryEditor
 from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
-
-# Some NAT/NAT-LangChain version combinations access Context.user_manager before it exists.
-# Add a default so user-id resolution can continue through headers and fallback behavior.
-if not hasattr(Context, "user_manager"):
-    setattr(Context, "user_manager", None)
+from pydantic import Field
 
 
 class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
@@ -48,6 +42,7 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 ):
     """A NAT memory backend backed by ``datarobot-genai``'s Mem0 client."""
 
+    api_key: str = Field(description="Mem0 API key used by the memory backend.")
     host: str | None = None
     org_id: str | None = None
     project_id: str | None = None
@@ -146,13 +141,7 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str) -> Any:
 async def dr_mem0_memory_client(
     config: DRMem0MemoryClientConfig, builder: Builder
 ) -> AsyncGenerator[MemoryEditor]:
-    api_key = os.environ.get("MEM0_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Mem0 API key is not set. Please specify it in the environment variable 'MEM0_API_KEY'."
-        )
-
-    editor: MemoryEditor = DRMem0Editor(_create_mem0_client(config, api_key))
+    editor: MemoryEditor = DRMem0Editor(_create_mem0_client(config, config.api_key))
     if isinstance(config, RetryMixin):
         editor = patch_with_retry(
             editor,

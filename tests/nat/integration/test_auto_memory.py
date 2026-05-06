@@ -63,26 +63,23 @@ async def auto_memory_probe_agent(
     )
 
 
-class StaticUserManager:
-    def __init__(self, user_id: str) -> None:
-        self._user_id = user_id
-
-    def get_id(self) -> str:
-        return self._user_id
+@pytest.fixture
+def mem0_api_key() -> str:
+    api_key = os.environ.get("MEM0_API_KEY")
+    if not api_key:
+        pytest.skip("requires MEM0_API_KEY for real Mem0 integration")
+    return api_key
 
 
 @pytest.fixture
-async def workflow_with_memory() -> AsyncGenerator[SessionManager, None]:
+async def workflow_with_memory(mem0_api_key: str) -> AsyncGenerator[SessionManager, None]:
     async with load_workflow(WORKFLOW_WITH_MEMORY_PATH) as workflow:
         yield workflow
 
 
-@pytest.mark.skipif(
-    not os.environ.get("MEM0_API_KEY"),
-    reason="requires MEM0_API_KEY for real Mem0 integration",
-)
 async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
     workflow_with_memory: SessionManager,
+    mem0_api_key: str,
 ) -> None:
     # GIVEN a workflow.yaml with a real Mem0-backed NAT memory provider and auto-memory wrapper.
     test_id = uuid.uuid4().hex
@@ -92,7 +89,7 @@ async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
     recall_message = "What is my NAT auto-memory integration secret code?"
 
     async def run_memory_workflow(message: str) -> str:
-        async with workflow_with_memory.session(user_manager=StaticUserManager(user_id)) as session:
+        async with workflow_with_memory.session(user_id=user_id) as session:
             async with session.run(message) as runner:
                 return await runner.result(to_type=str)
 
@@ -112,4 +109,4 @@ async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
                 f"Mem0 did not return expected memory text. Last response: {last_response!r}"
             )
     finally:
-        await Mem0Client()._memory.delete_all(user_id=user_id)
+        await Mem0Client(api_key=mem0_api_key)._memory.delete_all(user_id=user_id)
