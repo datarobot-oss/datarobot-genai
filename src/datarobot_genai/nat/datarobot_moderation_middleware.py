@@ -1242,11 +1242,9 @@ _WORKER_QUEUE_END = object()
 class _ModerationInvokeState:
     """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
 
-    data: pd.DataFrame
-    prescore_df: pd.DataFrame
     input_df: pd.DataFrame
+    prescore_df: pd.DataFrame
     latency_so_far: float
-    association_id: str | None
     ctx_token: contextvars.Token[_ModerationInvokeState | None] | None = None
 
 
@@ -1257,17 +1255,14 @@ _moderation_invoke_state_ctx: contextvars.ContextVar[_ModerationInvokeState | No
 
 def _set_moderation_invoke_state(
     *,
-    data: pd.DataFrame,
+    input_df: pd.DataFrame,
     prescore_df: pd.DataFrame,
     latency_so_far: float,
-    association_id: str | None = None,
 ) -> None:
     state = _ModerationInvokeState(
-        data=data,
+        input_df=input_df,
         prescore_df=prescore_df,
-        input_df=data,
         latency_so_far=latency_so_far,
-        association_id=association_id,
     )
     token = _moderation_invoke_state_ctx.set(state)
     state.ctx_token = token
@@ -1387,10 +1382,9 @@ class DataRobotModerationMiddleware(
             )
         prompt_eval = _from_dataframe(prescore_df, prompt_column_name)
         _set_moderation_invoke_state(
-            data=data,
+            input_df=data,
             prescore_df=prescore_df,
             latency_so_far=prescore_latency,
-            association_id=None,
         )
 
         if prompt_eval.blocked:
@@ -1447,7 +1441,7 @@ class DataRobotModerationMiddleware(
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
         # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        prompt_for_eval = state.data.loc[0, prompt_column_name]
+        prompt_for_eval = state.input_df.loc[0, prompt_column_name]
 
         response_eval, _ = self._moderation.evaluate_response(
             _text_for_moderation_eval(response_text),
