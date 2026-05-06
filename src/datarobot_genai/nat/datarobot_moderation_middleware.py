@@ -68,7 +68,6 @@ from datarobot_moderation_interface.drum_integration import (
 from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
 from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
 from datarobot_moderation_interface.drum_integration import format_result_df
-from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from datarobot_moderation_interface.drum_integration import run_prescore_guards
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
@@ -768,6 +767,129 @@ def _user_content_to_openai(content: object) -> object:
     return str(content)
 
 
+def _moderation_prompt_from_openai_style_content(prompt_content: Any) -> str:
+    """Stringify user message content like ``get_chat_prompt`` (multimodal OpenAI-style parts)."""
+    if isinstance(prompt_content, str):
+        return prompt_content
+    if isinstance(prompt_content, list):
+        concatenated_prompt: list[str] = []
+        for content in prompt_content:
+            if not isinstance(content, dict):
+                continue
+            ctype = content.get("type")
+            if ctype == "text":
+                concatenated_prompt.append(content["text"])
+            elif ctype == "image_url":
+                concatenated_prompt.append(f"Image URL: {content['image_url']['url']}")
+            elif ctype == "input_audio":
+                concatenated_prompt.append(
+                    f"Audio Input, Format: {content['input_audio']['format']}"
+                )
+            else:
+                concatenated_prompt.append(f"Unhandled content type: {ctype}")
+        return "\n".join(concatenated_prompt)
+    raise ValueError(f"Unhandled prompt type: {type(prompt_content)}")
+
+
+def _nat_user_message_content_to_prompt_string(content: str | list[Any]) -> str:
+    if isinstance(content, str):
+        return content
+    dumped = [
+        part.model_dump(mode="json") if hasattr(part, "model_dump") else part for part in content
+    ]
+    return _moderation_prompt_from_openai_style_content(dumped)
+
+
+def _tool_names_from_nat_tools(tools: list[dict[str, Any]] | None) -> list[str]:
+    names: list[str] = []
+    for tool in tools or []:
+        fn = tool.get("function") if isinstance(tool, dict) else None
+        if isinstance(fn, dict):
+            name = fn.get("name")
+            if name:
+                names.append(name)
+    return names
+
+
+def _tool_call_lines_from_openai_style_messages(messages: list[dict[str, Any]]) -> list[str]:
+    lines: list[str] = []
+    for message in messages:
+        if message.get("role") == "tool":
+            lines.append(f"{message.get('name', '')}_{message['content']}")
+    return lines
+
+
+def moderation_prompt_from_workflow_input(
+    workflow_input: RunAgentInput | ChatRequest | ChatRequestOrMessage,
+) -> str:
+    """Extract the prescore prompt string from AG-UI or NAT chat input.
+
+    Matches ``get_chat_prompt(workflow_input_to_completion_dict(...))`` without building a full
+    completion-params dict.
+    """
+    if isinstance(workflow_input, RunAgentInput):
+        msgs = workflow_input.messages
+        if not msgs:
+            raise ValueError(
+                f"Chat input for moderation does not contain a message: {workflow_input}"
+            )
+        openai_msgs = [_ag_ui_message_to_openai(m) for m in msgs]
+        last = openai_msgs[-1]
+        if not isinstance(last, dict) or "content" not in last or last["content"] is None:
+            raise ValueError(
+                f"Chat input for moderation does not contain a message: {workflow_input}"
+            )
+        last_user_ag: UserMessage | None = None
+        for m in reversed(workflow_input.messages):
+            if isinstance(m, UserMessage):
+                last_user_ag = m
+                break
+        if last_user_ag is None:
+            raise ValueError("No message with 'user' role found in input")
+        inner = _user_content_to_openai(last_user_ag.content)
+        chat_prompt = _moderation_prompt_from_openai_style_content(inner)
+        tool_lines = _tool_call_lines_from_openai_style_messages(openai_msgs)
+        tool_names = [t.name for t in (workflow_input.tools or [])]
+        if tool_lines:
+            return "\n".join([chat_prompt, "Tool Calls:", "\n".join(tool_lines)])
+        if tool_names:
+            return "\n".join([chat_prompt, "Tool Names:", "\n".join(tool_names)])
+        return chat_prompt
+
+    if (
+        isinstance(workflow_input, ChatRequestOrMessage)
+        and workflow_input.input_message is not None
+    ):
+        return workflow_input.input_message
+
+    if isinstance(workflow_input, (ChatRequest, ChatRequestOrMessage)):
+        messages = workflow_input.messages
+        if messages is None or len(messages) == 0:
+            raise ValueError(
+                f"Chat input for moderation does not contain a message: {workflow_input}"
+            )
+        last_dump = messages[-1].model_dump(mode="json")
+        if not isinstance(last_dump, dict) or "content" not in last_dump:
+            raise ValueError(
+                f"Chat input for moderation does not contain a message: {workflow_input}"
+            )
+        last_user_msg = None
+        for m in messages:
+            if m.role == UserMessageContentRoleType.USER:
+                last_user_msg = m
+        if last_user_msg is None:
+            raise ValueError("No message with 'user' role found in input")
+        chat_prompt = _nat_user_message_content_to_prompt_string(last_user_msg.content)
+        tool_names = _tool_names_from_nat_tools(getattr(workflow_input, "tools", None))
+        if tool_names:
+            return "\n".join([chat_prompt, "Tool Names:", "\n".join(tool_names)])
+        return chat_prompt
+
+    raise TypeError(
+        f"Unsupported workflow input type for moderation: {type(workflow_input).__name__}"
+    )
+
+
 def run_agent_input_to_completion_dict(rai: RunAgentInput) -> dict[str, Any]:
     ccp: dict[str, Any] = {
         "messages": [],
@@ -1041,11 +1163,10 @@ class DataRobotModerationMiddleware(
             return None
 
         pipeline = self._moderation._pipeline
-        completion_create_params = workflow_input_to_completion_dict(workflow_input)
 
         # the chat request is not a dataframe, but we'll build a DF internally for moderation.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        prompt = get_chat_prompt(completion_create_params)
+        prompt = moderation_prompt_from_workflow_input(workflow_input)
 
         data = pd.DataFrame({prompt_column_name: [prompt]})
 

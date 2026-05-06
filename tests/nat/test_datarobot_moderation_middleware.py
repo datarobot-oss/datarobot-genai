@@ -65,6 +65,9 @@ from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerat
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     chat_completion_to_dragent_event_response,
 )
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    moderation_prompt_from_workflow_input,
+)
 from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
 
 PROMPT_COL = "prompt_col"
@@ -157,6 +160,14 @@ def test_workflow_input_to_completion_dict_chat_request_or_message() -> None:
     params = workflow_input_to_completion_dict(crm)
     assert params["tools"] == []
     assert get_chat_prompt(params) == "hello gateway"
+    assert moderation_prompt_from_workflow_input(crm) == get_chat_prompt(params)
+
+
+def test_moderation_prompt_from_workflow_input_parity_with_completion_dict() -> None:
+    run_input = _make_run_input("plan the thing")
+    direct = moderation_prompt_from_workflow_input(run_input)
+    via_ccp = get_chat_prompt(workflow_input_to_completion_dict(run_input))
+    assert direct == via_ccp
 
 
 @pytest.fixture
