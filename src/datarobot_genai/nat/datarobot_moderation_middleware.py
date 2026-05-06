@@ -1220,7 +1220,13 @@ class DataRobotModerationMiddleware(
         context: FunctionMiddlewareContext,
         **kwargs: Any,
     ) -> Any:
-        """Run prescore guards; skip the agent when prescore blocks the prompt."""
+        """Run prescore guards; skip the agent when prescore blocks the prompt.
+
+        The default NAT ``FunctionMiddleware.function_middleware_invoke`` always awaits
+        ``call_next`` after ``pre_invoke``. When prescore blocks, ``pre_invoke`` sets
+        ``ctx.output`` to the guard response; we return it immediately so ``call_next``
+        (and thus the LLM) is never invoked.
+        """
         ctx = InvocationContext(
             function_context=context,
             original_args=args,
@@ -1494,6 +1500,11 @@ class DataRobotModerationMiddleware(
 
         Yields:
             Stream chunks (potentially transformed by post_invoke).
+
+        When prescore blocks the prompt, ``pre_invoke`` sets ``ctx.output``; we yield that
+        response once and return without calling ``call_next``, so the LLM stream is never
+        started (NAT's default stream middleware always iterates ``call_next`` after
+        ``pre_invoke``).
         """
         ctx = InvocationContext(
             function_context=context,
