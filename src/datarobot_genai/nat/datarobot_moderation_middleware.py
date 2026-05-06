@@ -1168,7 +1168,25 @@ def _apply_moderated_prompt_text_to_workflow_input(
     messages = getattr(workflow_input, "messages", None)
     if messages:
         return _apply_moderated_prompt_text_to_nat_chat_messages(messages, moderated_text)
+    _logger.warning(
+        "Prescore replaced the prompt but workflow input has no applicable message field "
+        "(empty or missing ``messages``, no ``input_message``); leaving input unchanged."
+    )
     return False
+
+
+def _clear_prompt_replacement_flags_in_prescore_df(df: pd.DataFrame, prompt_column: str) -> None:
+    """Clear replacement columns when moderated text could not be written to the workflow object.
+
+    Keeps ``state.prescore_df`` / streaming ``ModerationIterator`` metadata aligned with the
+    prompt text actually sent to the LLM (original row in ``input_df``).
+    """
+    replaced_col = f"replaced_{prompt_column}"
+    if replaced_col in df.columns:
+        df.loc[df.index[0], replaced_col] = False
+    replaced_msg_col = f"replaced_message_{prompt_column}"
+    if replaced_msg_col in df.columns:
+        df.loc[df.index[0], replaced_msg_col] = np.nan
 
 
 def skip_event_type(event: Event) -> bool:
@@ -1381,27 +1399,44 @@ class DataRobotModerationMiddleware(
                 GuardStage.PROMPT,
             )
         prompt_eval = _from_dataframe(prescore_df, prompt_column_name)
+
+        if prompt_eval.blocked:
+            # If all prompts in the input are blocked, means history as well as the prompt
+            # are not worthy to be sent to LLM
+            _set_moderation_invoke_state(
+                input_df=data,
+                prescore_df=prescore_df,
+                latency_so_far=prescore_latency,
+            )
+            context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
+            return context
+
+        replacement_requested = bool(prompt_eval.replaced and prompt_eval.replacement is not None)
+        applied_replacement = False
+        if replacement_requested:
+            # PII-style guards may redact the prompt; apply the replacement on the workflow
+            # object so ``call_next`` (LLM) receives moderated text; align postscore ``data``.
+            moderated_prompt = prompt_eval.replacement
+            assert moderated_prompt is not None
+            applied_replacement = _apply_moderated_prompt_text_to_workflow_input(
+                workflow_input, moderated_prompt
+            )
+            if applied_replacement:
+                data.at[0, prompt_column_name] = moderated_prompt
+            else:
+                _clear_prompt_replacement_flags_in_prescore_df(prescore_df, prompt_column_name)
+
         _set_moderation_invoke_state(
             input_df=data,
             prescore_df=prescore_df,
             latency_so_far=prescore_latency,
         )
 
-        if prompt_eval.blocked:
-            # If all prompts in the input are blocked, means history as well as the prompt
-            # are not worthy to be sent to LLM
-            context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
-            return context
-
-        if prompt_eval.replaced and prompt_eval.replacement is not None:
-            # PII-style guards may redact the prompt; apply the replacement on the workflow
-            # object so ``call_next`` (LLM) receives moderated text; align postscore ``data``.
-            moderated_prompt = prompt_eval.replacement
-            if _apply_moderated_prompt_text_to_workflow_input(workflow_input, moderated_prompt):
-                data.at[0, prompt_column_name] = moderated_prompt
-            return context
-        else:
-            return None
+        if replacement_requested:
+            # Return context only when this middleware actually rewrote the workflow input;
+            # otherwise behave like a no-op for ``InvocationContext`` (same as no replacement).
+            return context if applied_replacement else None
+        return None
 
     async def post_invoke(self, context: InvocationContext) -> InvocationContext | None:
         """Post-invocation hook called after the function returns.

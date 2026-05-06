@@ -402,6 +402,46 @@ async def test_pre_invoke_replaces_chat_request_or_message_input_message(
     assert crm.input_message == "[redacted]"
 
 
+async def test_pre_invoke_replacement_apply_failure_clears_prescore_replaced_flags(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN prescore requests a replacement but it cannot be applied to the workflow object
+    # WHEN pre_invoke runs
+    # THEN prescore_df flags are cleared so metadata matches the original prompt sent to the LLM,
+    # and pre_invoke returns None (no InvocationContext rewrite).
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_replaced("secret", "[redacted]")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+
+    run_input = _make_run_input("secret")
+    ctx = _invocation(run_input)
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware._apply_moderated_prompt_text_to_workflow_input",
+            return_value=False,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        try:
+            out = await mw.pre_invoke(ctx)
+            st = _moderation_invoke_state_ctx.get()
+            assert st is not None
+            assert st.input_df.loc[0, PROMPT_COL] == "secret"
+            assert bool(st.prescore_df.loc[0, f"replaced_{PROMPT_COL}"]) is False
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    assert out is None
+    assert run_input.messages[-1].content == "secret"
+
+
 async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -> None:
     # GIVEN the first AG-UI event is not a text delta
     # WHEN post_invoke runs
