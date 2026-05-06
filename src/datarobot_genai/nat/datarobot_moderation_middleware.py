@@ -52,7 +52,6 @@ from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
-from datarobot_dome.constants import AGENTIC_PIPELINE_INTERACTIONS_ATTR
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
@@ -142,18 +141,6 @@ def _text_for_moderation_eval(value: Any) -> str:
     return str(value)
 
 
-def _predictions_response_missing_for_postscore(value: Any) -> bool:
-    """Check if the response cell is null-like (``None`` or pandas missing), not merely falsy."""
-    if value is None:
-        return True
-    try:
-        if pd.isna(value):
-            return True
-    except TypeError:
-        pass
-    return False
-
-
 def _optional_prompt_for_moderation_eval(value: Any) -> str | None:
     if value is None:
         return None
@@ -164,42 +151,6 @@ def _optional_prompt_for_moderation_eval(value: Any) -> str | None:
         pass
     s = str(value)
     return s or None
-
-
-def _postscore_evaluation_context_columns(
-    postscore_df: pd.DataFrame,
-    prompt_column_name: str,
-    prompt_for_eval: Any,
-) -> frozenset[str]:
-    """Columns omitted from ``EvaluationResult.metrics`` (aligned with ``evaluate_response``)."""
-    cols: set[str] = set()
-    if _optional_prompt_for_moderation_eval(prompt_for_eval) is not None:
-        cols.add(prompt_column_name)
-    if AGENTIC_PIPELINE_INTERACTIONS_ATTR in postscore_df.columns:
-        cols.add(AGENTIC_PIPELINE_INTERACTIONS_ATTR)
-    return frozenset(cols)
-
-
-def _predictions_df_with_response_evaluation(
-    predictions_df: pd.DataFrame,
-    response_column_name: str,
-    response_eval: EvaluationResult,
-) -> pd.DataFrame:
-    """Merge ``ModerationPipeline.evaluate_response`` output into the predictions frame.
-
-    ``format_result_df`` / completion metadata need the postscore-shaped DataFrame produced
-    by the guard executor; ``evaluate_response`` returns only ``EvaluationResult``, so we
-    copy predictions and apply the evaluation fields and metric columns on row 0.
-    """
-    postscore_df = predictions_df.copy(deep=True)
-    postscore_df.index = predictions_df.index
-    postscore_df.loc[0, f"blocked_{response_column_name}"] = response_eval.blocked
-    postscore_df.loc[0, f"blocked_message_{response_column_name}"] = response_eval.blocked_message
-    postscore_df.loc[0, f"replaced_{response_column_name}"] = response_eval.replaced
-    postscore_df.loc[0, f"replaced_message_{response_column_name}"] = response_eval.replacement
-    for metric_key, metric_val in response_eval.metrics.items():
-        postscore_df.loc[0, metric_key] = metric_val
-    return postscore_df
 
 
 _FINISH_REASON = Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
