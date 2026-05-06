@@ -57,7 +57,6 @@ from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
-from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
@@ -1430,12 +1429,11 @@ class DataRobotModerationMiddleware(
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
         # ``_run_stage`` in dome). We merge ``EvaluationResult`` back onto ``predictions_df``
         # for ``format_result_df`` / sidecar metadata when response text is present.
-        response_column_name = pipeline.get_input_column(GuardStage.RESPONSE)
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         predictions_df, _ = build_predictions_df_from_completion(
             state.data, pipeline, chat_completion
         )
-        predictions_response_cell = predictions_df.loc[0, response_column_name]
+
         if isinstance(original_output, DRAgentEventResponse):
             response_text = _assistant_text_joined_from_ag_ui(original_output)
         elif isinstance(original_output, str):
@@ -1444,56 +1442,19 @@ class DataRobotModerationMiddleware(
             response_text = _openai_assistant_content_as_str(chat_completion)
         prompt_for_eval = predictions_df.loc[0, prompt_column_name]
 
-        blocked_completion_column_name = f"blocked_{response_column_name}"
-        if not _predictions_response_missing_for_postscore(predictions_response_cell):
-            try:
-                response_eval, _ = self._moderation.evaluate_response(
-                    _text_for_moderation_eval(response_text),
-                    prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
-                )
-            except Exception as exc:
-                _logger.error(
-                    "Failed to run postscore guards: %s",
-                    exc,
-                    exc_info=True,
-                )
-                postscore_df = predictions_df.copy(deep=True)
-                postscore_df[blocked_completion_column_name] = False
-                postscore_df.index = predictions_df.index
-                response_eval = _from_dataframe(
-                    postscore_df,
-                    response_column_name,
-                    _postscore_evaluation_context_columns(
-                        postscore_df, prompt_column_name, prompt_for_eval
-                    ),
-                )
-            else:
-                postscore_df = _predictions_df_with_response_evaluation(
-                    predictions_df, response_column_name, response_eval
-                )
-        else:
-            postscore_df = pd.DataFrame()
-            response_eval, _ = self._moderation.evaluate_response(
-                _text_for_moderation_eval(response_text),
-                prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
-            )
+        response_eval, _ = self._moderation.evaluate_response(
+            _text_for_moderation_eval(response_text),
+            prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
+        )
 
         if response_eval.blocked:
-            response_message = response_eval.blocked_message
-            # Empty postscore path (null-like assistant text): no dataframe row for
-            # ``blocked_message_*``; mirror prescore ``blocked_message or ""`` so downstream
-            # ``build_non_streaming_chat_completion`` never receives ``None``.
-            if response_message is None:
-                response_message = ""
+            response_message = response_eval.blocked_message or ""
             finish_reason = "content_filter"
-        elif response_eval.replaced and response_eval.replacement is not None:
-            response_message = response_eval.replacement
+        elif response_eval.replaced:
+            response_message = response_eval.replacement or ""
             finish_reason = "content_filter"
-        elif postscore_df.empty:
-            response_message = NONE_CUSTOM_PY_RESPONSE
-            finish_reason = "stop"
         else:
-            response_message = postscore_df.loc[0, response_column_name]
+            response_message = response_text
             finish_reason = "stop"
 
         final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
