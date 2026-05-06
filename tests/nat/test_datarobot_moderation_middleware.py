@@ -402,7 +402,10 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (EvaluationResult(blocked=False), 0.0)
+    moderation.evaluate_response.return_value = (
+        EvaluationResult(blocked=False, metrics={"token_count": 2}),
+        0.0,
+    )
 
     mid = "msg-1"
     aggregate = DRAgentEventResponse(
@@ -424,21 +427,9 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
     run_input = _make_run_input("p")
     ctx = _invocation(run_input, output=aggregate)
 
-    moderated_sidecar = DRAgentEventResponse(
-        events=[TextMessageContentEvent(message_id="x", delta="hi")],
-        datarobot_moderations={"token_count": 2},
-        usage_metrics=default_usage_metrics(),
-    )
-
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.chat_completion_to_dragent_event_response",
-            return_value=moderated_sidecar,
-        ),
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})

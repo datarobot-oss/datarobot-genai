@@ -768,6 +768,44 @@ def _dragent_event_response_from_blocked_prompt_eval(
     )
 
 
+def _dragent_event_response_from_postscore_assistant_text(
+    response_message: str,
+    finish_reason: str,
+    response_eval: EvaluationResult,
+) -> DRAgentEventResponse:
+    """Build AG-UI output after postscore from message, finish reason, and eval (no ChatCompletion).
+
+    Matches ``chat_completion_to_dragent_event_response`` for a text-only non-streaming completion
+    built via ``build_non_streaming_chat_completion``, without constructing that intermediate object.
+    """
+    events = _assistant_text_events_from_message(response_message)
+    completion_id = str(uuid.uuid4())
+    created_ts = int(datetime.now(tz=UTC).timestamp())
+    created_dt = datetime.fromtimestamp(created_ts, tz=UTC)
+    delta = ChoiceDelta(
+        content=response_message,
+        role=UserMessageContentRoleType.ASSISTANT,
+        tool_calls=None,
+    )
+    chunk = ChatResponseChunk(
+        id=completion_id,
+        choices=[
+            ChatResponseChunkChoice(index=0, delta=delta, finish_reason=finish_reason),
+        ],
+        created=created_dt,
+        model=MODERATION_MODEL_NAME,
+        object="chat.completion.chunk",
+        usage=None,
+    )
+    return DRAgentEventResponse(
+        events=events,
+        usage_metrics=default_usage_metrics(),
+        original_chunk=chunk,
+        model=MODERATION_MODEL_NAME,
+        datarobot_moderations=_datarobot_moderations_from_evaluation_result(response_eval),
+    )
+
+
 def chat_completion_to_dragent_event_response(
     completion: ChatCompletion | ChatCompletionChunk,
     *,
@@ -1415,12 +1453,11 @@ class DataRobotModerationMiddleware(
             response_message = response_text
             finish_reason = "stop"
 
-        final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
-
         if isinstance(original_output, DRAgentEventResponse):
-            moderated_dr = chat_completion_to_dragent_event_response(
-                final_completion,
-                response_eval=response_eval,
+            moderated_dr = _dragent_event_response_from_postscore_assistant_text(
+                response_message,
+                finish_reason,
+                response_eval,
             )
             preserve_ag_ui_envelope = (
                 len(original_output.events) > 1
@@ -1436,6 +1473,7 @@ class DataRobotModerationMiddleware(
             else:
                 context.output = moderated_dr
         elif isinstance(original_output, ChatResponse):
+            final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
             context.output = _final_openai_completion_to_nat_chat_response(
                 final_completion, original_output
             )
