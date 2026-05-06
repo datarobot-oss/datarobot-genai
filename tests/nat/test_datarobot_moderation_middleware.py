@@ -720,6 +720,67 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
     assert text == NONE_CUSTOM_PY_RESPONSE
 
 
+@pytest.mark.parametrize("missing_cell", [None, np.nan, pd.NA])
+async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_to_empty_str(
+    builder_mock: MagicMock,
+    missing_cell: Any,
+) -> None:
+    # GIVEN null-like response cell (empty postscore_df path) and postscore marks blocked with
+    # no replacement message
+    # WHEN post_invoke builds the completion
+    # THEN assistant content is "" (not None) and finish_reason is content_filter
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_response.return_value = (
+        EvaluationResult(blocked=True, blocked_message=None),
+        0.0,
+    )
+
+    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: [missing_cell]})
+
+    ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
+            return_value=(predictions, {}),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
+            return_value=pd.DataFrame(),
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.set_moderation_attribute_to_completion",
+            side_effect=lambda _p, completion, _df, association_id=None: completion,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            out = await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    assert out is not None
+    assert isinstance(ctx.output, DRAgentEventResponse)
+    text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
+    assert text == ""
+    assert ctx.output.original_chunk is not None
+    assert ctx.output.original_chunk.choices[0].finish_reason == "content_filter"
+
+
 async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: MagicMock) -> None:
     # GIVEN pre_invoke sets context.output (blocked)
     # WHEN function_middleware_invoke runs

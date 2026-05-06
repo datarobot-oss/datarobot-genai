@@ -1496,6 +1496,11 @@ class DataRobotModerationMiddleware(
             response_message = response_eval.blocked_message
             if response_message is None and not postscore_df.empty:
                 response_message = postscore_df.loc[0, blocked_message_completion_column_name]
+            # Empty postscore path (null-like assistant text): no dataframe row for
+            # ``blocked_message_*``; mirror prescore ``blocked_message or ""`` so downstream
+            # ``build_non_streaming_chat_completion`` never receives ``None``.
+            if response_message is None:
+                response_message = ""
             finish_reason = "content_filter"
         elif response_eval.replaced and response_eval.replacement is not None:
             response_message = response_eval.replacement
