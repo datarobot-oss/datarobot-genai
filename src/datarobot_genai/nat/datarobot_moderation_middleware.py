@@ -1416,18 +1416,18 @@ class DataRobotModerationMiddleware(
             finish_reason = "stop"
 
         final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
-        moderated_dr = chat_completion_to_dragent_event_response(
-            final_completion,
-            response_eval=response_eval,
-        )
 
         if isinstance(original_output, DRAgentEventResponse):
+            moderated_dr = chat_completion_to_dragent_event_response(
+                final_completion,
+                response_eval=response_eval,
+            )
             preserve_ag_ui_envelope = (
                 len(original_output.events) > 1
                 and finish_reason == "stop"
                 and not response_eval.blocked
-                and not (response_eval.replaced and response_eval.replacement is not None)
-                and response_message == _assistant_text_joined_from_ag_ui(original_output)
+                and not response_eval.replaced
+                and response_message == response_text
             )
             if preserve_ag_ui_envelope:
                 context.output = _merge_moderations_into_multi_event_response(
