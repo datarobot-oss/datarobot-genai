@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.40
-- Simplified XAA `workflow.yaml` config: IETF URNs and auth method defaults are now injected by the AgentCard generator rather than declared by the developer.
+- Simplified cross-application access `workflow.yaml` config: IETF URNs and auth method defaults are now injected by the AgentCard generator rather than declared by the developer.
 - Added `urn:datarobot:agent:identity:internal` and `urn:datarobot:agent:identity:external` AgentCard extensions, and an optional external URL override (`general.frontend.a2a.external.url`).
 
 ## 0.15.39
