@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.41
+- Added a NAT `dr_mem0_memory` provider that adapts `datarobot-genai[memory]`'s Mem0 client to NAT's `MemoryEditor` interface for `auto_memory_agent`.
+- Documented Mem0 automatic-memory workflow configuration for NAT.
+
 ## 0.15.40
 - Simplified cross-application access `workflow.yaml` config: IETF URNs and auth method defaults are now injected by the AgentCard generator rather than declared by the developer.
 - Added `urn:datarobot:agent:identity:internal` and `urn:datarobot:agent:identity:external` AgentCard extensions, and an optional external URL override (`general.frontend.a2a.external.url`).
