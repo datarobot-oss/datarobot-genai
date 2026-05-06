@@ -31,6 +31,7 @@ pytest.importorskip("datarobot_dome")
 from ag_ui.core import EventType
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -428,6 +429,72 @@ async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -
     out = await mw.post_invoke(ctx)
     assert out is None
     assert ctx.output is tool_first
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        (
+            TextMessageChunkEvent(
+                type=EventType.TEXT_MESSAGE_CHUNK,
+                message_id="msg-1",
+                delta="",
+            ),
+            TextMessageChunkEvent(
+                type=EventType.TEXT_MESSAGE_CHUNK,
+                message_id="msg-1",
+                delta="",
+            ),
+        ),
+        (
+            TextMessageChunkEvent(
+                type=EventType.TEXT_MESSAGE_CHUNK,
+                message_id="msg-1",
+                delta="   ",
+            ),
+        ),
+        (
+            TextMessageChunkEvent(
+                type=EventType.TEXT_MESSAGE_CHUNK,
+                message_id="msg-1",
+                delta="\n\t",
+            ),
+        ),
+    ],
+)
+async def test_post_invoke_skips_dr_agent_when_joined_text_blank(
+    builder_mock: MagicMock,
+    events: tuple[Any, ...],
+) -> None:
+    """AG-UI text events whose deltas join to empty/whitespace must not run postscore."""
+    pipeline = _pipeline_mock()
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    response = DRAgentEventResponse(
+        events=list(events),
+        usage_metrics=default_usage_metrics(),
+    )
+    ctx = _invocation(_make_run_input(), output=response)
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        prescore = pd.DataFrame({PROMPT_COL: ["p"]})
+        _set_moderation_invoke_state(
+            data=prescore,
+            prescore_df=prescore.copy(),
+            latency_so_far=0.0,
+        )
+        try:
+            out = await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    assert out is None
+    assert ctx.output is response
+    moderation.evaluate_response.assert_not_called()
 
 
 async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchanged(

@@ -1430,13 +1430,12 @@ class DataRobotModerationMiddleware(
             if not original_output.choices:
                 return None
             response_text = original_output.choices[0].message.content or ""
-            if not response_text:
-                return None
         elif isinstance(original_output, str):
-            if not original_output.strip():
-                return None
             response_text = original_output
         else:
+            return None
+
+        if not response_text.strip():
             return None
 
         pipeline = self._moderation._pipeline
