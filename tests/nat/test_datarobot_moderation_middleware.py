@@ -149,7 +149,51 @@ def _pipeline_mock() -> MagicMock:
 def _moderation_mock(pipeline: MagicMock) -> MagicMock:
     mod = MagicMock()
     mod._pipeline = pipeline
+    mod._executor = MagicMock()
     return mod
+
+
+def _prescore_df_blocked(prompt: str, blocked_message: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            PROMPT_COL: [prompt],
+            f"blocked_{PROMPT_COL}": [True],
+            f"blocked_message_{PROMPT_COL}": [blocked_message],
+            f"replaced_{PROMPT_COL}": [False],
+        }
+    )
+
+
+def _prescore_df_ok(prompt: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            PROMPT_COL: [prompt],
+            f"blocked_{PROMPT_COL}": [False],
+            f"replaced_{PROMPT_COL}": [False],
+        }
+    )
+
+
+def _prescore_df_replaced(prompt: str, replacement: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            PROMPT_COL: [prompt],
+            f"blocked_{PROMPT_COL}": [False],
+            f"replaced_{PROMPT_COL}": [True],
+            f"replaced_message_{PROMPT_COL}": [replacement],
+        }
+    )
+
+
+def _postscore_df_with_response(prompt: str, response: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            PROMPT_COL: [prompt],
+            RESPONSE_COL: [response],
+            f"blocked_{RESPONSE_COL}": [False],
+            f"replaced_{RESPONSE_COL}": [False],
+        }
+    )
 
 
 def test_workflow_input_to_completion_dict_chat_request_or_message() -> None:
@@ -188,20 +232,14 @@ def test_enabled_false_when_pipeline_not_loaded(builder_mock: MagicMock) -> None
 
 
 async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> None:
-    # GIVEN prescore ran and evaluate_prompt reports a blocked prompt
+    # GIVEN prescore ``run_guards`` marks the prompt blocked (single execution path)
     # WHEN pre_invoke runs
     # THEN context.output is set to a DRAgentEventResponse and call_next must not run
     pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    blocked = SimpleNamespace(
-        blocked=True,
-        blocked_message="blocked-by-test",
-        replaced=False,
-        replacement=None,
-    )
-    moderation.evaluate_prompt.return_value = (blocked, 0.0)
-
-    prescore_df = pd.DataFrame({PROMPT_COL: ["bad"]})
+    prescore_df = _prescore_df_blocked("bad", "blocked-by-test")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
 
     run_input = _make_run_input("bad")
     ctx = _invocation(run_input)
@@ -210,10 +248,6 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
-            return_value=(prescore_df, prescore_df, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
@@ -236,20 +270,14 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
 
 
 async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) -> None:
-    # GIVEN evaluate_prompt requests a replacement string
+    # GIVEN prescore ``run_guards`` requests a replacement string
     # WHEN pre_invoke runs
     # THEN the last UserMessage content is updated and context.output stays unset
     pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    replaced = SimpleNamespace(
-        blocked=False,
-        blocked_message=None,
-        replaced=True,
-        replacement="[redacted]",
-    )
-    moderation.evaluate_prompt.return_value = (replaced, None)
-
-    prescore_df = pd.DataFrame({PROMPT_COL: ["secret"]})
+    prescore_df = _prescore_df_replaced("secret", "[redacted]")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
 
     run_input = _make_run_input("secret")
     ctx = _invocation(run_input)
@@ -258,10 +286,6 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
-            return_value=(prescore_df, prescore_df, 0.0),
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -308,14 +332,14 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
 ) -> None:
     """Non-streaming /generate aggregates lifecycle events; post_invoke must not drop them."""
     pipeline = _pipeline_mock()
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
-        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
-        None,
+    moderation._executor.run_guards.return_value = (
+        _postscore_df_with_response("p", "hi"),
+        0.0,
     )
 
     predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["hi"]})
-    postscore = pd.DataFrame({RESPONSE_COL: ["hi"]})
 
     mid = "msg-1"
     aggregate = DRAgentEventResponse(
@@ -353,10 +377,6 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
             return_value=(predictions, {}),
         ),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
-            return_value=(postscore, 0.0),
-        ),
-        patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
             return_value=pd.DataFrame({"dummy": [1]}),
         ),
@@ -391,14 +411,14 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     # WHEN post_invoke runs
     # THEN context.output is replaced with a new DRAgentEventResponse containing that message
     pipeline = _pipeline_mock()
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
-        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
-        None,
+    moderation._executor.run_guards.return_value = (
+        _postscore_df_with_response("p", "final-out"),
+        0.0,
     )
 
     predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
-    postscore = pd.DataFrame({RESPONSE_COL: ["final-out"]})
 
     run_input = _make_run_input()
     ctx = _invocation(run_input, output=_text_response("model-out"))
@@ -411,10 +431,6 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
-            return_value=(postscore, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
@@ -447,14 +463,14 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
     postscore still runs.
     """
     pipeline = _pipeline_mock()
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
-        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
-        None,
+    moderation._executor.run_guards.return_value = (
+        _postscore_df_with_response("p", "final-out"),
+        0.0,
     )
 
     predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
-    postscore = pd.DataFrame({RESPONSE_COL: ["final-out"]})
 
     nat_out = _nat_chat_response_assistant_text("model-out")
     ctx = _invocation(_make_run_input(), output=nat_out)
@@ -467,10 +483,6 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
-            return_value=(postscore, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
@@ -499,14 +511,14 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
     builder_mock: MagicMock,
 ) -> None:
     pipeline = _pipeline_mock()
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
-        SimpleNamespace(blocked=False, replaced=False, replacement=None, blocked_message=None),
-        None,
+    moderation._executor.run_guards.return_value = (
+        _postscore_df_with_response("p", "final-out"),
+        0.0,
     )
 
     predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
-    postscore = pd.DataFrame({RESPONSE_COL: ["final-out"]})
 
     ctx = _invocation(_make_run_input(), output="model-out")
 
@@ -518,10 +530,6 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
             return_value=(predictions, {}),
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
-            return_value=(postscore, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
@@ -572,10 +580,6 @@ async def test_post_invoke_uses_none_custom_response_when_postscore_empty(
             return_value=(predictions, {}),
         ),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_postscore_guards",
-            return_value=(pd.DataFrame(), 0.0),
-        ),
-        patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.format_result_df",
             return_value=pd.DataFrame(),
         ),
@@ -602,17 +606,10 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
     # WHEN function_middleware_invoke runs
     # THEN call_next is never awaited
     pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_prompt.return_value = (
-        SimpleNamespace(
-            blocked=True,
-            blocked_message="stop",
-            replaced=False,
-            replacement=None,
-        ),
-        0.0,
-    )
-    prescore_df = pd.DataFrame({PROMPT_COL: ["x"]})
+    prescore_df = _prescore_df_blocked("x", "stop")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
 
     call_next = AsyncMock()
 
@@ -620,10 +617,6 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
-            return_value=(prescore_df, prescore_df, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
@@ -651,27 +644,16 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
     # WHEN function_middleware_stream runs
     # THEN a single blocked response is yielded and the worker is never started
     pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_prompt.return_value = (
-        SimpleNamespace(
-            blocked=True,
-            blocked_message="no-stream",
-            replaced=False,
-            replacement=None,
-        ),
-        0.0,
-    )
-    prescore_df = pd.DataFrame({PROMPT_COL: ["x"]})
+    prescore_df = _prescore_df_blocked("x", "no-stream")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
     stream_next = MagicMock()
 
     with (
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
-            return_value=(prescore_df, prescore_df, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.report_otel_evaluation_set_metric",
@@ -701,12 +683,10 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
     # WHEN function_middleware_stream runs
     # THEN one moderated DRAgentEventResponse is yielded
     pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_prompt.return_value = (
-        SimpleNamespace(blocked=False, blocked_message=None, replaced=False, replacement=None),
-        None,
-    )
-    prescore_df = pd.DataFrame({PROMPT_COL: ["hi"]})
+    prescore_df = _prescore_df_ok("hi")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
 
     async def upstream():
         yield _text_response("delta-one")
@@ -717,10 +697,6 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
-            return_value=(prescore_df, prescore_df, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",
@@ -786,12 +762,10 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
 ) -> None:
     """Deferred TEXT_MESSAGE_END must be emitted before RUN_FINISHED (AG-UI ordering)."""
     pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_prompt.return_value = (
-        SimpleNamespace(blocked=False, blocked_message=None, replaced=False, replacement=None),
-        None,
-    )
-    prescore_df = pd.DataFrame({PROMPT_COL: ["hi"]})
+    prescore_df = _prescore_df_ok("hi")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
     mid = "msg-1"
     zero = default_usage_metrics()
 
@@ -823,10 +797,6 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.run_prescore_guards",
-            return_value=(prescore_df, prescore_df, 0.0),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",

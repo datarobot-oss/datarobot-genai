@@ -48,7 +48,8 @@ from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
 from datarobot_dome.api import ModerationPipeline
-from datarobot_dome.chat_helper import run_postscore_guards
+from datarobot_dome.api import _from_dataframe
+from datarobot_dome.constants import AGENTIC_PIPELINE_INTERACTIONS_ATTR
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
@@ -68,7 +69,6 @@ from datarobot_moderation_interface.drum_integration import (
 from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
 from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
 from datarobot_moderation_interface.drum_integration import format_result_df
-from datarobot_moderation_interface.drum_integration import run_prescore_guards
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
@@ -157,6 +157,20 @@ def _optional_prompt_for_moderation_eval(value: Any) -> str | None:
         pass
     s = str(value)
     return s or None
+
+
+def _postscore_evaluation_context_columns(
+    postscore_df: pd.DataFrame,
+    prompt_column_name: str,
+    prompt_for_eval: Any,
+) -> frozenset[str]:
+    """Columns omitted from ``EvaluationResult.metrics`` (aligned with ``evaluate_response``)."""
+    cols: set[str] = set()
+    if _optional_prompt_for_moderation_eval(prompt_for_eval) is not None:
+        cols.add(prompt_column_name)
+    if AGENTIC_PIPELINE_INTERACTIONS_ATTR in postscore_df.columns:
+        cols.add(AGENTIC_PIPELINE_INTERACTIONS_ATTR)
+    return frozenset(cols)
 
 
 _FINISH_REASON = Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
@@ -1171,12 +1185,25 @@ class DataRobotModerationMiddleware(
         data = pd.DataFrame({prompt_column_name: [prompt]})
 
         # ==================================================================
-        # Step 1: Prescore Guards processing
+        # Step 1: Prescore guards (single run, same path as
+        # ``ModerationPipeline.evaluate_prompt`` / ``_run_stage``)
         #
-        # ``run_prescore_guards`` keeps the full prescore DataFrame (for postscore / streaming);
-        # ``evaluate_prompt`` returns the public ``EvaluationResult`` for routing.
-        prescore_df, _, _ = run_prescore_guards(pipeline, data)
-        prompt_eval, prescore_latency = self._moderation.evaluate_prompt(prompt)
+        # We need the full prescore DataFrame for postscore, ``format_result_df``, and
+        # streaming; we derive ``EvaluationResult`` with the same ``_from_dataframe`` helper
+        # used by the public API (avoids ``run_prescore_guards`` + ``evaluate_prompt``,
+        # which would execute prescore twice).
+        guards = pipeline.get_prescore_guards()
+        if not guards:
+            prescore_df = data.copy(deep=True)
+            prescore_df[f"blocked_{prompt_column_name}"] = False
+            prescore_latency = 0.0
+        else:
+            prescore_df, prescore_latency = self._moderation._executor.run_guards(
+                data.copy(deep=True),
+                guards,
+                GuardStage.PROMPT,
+            )
+        prompt_eval = _from_dataframe(prescore_df, prompt_column_name)
         self.data = data
         self.input_df = data
         self.prescore_df = prescore_df
@@ -1244,10 +1271,10 @@ class DataRobotModerationMiddleware(
         pipeline = self._moderation._pipeline
 
         # ==================================================================
-        # Step 3: Postscore Guards processing
+        # Step 3: Postscore guards (single run when there is response text, same path as
+        # ``ModerationPipeline.evaluate_response`` / ``_run_stage``)
         #
-        # Prompt column name is already part of data and gets included for
-        # faithfulness calculation processing
+        # Prompt column is already part of ``predictions_df`` for faithfulness-style guards.
         response_column_name = pipeline.get_input_column(GuardStage.RESPONSE)
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         predictions_df, extra_attributes = build_predictions_df_from_completion(
@@ -1258,17 +1285,42 @@ class DataRobotModerationMiddleware(
 
         if response_text is not None:
             none_predictions_df = None
-            postscore_df, _ = run_postscore_guards(pipeline, predictions_df)
+            postscore_guards = pipeline.get_postscore_guards()
+            blocked_completion_column_name = f"blocked_{response_column_name}"
+            input_df = predictions_df.copy(deep=True)
+            if len(postscore_guards) == 0:
+                postscore_df = input_df
+                postscore_df[blocked_completion_column_name] = False
+            else:
+                try:
+                    postscore_df, _ = self._moderation._executor.run_guards(
+                        input_df,
+                        postscore_guards,
+                        GuardStage.RESPONSE,
+                    )
+                except Exception as exc:
+                    _logger.error(
+                        "Failed to run postscore guards: %s",
+                        exc,
+                        exc_info=True,
+                    )
+                    postscore_df = input_df
+                    postscore_df[blocked_completion_column_name] = False
+                postscore_df.index = predictions_df.index
+            response_eval = _from_dataframe(
+                postscore_df,
+                response_column_name,
+                _postscore_evaluation_context_columns(
+                    postscore_df, prompt_column_name, prompt_for_eval
+                ),
+            )
         else:
-            postscore_df, _ = pd.DataFrame(), 0
+            postscore_df = pd.DataFrame()
             none_predictions_df = predictions_df
-
-        # ``run_postscore_guards`` feeds ``format_result_df`` / OTEL; ``evaluate_response``
-        # returns the public ``EvaluationResult`` for the completion (mirrors ``evaluate_prompt``).
-        response_eval, _ = self._moderation.evaluate_response(
-            _text_for_moderation_eval(response_text),
-            prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
-        )
+            response_eval, _ = self._moderation.evaluate_response(
+                _text_for_moderation_eval(response_text),
+                prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
+            )
 
         # ==================================================================
         # Step 4: Assemble the result - we need to merge prescore, postscore
