@@ -59,14 +59,12 @@ from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import NONE_CUSTOM_PY_RESPONSE
 from datarobot_dome.constants import GuardStage
-from datarobot_dome.otel_helpers import report_otel_evaluation_set_metric
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from datarobot_moderation_interface.drum_integration import MODERATION_MODEL_NAME
 from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
 from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
-from datarobot_moderation_interface.drum_integration import format_result_df
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
@@ -1448,7 +1446,6 @@ class DataRobotModerationMiddleware(
 
         blocked_completion_column_name = f"blocked_{response_column_name}"
         if not _predictions_response_missing_for_postscore(predictions_response_cell):
-            none_predictions_df = None
             try:
                 response_eval, _ = self._moderation.evaluate_response(
                     _text_for_moderation_eval(response_text),
@@ -1476,23 +1473,10 @@ class DataRobotModerationMiddleware(
                 )
         else:
             postscore_df = pd.DataFrame()
-            none_predictions_df = predictions_df
             response_eval, _ = self._moderation.evaluate_response(
                 _text_for_moderation_eval(response_text),
                 prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
             )
-
-        # ==================================================================
-        # Step 4: Assemble the result - we need to merge prescore, postscore
-        #         Dataframes.
-        #
-        result_df = format_result_df(
-            pipeline,
-            state.prescore_df,
-            postscore_df,
-            state.data,
-            none_predictions_df=none_predictions_df,
-        )
 
         blocked_message_completion_column_name = f"blocked_message_{response_column_name}"
         if response_eval.blocked:
@@ -1514,7 +1498,6 @@ class DataRobotModerationMiddleware(
         else:
             response_message = postscore_df.loc[0, response_column_name]
             finish_reason = "stop"
-        report_otel_evaluation_set_metric(pipeline, result_df)
 
         final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
         moderated_dr = chat_completion_to_dragent_event_response(
