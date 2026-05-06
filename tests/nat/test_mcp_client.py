@@ -12,6 +12,7 @@
 # limitations under the License.
 
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import Any
 from unittest.mock import patch
 
@@ -19,9 +20,11 @@ from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.mcp.client.client_base import MCPBaseClient
 from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
+from pydantic import create_model
 
 from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPClientConfig
 from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPServerConfig
+from datarobot_genai.nat.datarobot_mcp_client import _make_input_schema_enum_safe
 
 
 class _InputSchema(BaseModel):
@@ -96,3 +99,46 @@ async def test_datarobot_mcp_client():
             # Function names are prefixed with the group name (e.g. datarobot_mcp_tools__a)
             assert "datarobot_mcp_tools__a" in all_functions
             assert "datarobot_mcp_tools__b" in all_functions
+
+
+# Tests for the BUZZOK-30556 enum-safe input schema patch.
+
+
+def test_make_input_schema_enum_safe_stores_string_values():
+    """After the patch, validating a dict produces a model whose enum field
+    stores the plain string. NAT's ``_convert_input_pydantic`` then extracts
+    strings via ``getattr`` and downstream ``model_validate(kwargs)`` never
+    sees a cross-class Enum instance.
+    """
+    topic_enum = Enum("TopicEnum", {"general": "general", "news": "news"})
+    schema = create_model("Schema", topic=(topic_enum, ...), query=(str, ...))
+
+    class FakeFnInfo:
+        description = "fake"
+        input_schema = schema
+        converters: list[Any] = []
+        single_fn = None
+
+    _make_input_schema_enum_safe(FakeFnInfo)
+
+    instance = schema.model_validate({"topic": "news", "query": "q"})
+    assert instance.topic == "news"
+    assert not isinstance(instance.topic, Enum)
+    # NAT-style unpacking yields a plain string, which downstream
+    # model_validate calls accept regardless of enum class identity.
+    kwargs = {k: getattr(instance, k) for k in type(instance).model_fields}
+    assert kwargs == {"topic": "news", "query": "q"}
+
+
+def test_make_input_schema_enum_safe_returns_input_unchanged_when_no_schema():
+    """If the upstream ``FunctionInfo`` has no usable input schema we return
+    it untouched rather than mutating ``None``.
+    """
+
+    class FakeFnInfo:
+        description = "fake"
+        input_schema = None
+        converters: list[Any] = []
+        single_fn = None
+
+    assert _make_input_schema_enum_safe(FakeFnInfo) is FakeFnInfo
