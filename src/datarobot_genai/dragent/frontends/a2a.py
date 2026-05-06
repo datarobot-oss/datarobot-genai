@@ -39,6 +39,7 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
+from .register import DRAgentA2AExternalConfig
 from .server_auth import CrossApplicationAccessConfig
 
 logger = logging.getLogger(__name__)
@@ -58,14 +59,26 @@ OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
 # Extension URI for the RFC 7523 JWT Bearer Grant (outer grant type for the hybrid flow).
 JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
-# Binding references linking the extension to the OpenAPI security scheme.
-CROSS_APP_SECURITY_SCHEME_REF = "oauth2"
-CROSS_APP_SECURITY_SCHEME_FLOW_REF = "clientCredentials"
+# IETF URNs injected by the generator into the token_exchange block.
+TOKEN_EXCHANGE_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:token-exchange"
+TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id-jag"
 
 CROSS_APP_EXTENSION_DESCRIPTION = (
     "Two-Step Cross-Application Access execution parameters. "
     "Step 1: RFC 8693 Token Exchange prerequisite. "
     "Step 2: RFC 7523 JWT Bearer Grant."
+)
+
+# Binding references linking the extension to the OpenAPI security scheme.
+CROSS_APP_SECURITY_SCHEME_REF = "oauth2"
+CROSS_APP_SECURITY_SCHEME_FLOW_REF = "clientCredentials"
+
+INTERNAL_IDENTITY_URI = "urn:datarobot:agent:identity:internal"
+INTERNAL_IDENTITY_DESCRIPTION = "Internal DataRobot routing and system identifiers."
+
+EXTERNAL_IDENTITY_URI = "urn:datarobot:agent:identity:external"
+EXTERNAL_IDENTITY_DESCRIPTION = (
+    "Customer-provided external agent identifiers for catalog discovery."
 )
 
 
@@ -158,7 +171,7 @@ def build_oauth_flow_from_cross_app_access(
 def build_cross_app_capability_extension(
     config: CrossApplicationAccessConfig,
 ) -> list[AgentExtension]:
-    """Build the JWT Bearer Grant extension entry for ``capabilities.extensions``.
+    """Build the Cross-Application Access extension entry for ``capabilities.extensions``.
 
     Only extension-bound fields go in ``params``; ``token_url`` and ``scopes``
     are intentionally omitted — they belong to OpenAPI ``securitySchemes``.
@@ -169,9 +182,13 @@ def build_cross_app_capability_extension(
             "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
         },
         "token_endpoint_auth_method": config.token_endpoint_auth_method,
-        "token_exchange": config.token_exchange.model_dump(),
+        "token_exchange": {
+            "grant_type": TOKEN_EXCHANGE_GRANT_TYPE_URI,
+            "requested_token_type": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
+            **config.token_exchange.model_dump(),
+        },
         "token_request": {
-            "grant_type": config.token_request.grant_type,
+            "grant_type": JWT_BEARER_GRANT_TYPE_URI,
             "audience": config.token_request.audience,
         },
     }
@@ -184,35 +201,79 @@ def build_cross_app_capability_extension(
     ]
 
 
+def build_internal_identity_extension() -> AgentExtension | None:
+    """Build the internal identity extension from MLOPS_DEPLOYMENT_ID, or None in local dev."""
+    deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
+    if not deployment_id:
+        return None
+    return AgentExtension(
+        uri=INTERNAL_IDENTITY_URI,
+        description=INTERNAL_IDENTITY_DESCRIPTION,
+        required=True,
+        params={"deployment_id": deployment_id},
+    )
+
+
+def build_external_identity_extension(external_id: str) -> AgentExtension:
+    """Build the external identity extension for catalog discovery."""
+    return AgentExtension(
+        uri=EXTERNAL_IDENTITY_URI,
+        description=EXTERNAL_IDENTITY_DESCRIPTION,
+        required=False,
+        params={"id": external_id},
+    )
+
+
+def _collect_extensions(
+    cross_app_access: CrossApplicationAccessConfig | None,
+    external: DRAgentA2AExternalConfig | None,
+) -> list[AgentExtension] | None:
+    """Assemble all agent card extensions from the configured sources."""
+    extensions: list[AgentExtension] = []
+    if cross_app_access:
+        extensions.extend(build_cross_app_capability_extension(cross_app_access))
+    if internal := build_internal_identity_extension():
+        extensions.append(internal)
+    if external and external.id:
+        extensions.append(build_external_identity_extension(external.id))
+    return extensions or None
+
+
+def _resolve_url(
+    frontend_config: A2AFrontEndConfig,
+    external: DRAgentA2AExternalConfig | None,
+) -> str:
+    """Return the agent card URL, preferring ``external.url`` when provided."""
+    if external and external.url:
+        return external.url
+    return get_a2a_endpoint_url(frontend_config.host, frontend_config.port)
+
+
 async def build_security_schemes(
     frontend_config: A2AFrontEndConfig,
     cross_app_access: CrossApplicationAccessConfig | None,
 ) -> tuple[
     dict[str, SecurityScheme] | None,
     list[dict[str, list[str]]] | None,
-    list[AgentExtension] | None,
 ]:
     """Assemble A2A security schemes, merging up to two auth sources.
 
     * ``server_auth`` → authorization_code flow.
-    * ``cross_app_access`` → client_credentials flow + JWT Bearer capability extension.
+    * ``cross_app_access`` → client_credentials flow.
 
-    Returns ``(security_schemes, security_requirements, extensions)``, all ``None``
+    Returns ``(security_schemes, security_requirements)``, both ``None``
     when neither source is configured.
     """
     server_auth = frontend_config.server_auth
 
     if not server_auth and not cross_app_access:
-        return None, None, None
+        return None, None
 
     auth_code_flow, server_auth_scopes = (
         await build_oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
     )
     client_creds_flow, cross_app_scopes = (
         build_oauth_flow_from_cross_app_access(cross_app_access) if cross_app_access else (None, [])
-    )
-    extensions = (
-        build_cross_app_capability_extension(cross_app_access) if cross_app_access else None
     )
 
     all_scopes = list(dict.fromkeys(server_auth_scopes + cross_app_scopes))
@@ -228,7 +289,7 @@ async def build_security_schemes(
             )
         )
     }
-    return security_schemes, [{"oauth2": all_scopes}], extensions
+    return security_schemes, [{"oauth2": all_scopes}]
 
 
 # ---------------------------------------------------------------------------
@@ -240,15 +301,15 @@ async def create_agent_card(
     frontend_config: A2AFrontEndConfig,
     cross_app_access: CrossApplicationAccessConfig | None,
     skills: list[AgentSkill],
+    external: DRAgentA2AExternalConfig | None = None,
 ) -> AgentCard:
     """Build an :class:`~a2a.types.AgentCard` for a DataRobot-hosted A2A agent.
 
     When ``skills`` is empty, a single default skill is generated from
     ``frontend_config.name`` / ``frontend_config.description``.
     """
-    security_schemes, security, extensions = await build_security_schemes(
-        frontend_config, cross_app_access
-    )
+    security_schemes, security = await build_security_schemes(frontend_config, cross_app_access)
+    extensions = _collect_extensions(cross_app_access, external)
 
     resolved_skills = skills or [
         AgentSkill(
@@ -260,10 +321,12 @@ async def create_agent_card(
         )
     ]
 
+    url = _resolve_url(frontend_config, external)
+
     return AgentCard(
         name=frontend_config.name,
         description=frontend_config.description,
-        url=get_a2a_endpoint_url(frontend_config.host, frontend_config.port),
+        url=url,
         version=frontend_config.version,
         default_input_modes=frontend_config.default_input_modes,
         default_output_modes=frontend_config.default_output_modes,
