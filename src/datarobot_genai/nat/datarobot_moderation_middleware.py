@@ -63,7 +63,6 @@ from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from datarobot_moderation_interface.drum_integration import MODERATION_MODEL_NAME
 from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
-from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
@@ -1427,12 +1426,9 @@ class DataRobotModerationMiddleware(
 
         # ==================================================================
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
-        # ``_run_stage`` in dome). We merge ``EvaluationResult`` back onto ``predictions_df``
-        # for ``format_result_df`` / sidecar metadata when response text is present.
+        # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        predictions_df, _ = build_predictions_df_from_completion(
-            state.data, pipeline, chat_completion
-        )
+        prompt_for_eval = state.data.loc[0, prompt_column_name]
 
         if isinstance(original_output, DRAgentEventResponse):
             response_text = _assistant_text_joined_from_ag_ui(original_output)
@@ -1440,7 +1436,6 @@ class DataRobotModerationMiddleware(
             response_text = original_output
         else:
             response_text = _openai_assistant_content_as_str(chat_completion)
-        prompt_for_eval = predictions_df.loc[0, prompt_column_name]
 
         response_eval, _ = self._moderation.evaluate_response(
             _text_for_moderation_eval(response_text),

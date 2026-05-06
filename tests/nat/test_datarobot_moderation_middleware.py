@@ -404,8 +404,6 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
     moderation = _moderation_mock(pipeline)
     moderation.evaluate_response.return_value = (EvaluationResult(blocked=False), 0.0)
 
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["hi"]})
-
     mid = "msg-1"
     aggregate = DRAgentEventResponse(
         events=[
@@ -436,10 +434,6 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            return_value=(predictions, {}),
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.chat_completion_to_dragent_event_response",
@@ -478,20 +472,12 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         0.0,
     )
 
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
-
     run_input = _make_run_input()
     ctx = _invocation(run_input, output=_text_response("model-out"))
 
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            return_value=(predictions, {}),
-        ),
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -525,20 +511,12 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         0.0,
     )
 
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
-
     nat_out = _nat_chat_response_assistant_text("model-out")
     ctx = _invocation(_make_run_input(), output=nat_out)
 
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            return_value=(predictions, {}),
-        ),
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -568,19 +546,11 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         0.0,
     )
 
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: ["model-out"]})
-
     ctx = _invocation(_make_run_input(), output="model-out")
 
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            return_value=(predictions, {}),
-        ),
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -598,13 +568,10 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
     assert ctx.output == "final-out"
 
 
-@pytest.mark.parametrize("missing_cell", [None, np.nan, pd.NA])
 async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_to_empty_str(
     builder_mock: MagicMock,
-    missing_cell: Any,
 ) -> None:
-    # GIVEN null-like response cell (empty postscore_df path) and postscore marks blocked with
-    # no replacement message
+    # GIVEN postscore marks blocked with no replacement message
     # WHEN post_invoke builds the completion
     # THEN assistant content is "" (not None) and finish_reason is content_filter
     pipeline = _pipeline_mock()
@@ -614,19 +581,11 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
         0.0,
     )
 
-    predictions = pd.DataFrame({PROMPT_COL: ["p"], RESPONSE_COL: [missing_cell]})
-
     ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
 
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            return_value=(predictions, {}),
-        ),
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
@@ -709,26 +668,13 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
 
     moderation.evaluate_response.side_effect = evaluate_response_side_effect
 
-    def build_predictions_from_state_data(
-        data: pd.DataFrame, _pipeline: Any, _chat_completion: Any
-    ) -> tuple[pd.DataFrame, dict[Any, Any]]:
-        prompt = str(data.loc[0, PROMPT_COL])
-        predictions = pd.DataFrame({PROMPT_COL: [prompt], RESPONSE_COL: ["x"]})
-        return predictions, {}
-
     async def slow_call_next(*_a: Any, **_k: Any) -> DRAgentEventResponse:
         await asyncio.sleep(0.05)
         return _text_response("x")
 
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            side_effect=build_predictions_from_state_data,
-        ),
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
 
