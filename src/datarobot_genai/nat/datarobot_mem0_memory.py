@@ -69,11 +69,12 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             run_id = metadata.pop("run_id", configured_run_id)
             item_kwargs = add_kwargs | {
                 "user_id": item.user_id,
-                "run_id": run_id,
                 "tags": item.tags or configured_tags or [],
                 "metadata": metadata,
                 "output_format": output_format,
             }
+            if run_id:
+                item_kwargs["run_id"] = run_id
             coroutines.append(self._mem0.add(item.conversation, **item_kwargs))
 
         if coroutines:
