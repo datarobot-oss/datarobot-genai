@@ -49,11 +49,11 @@ DataRobot API token.
 
 | Variable | Description |
 |----------|-------------|
-| `DATAROBOT_API_TOKEN` | Your DataRobot API token |
+| `DATAROBOT_API_TOKEN` | Your DataRobot API token. |
 
 The token is loaded automatically — no need to put it in `workflow.yaml`.
 
-### workflow.yaml
+### `workflow.yaml`
 
 ```yaml
 general:
@@ -115,13 +115,13 @@ The flow obtains a scoped access token through a two-step exchange.
 
 | Variable | Description |
 |----------|-------------|
-| `PRINCIPAL_ID` | Okta AI agent principal ID (used as `iss`/`sub` in JWT client assertions) |
-| `PRIVATE_JWK` | Base64-encoded or raw-JSON private JWK (signs JWT client assertions) |
+| `PRINCIPAL_ID` | Okta AI agent principal ID (used as `iss`/`sub` in JWT client assertions). |
+| `PRIVATE_JWK` | Base64-encoded or raw-JSON private JWK (signs JWT client assertions). |
 
 Both are loaded automatically from env vars, `.env`, DataRobot Runtime
 Parameters, or `file_secrets`.
 
-### Full workflow.yaml Example
+### Full `workflow.yaml` Example
 
 ```yaml
 general:
@@ -203,7 +203,7 @@ Both steps authenticate the client using the same method
 (`token_endpoint_auth_method: private_key_jwt`), signing JWT client assertions
 with the private key from `PRIVATE_JWK`.
 
-### Server-side Configuration Reference: `cross_application_access`
+### Server-side configuration reference: `cross_application_access`
 
 These fields are declared in the serving agent's `workflow.yaml` and published
 on the A2A agent card.
