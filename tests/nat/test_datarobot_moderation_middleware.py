@@ -188,7 +188,7 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         replaced=False,
         replacement=None,
     )
-    moderation.evaluate_prompt.return_value = (blocked, None)
+    moderation.evaluate_prompt.return_value = (blocked, 0.0)
 
     prescore_df = pd.DataFrame({PROMPT_COL: ["bad"]})
 
@@ -599,7 +599,7 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
             replaced=False,
             replacement=None,
         ),
-        None,
+        0.0,
     )
     prescore_df = pd.DataFrame({PROMPT_COL: ["x"]})
 
@@ -648,7 +648,7 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
             replaced=False,
             replacement=None,
         ),
-        None,
+        0.0,
     )
     prescore_df = pd.DataFrame({PROMPT_COL: ["x"]})
     stream_next = MagicMock()
