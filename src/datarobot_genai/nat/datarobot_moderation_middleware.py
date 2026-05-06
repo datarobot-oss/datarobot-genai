@@ -1052,6 +1052,13 @@ def _apply_moderated_prompt_text_to_workflow_input(
 ) -> bool:
     if isinstance(workflow_input, RunAgentInput):
         return _apply_moderated_prompt_text_to_run_agent_input(workflow_input, moderated_text)
+    if (
+        isinstance(workflow_input, ChatRequestOrMessage)
+        and workflow_input.input_message is not None
+    ):
+        # String-only gateway input; ``messages`` is unset so the list-based path below is skipped.
+        workflow_input.input_message = moderated_text
+        return True
     messages = getattr(workflow_input, "messages", None)
     if messages:
         return _apply_moderated_prompt_text_to_nat_chat_messages(messages, moderated_text)
@@ -1309,8 +1316,8 @@ class DataRobotModerationMiddleware(
             return context
 
         if prompt_eval.replaced and prompt_eval.replacement is not None:
-            # PII-style guards may redact the prompt; apply the replacement text to the
-            # request and align downstream postscore input.
+            # PII-style guards may redact the prompt; apply the replacement on the workflow
+            # object so ``call_next`` (LLM) receives moderated text; align postscore ``data``.
             moderated_prompt = prompt_eval.replacement
             if _apply_moderated_prompt_text_to_workflow_input(workflow_input, moderated_prompt):
                 data.at[0, prompt_column_name] = moderated_prompt

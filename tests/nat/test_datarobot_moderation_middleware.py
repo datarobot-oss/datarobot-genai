@@ -350,6 +350,48 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
     assert run_input.messages[-1].content == "[redacted]"
 
 
+async def test_pre_invoke_replaces_chat_request_or_message_input_message(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN LLM Gateway ``ChatRequestOrMessage`` with only ``input_message`` and replacement
+    # WHEN pre_invoke runs
+    # THEN input_message is updated so downstream ``call_next`` sees the moderated string
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_replaced("secret", "[redacted]")
+    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+
+    crm = ChatRequestOrMessage(input_message="secret")
+    ctx = InvocationContext(
+        function_context=_fn_context(),
+        original_args=(crm,),
+        original_kwargs={},
+        modified_args=(crm,),
+        modified_kwargs={},
+        output=None,
+    )
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        try:
+            out = await mw.pre_invoke(ctx)
+            st = _moderation_invoke_state_ctx.get()
+            assert st is not None
+            assert st.data.loc[0, PROMPT_COL] == "[redacted]"
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    assert out is not None
+    assert out.output is None
+    assert crm.input_message == "[redacted]"
+
+
 async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -> None:
     # GIVEN the first AG-UI event is not a text delta
     # WHEN post_invoke runs
