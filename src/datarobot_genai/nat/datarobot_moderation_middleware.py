@@ -64,9 +64,6 @@ from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from datarobot_moderation_interface.drum_integration import MODERATION_MODEL_NAME
-from datarobot_moderation_interface.drum_integration import (
-    _set_moderation_attribute_to_completion as set_moderation_attribute_to_completion,
-)
 from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
 from datarobot_moderation_interface.drum_integration import build_predictions_df_from_completion
 from datarobot_moderation_interface.drum_integration import format_result_df
@@ -1506,9 +1503,6 @@ class DataRobotModerationMiddleware(
         report_otel_evaluation_set_metric(pipeline, result_df)
 
         final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
-        final_completion = set_moderation_attribute_to_completion(
-            pipeline, final_completion, result_df, association_id=state.association_id
-        )
         moderated_dr = chat_completion_to_dragent_event_response(final_completion)
 
         if incoming_agui is not None:
