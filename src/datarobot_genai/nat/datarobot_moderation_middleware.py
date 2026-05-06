@@ -673,6 +673,14 @@ def _datarobot_moderations_from_completion(
     return cast(dict[str, Any], _json_safe_moderation_metadata(raw))
 
 
+def _datarobot_moderations_from_evaluation_result(
+    eval_result: EvaluationResult,
+) -> dict[str, Any] | None:
+    if not eval_result.metrics:
+        return None
+    return cast(dict[str, Any], _json_safe_moderation_metadata(eval_result.metrics))
+
+
 def _infer_parent_message_id_for_tool_calls(
     source_ag_ui_events: list[Any] | None,
     built_text_events: list[Any],
@@ -755,27 +763,28 @@ def _dragent_event_response_from_blocked_prompt_eval(
         object="chat.completion.chunk",
         usage=None,
     )
-    datarobot_moderations: dict[str, Any] | None = None
-    if prompt_eval.metrics:
-        datarobot_moderations = cast(
-            dict[str, Any], _json_safe_moderation_metadata(prompt_eval.metrics)
-        )
     return DRAgentEventResponse(
         events=events,
         usage_metrics=default_usage_metrics(),
         original_chunk=chunk,
         model=MODERATION_MODEL_NAME,
-        datarobot_moderations=datarobot_moderations,
+        datarobot_moderations=_datarobot_moderations_from_evaluation_result(prompt_eval),
     )
 
 
 def chat_completion_to_dragent_event_response(
     completion: ChatCompletion | ChatCompletionChunk,
     *,
+    response_eval: EvaluationResult | None = None,
     source_ag_ui_events: list[Any] | None = None,
     stream_tool_index_map: dict[int, str] | None = None,
 ) -> DRAgentEventResponse:
-    """Convert OpenAI completion or streaming chunk back to DRAgentEventResponse."""
+    """Convert OpenAI completion or streaming chunk back to DRAgentEventResponse.
+
+    When ``response_eval`` is set (non-streaming postscore path), ``datarobot_moderations`` is
+    taken from ``response_eval.metrics``; otherwise it is read from the completion's moderation
+    sidecar attribute (streaming chunks from ``ModerationIterator``).
+    """
     if isinstance(completion, ChatCompletionChunk):
         chunk = _openai_chat_completion_chunk_to_nat_chat_response_chunk(completion)
         d = completion.choices[0].delta
@@ -812,12 +821,17 @@ def chat_completion_to_dragent_event_response(
         msg = completion.choices[0].message
         events = _assistant_text_events_from_message(msg.content)
     usage_metrics = _openai_usage_to_usage_metrics(completion.usage) or default_usage_metrics()
+    datarobot_moderations = (
+        _datarobot_moderations_from_evaluation_result(response_eval)
+        if response_eval is not None
+        else _datarobot_moderations_from_completion(completion)
+    )
     return DRAgentEventResponse(
         events=events,
         usage_metrics=usage_metrics,
         original_chunk=chunk,
         model=completion.model,
-        datarobot_moderations=_datarobot_moderations_from_completion(completion),
+        datarobot_moderations=datarobot_moderations,
     )
 
 
@@ -1503,7 +1517,10 @@ class DataRobotModerationMiddleware(
         report_otel_evaluation_set_metric(pipeline, result_df)
 
         final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
-        moderated_dr = chat_completion_to_dragent_event_response(final_completion)
+        moderated_dr = chat_completion_to_dragent_event_response(
+            final_completion,
+            response_eval=response_eval,
+        )
 
         if incoming_agui is not None:
             preserve_ag_ui_envelope = (
