@@ -62,17 +62,18 @@ from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from datarobot_moderation_interface.drum_integration import MODERATION_MODEL_NAME
-from datarobot_moderation_interface.drum_integration import build_non_streaming_chat_completion
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import ChatResponseChoice
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
+from nat.data_models.api_server import ChoiceMessage
 from nat.data_models.api_server import Usage as NATUsage
 from nat.data_models.api_server import UserMessageContentRoleType
 from nat.data_models.middleware import FunctionMiddlewareBaseConfig
@@ -806,6 +807,42 @@ def _dragent_event_response_from_postscore_assistant_text(
     )
 
 
+def _nat_chat_response_from_postscore_assistant_text(
+    response_message: str,
+    finish_reason: str,
+    original_nat_response: ChatResponse,
+) -> ChatResponse:
+    """Build NAT ``ChatResponse`` after postscore without an intermediate OpenAI ``ChatCompletion``.
+
+    Preserves ``usage`` from ``original_nat_response`` when present (same as the former
+    ``build_non_streaming_chat_completion`` + ``model_validate`` path).
+    """
+    usage = original_nat_response.usage
+    if usage is None:
+        usage = NATUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+    return ChatResponse(
+        id=str(uuid.uuid4()),
+        object=CHAT_COMPLETION_OBJECT,
+        model=MODERATION_MODEL_NAME,
+        created=datetime.now(tz=UTC),
+        choices=[
+            ChatResponseChoice(
+                index=0,
+                finish_reason=cast(
+                    Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
+                    | None,
+                    finish_reason,
+                ),
+                message=ChoiceMessage(
+                    content=response_message,
+                    role=UserMessageContentRoleType.ASSISTANT,
+                ),
+            )
+        ],
+        usage=usage,
+    )
+
+
 def chat_completion_to_dragent_event_response(
     completion: ChatCompletion | ChatCompletionChunk,
     *,
@@ -1160,22 +1197,6 @@ def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     )
 
 
-def _final_openai_completion_to_nat_chat_response(
-    final_completion: ChatCompletion,
-    original_nat_response: ChatResponse,
-) -> ChatResponse:
-    """Map a moderated OpenAI completion back to NAT's model (usage is required on ``ChatResponse``)."""
-    data = final_completion.model_dump(mode="json")
-    if data.get("usage") is None:
-        if original_nat_response.usage is not None:
-            data["usage"] = original_nat_response.usage.model_dump(mode="json")
-        else:
-            data["usage"] = NATUsage(
-                prompt_tokens=0, completion_tokens=0, total_tokens=0
-            ).model_dump(mode="json")
-    return ChatResponse.model_validate(data)
-
-
 def _assistant_text_joined_from_ag_ui(response: DRAgentEventResponse) -> str:
     return "".join(
         ev.delta
@@ -1473,9 +1494,10 @@ class DataRobotModerationMiddleware(
             else:
                 context.output = moderated_dr
         elif isinstance(original_output, ChatResponse):
-            final_completion = build_non_streaming_chat_completion(response_message, finish_reason)
-            context.output = _final_openai_completion_to_nat_chat_response(
-                final_completion, original_output
+            context.output = _nat_chat_response_from_postscore_assistant_text(
+                response_message,
+                finish_reason,
+                original_output,
             )
         else:
             context.output = response_message
