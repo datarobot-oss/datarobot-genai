@@ -1703,12 +1703,14 @@ class DataRobotModerationMiddleware(
                 if worker is not None:
                     in_q.put(_STREAM_INPUT_END)
                     if not worker_sentinel_received:
-                        sentinel = await loop.run_in_executor(None, out_q.get)
-                        if sentinel is not _WORKER_QUEUE_END:
-                            _logger.warning(
-                                "Unexpected item from moderation worker queue: %r",
-                                sentinel,
-                            )
+                        # Short-circuit paths (e.g. ``content_filter``) can exit before draining
+                        # ``out_q``. The iterator may have already queued another moderated chunk
+                        # before ``_WORKER_QUEUE_END``; drain until the sentinel instead of treating
+                        # the first leftover item as an anomaly.
+                        while True:
+                            item = await loop.run_in_executor(None, out_q.get)
+                            if item is _WORKER_QUEUE_END:
+                                break
                     worker.join(timeout=120.0)
         finally:
             _clear_moderation_invoke_state_if_set()
