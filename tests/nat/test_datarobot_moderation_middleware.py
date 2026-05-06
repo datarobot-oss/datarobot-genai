@@ -680,7 +680,12 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
 async def test_function_middleware_invoke_preserves_prescore_data_across_concurrent_tasks(
     builder_mock: MagicMock,
 ) -> None:
-    """Each asyncio task must keep its own prescore frame across ``await call_next``."""
+    """Each asyncio task must keep its own prescore frame across ``await call_next``.
+
+    Postscore reads task-local state via ``moderation.evaluate_response`` (same hook as
+    ``ModerationPipeline.evaluate_response`` on the loaded pipeline); the prompt passed there
+    must match the prescore row for that task, not a sibling task.
+    """
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -692,14 +697,21 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
         return _prescore_df_ok(prompt), 0.0
 
     moderation._executor.run_guards.side_effect = run_guards_side_effect
-    seen_in_build: dict[asyncio.Task[Any], str] = {}
+    seen_in_evaluate_response: dict[asyncio.Task[Any], str] = {}
 
-    def build_df_side_effect(
-        data: pd.DataFrame, pipeline: Any, chat_completion: Any
-    ) -> tuple[pd.DataFrame, dict[Any, Any]]:
+    def evaluate_response_side_effect(
+        _response_text: str, *, prompt: str | None = None, **_: Any
+    ) -> tuple[EvaluationResult, float]:
         task = asyncio.current_task()
         assert task is not None
-        seen_in_build[task] = str(data.loc[0, PROMPT_COL])
+        seen_in_evaluate_response[task] = prompt or ""
+        return (EvaluationResult(blocked=False), 0.0)
+
+    moderation.evaluate_response.side_effect = evaluate_response_side_effect
+
+    def build_predictions_from_state_data(
+        data: pd.DataFrame, _pipeline: Any, _chat_completion: Any
+    ) -> tuple[pd.DataFrame, dict[Any, Any]]:
         prompt = str(data.loc[0, PROMPT_COL])
         predictions = pd.DataFrame({PROMPT_COL: [prompt], RESPONSE_COL: ["x"]})
         return predictions, {}
@@ -715,7 +727,7 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
         ),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.build_predictions_df_from_completion",
-            side_effect=build_df_side_effect,
+            side_effect=build_predictions_from_state_data,
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
@@ -732,8 +744,8 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
         t_bbb = asyncio.create_task(run_one("bbb-only"))
         await asyncio.gather(t_aaa, t_bbb)
 
-    assert seen_in_build[t_aaa] == "aaa-only"
-    assert seen_in_build[t_bbb] == "bbb-only"
+    assert seen_in_evaluate_response[t_aaa] == "aaa-only"
+    assert seen_in_evaluate_response[t_bbb] == "bbb-only"
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
