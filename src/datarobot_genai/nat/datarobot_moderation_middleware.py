@@ -1095,28 +1095,19 @@ class DataRobotModerationMiddleware(
         #
         # ``run_prescore_guards`` keeps the full prescore DataFrame (for postscore / streaming);
         # ``evaluate_prompt`` returns the public ``EvaluationResult`` for routing.
-        prescore_df, filtered_df, prescore_latency = run_prescore_guards(pipeline, data)
-        prompt_eval, _ = self._moderation.evaluate_prompt(prompt)
+        prescore_df, _, _ = run_prescore_guards(pipeline, data)
+        prompt_eval, prescore_latency = self._moderation.evaluate_prompt(prompt)
         self.data = data
         self.input_df = data
         self.prescore_df = prescore_df
         self.latency_so_far = prescore_latency
 
-        _logger.debug("After passing input through pre score guards")
-        _logger.debug(filtered_df)
-        _logger.debug(f"Pre Score Guard Latency: {prescore_latency} sec")
-
-        blocked_message_prompt_column_name = f"blocked_message_{prompt_column_name}"
         if prompt_eval.blocked:
             pipeline.report_custom_metrics(prescore_df)
-            blocked_msg = (
-                prompt_eval.blocked_message
-                or prescore_df.loc[0, blocked_message_prompt_column_name]
-            )
             # If all prompts in the input are blocked, means history as well as the prompt
             # are not worthy to be sent to LLM
             chat_completion = build_non_streaming_chat_completion(
-                blocked_msg,
+                prompt_eval.blocked_message,
                 "content_filter",
             )
             result_df = handle_result_df_error_cases(
