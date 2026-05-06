@@ -82,6 +82,44 @@ async def test_add_items_forwards_nat_memory_items_to_mem0() -> None:
     ]
 
 
+async def test_add_items_resolves_conflicting_add_params() -> None:
+    # GIVEN add_params that overlap with NAT MemoryItem fields.
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0))
+    item = MemoryItem(
+        conversation=[{"role": "user", "content": "remember TypeScript"}],
+        user_id="item-user",
+        tags=["item-tag"],
+        metadata={"run_id": "item-run", "thread_id": "item-thread"},
+    )
+
+    # WHEN the editor stores it with conflicting backend-specific kwargs.
+    await editor.add_items(
+        [item],
+        user_id="configured-user",
+        run_id="configured-run",
+        tags=["configured-tag"],
+        metadata={"thread_id": "configured-thread", "source": "workflow"},
+        output_format="custom-format",
+        async_mode=False,
+    )
+
+    # THEN the Mem0 call has no duplicate kwargs and preserves NAT item identity.
+    assert mem0.add_calls == [
+        {
+            "conversation": [{"role": "user", "content": "remember TypeScript"}],
+            "kwargs": {
+                "user_id": "item-user",
+                "run_id": "item-run",
+                "tags": ["item-tag"],
+                "metadata": {"thread_id": "item-thread", "source": "workflow"},
+                "output_format": "custom-format",
+                "async_mode": False,
+            },
+        }
+    ]
+
+
 async def test_search_builds_mem0_v2_filters_from_nat_kwargs() -> None:
     # GIVEN a Mem0 search result and NAT auto-memory user/run/app parameters.
     mem0 = FakeMem0Api()
@@ -105,6 +143,7 @@ async def test_search_builds_mem0_v2_filters_from_nat_kwargs() -> None:
         run_id="run-456",
         app_id="app-abc",
         metadata={"thread_id": "thread-789"},
+        output_format="custom-format",
         threshold=0.75,
     )
 
@@ -122,7 +161,7 @@ async def test_search_builds_mem0_v2_filters_from_nat_kwargs() -> None:
                     ]
                 },
                 "top_k": 2,
-                "output_format": "v1.1",
+                "output_format": "custom-format",
                 "threshold": 0.75,
             },
         }

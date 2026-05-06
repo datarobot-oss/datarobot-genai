@@ -56,21 +56,25 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         self._mem0 = client._memory
 
     async def add_items(self, items: list[MemoryItem], **kwargs: Any) -> None:
+        add_kwargs = dict(kwargs)
+        output_format = add_kwargs.pop("output_format", "v1.1")
+        configured_run_id = add_kwargs.pop("run_id", None)
+        configured_tags = add_kwargs.pop("tags", None)
+        configured_metadata = dict(add_kwargs.pop("metadata", None) or {})
+        add_kwargs.pop("user_id", None)
+
         coroutines = []
         for item in items:
-            metadata = dict(item.metadata or {})
-            run_id = metadata.pop("run_id", None)
-            coroutines.append(
-                self._mem0.add(
-                    item.conversation,
-                    user_id=item.user_id,
-                    run_id=run_id,
-                    tags=item.tags,
-                    metadata=metadata,
-                    output_format="v1.1",
-                    **kwargs,
-                )
-            )
+            metadata = configured_metadata | dict(item.metadata or {})
+            run_id = metadata.pop("run_id", configured_run_id)
+            item_kwargs = add_kwargs | {
+                "user_id": item.user_id,
+                "run_id": run_id,
+                "tags": item.tags or configured_tags or [],
+                "metadata": metadata,
+                "output_format": output_format,
+            }
+            coroutines.append(self._mem0.add(item.conversation, **item_kwargs))
 
         if coroutines:
             await asyncio.gather(*coroutines)
@@ -89,11 +93,12 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             conditions.append({"metadata": metadata_filter})
 
         filters = kwargs.pop("filters", None) or {"AND": conditions}
+        output_format = kwargs.pop("output_format", "v1.1")
         result = await self._mem0.search(
             query,
             filters=filters,
             top_k=top_k,
-            output_format="v1.1",
+            output_format=output_format,
             **kwargs,
         )
 
