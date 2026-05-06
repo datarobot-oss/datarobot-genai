@@ -1122,6 +1122,28 @@ def _openai_chat_completion_has_assistant_message_content(completion: ChatComple
     return bool(content)
 
 
+def _openai_assistant_content_as_str(completion: ChatCompletion) -> str:
+    """Assistant message text from a completion (for moderation eval, not dataframe columns)."""
+    if not completion.choices:
+        return ""
+    content = completion.choices[0].message.content
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    joined: list[str] = []
+    for part in content:
+        text: str | None = None
+        if isinstance(part, dict):
+            if part.get("type") == "text":
+                text = part.get("text")  # type: ignore[assignment]
+        elif getattr(part, "type", None) == "text":
+            text = getattr(part, "text", None)
+        if text:
+            joined.append(str(text))
+    return "".join(joined)
+
+
 def _final_openai_completion_to_nat_chat_response(
     final_completion: ChatCompletion,
     original_nat_response: ChatResponse,
@@ -1404,11 +1426,17 @@ class DataRobotModerationMiddleware(
         predictions_df, extra_attributes = build_predictions_df_from_completion(
             state.data, pipeline, chat_completion
         )
-        response_text = predictions_df.loc[0, response_column_name]
+        predictions_response_cell = predictions_df.loc[0, response_column_name]
+        if isinstance(original_output, DRAgentEventResponse):
+            response_text = _assistant_text_joined_from_ag_ui(original_output)
+        elif isinstance(original_output, str):
+            response_text = original_output
+        else:
+            response_text = _openai_assistant_content_as_str(chat_completion)
         prompt_for_eval = predictions_df.loc[0, prompt_column_name]
 
         blocked_completion_column_name = f"blocked_{response_column_name}"
-        if not _predictions_response_missing_for_postscore(response_text):
+        if not _predictions_response_missing_for_postscore(predictions_response_cell):
             none_predictions_df = None
             try:
                 response_eval, _ = self._moderation.evaluate_response(
