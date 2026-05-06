@@ -57,11 +57,11 @@ from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
+from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
-from datarobot_moderation_interface.drum_integration import MODERATION_MODEL_NAME
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
@@ -769,16 +769,47 @@ def _dragent_event_response_from_blocked_prompt_eval(
     )
 
 
+def _upstream_model_from_dragent_response(response: DRAgentEventResponse) -> str | None:
+    if response.model:
+        return response.model
+    if response.original_chunk is not None:
+        return response.original_chunk.model or None
+    return None
+
+
+def _should_use_moderation_model_name(
+    response_eval: EvaluationResult,
+    *,
+    prompt_eval: EvaluationResult | None = None,
+) -> bool:
+    """Use ``MODERATION_MODEL_NAME`` when guards blocked or replaced prompt or response text."""
+    if response_eval.blocked or response_eval.replaced:
+        return True
+    if prompt_eval is not None and prompt_eval.replaced:
+        return True
+    return False
+
+
 def _dragent_event_response_from_postscore_assistant_text(
     response_message: str,
     finish_reason: str,
     response_eval: EvaluationResult,
+    *,
+    upstream_model: str | None = None,
+    prompt_eval: EvaluationResult | None = None,
 ) -> DRAgentEventResponse:
     """Build AG-UI output after postscore from message, finish reason, and eval (no ChatCompletion).
 
     Matches ``chat_completion_to_dragent_event_response`` for a text-only non-streaming completion
     built via ``build_non_streaming_chat_completion``, without constructing that intermediate object.
     """
+    use_moderation_model = _should_use_moderation_model_name(response_eval, prompt_eval=prompt_eval)
+    chunk_model = (
+        MODERATION_MODEL_NAME
+        if use_moderation_model
+        else (upstream_model if upstream_model is not None else "unknown-model")
+    )
+    response_model = MODERATION_MODEL_NAME if use_moderation_model else upstream_model
     events = _assistant_text_events_from_message(response_message)
     completion_id = str(uuid.uuid4())
     created_ts = int(datetime.now(tz=UTC).timestamp())
@@ -794,7 +825,7 @@ def _dragent_event_response_from_postscore_assistant_text(
             ChatResponseChunkChoice(index=0, delta=delta, finish_reason=finish_reason),
         ],
         created=created_dt,
-        model=MODERATION_MODEL_NAME,
+        model=chunk_model,
         object="chat.completion.chunk",
         usage=None,
     )
@@ -802,7 +833,7 @@ def _dragent_event_response_from_postscore_assistant_text(
         events=events,
         usage_metrics=default_usage_metrics(),
         original_chunk=chunk,
-        model=MODERATION_MODEL_NAME,
+        model=response_model,
         datarobot_moderations=_datarobot_moderations_from_evaluation_result(response_eval),
     )
 
@@ -811,6 +842,9 @@ def _nat_chat_response_from_postscore_assistant_text(
     response_message: str,
     finish_reason: str,
     original_nat_response: ChatResponse,
+    response_eval: EvaluationResult,
+    *,
+    prompt_eval: EvaluationResult | None = None,
 ) -> ChatResponse:
     """Build NAT ``ChatResponse`` after postscore without an intermediate OpenAI ``ChatCompletion``.
 
@@ -820,10 +854,15 @@ def _nat_chat_response_from_postscore_assistant_text(
     usage = original_nat_response.usage
     if usage is None:
         usage = NATUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+    out_model = (
+        MODERATION_MODEL_NAME
+        if _should_use_moderation_model_name(response_eval, prompt_eval=prompt_eval)
+        else original_nat_response.model
+    )
     return ChatResponse(
         id=str(uuid.uuid4()),
         object=CHAT_COMPLETION_OBJECT,
-        model=MODERATION_MODEL_NAME,
+        model=out_model,
         created=datetime.now(tz=UTC),
         choices=[
             ChatResponseChoice(
@@ -1464,6 +1503,8 @@ class DataRobotModerationMiddleware(
             prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
         )
 
+        prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
+
         if response_eval.blocked:
             response_message = response_eval.blocked_message or ""
             finish_reason = "content_filter"
@@ -1479,6 +1520,8 @@ class DataRobotModerationMiddleware(
                 response_message,
                 finish_reason,
                 response_eval,
+                upstream_model=_upstream_model_from_dragent_response(original_output),
+                prompt_eval=prompt_eval,
             )
             preserve_ag_ui_envelope = (
                 len(original_output.events) > 1
@@ -1498,6 +1541,8 @@ class DataRobotModerationMiddleware(
                 response_message,
                 finish_reason,
                 original_output,
+                response_eval,
+                prompt_eval=prompt_eval,
             )
         else:
             context.output = response_message
