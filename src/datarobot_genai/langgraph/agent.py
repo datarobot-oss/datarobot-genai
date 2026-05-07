@@ -51,6 +51,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.langgraph.dr_fs_checkpointer import default_langgraph_checkpointer
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -93,7 +94,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
     Framework-specific parameters:
 
-    - ``checkpointer``: checkpoint store for ``interrupt()`` and thread resume.
+    - ``checkpointer``: checkpoint store for ``interrupt()`` and thread resume. If omitted,
+      a process-wide default backed by ``datarobot.fs.DataRobotFileSystem`` is used (see
+      ``default_langgraph_checkpointer`` in ``dr_fs_checkpointer``).
     - ``interrupt_before`` / ``interrupt_after``: compile-time interrupt node lists.
     - ``debug``: forwarded to ``StateGraph.compile(debug=...)``.
     - ``name``: optional name for the compiled graph.
@@ -117,7 +120,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         debug: bool = False,
         name: str | None = None,
     ) -> None:
-        self.checkpointer = checkpointer
+        self.checkpointer = (
+            checkpointer if checkpointer is not None else default_langgraph_checkpointer()
+        )
         self.interrupt_before = interrupt_before
         self.interrupt_after = interrupt_after
         self.debug = debug
@@ -183,8 +188,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         run_agent_input: RunAgentInput,
     ) -> Command | None:
         """When the thread is paused on `interrupt()`, map the user message to `resume`."""
-        if self.checkpointer is None:
-            return None
         config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
         snap = await compiled_graph.aget_state(config)
         interrupts = getattr(snap, "interrupts", None)
@@ -611,11 +614,12 @@ def datarobot_agent_class_from_langgraph(
 
     Human-in-the-loop
     ------------------
-    Unless you pass ``checkpointer=...``, a **process-wide** shared
-    :class:`~langgraph.checkpoint.memory.InMemorySaver` is used so graphs can resume
-    after ``interrupt()`` when the client reuses the same ``thread_id`` (e.g. chat id).
-    For multi-process deployments, pass a persisted checkpointer. You can also pass
-    resume payloads explicitly via ``run_agent_input.state["langgraph_resume"]``.
+    Unless you pass ``checkpointer=...``, a **process-wide** default checkpointer backed by
+    ``datarobot.fs.DataRobotFileSystem`` is used so graphs can resume after ``interrupt()``
+    when the client reuses the same ``thread_id`` (e.g. chat id). Set
+    ``DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE`` to a stable ``dr://`` prefix for cross-restart
+    persistence. You can also pass resume payloads explicitly via
+    ``run_agent_input.state["langgraph_resume"]``.
     """
 
     class DataRobotLangAgent(LangGraphAgent):
