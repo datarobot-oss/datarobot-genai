@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.14.41
+## 0.15.41
 - Fixed CrewAI tool calling by enforcing client-side stop-word truncation when upstream APIs ignore the `stop` parameter
 
 ## 0.15.40
