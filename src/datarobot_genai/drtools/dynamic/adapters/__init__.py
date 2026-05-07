@@ -12,8 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Backwards-compatible shim — implementation moved to ``drtools.dynamic.adapters.base``."""
+"""Framework-agnostic deployment metadata adapters."""
 
 from datarobot_genai.drtools.dynamic.adapters.base import MetadataBase
+from datarobot_genai.drtools.dynamic.adapters.default import Metadata
+from datarobot_genai.drtools.dynamic.adapters.drum import DrumMetadataAdapter
+from datarobot_genai.drtools.dynamic.adapters.drum import DrumTargetType
+from datarobot_genai.drtools.dynamic.adapters.drum import get_default_schema
+from datarobot_genai.drtools.dynamic.adapters.drum import is_drum
 
-__all__ = ["MetadataBase"]
+__all__ = [
+    "DrumMetadataAdapter",
+    "DrumTargetType",
+    "Metadata",
+    "MetadataBase",
+    "get_default_schema",
+    "is_drum",
+]

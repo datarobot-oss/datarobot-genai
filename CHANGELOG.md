@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.42
+- Extracted the framework-agnostic core of the dynamic external-tool registrar into a new `datarobot_genai.drtools.dynamic` subpackage (JSON-Schema-to-Pydantic conversion, deployment metadata adapters, HTTP request callable factory). The previous `datarobot_genai.drmcp.core.dynamic_tools` modules remain importable as backwards-compatible shims that delegate to drtools, so this change is API-compatible. The new module makes the registrar reusable from non-FastMCP MCP hosts (such as `datarobot/global-mcp`) that cannot import drmcp.
+
 ## 0.15.41
 - Added a NAT `dr_mem0_memory` provider that adapts `datarobot-genai[memory]`'s Mem0 client to NAT's `MemoryEditor` interface for `auto_memory_agent`.
 - Documented Mem0 automatic-memory workflow configuration for NAT.
