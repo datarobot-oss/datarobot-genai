@@ -31,7 +31,7 @@ requirements in the agent card.
 
 ```bash
 # With Okta XAA support (adds okta-client-python)
-pip install "datarobot-genai[dragent,langgraph,auth]>=0.15.35"
+pip install "datarobot-genai[dragent,langgraph,auth]>=0.15.40"
 ```
 
 Replace `langgraph` with `crewai` or `llamaindex` depending on your framework.
@@ -140,20 +140,21 @@ general:
 
       # Server-side: advertise XAA requirements in the agent card
       cross_application_access:
-        token_endpoint_auth_method: "private_key_jwt"
-
         # Step 1: Token exchange to fetch the ID-JAG (RFC 8693)
         token_exchange:
-          trusted_issuer: "https://your-org.oktapreview.com"
-          audience: "https://your-org.oktapreview.com/oauth2/ausXXXXXXXXXXXXXXX"
-
+          trusted_issuer: "https://your-org.okta.com"
+          audience: "https://your-org.okta.com/oauth2/ausXXXXXXXXXXXXXXX"
         # Step 2: Execute the Final Grant (RFC 7523)
         token_request:
-          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer"
-          token_url: "https://your-org.oktapreview.com/oauth2/ausXXXXXXXXXXXXXXX/v1/token"
+          token_url: "https://your-org.okta.com/oauth2/ausXXXXXXXXXXXXXXX/v1/token"
           audience: "https://app.datarobot.com/<org_id>/<agent_id>"
           scopes:
             - "blog:write"
+
+      # Optional: external identity and URL overrides published on the agent card
+      external:
+        id: "my-agent-id"       # Emitted as urn:datarobot:agent:identity:external
+        url: "https://my-agent-id.example.com/a2a/"  # Overrides the auto-generated card URL
 
 # Client-side: call a remote XAA-protected agent
 function_groups:
@@ -194,7 +195,7 @@ The XAA flow operates in two steps:
    granting access to the target agent with the requested scopes.
 
 Both steps authenticate the client using the same method
-(`token_endpoint_auth_method: private_key_jwt`), signing JWT client assertions
+(private key jwt), signing JWT client assertions
 with the private key from `PRIVATE_JWK`.
 
 ### Server-side configuration reference: `cross_application_access`
@@ -202,15 +203,28 @@ with the private key from `PRIVATE_JWK`.
 These fields are declared in the serving agent's `workflow.yaml` and published
 on the A2A agent card.
 
-| Field | Section | Purpose |
-|-------|---------|---------|
-| `token_endpoint_auth_method` | root | How the client authenticates to token endpoints (e.g. `private_key_jwt`). |
-| `token_exchange.trusted_issuer` | Step 1 | Org-level Authorization Server issuer URL. |
-| `token_exchange.audience` | Step 1 | Resource AS base URL (where ID-JAG is fetched from). |
-| `token_request.grant_type` | Step 2 | Must be `urn:ietf:params:oauth:grant-type:jwt-bearer`. |
-| `token_request.token_url` | Step 2 | Token endpoint of the resource AS. |
-| `token_request.audience` | Step 2 | Final resource identifier for the agent. |
-| `token_request.scopes` | Step 2 | Scopes the caller must request (default: `["read_data"]`). |
+| Field | Required | Default | Purpose |
+|-------|----------|---------|---------|
+| `token_exchange.trusted_issuer` | Yes | — | Org-level Authorization Server issuer URL. |
+| `token_exchange.audience` | Yes | — | Resource AS base URL (where ID-JAG is fetched from). |
+| `token_request.token_url` | Yes | — | Token endpoint of the resource AS. |
+| `token_request.audience` | Yes | — | Final resource identifier for the agent. |
+| `token_request.scopes` | No | `["read_data"]` | Scopes the caller must request. |
+
+> **Note:** `grant_type` URNs are injected automatically by the generator — do not
+> set them in `workflow.yaml`. The agent card will always contain
+> `urn:ietf:params:oauth:grant-type:token-exchange` (Step 1) and
+> `urn:ietf:params:oauth:grant-type:jwt-bearer` (Step 2).
+
+### Server-side configuration reference: `external`
+
+Optional fields under `general.frontend.a2a.external` that control additional
+identity metadata and the agent card URL.
+
+| Field | Purpose |
+|-------|---------|
+| `external.id` | Catalog discovery identifier. Emitted as the `urn:datarobot:agent:identity:external` extension on the agent card. |
+| `external.url` | Overrides the auto-generated agent card endpoint URL. Used as-is — no normalization is applied. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 
@@ -234,22 +248,20 @@ published A2A agent card:
   `token_request.scopes`).
 - **`capabilities.extensions[]`** (URI: `urn:ietf:params:oauth:grant-type:jwt-bearer`)
   — Non-standard XAA parameters for SDK consumption:
-  `token_endpoint_auth_method`, `token_exchange.*`, and
-  `token_request.grant_type` / `token_request.audience`.
+  `token_endpoint_auth_method`, `token_exchange.*` (including hardcoded
+  `grant_type` and `requested_token_type` URNs), and `token_request.audience`.
+
+In addition, the agent card may include up to two identity extensions:
+
+- **`urn:datarobot:agent:identity:internal`** — Emitted automatically in deployed
+  environments (when `MLOPS_DEPLOYMENT_ID` is set). Carries `deployment_id` for
+  internal DataRobot routing. Not emitted in local development.
+- **`urn:datarobot:agent:identity:external`** — Emitted when `external.id` is
+  set in `workflow.yaml`. Carries the developer-supplied catalog identifier.
 
 This separation follows the A2A spec convention: standard OAuth fields belong
 in `securitySchemes`, while flow-specific parameters go in
 `capabilities.extensions`.
-
-## Choosing between the two methods
-
-| Criteria | DataRobot API key | Okta XAA |
-|----------|-------------------|----------|
-| Setup complexity | Minimal — one env var. | Moderate — Okta principal + key pair. |
-| Identity model | Service-level API token. | User-delegated federated identity. |
-| Token type | Static API key. | Short-lived scoped access token. |
-| Use case | Internal DataRobot agents. | Cross-organization / federated agents. |
-| Extra install | None. | `auth` extra required. |
 
 ## Troubleshooting
 
