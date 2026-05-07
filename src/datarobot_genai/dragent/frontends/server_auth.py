@@ -14,9 +14,17 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from nat.data_models.authentication import AuthProviderBaseConfig
 from pydantic import BaseModel
 from pydantic import Field
+
+
+class TokenEndpointAuthMethod(StrEnum):
+    """Supported ``token_endpoint_auth_method`` values for Cross-Application Access."""
+
+    PRIVATE_KEY_JWT = "private_key_jwt"
 
 
 class CrossAppTokenExchange(BaseModel):
@@ -36,9 +44,6 @@ class CrossAppTokenExchange(BaseModel):
 class CrossAppTokenRequest(BaseModel):
     """Step 2 parameters: RFC 7523 JWT Bearer Grant to obtain the final access token."""
 
-    grant_type: str = Field(
-        description="Must be ``urn:ietf:params:oauth:grant-type:jwt-bearer`` (RFC 7523).",
-    )
     token_url: str = Field(
         description=(
             "Token endpoint of the resource AS. "
@@ -71,11 +76,9 @@ class CrossApplicationAccessConfig(AuthProviderBaseConfig):
     All other fields → ``capabilities.extensions.params`` only.
     """
 
-    token_endpoint_auth_method: str = Field(
-        description=(
-            "Client auth method (e.g. ``private_key_jwt``). "
-            "Published in ``capabilities.extensions[].params``."
-        ),
+    token_endpoint_auth_method: TokenEndpointAuthMethod = Field(
+        default=TokenEndpointAuthMethod.PRIVATE_KEY_JWT,
+        description="Client auth method. Published in ``capabilities.extensions[].params``.",
     )
     token_exchange: CrossAppTokenExchange = Field(
         description="RFC 8693 Token Exchange parameters (Step 1: ID-JAG prerequisite).",

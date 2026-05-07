@@ -44,6 +44,17 @@ logging_handler_setup()
 warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
 
 
+class DRAgentA2AExternalConfig(BaseModel):
+    """Customer-provided external identity and URL override for the agent card."""
+
+    id: str | None = Field(
+        default=None, description="External agent identifier for catalog discovery."
+    )
+    url: str | None = Field(
+        default=None, description="Custom external URL override for the agent card endpoint."
+    )
+
+
 class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
@@ -59,6 +70,10 @@ class DRAgentA2AConfig(BaseModel):
         default=[],
         description="Skills to advertise in the A2A agent card. "
         "If empty, a single default skill is generated from the agent name and description.",
+    )
+    external: DRAgentA2AExternalConfig | None = Field(
+        default=None,
+        description="External identity and URL override for the agent card.",
     )
 
 

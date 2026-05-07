@@ -124,11 +124,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             else None
         )
         skills = self.front_end_config.a2a.skills if self.front_end_config.a2a else []
+        external = self.front_end_config.a2a.external if self.front_end_config.a2a else None
 
         agent_card = await create_agent_card(
             frontend_config=self._a2a_worker.front_end_config,
             cross_app_access=cross_app_access,
             skills=skills,
+            external=external,
         )
         session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
