@@ -13,13 +13,13 @@
 # limitations under the License.
 
 import asyncio
-import os
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
 from nat.builder.builder import Builder
+from nat.builder.context import Context
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.function_info import FunctionInfo
 from nat.cli.register_workflow import register_function
@@ -29,9 +29,22 @@ from nat.runtime.session import SessionManager
 
 import datarobot_genai.nat.datarobot_mem0_memory  # noqa: F401
 from datarobot_genai.core.memory.mem0client import Mem0Client
+from datarobot_genai.nat.datarobot_mem0_memory import Config as Mem0Settings
 from datarobot_genai.nat.helpers import load_workflow
 
 WORKFLOW_WITH_MEMORY_PATH = Path(__file__).parent / "workflow_with_memory.yaml"
+
+
+class ContextUserManager:
+    def __init__(self, context: Context) -> None:
+        self._context = context
+
+    def get_id(self) -> str | None:
+        return self._context.user_id
+
+
+def get_context_user_manager(context: Context) -> ContextUserManager:
+    return ContextUserManager(context)
 
 
 class AutoMemoryProbeAgentConfig(  # type: ignore[call-arg]
@@ -65,10 +78,20 @@ async def auto_memory_probe_agent(
 
 @pytest.fixture
 def mem0_api_key() -> str:
-    api_key = os.environ.get("MEM0_API_KEY")
+    api_key = Mem0Settings().mem0_api_key
     if not api_key:
         pytest.skip("requires MEM0_API_KEY for real Mem0 integration")
     return api_key
+
+
+@pytest.fixture(autouse=True)
+def context_user_manager(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        Context,
+        "user_manager",
+        property(get_context_user_manager),
+        raising=False,
+    )
 
 
 @pytest.fixture

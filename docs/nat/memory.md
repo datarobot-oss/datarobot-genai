@@ -36,14 +36,15 @@ export MEM0_API_KEY=...
 memory:
   mem0_memory:
     _type: dr_mem0_memory
-    api_key: ${MEM0_API_KEY}
+    # Optional explicit override; defaults from MEM0_API_KEY runtime settings.
+    # api_key: ${MEM0_API_KEY}
     # Optional Mem0 organization/project routing:
     # host: https://api.mem0.ai
     # org_id: ...
     # project_id: ...
 ```
 
-**`mem0_memory`** is the local name you reference from the workflow. **`dr_mem0_memory`** is the DataRobot provider type registered by this package. The provider requires `api_key` in the memory config; the example uses NAT's YAML environment interpolation so the library receives it as a config value.
+**`mem0_memory`** is the local name you reference from the workflow. **`dr_mem0_memory`** is the DataRobot provider type registered by this package. The provider reads `MEM0_API_KEY` through DataRobot app framework settings by default; use `api_key` only when you need an explicit workflow-level override.
 
 ## Wrap an agent with automatic memory
 

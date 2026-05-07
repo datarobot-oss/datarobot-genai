@@ -18,9 +18,9 @@ from typing import Any
 
 import pytest
 from nat.memory.models import MemoryItem
-from pydantic import ValidationError
 
 from datarobot_genai.nat import datarobot_mem0_memory
+from datarobot_genai.nat.datarobot_mem0_memory import Config
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0MemoryClientConfig
 
@@ -209,7 +209,9 @@ async def test_registered_memory_client_uses_config_api_key_and_retry(monkeypatc
     created_clients: list[dict[str, Any]] = []
     patched_editors: list[dict[str, Any]] = []
 
-    def fake_create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str) -> FakeMem0Client:
+    def fake_create_mem0_client(
+        config: DRMem0MemoryClientConfig, api_key: str | None
+    ) -> FakeMem0Client:
         created_clients.append({"config": config, "api_key": api_key})
         return FakeMem0Client()
 
@@ -245,7 +247,25 @@ async def test_registered_memory_client_uses_config_api_key_and_retry(monkeypatc
     ]
 
 
-def test_memory_client_config_requires_api_key() -> None:
-    # GIVEN no api_key in the memory config, WHEN the config is validated, THEN it fails.
-    with pytest.raises(ValidationError, match="api_key"):
-        DRMem0MemoryClientConfig()
+def test_memory_client_config_uses_settings_mem0_api_key(monkeypatch: Any) -> None:
+    # GIVEN MEM0_API_KEY is available from DataRobot app framework settings.
+    monkeypatch.setenv("MEM0_API_KEY", "settings-key")
+
+    # WHEN the NAT memory config is created without an explicit api_key.
+    config = DRMem0MemoryClientConfig()
+
+    # THEN the api_key defaults from the settings config.
+    assert Config().mem0_api_key == "settings-key"
+    assert config.api_key == "settings-key"
+
+
+async def test_registered_memory_client_requires_api_key(monkeypatch: Any) -> None:
+    # GIVEN neither memory.api_key nor MEM0_API_KEY is configured.
+    monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    # WHEN NAT builds the memory client, THEN it raises a clear configuration error.
+    with pytest.raises(RuntimeError, match="MEM0_API_KEY"):
+        async with datarobot_mem0_memory.dr_mem0_memory_client(
+            DRMem0MemoryClientConfig(api_key=None), object()
+        ):
+            pass

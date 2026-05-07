@@ -25,6 +25,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_memory
 from nat.data_models.memory import MemoryBaseConfig
@@ -35,6 +36,20 @@ from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
 
 
+class Config(DataRobotAppFrameworkBaseSettings):
+    """
+    Finds variables in the priority order of: env
+    variables (including Runtime Parameters), .env, file_secrets, then
+    Pulumi output variables.
+    """
+
+    mem0_api_key: str | None = None
+
+
+def _get_default_mem0_api_key() -> str | None:
+    return Config().mem0_api_key
+
+
 class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
     MemoryBaseConfig,  # type: ignore[misc]
     RetryMixin,  # type: ignore[misc]
@@ -42,7 +57,10 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 ):
     """A NAT memory backend backed by ``datarobot-genai``'s Mem0 client."""
 
-    api_key: str = Field(description="Mem0 API key used by the memory backend.")
+    api_key: str | None = Field(
+        default_factory=_get_default_mem0_api_key,
+        description="Mem0 API key used by the memory backend.",
+    )
     host: str | None = None
     org_id: str | None = None
     project_id: str | None = None
@@ -126,7 +144,7 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             await self._mem0.delete_all(user_id=kwargs.pop("user_id"))
 
 
-def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str) -> Any:
+def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
     try:
         from datarobot_genai.core.memory.mem0client import Mem0Client
     except ImportError as exc:
@@ -147,6 +165,11 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str) -> Any:
 async def dr_mem0_memory_client(
     config: DRMem0MemoryClientConfig, builder: Builder
 ) -> AsyncGenerator[MemoryEditor]:
+    if not config.api_key:
+        raise RuntimeError(
+            "Mem0 API key is not set. Please configure memory.api_key or MEM0_API_KEY."
+        )
+
     editor: MemoryEditor = DRMem0Editor(_create_mem0_client(config, config.api_key))
     if isinstance(config, RetryMixin):
         editor = patch_with_retry(
