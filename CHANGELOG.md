@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.39
+- Added documentation `docs/nat/a2a-auth.md` on how to configure various auth options for A2A agents.
+
 ## 0.15.38
 - Fixed NAT MCP tool calls failing with `Enum` field `ValidationError` (e.g. Tavily) by setting `use_enum_values=True` on tool input schemas.
 
