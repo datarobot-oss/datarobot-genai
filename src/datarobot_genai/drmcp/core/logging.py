@@ -20,7 +20,12 @@ from collections.abc import Callable
 from typing import Any
 from typing import TypeVar
 
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import ToolError as FastMCPToolError
+from fastmcp.exceptions import ValidationError as FastMCPValidationError
+from pydantic import ValidationError as PydanticValidationError
+
+from datarobot_genai.drtools.core.exceptions import ToolError as DRToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 # Secret patterns to redact from logs
 SECRET_PATTERNS = [
@@ -79,6 +84,32 @@ def _log_error(logger: logging.Logger, func_name: str, error: Exception, **kwarg
     return f"Error in {func_name}: {error_msg}"
 
 
+def _mcp_message_for_dr_tool_error(e: DRToolError) -> str:
+    """Format drtools ToolError for fastmcp (kind prefix, no duplicate wrapping)."""
+    return f"[{e.kind.value}] {e.message}"
+
+
+def _kind_for_wrapped_exception(exc: Exception) -> ToolErrorKind:
+    """Map platform/SDK HTTP errors to kinds when wrapping unknown exceptions.
+
+    Used only when the tool did not raise :class:`DRToolError` — e.g. other tools, deep SDK
+    calls, or new code paths. Predictive tools should still prefer explicit
+    ``raise_tool_error_for_client_error`` where :class:`~datarobot.errors.ClientError` is expected.
+    """
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        if status == 404:
+            return ToolErrorKind.NOT_FOUND
+        if status in (401, 403):
+            return ToolErrorKind.AUTHENTICATION
+        if 400 <= status < 600:
+            return ToolErrorKind.UPSTREAM
+    lowered = str(exc).lower()
+    if "404" in lowered and ("not found" in lowered or "does not exist" in lowered):
+        return ToolErrorKind.NOT_FOUND
+    return ToolErrorKind.INTERNAL
+
+
 def log_execution(func: F) -> F:
     """Log execution with error handling."""
     logger = logging.getLogger(func.__module__)
@@ -91,8 +122,18 @@ def log_execution(func: F) -> F:
             result = await func(*args, **kwargs)
             logger.info(f"Completed {func.__name__}")
             return result
+        except FastMCPToolError as e:
+            _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
+            raise
+        except DRToolError as e:
+            _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
+            raise FastMCPToolError(_mcp_message_for_dr_tool_error(e)) from e
+        except (PydanticValidationError, FastMCPValidationError) as e:
+            error_msg = _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
+            raise FastMCPToolError(f"[{ToolErrorKind.SCHEMA.value}] {error_msg}") from e
         except Exception as e:
             error_msg = _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
-            raise ToolError(error_msg) from e
+            kind = _kind_for_wrapped_exception(e)
+            raise FastMCPToolError(f"[{kind.value}] {error_msg}") from e
 
     return wrapper  # type: ignore[return-value]

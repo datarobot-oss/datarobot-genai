@@ -17,7 +17,7 @@ from __future__ import annotations
 import httpx
 import pytest
 from ag_ui.core import EventType
-from ag_ui.verify import validate_sequence
+from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS

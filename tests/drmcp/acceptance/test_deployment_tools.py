@@ -37,6 +37,12 @@ def _custom_model_fixture_dir() -> str:
     )
 
 
+@pytest.mark.skip(
+    reason=(
+        "MODEL-23163: Not supported for remote MCP deployments; "
+        "should clean up resources when finished."
+    )
+)
 @pytest.mark.asyncio
 class TestDeployCustomModelE2E(ToolBaseE2E):
     """E2E tests for deploy_custom_model when a DataRobot environment is available."""

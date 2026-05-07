@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import AsyncIterator
+from collections.abc import Iterator
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 
+from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
@@ -48,6 +52,9 @@ def get_datarobot_gateway_llm(
         config.update(parameters)
 
     model_name = model_name or default_model_name()
+    if model_name is None:
+        raise ValueError("Model name is required")
+
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
@@ -69,7 +76,7 @@ def get_datarobot_deployment_llm(
     if parameters:
         config.update(parameters)
 
-    model_name = model_name or default_model_name()
+    model_name = model_name or default_model_name() or DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
@@ -83,7 +90,23 @@ def get_datarobot_nim_llm(
     parameters: dict | None = None,
     streaming: bool = True,
 ) -> BaseChatModel:
-    return get_datarobot_deployment_llm(nim_deployment_id, model_name, parameters, streaming)
+    config: dict[str, Any] = {
+        "api_key": default_api_key(),
+        "api_base": default_deployment_url(nim_deployment_id),
+        "streaming": streaming,
+    }
+    if parameters:
+        config.update(parameters)
+
+    model_name = model_name or default_model_name()
+    if model_name is None:
+        raise ValueError("Model name is required")
+
+    if not model_name.startswith("datarobot/"):
+        model_name = "datarobot/" + model_name
+
+    config["model"] = model_name
+    return _create_datarobot_chat_litellm(config)
 
 
 def get_external_llm(
@@ -96,10 +119,54 @@ def get_external_llm(
         config.update(parameters)
 
     model_name = model_name or default_model_name()
+    if model_name is None:
+        raise ValueError("Model name is required")
+
     model_name = model_name.removeprefix("datarobot/")
 
     config["model"] = model_name
     return _create_datarobot_chat_litellm(config)
+
+
+def get_router_llm(
+    primary: Any,
+    fallbacks: list[Any],
+    router_settings: dict | None = None,
+) -> BaseChatModel:
+    """Return a ``ChatLiteLLMRouter`` backed by a ``litellm.Router``.
+
+    Args:
+        primary: ``LLMConfig`` for the primary model.
+        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
+        router_settings: Extra kwargs forwarded to ``litellm.Router``
+            (e.g. ``num_retries``).
+    """
+    from langchain_litellm import ChatLiteLLMRouter  # noqa: PLC0415
+
+    from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
+
+    class _CleanStreamRouter(ChatLiteLLMRouter):
+        """Strip raw tool-call deltas from streaming ``additional_kwargs``.
+
+        ``ChatLiteLLMRouter`` puts raw streaming tool-call delta objects into
+        ``additional_kwargs["tool_calls"]``.  When chunks accumulate these become
+        a flat list of partial deltas with fragmentary JSON arguments.  The
+        correct data already lives in ``tool_call_chunks``; stripping the extra
+        key lets downstream code use that path instead.
+        """
+
+        def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
+            for chunk in super()._stream(*args, **kwargs):
+                chunk.message.additional_kwargs.pop("tool_calls", None)
+                yield chunk
+
+        async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+            async for chunk in super()._astream(*args, **kwargs):
+                chunk.message.additional_kwargs.pop("tool_calls", None)
+                yield chunk
+
+    router = build_litellm_router(primary, fallbacks, router_settings)
+    return _CleanStreamRouter(router=router, model="primary", streaming=True)
 
 
 def get_llm(

@@ -28,19 +28,25 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
+from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
 from llama_index.core.agent.workflow import AgentStream
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.agent.workflow import ToolCall
 from llama_index.core.agent.workflow import ToolCallResult
 from llama_index.core.agent.workflow.workflow_events import AgentWorkflowStartEvent
 from llama_index.core.llms import ChatMessage
 from llama_index.core.llms import MessageRole
+from llama_index.core.llms.mock import MockLLM
 from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
 from ragas import MultiTurnSample
 
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
@@ -212,6 +218,18 @@ def test_datarobot_agent_class_from_llamaindex_set_llm_propagates_to_agents() ->
     assert a2.llm is llm
 
 
+def test_datarobot_agent_class_from_llamaindex_allow_parallel_tool_calls_on_function_agents() -> (
+    None
+):
+    planner = FunctionAgent(name="planner", llm=MockLLM(), tools=[])
+    writer = FunctionAgent(name="writer", llm=MockLLM(), tools=[])
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [planner, writer], lambda _s, _e: "")
+    agent = cls(allow_parallel_tool_calls=False)
+    assert agent.allow_parallel_tool_calls is False
+    assert planner.allow_parallel_tool_calls is False
+    assert writer.allow_parallel_tool_calls is False
+
+
 def test_datarobot_agent_class_from_llamaindex_set_tools_merges_original_plus_mcp() -> None:
     orig1 = Mock(name="static_tool_1")
     orig2 = Mock(name="static_tool_2")
@@ -345,18 +363,55 @@ async def test_llama_index_agent_invoke(
     # THEN: the events follow AG-UI lifecycle pattern
     ag_events, pipeline_interactions, usage = zip(*events)
 
+    # THEN: the sequence is valid per the AG-UI verifier
+    validate_sequence(ag_events)
+
     # THEN: first event is RunStartedEvent
     assert isinstance(ag_events[0], RunStartedEvent)
 
-    # THEN: text message events contain the expected deltas (after step / lifecycle events)
+    # THEN: each agent step gets its own text message (Agent 1 streamed text,
+    # then Agent 2 streamed text after the tool call) with distinct message ids.
     text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
-    assert len(text_starts) == 1
+    text_ends = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
+    assert len(text_starts) == 2
+    assert len(text_ends) == 2
+    assert text_starts[0].message_id != text_starts[1].message_id
+    assert text_starts[0].message_id == text_ends[0].message_id
+    assert text_starts[1].message_id == text_ends[1].message_id
+
     content_events = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content_events] == ["Hello ", "World\n", "Hello ", "World Again\n"]
 
-    # THEN: TextMessageEnd is present
-    end_events = [e for e in ag_events if isinstance(e, TextMessageEndEvent)]
-    assert len(end_events) == 1
+    # THEN: each STEP_STARTED has a matching STEP_FINISHED for the same agent
+    step_started = [e for e in ag_events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in ag_events if isinstance(e, StepFinishedEvent)]
+    assert [e.step_name for e in step_started] == ["Agent 1", "Agent 2"]
+    assert [e.step_name for e in step_finished] == ["Agent 1", "Agent 2"]
+
+    # THEN: text messages live inside their step boundaries (END before STEP_FINISHED)
+    indexed = list(enumerate(ag_events))
+    end_idx = [i for i, e in indexed if isinstance(e, TextMessageEndEvent)]
+    finish_idx = [i for i, e in indexed if isinstance(e, StepFinishedEvent)]
+    assert end_idx[0] < finish_idx[0]
+    assert end_idx[1] < finish_idx[1]
+
+    # THEN: the tool call sits between the two agents' text messages
+    tool_start_idx = next(i for i, e in indexed if isinstance(e, ToolCallStartEvent))
+    tool_end_idx = next(i for i, e in indexed if isinstance(e, ToolCallEndEvent))
+    text_start_idx_1 = next(
+        i
+        for i, e in indexed
+        if isinstance(e, TextMessageStartEvent) and e.message_id == text_starts[1].message_id
+    )
+    assert end_idx[0] < tool_start_idx < tool_end_idx < text_start_idx_1
+
+    # THEN: the tool call result has its own unique message_id (the tool_call_id),
+    # independent of any text bubble.
+    tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
+    assert len(tool_results) == 1
+    assert tool_results[0].message_id == tool_results[0].tool_call_id
+    assert tool_results[0].message_id != text_starts[0].message_id
+    assert tool_results[0].message_id != text_starts[1].message_id
 
     # THEN: last event is RunFinishedEvent with pipeline interactions
     assert isinstance(ag_events[-1], RunFinishedEvent)
@@ -403,10 +458,65 @@ async def test_invoke_agent_output_with_dict_tool_calls(
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, pipeline, _ = zip(*events_out)
 
+    validate_sequence(ag_events)
     assert isinstance(ag_events[-1], RunFinishedEvent)
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["hey"]
     assert pipeline[-1] is not None
+
+
+async def test_invoke_tool_result_message_id_is_distinct_from_text_bubbles(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Text -> tool -> text within one step: tool_result.message_id is the
+    tool_call_id and does not collide with either surrounding text bubble.
+    """
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="go", role=MessageRole.USER)],
+                current_agent_name="A",
+            ),
+            AgentStream(delta="thinking ", response="", current_agent_name="A"),
+            AgentStream(delta="aloud", response="", current_agent_name="A"),
+            AgentOutput(
+                response=ChatMessage(content="thinking aloud", role=MessageRole.ASSISTANT),
+                current_agent_name="A",
+                tool_calls=[ToolSelection(tool_name="t", tool_kwargs={}, tool_id="t1")],
+            ),
+            ToolCall(tool_name="t", tool_kwargs={}, tool_id="t1"),
+            ToolCallResult(
+                tool_name="t",
+                tool_kwargs={},
+                tool_id="t1",
+                tool_output=ToolOutput(
+                    tool_name="t",
+                    content="ok",
+                    raw_input={},
+                    raw_output="ok",
+                    is_error=False,
+                ),
+                return_direct=False,
+            ),
+            AgentStream(delta="after tool", response="", current_agent_name="A"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    validate_sequence(ag_events)
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    tool_results = [e for e in ag_events if isinstance(e, ToolCallResultEvent)]
+    assert len(text_starts) == 2
+    assert len(tool_results) == 1
+    assert tool_results[0].message_id == tool_results[0].tool_call_id == "t1"
+    assert tool_results[0].message_id != text_starts[0].message_id
+    assert tool_results[0].message_id != text_starts[1].message_id
+    # The two text bubbles within the step still have distinct ids.
+    assert text_starts[0].message_id != text_starts[1].message_id
 
 
 async def test_invoke_agent_stream_multiple_agents(
@@ -426,6 +536,7 @@ async def test_invoke_agent_stream_multiple_agents(
     events_out = [e async for e in agent.invoke(run_agent_input)]
     ag_events, _, _ = zip(*events_out)
 
+    validate_sequence(ag_events)
     content = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in content] == ["one", " two"]
     assert any(isinstance(e, TextMessageStartEvent) for e in ag_events)

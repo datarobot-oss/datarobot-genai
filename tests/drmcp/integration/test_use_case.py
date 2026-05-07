@@ -160,4 +160,5 @@ class TestMCPUseCaseToolsIntegration:
                 if hasattr(result.content[0], "text")
                 else str(result.content[0])
             )
-            assert "use case" in error_text.lower() or "error" in error_text.lower()
+            lowered = error_text.lower()
+            assert "use_case_id" in lowered or "use case" in lowered or "validation" in lowered

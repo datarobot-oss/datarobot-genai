@@ -59,10 +59,7 @@ def expectations_for_get_best_model_failure(
             ToolCallTestExpectations(
                 name="get_best_model",
                 parameters={"project_id": nonexistent_project_id},
-                result=(
-                    "Error in get_best_model: "
-                    "ClientError: 404 client error: {'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -78,7 +75,9 @@ def expectations_for_get_best_model_failure(
 
 @pytest.fixture(scope="session")
 def expectations_for_score_dataset_with_model_success(
-    classification_project_id: str, model_id: str, dataset_url: str
+    classification_project_id: str,
+    model_id: str,
+    classification_predict_dataset: Any,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
@@ -87,18 +86,26 @@ def expectations_for_score_dataset_with_model_success(
                 parameters={
                     "project_id": classification_project_id,
                     "model_id": model_id,
-                    "dataset_url": dataset_url,
+                    "dataset_id": classification_predict_dataset["dataset_id"],
                 },
                 result=SHOULD_NOT_BE_EMPTY,
             ),
         ],
-        llm_response_content_contains_expectations=["Scoring job started"],
+        llm_response_content_contains_expectations=[
+            "scoring",
+            "job",
+            "started",
+            "dataset",
+            "project",
+        ],
     )
 
 
 @pytest.fixture(scope="session")
 def expectations_for_score_dataset_with_model_failure(
-    classification_project_id: str, nonexistent_model_id: str, dataset_url: str
+    classification_project_id: str,
+    nonexistent_model_id: str,
+    classification_predict_dataset: Any,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
@@ -107,13 +114,9 @@ def expectations_for_score_dataset_with_model_failure(
                 parameters={
                     "project_id": classification_project_id,
                     "model_id": nonexistent_model_id,
-                    "dataset_url": dataset_url,
+                    "dataset_id": classification_predict_dataset["dataset_id"],
                 },
-                result=(
-                    "Error in score_dataset_with_model: "
-                    "ClientError: 404 client error: "
-                    "{'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[
@@ -193,18 +196,13 @@ class TestModelE2E(ToolBaseE2E):
                 test_name,
             )
 
-    @pytest.mark.skip(
-        reason=(
-            "Skipping score_dataset_with_model test, until I fix the dataset_url fixture to "
-            "point to a valid score dataset for the classification project"
-        )
-    )
     @pytest.mark.parametrize(
         "prompt_template",
         [
             """
         I'm working on a machine learning project with ID '{project_id}' and I have a
-        DataRobot model with ID '{model_id}'. I need to score a dataset at {dataset_url}.
+        DataRobot model with ID '{model_id}'. Please start scoring the AI Catalog dataset
+        '{dataset_id}' with that model (use the catalog dataset id, not a URL or local file).
         Can you help me score the dataset?
         """
         ],
@@ -215,13 +213,13 @@ class TestModelE2E(ToolBaseE2E):
         expectations_for_score_dataset_with_model_success: ETETestExpectations,
         classification_project_id: str,
         model_id: str,
-        dataset_url: str,
+        classification_predict_dataset: Any,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(
             project_id=classification_project_id,
             model_id=model_id,
-            dataset_url=dataset_url,
+            dataset_id=classification_predict_dataset["dataset_id"],
         )
 
         async with ete_test_mcp_session() as session:
@@ -239,9 +237,9 @@ class TestModelE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        I'm working on a machine learning project with ID '{project_id}' and I have a
-        DataRobot model with ID '{model_id}'. I need to score a dataset at {dataset_url}.
-        Can you help me score the dataset?
+        I'm working on a machine learning project with ID '{project_id}' but my model ID is
+        wrong: '{model_id}'. Try to start scoring AI Catalog dataset '{dataset_id}' with that
+        model id so we can see the error from the invalid model id.
         """
         ],
     )
@@ -251,13 +249,13 @@ class TestModelE2E(ToolBaseE2E):
         expectations_for_score_dataset_with_model_failure: ETETestExpectations,
         classification_project_id: str,
         nonexistent_model_id: str,
-        dataset_url: str,
+        classification_predict_dataset: Any,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(
             project_id=classification_project_id,
             model_id=nonexistent_model_id,
-            dataset_url=dataset_url,
+            dataset_id=classification_predict_dataset["dataset_id"],
         )
 
         async with ete_test_mcp_session() as session:

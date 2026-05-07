@@ -12,16 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
+
+from ag_ui.core import StepStartedEvent
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import Tool
 from ag_ui.core import UserMessage
 from langchain_core.messages import ToolMessage as LangchainToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponseChunk
+from nat.data_models.api_server import ChatResponseChunkChoice
+from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import Message
 
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_event_response_to_chat_response_chunk,
+)
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_run_agent_input_to_chat_request,
@@ -259,9 +269,6 @@ def test_convert_dragent_event_response_to_str_joins_text_deltas() -> None:
 
 def test_convert_dragent_event_response_to_str_ignores_non_text_events() -> None:
     # GIVEN a response mixing text events with non-text-bearing events
-    from ag_ui.core import StepStartedEvent
-    from ag_ui.core import TextMessageChunkEvent
-
     response = DRAgentEventResponse(
         events=[
             TextMessageContentEvent(message_id="m1", delta="Hi"),
@@ -287,3 +294,102 @@ def test_convert_dragent_event_response_to_str_empty_events() -> None:
 
     # THEN result is empty string
     assert result == ""
+
+
+# --- convert_dragent_event_response_to_chat_response_chunk ---
+
+
+def _make_chat_response_chunk(
+    *, content: str, chunk_id: str = "existing-chunk"
+) -> ChatResponseChunk:
+    return ChatResponseChunk(
+        id=chunk_id,
+        choices=[
+            ChatResponseChunkChoice(index=0, delta=ChoiceDelta(content=content)),
+        ],
+        created=datetime.datetime.now(datetime.UTC),
+    )
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_from_text_events() -> None:
+    # GIVEN a response with no original_chunk and multiple text content events
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[
+            TextMessageContentEvent(message_id="m1", delta="Hello "),
+            TextMessageContentEvent(message_id="m1", delta="world"),
+        ],
+    )
+
+    # WHEN converting to ChatResponseChunk
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN a new chunk is built with concatenated content and OpenAI-like shape
+    assert isinstance(result, ChatResponseChunk)
+    assert len(result.choices) == 1
+    assert result.choices[0].index == 0
+    assert result.choices[0].delta.content == "Hello world"
+    assert len(result.id) == 32
+    assert result.created.tzinfo == datetime.UTC
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_includes_chunk_events() -> None:
+    # GIVEN content split across TextMessageContentEvent and TextMessageChunkEvent
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[
+            TextMessageContentEvent(message_id="m1", delta="a"),
+            TextMessageChunkEvent(message_id="m1", delta="b"),
+        ],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN both event types contribute to delta content
+    assert result.choices[0].delta.content == "ab"
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_ignores_non_text_events() -> None:
+    # GIVEN text events interleaved with non-text AG-UI events
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[
+            TextMessageContentEvent(message_id="m1", delta="x"),
+            StepStartedEvent(step_name="s"),
+            TextMessageChunkEvent(message_id="m1", delta="y"),
+        ],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN only text-bearing events are concatenated
+    assert result.choices[0].delta.content == "xy"
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_empty_events() -> None:
+    # GIVEN no original_chunk and no text events
+    response = DRAgentEventResponse(original_chunk=None, events=[])
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN content is empty but structure is still valid
+    assert result.choices[0].delta.content == ""
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_returns_original_chunk() -> None:
+    # GIVEN a response that already carries a NAT ChatResponseChunk
+    existing = _make_chat_response_chunk(content="from-stream")
+    response = DRAgentEventResponse(
+        original_chunk=existing,
+        events=[TextMessageContentEvent(message_id="m1", delta="ignored when chunk set")],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the existing chunk is returned unchanged (events are not merged)
+    assert result is existing
+    assert result.choices[0].delta.content == "from-stream"

@@ -30,6 +30,12 @@ def _custom_model_fixture_dir() -> str:
     )
 
 
+@pytest.mark.skip(
+    reason=(
+        "MODEL-23163: deploy_custom_model is not registered (tool_metadata disabled); "
+        "not supported for remote MCP deployment."
+    ),
+)
 @pytest.mark.asyncio
 class TestMCPDeploymentIntegration:
     """Integration tests for MCP deployment tools."""

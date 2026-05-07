@@ -20,11 +20,10 @@ from typing import Literal
 from urllib.parse import quote
 
 import httpx
-from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from pydantic import BaseModel
 from pydantic import Field
 
-from datarobot_genai.drtools.core.auth import get_access_token
+from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
@@ -36,6 +35,8 @@ MAX_SEARCH_RESULTS = 250
 async def get_microsoft_graph_access_token() -> str | ToolError:
     """
     Get Microsoft Graph OAuth access token with error handling.
+
+    Uses DataRobot OBO when available; otherwise ``x-datarobot-microsoft-graph-access-token``.
 
     Returns
     -------
@@ -50,22 +51,11 @@ async def get_microsoft_graph_access_token() -> str | ToolError:
         # Use token
         ```
     """
-    try:
-        access_token = await get_access_token("microsoft")
-        if not access_token:
-            logger.warning("Empty access token received")
-            return ToolError("Received empty access token. Please complete the OAuth flow.")
-        return access_token
-    except OAuthServiceClientErr as e:
-        logger.error(f"OAuth client error: {e}", exc_info=True)
-        return ToolError(
-            "Could not obtain access token for Microsoft. Make sure the OAuth "
-            "permission was granted for the application to act on your behalf."
-        )
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Unexpected error obtaining access token: {error_msg}", exc_info=True)
-        return ToolError("An unexpected error occurred while obtaining access token for Microsoft.")
+    return await get_oauth_access_token_with_header_fallback(
+        "microsoft",
+        display_name="Microsoft",
+        access_token_header_segment="microsoft-graph",
+    )
 
 
 class MicrosoftGraphError(Exception):

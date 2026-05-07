@@ -117,7 +117,7 @@ def normalize_base_url(base_url: str) -> str:
 
 
 def build_agui_payload(user_prompt: str) -> dict[str, typing.Any]:
-    """Build an AG-UI RunAgentInput payload."""
+    """Build an AG-UI RunAgentInput payload from a single prompt string."""
     return {
         "threadId": str(uuid4()),
         "runId": str(uuid4()),

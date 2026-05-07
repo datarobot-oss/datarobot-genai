@@ -66,7 +66,7 @@ class AgentKernel:
         }
         if stream:
             return CompletionCreateParamsStreaming(
-                model="datarobot-deployed-llm",
+                model="unknown",
                 messages=[
                     ChatCompletionSystemMessageParam(
                         content="You are a helpful assistant",
@@ -84,7 +84,7 @@ class AgentKernel:
             )
         else:
             return CompletionCreateParamsNonStreaming(
-                model="datarobot-deployed-llm",
+                model="unknown",
                 messages=[
                     ChatCompletionSystemMessageParam(
                         content="You are a helpful assistant",

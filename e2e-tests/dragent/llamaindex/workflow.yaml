@@ -26,3 +26,5 @@ workflow:
   _type: llamaindex_agent
   llm_name: datarobot_llm
   description: LlamaIndex planner/writer agent
+  verbose: True
+  allow_parallel_tool_calls: True

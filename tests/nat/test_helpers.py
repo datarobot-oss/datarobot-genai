@@ -14,6 +14,7 @@
 
 from typing import Any
 from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import jwt
@@ -250,7 +251,13 @@ def test_add_headers_to_datarobot_llm_deployment(config, headers, expected):
     ],
 )
 def test_load_config(config_yaml, headers, should_have_headers):
-    with patch("datarobot_genai.nat.helpers.yaml_load", return_value=config_yaml):
+    with (
+        patch("datarobot_genai.nat.helpers.yaml_load", return_value=config_yaml),
+        patch(
+            "datarobot_genai.nat.datarobot_auth_provider.MCPConfig",
+            return_value=MagicMock(server_config=None),
+        ),
+    ):
         config = load_config("some_path", headers)
     dr_auth_config = config.authentication["some_auth_name"]
     assert isinstance(dr_auth_config, DataRobotMCPAuthProviderConfig)

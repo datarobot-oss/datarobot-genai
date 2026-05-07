@@ -25,6 +25,8 @@ from datarobot.auth.users import User
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from dotenv import load_dotenv
 
+from .helpers import BASE_URL
+
 # Load .env from e2e-tests root
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -60,6 +62,6 @@ def http_client(authorization_context_encoded: str) -> Generator[httpx.Client]: 
         "X-DataRobot-Authorization-Context": authorization_context_encoded,
     }
     with httpx.Client(
-        base_url="http://localhost:8080", timeout=timeout, headers=headers
+        base_url=BASE_URL, timeout=timeout, headers=headers
     ) as client:
         yield client

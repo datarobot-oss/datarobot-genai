@@ -13,38 +13,16 @@
 # limitations under the License.
 
 import inspect
-from pathlib import Path
 from typing import Any
 
 import pytest
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
+from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
-
-
-@pytest.fixture(scope="session")
-def expectations_for_predict_by_file_path_success(
-    deployment_id: str, classification_predict_file_path: Path
-) -> ETETestExpectations:
-    return ETETestExpectations(
-        tool_calls_expected=[
-            ToolCallTestExpectations(
-                name="predict_by_file_path",
-                parameters={
-                    "deployment_id": deployment_id,
-                    "file_path": str(classification_predict_file_path),
-                    "timeout": 600,
-                },
-                result=SHOULD_NOT_BE_EMPTY,
-            ),
-        ],
-        llm_response_content_contains_expectations=[
-            "prediction",
-        ],
-    )
 
 
 @pytest.fixture(scope="session")
@@ -92,6 +70,35 @@ def expectations_for_predict_from_project_data_success(
 
 
 @pytest.fixture(scope="session")
+def expectations_for_batch_predict_then_get_batch_results_success(
+    deployment_id: str,
+    classification_predict_dataset: Any,
+) -> ETETestExpectations:
+    return ETETestExpectations(
+        tool_calls_expected=[
+            ToolCallTestExpectations(
+                name="predict_by_ai_catalog",
+                parameters={
+                    "deployment_id": deployment_id,
+                    "dataset_id": classification_predict_dataset["dataset_id"],
+                },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_results",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+        ],
+        llm_response_content_contains_expectations=[
+            "prediction",
+            "job",
+            "result",
+        ],
+    )
+
+
+@pytest.fixture(scope="session")
 def expectations_for_get_prediction_explanations_success(
     classification_project_id: str, model_id: str, classification_predict_dataset: Any
 ) -> ETETestExpectations:
@@ -117,40 +124,6 @@ def expectations_for_get_prediction_explanations_success(
 @pytest.mark.asyncio
 class TestPredictE2E(ToolBaseE2E):
     """End-to-end tests for prediction-related functionality."""
-
-    @pytest.mark.parametrize(
-        "prompt_template",
-        [
-            """
-        I have a DataRobot deployment with ID '{deployment_id}'.
-        Please run batch predictions using the local CSV file at '{file_path}'
-        with a timeout of 600 seconds.
-        """
-        ],
-    )
-    async def test_predict_by_file_path_success(
-        self,
-        llm_client: Any,
-        expectations_for_predict_by_file_path_success: ETETestExpectations,
-        deployment_id: str,
-        classification_predict_file_path: Path,
-        prompt_template: str,
-    ) -> None:
-        prompt = prompt_template.format(
-            deployment_id=deployment_id,
-            file_path=str(classification_predict_file_path),
-        )
-
-        async with ete_test_mcp_session() as session:
-            frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_predict_by_file_path_success"
-            await self._run_test_with_expectations(
-                prompt,
-                expectations_for_predict_by_file_path_success,
-                llm_client,
-                session,
-                test_name,
-            )
 
     @pytest.mark.parametrize(
         "prompt_template",
@@ -191,6 +164,45 @@ class TestPredictE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
+        The MCP server has no access to my laptop files. Deployment ID is '{deployment_id}'.
+        Run batch scoring using only the AI Catalog dataset id '{dataset_id}' as the input source.
+        Do not use local file paths or upload from this machine.
+        """
+        ],
+    )
+    async def test_predict_by_ai_catalog_catalog_id_only_prompt(
+        self,
+        llm_client: Any,
+        expectations_for_predict_by_ai_catalog_success: ETETestExpectations,
+        deployment_id: str,
+        classification_project_id: str,
+        classification_predict_dataset: Any,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            dataset_id=classification_predict_dataset["dataset_id"],
+            project_id=classification_project_id,
+        )
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_predict_by_ai_catalog_catalog_id_only_prompt"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_predict_by_ai_catalog_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
         I have a DataRobot deployment with ID '{deployment_id}' and project ID '{project_id}'.
         Please run batch predictions using the training data holdout partition.
         """
@@ -214,6 +226,44 @@ class TestPredictE2E(ToolBaseE2E):
             await self._run_test_with_expectations(
                 prompt,
                 expectations_for_predict_from_project_data_success,
+                llm_client,
+                session,
+                test_name,
+            )
+
+    @pytest.mark.parametrize(
+        "prompt_template",
+        [
+            """
+        First, run batch scoring on DataRobot deployment '{deployment_id}' using AI Catalog
+        dataset '{dataset_id}'. When the first response includes a batch job identifier, use that
+        identifier in a follow-up step to fetch the scored CSV content (still within this
+        conversation). Summarize what you got back from the second step.
+        """
+        ],
+    )
+    async def test_batch_predict_then_get_batch_prediction_results(
+        self,
+        llm_client: Any,
+        expectations_for_batch_predict_then_get_batch_results_success: ETETestExpectations,
+        deployment_id: str,
+        classification_predict_dataset: Any,
+        prompt_template: str,
+    ) -> None:
+        prompt = prompt_template.format(
+            deployment_id=deployment_id,
+            dataset_id=classification_predict_dataset["dataset_id"],
+        )
+        async with ete_test_mcp_session() as session:
+            frame = inspect.currentframe()
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_batch_predict_then_get_batch_prediction_results"
+            )
+            await self._run_test_with_expectations(
+                prompt,
+                expectations_for_batch_predict_then_get_batch_results_success,
                 llm_client,
                 session,
                 test_name,

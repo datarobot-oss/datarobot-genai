@@ -27,11 +27,29 @@ from datarobot_genai.drtools.core.clients.gdrive import SUPPORTED_FIELDS_STR
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveClient
 from datarobot_genai.drtools.core.clients.gdrive import get_gdrive_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_DRIVE_SEARCH_DOCS = "https://developers.google.com/drive/api/guides/search-files"
+_DRIVE_EXPORT_DOCS = "https://developers.google.com/workspace/drive/api/guides/ref-export-formats"
+_DRIVE_CREATE_DOCS = "https://developers.google.com/drive/api/guides/create-file"
+_DRIVE_FILES_UPDATE_DOCS = "https://developers.google.com/drive/api/reference/rest/v3/files/update"
+_DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage-sharing"
 
-@tool_metadata(tags={"google", "gdrive", "list", "search", "files", "find", "contents"})
+
+@tool_metadata(
+    tags={"gdrive", "google", "list", "search", "files", "find", "contents"},
+    description=(
+        "[GDrive—find files] Use when the user needs Google Drive file names and ids with "
+        "optional folder scope, Drive query string, and pagination. Not file body text "
+        "(gdrive_read_content), not SharePoint (microsoft_graph_search_content).\n\n"
+        f"limit must be >= page_size and a multiple of page_size (page_size max {MAX_PAGE_SIZE}, "
+        f"limit max {LIMIT}). Examples: page_size=10, limit=50; page_size=3, limit=3; "
+        "page_size=12, limit=36.\n\n"
+        f"Reference: {_DRIVE_SEARCH_DOCS}"
+    ),
+)
 async def gdrive_find_contents(
     *,
     page_size: Annotated[
@@ -60,18 +78,6 @@ async def gdrive_find_contents(
         f"Default = {SUPPORTED_FIELDS_STR}",
     ] = None,
 ) -> dict[str, Any]:
-    """
-    Search or list files in the user's Google Drive with pagination and filtering support.
-    Use this tool to discover GDrive file names and IDs for use with other tools.
-
-    Limit must be bigger than or equal to page size and it must be multiplication of page size.
-
-    Examples
-    --------
-        - page size = 10 limit = 50
-        - page size = 3 limit = 3
-        - page size = 12 limit = 36
-    """
     access_token = await get_gdrive_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
@@ -96,7 +102,21 @@ async def gdrive_find_contents(
     }
 
 
-@tool_metadata(tags={"google", "gdrive", "read", "content", "file", "download"})
+@tool_metadata(
+    tags={"gdrive", "google", "read", "content", "file", "download"},
+    description=(
+        "[GDrive—read file] Use when you have a Drive file_id (from gdrive_find_contents) and need "
+        "exported text or markdown for Workspace types. Not listing files, not binary media "
+        "download.\n\n"
+        'Examples: gdrive_read_content(file_id="1ABC123def456"); '
+        'gdrive_read_content(file_id="1ABC...", target_format="text/plain"). '
+        "Discover file_id with gdrive_find_contents first.\n\n"
+        "Defaults: Google Docs -> text/markdown; Sheets -> text/csv; Slides -> text/plain; "
+        "PDF -> text/plain; other text as-is. Binary files are not supported; large exports "
+        "may fail.\n\n"
+        f"Reference (export MIME types): {_DRIVE_EXPORT_DOCS}"
+    ),
+)
 async def gdrive_read_content(
     *,
     file_id: Annotated[str, "The ID of the file to read."],
@@ -107,29 +127,10 @@ async def gdrive_read_content(
         "If not specified, uses sensible defaults. Has no effect on regular files.",
     ] = None,
 ) -> dict[str, Any]:
-    """
-    Retrieve the content of a specific Google drive file by its ID.
-
-    Usage:
-        - Basic: gdrive_read_content(file_id="1ABC123def456")
-        - Custom format: gdrive_read_content(file_id="1ABC...", target_format="text/plain")
-        - First use gdrive_find_contents to discover file IDs
-
-    Supported conversions (defaults):
-        - Google Docs -> Markdown (text/markdown)
-        - Google Sheets -> CSV (text/csv)
-        - Google Slides -> Plain text (text/plain)
-        - PDF files -> Extracted text (text/plain)
-        - Other text files -> Downloaded as-is
-
-    Note: Binary files (images, videos, etc.) are not supported and will return an error.
-    Large Google Workspace files (>10MB) may fail to export due to API limits.
-
-    Refer to Google Drive export formats documentation:
-    https://developers.google.com/workspace/drive/api/guides/ref-export-formats
-    """
     if not file_id or not file_id.strip():
-        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'file_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     access_token = await get_gdrive_access_token()
     if isinstance(access_token, ToolError):
@@ -141,7 +142,19 @@ async def gdrive_read_content(
     return file_content.as_flat_dict()
 
 
-@tool_metadata(tags={"google", "gdrive", "create", "write", "file", "folder"}, enabled=False)
+@tool_metadata(
+    tags={"gdrive", "google", "create", "write", "file", "folder"},
+    enabled=False,
+    description=(
+        "[GDrive—create file] Use when creating a new Drive file or folder from name + MIME type, "
+        "optional parent folder and initial text. Not search (gdrive_find_contents), not "
+        "metadata-only updates (gdrive_update_metadata).\n\n"
+        'Examples: gdrive_create_file(name="report.txt", mime_type="text/plain"); '
+        "Google Doc with initial_content; folder with mime_type "
+        "application/vnd.google-apps.folder; file in folder via parent_id.\n\n"
+        f"Reference: {_DRIVE_CREATE_DOCS}"
+    ),
+)
 async def gdrive_create_file(
     *,
     name: Annotated[str, "The name for the new file or folder."],
@@ -157,44 +170,15 @@ async def gdrive_create_file(
         str | None, "Text content to populate the new file, if applicable."
     ] = None,
 ) -> dict[str, Any]:
-    """
-    Create a new file or folder in Google Drive.
-
-    This tool is essential for an AI agent to generate new output (like reports or
-    documentation) directly into the Drive structure.
-
-    Usage:
-        - Create empty file: gdrive_create_file(name="report.txt", mime_type="text/plain")
-        - Create Google Doc: gdrive_create_file(
-            name="My Report",
-            mime_type="application/vnd.google-apps.document",
-            initial_content="# Report Title"
-          )
-        - Create folder: gdrive_create_file(
-            name="Reports",
-            mime_type="application/vnd.google-apps.folder"
-          )
-        - Create in subfolder: gdrive_create_file(
-            name="file.txt",
-            mime_type="text/plain",
-            parent_id="folder_id_here",
-            initial_content="File content"
-          )
-
-    Supported MIME types:
-        - text/plain: Plain text file
-        - application/vnd.google-apps.document: Google Doc (content auto-converted)
-        - application/vnd.google-apps.spreadsheet: Google Sheet (CSV content works best)
-        - application/vnd.google-apps.folder: Folder (initial_content is ignored)
-
-    Note: For Google Workspace files, the Drive API automatically converts plain text
-    content to the appropriate format.
-    """
     if not name or not name.strip():
-        raise ToolError("Argument validation error: 'name' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'name' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if not mime_type or not mime_type.strip():
-        raise ToolError("Argument validation error: 'mime_type' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'mime_type' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     access_token = await get_gdrive_access_token()
     if isinstance(access_token, ToolError):
@@ -212,7 +196,15 @@ async def gdrive_create_file(
 
 
 @tool_metadata(
-    tags={"google", "gdrive", "update", "metadata", "rename", "star", "trash"}, enabled=False
+    tags={"gdrive", "google", "update", "metadata", "rename", "star", "trash"},
+    enabled=False,
+    description=(
+        "[GDrive—metadata] Use when renaming, starring, or trashing an existing file by id. "
+        "Not reading content (gdrive_read_content), not ACL changes (gdrive_manage_access).\n\n"
+        "Examples: new_name only; starred=True/False; trash=True/restore False; combine fields. "
+        "At least one of new_name, starred, or trash is required.\n\n"
+        f"Reference: {_DRIVE_FILES_UPDATE_DOCS}"
+    ),
 )
 async def gdrive_update_metadata(
     *,
@@ -221,39 +213,23 @@ async def gdrive_update_metadata(
     starred: Annotated[bool | None, "Set to True to star the file or False to unstar it."] = None,
     trash: Annotated[bool | None, "Set to True to trash the file or False to restore it."] = None,
 ) -> dict[str, Any]:
-    """
-    Update non-content metadata fields of a Google Drive file or folder.
-
-    This tool allows you to:
-    - Rename files and folders by setting new_name
-    - Star or unstar files (per-user preference) with starred
-    - Move files to trash or restore them with trash
-
-    Usage:
-        - Rename: gdrive_update_metadata(file_id="1ABC...", new_name="New Name.txt")
-        - Star: gdrive_update_metadata(file_id="1ABC...", starred=True)
-        - Unstar: gdrive_update_metadata(file_id="1ABC...", starred=False)
-        - Trash: gdrive_update_metadata(file_id="1ABC...", trash=True)
-        - Restore: gdrive_update_metadata(file_id="1ABC...", trash=False)
-        - Multiple: gdrive_update_metadata(file_id="1ABC...", new_name="New.txt", starred=True)
-
-    Note:
-        - At least one of new_name, starred, or trash must be provided.
-        - Starring is per-user: starring a shared file only affects your view.
-        - Trashing a folder trashes all contents recursively.
-        - Trashing requires permissions (owner for My Drive, organizer for Shared Drives).
-    """
     if not file_id or not file_id.strip():
-        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'file_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if new_name is None and starred is None and trash is None:
         raise ToolError(
             "Argument validation error: at least one of 'new_name', 'starred', or 'trash' "
-            "must be provided."
+            "must be provided.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     if new_name is not None and not new_name.strip():
-        raise ToolError("Argument validation error: 'new_name' cannot be empty or whitespace.")
+        raise ToolError(
+            "Argument validation error: 'new_name' cannot be empty or whitespace.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     access_token = await get_gdrive_access_token()
     if isinstance(access_token, ToolError):
@@ -270,14 +246,29 @@ async def gdrive_update_metadata(
     return updated_file.as_flat_dict()
 
 
-@tool_metadata(tags={"google", "gdrive", "manage", "access", "acl"}, enabled=False)
+@tool_metadata(
+    tags={"gdrive", "google", "manage", "access", "acl"},
+    enabled=False,
+    description=(
+        "[GDrive—permissions] Use when adding, changing, or removing sharing on a file by id "
+        "(email or permission id). Not rename/trash (gdrive_update_metadata), not read content.\n\n"
+        'Examples: action="add", role="reader", email_address="user@example.com"; '
+        'action="update" with permission_id; action="remove" with permission_id.\n\n'
+        f"Reference: {_DRIVE_PERMISSIONS_DOCS}"
+    ),
+)
 async def gdrive_manage_access(
     *,
     file_id: Annotated[str, "The ID of the file or folder."],
-    action: Annotated[Literal["add", "update", "remove"], "The operation to perform."],
+    action: Annotated[
+        Literal["add", "update", "remove"],
+        "Pass exactly one of these strings: 'add', 'update', 'remove'.",
+    ],
     role: Annotated[
         Literal["reader", "commenter", "writer", "fileOrganizer", "organizer", "owner"] | None,
-        "The access level.",
+        "Required for 'add' and 'update' (omit for 'remove'). Pass exactly one of these strings "
+        "(camelCase as shown): 'reader', 'commenter', 'writer', 'fileOrganizer', 'organizer', "
+        "'owner'.",
     ] = None,
     email_address: Annotated[
         str | None, "The email of the user or group (required for 'add')."
@@ -289,40 +280,26 @@ async def gdrive_manage_access(
         bool, "Whether to transfer ownership (only for 'update' to 'owner' role)."
     ] = False,
 ) -> dict[str, Any]:
-    """
-    Consolidated tool for sharing files and managing permissions.
-    Pushes all logic to the Google Drive API permissions resource (create, update, delete).
-
-    Usage:
-        - Add role: gdrive_manage_access(
-            file_id="SomeFileId",
-            action="add",
-            role="reader",
-            email_address="dummy@user.com"
-          )
-        - Update role: gdrive_manage_access(
-            file_id="SomeFileId",
-            action="update",
-            role="reader",
-            permission_id="SomePermissionId"
-          )
-        - Remove permission: gdrive_manage_access(
-            file_id="SomeFileId",
-            action="remove",
-            permission_id="SomePermissionId"
-          )
-    """
     if not file_id or not file_id.strip():
-        raise ToolError("Argument validation error: 'file_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'file_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if action == "add" and not email_address:
-        raise ToolError("'email_address' is required for action 'add'.")
+        raise ToolError(
+            "'email_address' is required for action 'add'.", kind=ToolErrorKind.VALIDATION
+        )
 
     if action in ("update", "remove") and not permission_id:
-        raise ToolError("'permission_id' is required for action 'update' or 'remove'.")
+        raise ToolError(
+            "'permission_id' is required for action 'update' or 'remove'.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     if action != "remove" and not role:
-        raise ToolError("'role' is required for action 'add' or 'update'.")
+        raise ToolError(
+            "'role' is required for action 'add' or 'update'.", kind=ToolErrorKind.VALIDATION
+        )
 
     access_token = await get_gdrive_access_token()
     if isinstance(access_token, ToolError):

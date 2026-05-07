@@ -33,7 +33,6 @@ from typing import TypeVar
 
 from ag_ui.core import BaseEvent
 from ag_ui.core import Event
-from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -147,8 +146,12 @@ def to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip run lifecycle only; step events are emitted for client step boundaries.
-                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                # Skip only RunStarted: the OpenAI client stream does not replace the
+                # API gateway's own RunStarted (e.g. Fastapi AG-UI layer may emit one first).
+                # Do **not** skip RunFinished: HttpAgent / useAgUiChat rely on RUN_FINISHED
+                # arriving with the model stream; otherwise the UI can stay in "running"
+                # and never process follow-up turns.
+                if isinstance(event, RunStartedEvent):
                     continue
 
                 if isinstance(event, BaseEvent):
@@ -253,8 +256,12 @@ def streaming_iterator_to_custom_model_streaming_response(
                 last_pipeline_interactions = pipeline_interactions
                 last_usage_metrics = usage_metrics
 
-                # Skip run lifecycle only; step events are emitted for client step boundaries.
-                if isinstance(event, (RunStartedEvent, RunFinishedEvent)):
+                # Skip only RunStarted: the OpenAI client stream does not replace the
+                # API gateway's own RunStarted (e.g. Fastapi AG-UI layer may emit one first).
+                # Do **not** skip RunFinished: HttpAgent / useAgUiChat rely on RUN_FINISHED
+                # arriving with the model stream; otherwise the UI can stay in "running"
+                # and never process follow-up turns.
+                if isinstance(event, RunStartedEvent):
                     continue
 
                 if isinstance(event, BaseEvent):

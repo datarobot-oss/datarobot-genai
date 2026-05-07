@@ -20,6 +20,7 @@ from typing import Any
 
 from langchain.tools import BaseTool
 from langchain_core.tools import StructuredTool
+from langchain_core.tools.base import ToolException
 from langchain_mcp_adapters.sessions import SSEConnection
 from langchain_mcp_adapters.sessions import StreamableHttpConnection
 from langchain_mcp_adapters.sessions import create_session
@@ -46,9 +47,17 @@ def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
     async def _invoke_inner(**kwargs: Any) -> Any:
         # Call the inner tool's coroutine so we return (content, artifact), not the
         # formatted output that ainvoke() would return.
-        if getattr(inner, "coroutine", None) is not None:
-            return await inner.coroutine(**kwargs)
-        return await inner.ainvoke(kwargs)
+        try:
+            if getattr(inner, "coroutine", None) is not None:
+                return await inner.coroutine(**kwargs)
+            return await inner.ainvoke(kwargs)
+        except ToolException as exc:
+            logger.warning("MCP tool '%s' raised ToolException: %s", inner.name, exc)
+            error_content = f"Tool '{inner.name}' failed: {exc}"
+            response_format = getattr(inner, "response_format", "content_and_artifact")
+            if response_format == "content_and_artifact":
+                return error_content, None
+            return error_content
 
     class _MCPToolWrapper(StructuredTool):
         """Thin wrapper that adds 'runtime' to injected args for callback filtering."""

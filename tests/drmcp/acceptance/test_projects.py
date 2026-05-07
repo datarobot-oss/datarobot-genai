@@ -126,10 +126,10 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
             ),
         ],
         llm_response_content_contains_expectations=[
-            classification_project_name,
-            classification_dataset_name,
+            classification_project_name.lower(),
+            classification_dataset_name.lower(),
             classification_dataset_id,
-            "Source",
+            "source",
         ],
     )
 

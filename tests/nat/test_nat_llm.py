@@ -148,7 +148,10 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
 
 async def test_datarobot_nim_langchain():
     llm_config = DataRobotNIMModelConfig(
-        nim_deployment_id="123", temperature=0.0, api_key="some_token"
+        nim_deployment_id="123",
+        model_name="azure/gpt-4o-2024-11-20",
+        temperature=0.0,
+        api_key="some_token",
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -158,7 +161,10 @@ async def test_datarobot_nim_langchain():
 
 async def test_datarobot_nim_crewai():
     llm_config = DataRobotNIMModelConfig(
-        nim_deployment_id="123", temperature=0.0, api_key="some_token"
+        nim_deployment_id="123",
+        model_name="azure/gpt-4o-2024-11-20",
+        temperature=0.0,
+        api_key="some_token",
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -168,7 +174,10 @@ async def test_datarobot_nim_crewai():
 
 async def test_datarobot_nim_llamaindex():
     llm_config = DataRobotNIMModelConfig(
-        nim_deployment_id="123", temperature=0.0, api_key="some_token"
+        nim_deployment_id="123",
+        model_name="azure/gpt-4o-2024-11-20",
+        temperature=0.0,
+        api_key="some_token",
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -177,7 +186,9 @@ async def test_datarobot_nim_llamaindex():
 
 
 async def test_datarobot_llm_component_langchain_use_gateway():
-    llm_config = DataRobotLLMComponentModelConfig(api_key="some_token")
+    llm_config = DataRobotLLMComponentModelConfig(
+        api_key="some_token", model_name="azure/gpt-4o-2024-11-20"
+    )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)

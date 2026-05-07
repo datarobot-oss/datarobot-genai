@@ -1,30 +1,32 @@
-# Test matrix
+# E2E test matrix
 
-Agents has variety of frameworks, and each framework can be configured with different LLM options. We aim to cover here all combinations with at least a minimal test set.
+The repository supports several agent frameworks, and each framework can use different LLM options. The tests aim to cover these combinations with at least a minimal set.
 
-# Environment
+## Environment
 
-For all tests you need 4 .env files:
-- .env with regular variables
-- .env.LLM with variables for individual LLM test-cases
+You need two environment files for all tests:
 
-# Running agent and tests
+- `.env`&mdash;regular variables.
+- `.env.LLM`&mdash;variables for individual LLM test cases.
 
-Commands to run tests and run an agent are intentionally separated: this allows you to see the agent logs, and easily stop it after the session. Running agent
-in the background would like its process to hang on a part, which is inconvenient.
+## Run the agent and tests
 
-To run an agent, do:
+Commands for running tests and running an agent stay separate on purpose. That way you can watch agent logs and stop the process after a session. Running the agent in the background often leaves the process stuck in a noisy state, which is awkward for interactive use.
+
+To start an agent:
+
 ```shell
 AGENT=llamaindex LLM=external task run-dragent
 ```
-This will install depenendencies, and start an agent with a proper configuration.
 
-> Mind that order of env variables is important: for Task to pick up them to load dynamic env files you should put them at the start of the line!
+This installs dependencies and starts an agent with the right configuration.
 
-To run a test against an agent, do:
+**Important:** Put `AGENT` and `LLM` at the start of the line. Task uses them to load dynamic env files; order matters.
+
+To run tests against a running agent:
 
 ```shell
 AGENT=llamaindex LLM=external task test-dragent
 ```
 
-Tests are agent and LLM specific, some cases might be skipped or interpreted differently based on context.
+Tests vary by agent and LLM context; some cases are skipped or interpreted differently depending on configuration.

@@ -49,11 +49,11 @@ class StubModel:
         self.featurelist_name = "Informative Features"
         self.sample_pct = 64.0
 
-    def score(self, dataset_url: str) -> MagicMock:
-        """Stub scoring method. Raises for fake URLs so integration tests can assert errors."""
-        if "example.com" in (dataset_url or ""):
-            raise Exception("404 client error: {'message': 'Not Found'}")
-        return MagicMock(id=f"job_{self.id}_{hash(dataset_url) % 1000}")
+    def request_predictions(
+        self, dataset: Any = None, dataset_id: Any = None, **kwargs: Any
+    ) -> MagicMock:
+        """Stub ``Model.request_predictions`` (used by score_dataset_with_model)."""
+        return MagicMock(id=f"pred_job_{self.id}")
 
     def request_feature_impact(self) -> None:
         """Stub request_feature_impact; no-op in tests."""
@@ -98,6 +98,14 @@ class StubProject:
     def get_models(self) -> list:
         """Stub get_models (matches real API: no arguments)."""
         return self._models
+
+    def get_model_records(self, limit: int = 100, offset: int = 0, **kwargs: Any) -> list:
+        """Stub paginated model list (matches ``Project.get_model_records`` slice semantics)."""
+        return self._models[offset : offset + limit]
+
+    def upload_dataset_from_catalog(self, dataset_id: str, **kwargs: Any) -> Any:
+        """Stub ``Project.upload_dataset_from_catalog`` (used by score_dataset_with_model)."""
+        return SimpleNamespace(id=f"prediction_dataset_for_{dataset_id}")
 
 
 class StubDeployment:
@@ -297,6 +305,20 @@ def test_create_dr_client() -> StubDRClient:
     def list_datasets() -> list[StubDataset]:
         return [stub_dataset]
 
+    def _catalog_stub_datasets() -> list[StubDataset]:
+        """Several catalog rows so ``Dataset.iterate`` can honor offset/limit in tests."""
+        return [
+            StubDataset(f"stub_cat_{i}", name=f"catalog_item_{i}.csv", row_count=10)
+            for i in range(5)
+        ]
+
+    def iterate_datasets(offset: int = 0, limit: int | None = None) -> Any:
+        """Stub ``Dataset.iterate``; supports offset/limit for ``list_ai_catalog_items``."""
+        items = _catalog_stub_datasets()[offset:]
+        if limit is not None:
+            items = items[:limit]
+        return iter(items)
+
     # --- DataStore stubs ---
     stub_datastore = StubDataStore("stub_datastore_id", canonical_name="Test PostgreSQL")
 
@@ -325,6 +347,20 @@ def test_create_dr_client() -> StubDRClient:
                 for i in range(min(limit, 5))
             ]
             return StubRestResponse({"data": rows, "next": None})
+        if "externalDataStores" in url:
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "id": stub_datastore.id,
+                            "canonicalName": stub_datastore.canonical_name,
+                            "creatorId": stub_datastore.creator_id,
+                            "params": dict(stub_datastore.params),
+                        }
+                    ],
+                    "next": None,
+                }
+            )
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
         if "useCases" in url:
@@ -355,6 +391,7 @@ def test_create_dr_client() -> StubDRClient:
     client.Deployment.get = get_deployment
     client.Dataset.get = get_dataset
     client.Dataset.list = list_datasets
+    client.Dataset.iterate = iterate_datasets
     client.DataStore.list = list_datastores
     client.UseCase.get = get_use_case
     # Store REST stubs on the client so integration_mcp_server can wire them

@@ -18,6 +18,7 @@ import abc
 import json
 import logging
 import os
+import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
@@ -29,6 +30,7 @@ from typing import TypeVar
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
+from ag_ui.core import UserMessage
 
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -51,6 +53,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
       - api_key: DataRobot API token
       - api_base: Endpoint for DataRobot, normalized for LLM Gateway usage
       - llm: Framework-specific LLM client (constructed outside the agent and passed in)
+      - model: Optional model identifier string (e.g. LiteLLM / deployment model name)
       - timeout: Request timeout
       - verbose: Verbosity flag
       - forwarded_headers: Forwarded headers for the agent
@@ -69,6 +72,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
+        model: str | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
         self.api_base = (
@@ -79,6 +83,7 @@ class BaseAgent(Generic[TTool], abc.ABC):
         self.set_timeout(timeout)
         self.set_verbose(verbose)
         self.set_memory_client(memory_client)
+        self.set_model(model)
         self._forwarded_headers: dict[str, str] = forwarded_headers or {}
         self._identity_header: dict[str, str] = prepare_identity_header(self._forwarded_headers)
         self._max_history_messages = max_history_messages
@@ -89,6 +94,13 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @property
     def llm(self) -> Any | None:
         return self._llm
+
+    def set_model(self, model: str | None) -> None:
+        self._model = model
+
+    @property
+    def model(self) -> str | None:
+        return self._model
 
     def set_timeout(self, timeout: int) -> None:
         self._timeout = timeout
@@ -163,6 +175,33 @@ class BaseAgent(Generic[TTool], abc.ABC):
     @abc.abstractmethod
     def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         raise NotImplementedError("Not implemented")
+
+    async def invoke_single_message(self, user_message: str) -> InvokeReturn:
+        """
+        Invoke the agent without chat history with a single user message.
+
+        Parameters
+        ----------
+        user_message: str
+            The user message to invoke the agent with.
+
+        Returns
+        -------
+        InvokeReturn
+            Same async stream as :meth:`invoke` for a fresh run with a single user turn.
+        """
+        # Generate a new thread and run ID
+        run_input = RunAgentInput(
+            thread_id=str(uuid.uuid4()),
+            run_id=str(uuid.uuid4()),
+            messages=[UserMessage(id=str(uuid.uuid4()), role="user", content=user_message)],
+            state=[],
+            tools=[],
+            context=[],
+            forwardedProps=None,
+        )
+        async for output in self.invoke(run_input):
+            yield output
 
     def build_history_summary(
         self,

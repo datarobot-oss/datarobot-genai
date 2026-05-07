@@ -19,11 +19,23 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from crewai.types.streaming import CrewStreamingOutput
+from crewai.types.streaming import StreamChunk
+from crewai.types.streaming import StreamChunkType
 import pytest
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
+from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
 from ragas import MultiTurnSample
@@ -31,6 +43,7 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.agent import CrewAIAgent
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
@@ -147,13 +160,13 @@ def mock_ragas_event_listener() -> ListenerForTest:
 
 
 class AgentForTest(CrewAIAgent):
-    def __init__(self, crew_output: CrewOutput | None = None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, crew_output: CrewOutput | None = None, **kwargs: Any) -> None:
         crew_kw = kwargs.pop("crew", None)
         self.crew_output = crew_output
         self._crew_for_test: Any = crew_kw if crew_kw is not None else CrewForTest(crew_output)
         self._agents_for_test: list[MagicMock] = [_mock_crewai_agent(), _mock_crewai_agent()]
         self._tasks_for_test: list[MagicMock] = [MagicMock(), MagicMock()]
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
     @property
     def agents(self) -> list[Any]:
@@ -422,6 +435,112 @@ def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
     assert agent._inner.function_calling_llm is agent._preserved
 
 
+def test_crewai_agent_init_accepts_roles_goals_backstories() -> None:
+    agent = AgentForTest(
+        verbose=False,
+        roles=["R0", "R1"],
+        goals=["G0", "G1"],
+        backstories=["B0", "B1"],
+    )
+    a0, a1 = agent._agents_for_test
+    assert a0.role == "R0" and a1.role == "R1"
+    assert a0.goal == "G0" and a1.goal == "G1"
+    assert a0.backstory == "B0" and a1.backstory == "B1"
+
+
+def test_crewai_agent_init_accepts_execution_settings() -> None:
+    agent = AgentForTest(
+        verbose=False,
+        max_iter=12,
+        max_rpm=15,
+        max_execution_time=120,
+        allow_delegation=False,
+        max_retry_limit=3,
+        reasoning=True,
+        max_reasoning_attempts=2,
+    )
+    a0, a1 = agent._agents_for_test
+    assert a0.max_iter == 12 and a1.max_iter == 12
+    assert a0.max_rpm == 15 and a1.max_rpm == 15
+    assert a0.max_execution_time == 120 and a1.max_execution_time == 120
+    assert a0.allow_delegation is False and a1.allow_delegation is False
+    assert a0.max_retry_limit == 3 and a1.max_retry_limit == 3
+    assert a0.reasoning is True and a1.reasoning is True
+    assert a0.max_reasoning_attempts == 2 and a1.max_reasoning_attempts == 2
+
+
+def test_crewai_agent_set_roles_goals_backstories_per_agent() -> None:
+    agent = AgentForTest(verbose=False)
+    a0, a1 = agent._agents_for_test
+    a0.role = a0.goal = a0.backstory = "orig0"
+    a1.role = a1.goal = a1.backstory = "orig1"
+
+    agent.set_roles(["Planner", "Writer"])
+    agent.set_goals(["Plan {topic}", "Write about {topic}"])
+    agent.set_backstories(["bs0", "bs1"])
+
+    assert a0.role == "Planner"
+    assert a1.role == "Writer"
+    assert a0.goal == "Plan {topic}"
+    assert a1.goal == "Write about {topic}"
+    assert a0.backstory == "bs0"
+    assert a1.backstory == "bs1"
+
+
+def test_crewai_agent_set_roles_length_mismatch() -> None:
+    agent = AgentForTest(verbose=False)
+    with pytest.raises(ValueError, match="roles length"):
+        agent.set_roles(["only-one"])
+
+
+def test_crewai_agent_singular_setters_require_index_when_multiple_agents() -> None:
+    agent = AgentForTest(verbose=False)
+    with pytest.raises(ValueError, match="set_role"):
+        agent.set_role("X")
+
+
+def test_crewai_agent_singular_setters_with_agent_index() -> None:
+    agent = AgentForTest(verbose=False)
+    a0, a1 = agent._agents_for_test
+    agent.set_role("R1", agent_index=1)
+    agent.set_goal("G0", agent_index=0)
+    agent.set_backstory("B1", agent_index=1)
+    assert a0.role != "R1"
+    assert a1.role == "R1"
+    assert a0.goal == "G0"
+    assert a1.backstory == "B1"
+
+
+def test_crewai_agent_singular_setters_single_agent_without_index() -> None:
+    class SingleAgentForTest(CrewAIAgent):
+        def __init__(self) -> None:
+            self._only = _mock_crewai_agent()
+            super().__init__(verbose=False)
+
+        @property
+        def agents(self) -> list[Any]:
+            return [self._only]
+
+        @property
+        def tasks(self) -> list[Any]:
+            return [MagicMock()]
+
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content}
+
+        @property
+        def crew(self) -> Any:
+            return CrewForTest()
+
+    agent = SingleAgentForTest()
+    agent.set_role("Solo")
+    agent.set_goal("Do {topic}")
+    agent.set_backstory("solo-bs")
+    assert agent._only.role == "Solo"
+    assert agent._only.goal == "Do {topic}"
+    assert agent._only.backstory == "solo-bs"
+
+
 async def test_invoke_retrieves_and_stores_memory(
     mock_ragas_event_listener, run_agent_input_with_structured_prompt
 ) -> None:
@@ -618,3 +737,219 @@ async def test_invoke_does_not_store_memory_when_run_fails(
         }
     ]
     assert memory_client.store_calls == []
+
+
+# --- Streaming AG-UI message-lifecycle tests ---
+
+
+def _text_chunk(content: str, agent_role: str) -> StreamChunk:
+    return StreamChunk(
+        content=content,
+        chunk_type=StreamChunkType.TEXT,
+        agent_role=agent_role,
+        task_name=f"{agent_role}-task",
+    )
+
+
+class _FakeStreamingOutput(CrewStreamingOutput):
+    """CrewStreamingOutput double that yields a fixed chunk list and a result."""
+
+    def __init__(self, chunks: list[StreamChunk], result: CrewOutput) -> None:
+        super().__init__(async_iterator=self._iter(chunks))
+        self._fixed_result = result
+
+    @staticmethod
+    async def _iter(chunks: list[StreamChunk]):  # type: ignore[no-untyped-def]
+        for c in chunks:
+            yield c
+
+    @property
+    def result(self) -> CrewOutput:  # type: ignore[override]
+        return self._fixed_result
+
+
+async def test_invoke_streaming_emits_separate_messages_per_agent_role(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that emits chunks under two different agent roles
+    chunks = [
+        _text_chunk("plan-a", "Planner"),
+        _text_chunk("plan-b", "Planner"),
+        _text_chunk("write-a", "Writer"),
+        _text_chunk("write-b", "Writer"),
+    ]
+    result = CrewOutput(
+        raw="ignored",
+        token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
+    )
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN each step gets its own TEXT_MESSAGE_START / _END pair
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(starts) == 2, "expected one TEXT_MESSAGE_START per agent role"
+    assert len(ends) == 2, "expected one TEXT_MESSAGE_END per agent role"
+
+    # THEN the two messages have distinct ids
+    assert starts[0].message_id != starts[1].message_id
+
+    # THEN content events are partitioned by message_id (no cross-agent leakage)
+    by_id: dict[str, list[str]] = {}
+    for c in contents:
+        by_id.setdefault(c.message_id, []).append(c.delta)
+    assert by_id[starts[0].message_id] == ["plan-a", "plan-b"]
+    assert by_id[starts[1].message_id] == ["write-a", "write-b"]
+
+    # THEN each step boundary is closed before the next one opens
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+    # THEN the Planner's TEXT_MESSAGE_END is emitted before STEP_FINISHED Planner,
+    # which is emitted before STEP_STARTED Writer.
+    planner_end_idx = events.index(ends[0])
+    planner_step_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    writer_step_start_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepStartedEvent) and e.step_name == "Writer"
+    )
+    assert planner_end_idx < planner_step_finish_idx < writer_step_start_idx
+
+
+async def test_invoke_streaming_single_agent_role_uses_single_message(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that only emits chunks for one agent role
+    chunks = [
+        _text_chunk("hello-", "Solo"),
+        _text_chunk("world", "Solo"),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and there is exactly one text message
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    assert len(starts) == 1
+    assert len(ends) == 1
+    assert starts[0].message_id == ends[0].message_id
+
+
+async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew where the first agent emits a reasoning chunk and
+    # the second agent emits a normal text chunk. The agent_role transition
+    # must close REASONING_MESSAGE_END and REASONING_END for the outgoing step
+    # before STEP_FINISHED is emitted.
+    planner_chunk = _text_chunk("plan-thoughts", "Planner")
+    writer_chunk = _text_chunk("write-text", "Writer")
+    result = CrewOutput(raw="ignored")
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.step_event = False
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _ReasoningTransitionStreamingOutput(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            captured[0].reasoning_event = True
+            yield planner_chunk
+            captured[0].reasoning_event = False
+            yield writer_chunk
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return result
+
+    streaming = _ReasoningTransitionStreamingOutput()
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        _CapturingStreamingListener,
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN the Planner emits exactly one reasoning lifecycle and the Writer
+    # emits exactly one text lifecycle
+    reasoning_starts = [e for e in events if isinstance(e, ReasoningStartEvent)]
+    reasoning_msg_starts = [e for e in events if isinstance(e, ReasoningMessageStartEvent)]
+    reasoning_contents = [e for e in events if isinstance(e, ReasoningMessageContentEvent)]
+    reasoning_msg_ends = [e for e in events if isinstance(e, ReasoningMessageEndEvent)]
+    reasoning_ends = [e for e in events if isinstance(e, ReasoningEndEvent)]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    text_contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(reasoning_starts) == 1
+    assert len(reasoning_msg_starts) == 1
+    assert len(reasoning_msg_ends) == 1
+    assert len(reasoning_ends) == 1
+    assert len(text_starts) == 1
+    assert len(text_ends) == 1
+
+    # THEN reasoning content is on the Planner's message_id and text content
+    # is on a fresh message_id (no cross-agent leakage)
+    planner_id = reasoning_starts[0].message_id
+    writer_id = text_starts[0].message_id
+    assert planner_id != writer_id
+    assert reasoning_msg_starts[0].message_id == planner_id
+    assert reasoning_msg_ends[0].message_id == planner_id
+    assert reasoning_ends[0].message_id == planner_id
+    assert [c.delta for c in reasoning_contents if c.message_id == planner_id] == ["plan-thoughts"]
+    assert text_ends[0].message_id == writer_id
+    assert [c.delta for c in text_contents if c.message_id == writer_id] == ["write-text"]
+
+    # THEN REASONING_MESSAGE_END and REASONING_END are emitted before
+    # STEP_FINISHED Planner, which is emitted before STEP_STARTED Writer
+    reasoning_msg_end_idx = events.index(reasoning_msg_ends[0])
+    reasoning_end_idx = events.index(reasoning_ends[0])
+    planner_step_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    writer_step_start_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepStartedEvent) and e.step_name == "Writer"
+    )
+    assert (
+        reasoning_msg_end_idx < reasoning_end_idx < planner_step_finish_idx < writer_step_start_idx
+    )

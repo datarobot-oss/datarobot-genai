@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from datarobot_genai.dragent.cli.commands import dragent_command
@@ -198,11 +199,92 @@ def test_query_deployment_errors_without_api_token(monkeypatch):
     assert "API token is required" in result.output
 
 
-def test_query_errors_without_input():
-    # GIVEN no --input
+def test_query_errors_without_input(monkeypatch):
+    # GIVEN no --input and no --file (port set so we reach input validation)
+    monkeypatch.setenv("AGENT_PORT", "8080")
     result = CliRunner().invoke(
         dragent_command,
         ["query", "--local"],
     )
-    # THEN it errors about the missing option
+    # THEN it errors about the missing input
     assert result.exit_code != 0
+    assert "--input" in result.output or "--file" in result.output
+
+
+@patch(f"{_COMMANDS}.stream_agui_events")
+def test_query_local_with_file(mock_stream, monkeypatch, tmp_path):
+    # GIVEN a text file with a prompt
+    monkeypatch.setenv("AGENT_PORT", "8080")
+    text_file = tmp_path / "prompt.txt"
+    text_file.write_text("What is AI?")
+    result = CliRunner().invoke(
+        dragent_command,
+        ["query", "--local", "--file", str(text_file)],
+    )
+    # THEN it reads the file and uses the text as the prompt
+    assert result.exit_code == 0
+    call_payload = mock_stream.call_args[0][1]
+    assert len(call_payload["messages"]) == 1
+    assert call_payload["messages"][0]["role"] == "user"
+    assert call_payload["messages"][0]["content"] == "What is AI?"
+
+
+def test_query_local_with_empty_file(monkeypatch, tmp_path):
+    # GIVEN an empty text file
+    monkeypatch.setenv("AGENT_PORT", "8080")
+    text_file = tmp_path / "empty.txt"
+    text_file.write_text("   ")
+    result = CliRunner().invoke(
+        dragent_command,
+        ["query", "--local", "--file", str(text_file)],
+    )
+    # THEN it errors about empty input
+    assert result.exit_code != 0
+    assert "empty" in result.output.lower()
+
+
+def test_query_local_with_missing_file(monkeypatch):
+    # GIVEN a nonexistent file path
+    monkeypatch.setenv("AGENT_PORT", "8080")
+    result = CliRunner().invoke(
+        dragent_command,
+        ["query", "--local", "--file", "/tmp/does-not-exist.txt"],
+    )
+    # THEN it errors about the missing file
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()
+
+
+# --- underscore aliases (Taskfile passthrough compatibility) ---
+
+
+@pytest.mark.parametrize(
+    "alias,primary",
+    [
+        ("--user_prompt", "--input"),
+        ("--deployment_id", "--deployment-id"),
+    ],
+)
+@patch(f"{_COMMANDS}.stream_agui_events")
+@patch(f"{_COMMANDS}.get_auth_context_headers", return_value={})
+def test_query_accepts_underscore_aliases(mock_headers, mock_stream, monkeypatch, alias, primary):
+    """Underscore aliases exist so the Taskfile can forward cli.py args unchanged."""
+    monkeypatch.setenv("AGENT_PORT", "8080")
+
+    if alias == "--deployment_id":
+        args = [
+            "--api-token",
+            "tok",
+            "--base-url",
+            "https://app.example.com",
+            "query",
+            alias,
+            "dep-1",
+            "--input",
+            "hi",
+        ]
+    else:
+        args = ["query", "--local", alias, "hi"]
+
+    result = CliRunner().invoke(dragent_command, args)
+    assert result.exit_code == 0, result.output

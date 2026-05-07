@@ -13,15 +13,11 @@
 # limitations under the License.
 
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
-from a2a.types import AgentCapabilities
-from a2a.types import AgentCard
-from a2a.types import AgentSkill
 from fastapi import FastAPI
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
@@ -36,11 +32,12 @@ from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
 
+from .a2a import A2A_MOUNT_PATH
+from .a2a import create_agent_card
 from .session import DRAgentAGUISessionManager
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
-A2A_MOUNT_PATH = "a2a"
 
 logger = logging.getLogger(__name__)
 
@@ -102,79 +99,18 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
-    async def _create_agent_card(self, frontend_config: A2AFrontEndConfig) -> AgentCard:
-        assert self._a2a_worker is not None
-        security_schemes = None
-        security = None
-        if frontend_config.server_auth:
-            security_schemes, security = await self._a2a_worker._generate_security_schemes(
-                frontend_config.server_auth
-            )
-        if self.front_end_config.a2a.skills:
-            skills = self.front_end_config.a2a.skills
-        else:
-            skills = [
-                AgentSkill(
-                    id="call",
-                    name=frontend_config.name,
-                    description=frontend_config.description,
-                    tags=[],
-                    examples=[],
-                )
-            ]
-        agent_card = AgentCard(
-            name=frontend_config.name,
-            description=frontend_config.description,
-            url=self._get_a2a_endpoint_url(frontend_config),
-            version=frontend_config.version,
-            default_input_modes=frontend_config.default_input_modes,
-            default_output_modes=frontend_config.default_output_modes,
-            capabilities=AgentCapabilities(
-                streaming=frontend_config.capabilities.streaming,
-                push_notifications=frontend_config.capabilities.push_notifications,
-            ),
-            skills=skills,
-            security_schemes=security_schemes,
-            security=security,
-        )
-        return agent_card
-
-    def _get_a2a_endpoint_url(self, frontend_config: A2AFrontEndConfig) -> str:
-        """Construct the A2A endpoint URL.
-
-        In a DataRobot deployment, uses the deployment's direct access URL.
-        Otherwise, appends the /a2a/ mount path to the default base URL.
-        """
-        mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-        if mlops_deployment_id:
-            # Prefer DATAROBOT_PUBLIC_API_ENDPOINT over DATAROBOT_ENDPOINT because on-prem
-            # deployments often set DATAROBOT_ENDPOINT to an internal k8s URL, while
-            # DATAROBOT_PUBLIC_API_ENDPOINT holds the externally reachable URL needed here
-            # to construct a publicly accessible agent-card URL.
-            datarobot_endpoint = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv(
-                "DATAROBOT_ENDPOINT", ""
-            )
-            if not datarobot_endpoint:
-                raise ValueError(
-                    "DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set "
-                    "when MLOPS_DEPLOYMENT_ID is set"
-                )
-            base = datarobot_endpoint.rstrip("/")
-            return f"{base}/deployments/{mlops_deployment_id}/directAccess/{A2A_MOUNT_PATH}/"
-        return f"http://{frontend_config.host}:{frontend_config.port}/{A2A_MOUNT_PATH}/"
-
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
+        if self.front_end_config.a2a:
+            await self._add_a2a_routes(app, builder, self.front_end_config.a2a)
 
-        if self.front_end_config.a2a is None:
-            logger.info("A2A server endpoints are disabled")
-            return
-
+    async def _add_a2a_routes(
+        self, app: FastAPI, builder: WorkflowBuilder, a2a_config: A2AFrontEndConfig
+    ) -> None:
         # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config.
-        # We must pass it a full Config with the A2AFrontEndConfig substituted in.
-        # We also inherit host/port from the FastAPI config so the agent card URL is gets mounted
-        # under the correct endpoint.
-        a2a_config = self.front_end_config.a2a.server.model_copy(
+        # Pass a full Config with the A2AFrontEndConfig substituted in, and inherit host/port
+        # from the FastAPI front end so the agent card URL matches where the app is mounted.
+        a2a_config = a2a_config.server.model_copy(
             update={"host": self.front_end_config.host, "port": self.front_end_config.port}
         )
         nat_config = self._config.model_copy(
@@ -182,7 +118,20 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
-        agent_card = await self._create_agent_card(self._a2a_worker.front_end_config)
+        cross_app_access = (
+            self.front_end_config.a2a.cross_application_access
+            if self.front_end_config.a2a
+            else None
+        )
+        skills = self.front_end_config.a2a.skills if self.front_end_config.a2a else []
+        external = self.front_end_config.a2a.external if self.front_end_config.a2a else None
+
+        agent_card = await create_agent_card(
+            frontend_config=self._a2a_worker.front_end_config,
+            cross_app_access=cross_app_access,
+            skills=skills,
+            external=external,
+        )
         session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
             shared_builder=builder,
@@ -203,6 +152,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
         app = super().build_app()
 
+        # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
+        # NAT 1.6 no longer calls self.add_health_route() so we register here.
+        self._register_health_routes(app)
+
         # app.router.lifespan_context is the lifespan set by the parent's build_app().
         # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.
         # (app.add_event_handler("shutdown", ...) is silently ignored when a lifespan is set.)
@@ -221,8 +174,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         setup_logging()
         return app
 
-    async def add_health_route(self, app: FastAPI) -> None:
-        """Add a health check endpoint to the FastAPI app."""
+    def _register_health_routes(self, app: FastAPI) -> None:
+        """Register DataRobot health check endpoints."""
 
         class HealthResponse(BaseModel):
             status: str = Field(description="Health status of the server")

@@ -46,10 +46,12 @@ async def test_datarobot_llm_gateway_langchain():
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "3" in response.content.lower()
-        usage = response.response_metadata["token_usage"]
-        assert usage["completion_tokens"] > 0
+        # ChatLiteLLM puts usage in usage_metadata, not response_metadata["token_usage"]
+        usage = response.usage_metadata
+        assert usage is not None
+        assert usage["output_tokens"] > 0
         assert usage["total_tokens"] > 0
-        assert usage["prompt_tokens"] > 0
+        assert usage["input_tokens"] > 0
 
 
 async def test_datarobot_llm_gateway_crewai():
@@ -159,7 +161,7 @@ async def test_datarobot_llm_deployment_llamaindex():
 async def test_datarobot_nim_langchain():
     prompt = ChatPromptTemplate.from_messages([("human", "{input}")])
 
-    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+    llm_config = DataRobotNIMModelConfig(temperature=0.0, model_name="azure/gpt-4o-2024-11-20")
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -176,7 +178,7 @@ async def test_datarobot_nim_crewai():
     input = "What is 1+2?"
     messages = [{"role": "user", "content": f"{input}"}]
 
-    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+    llm_config = DataRobotNIMModelConfig(temperature=0.0, model_name="azure/gpt-4o-2024-11-20")
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -193,7 +195,7 @@ async def test_datarobot_nim_llamaindex():
         ChatMessage.from_str(input, "user"),
     ]
 
-    llm_config = DataRobotNIMModelConfig(temperature=0.0)
+    llm_config = DataRobotNIMModelConfig(temperature=0.0, model_name="azure/gpt-4o-2024-11-20")
 
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -222,10 +224,12 @@ async def test_datarobot_llm_component_langchain():
         assert response.content is not None
         assert isinstance(response.content, str)
         assert "3" in response.content.lower()
-        usage = response.response_metadata["token_usage"]
-        assert usage["completion_tokens"] > 0
+        # ChatLiteLLM puts usage in usage_metadata, not response_metadata["token_usage"]
+        usage = response.usage_metadata
+        assert usage is not None
+        assert usage["output_tokens"] > 0
         assert usage["total_tokens"] > 0
-        assert usage["prompt_tokens"] > 0
+        assert usage["input_tokens"] > 0
 
 
 async def test_datarobot_llm_component_crewai():

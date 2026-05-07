@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -35,11 +37,12 @@ from nat.data_models.intermediate_step import IntermediateStepType
 from nat.data_models.intermediate_step import StreamEventData
 from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.invocation_node import InvocationNode
-from nat.profiler.callbacks.token_usage_base_model import TokenUsageBaseModel
+from nat.data_models.token_usage import TokenUsageBaseModel
 from ragas import MultiTurnSample
 from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.nat.agent import NatAgent
 
 
@@ -64,6 +67,72 @@ def agent_with_headers(workflow_path):
             "Authorization": "Bearer test-api-key",
         },
     )
+
+
+class FakeMemoryClient(BaseMemoryClient):
+    def __init__(self, retrieved: str = "saved memory") -> None:
+        self.retrieved = retrieved
+        self.retrieve_calls: list[dict[str, Any]] = []
+        self.store_calls: list[dict[str, Any]] = []
+
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        self.retrieve_calls.append(
+            {
+                "prompt": prompt,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+        return self.retrieved
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        self.store_calls.append(
+            {
+                "user_message": user_message,
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "app_id": app_id,
+                "attributes": attributes,
+            }
+        )
+
+
+class FailingMemoryClient(BaseMemoryClient):
+    async def retrieve(
+        self,
+        prompt: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> str:
+        raise RuntimeError("mem0 retrieve unavailable")
+
+    async def store(
+        self,
+        user_message: str,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        app_id: str | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
+        raise RuntimeError("mem0 store unavailable")
 
 
 @pytest.fixture
@@ -210,6 +279,148 @@ async def test_invoke_includes_chat_history(workflow_path):
     assert "user: First question" in text
     assert "assistant: First answer" in text
     assert text.startswith("Follow-up")
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_retrieves_and_stores_memory(workflow_path):
+    # GIVEN: a NAT agent whose prompt opts into memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = NatAgent(workflow_path=workflow_path, memory_client=memory_client)
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+    captured_prompts: list[str] = []
+    original = agent.make_chat_request
+
+    def capturing(user_prompt: str):  # type: ignore[no-untyped-def]
+        captured_prompts.append(user_prompt)
+        return original(user_prompt)
+
+    agent.make_chat_request = capturing  # type: ignore[assignment]
+
+    # WHEN: invoke is called
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN: retrieved memory is injected and the original user turn is persisted
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert captured_prompts == ["Memory:\nUse concise answers.\n\nLatest: Follow-up"]
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": "Memory:\n{memory}\n\nLatest: Follow-up",
+            "run_id": None,
+            "agent_id": "NatAgent",
+            "app_id": "datarobot_genai.nat.agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == [
+        {
+            "user_message": "Memory:\n{memory}\n\nLatest: Follow-up",
+            "run_id": "run_id",
+            "agent_id": "NatAgent",
+            "app_id": "datarobot_genai.nat.agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_skips_memory_when_placeholder_is_absent(workflow_path, run_agent_input):
+    # GIVEN: a NAT agent whose prompt does not opt into memory
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = NatAgent(workflow_path=workflow_path, memory_client=memory_client)
+
+    # WHEN: invoke is called
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN: memory retrieval and storage are both skipped
+    assert memory_client.retrieve_calls == []
+    assert memory_client.store_calls == []
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_gracefully_degrades_when_memory_fails(workflow_path):
+    # GIVEN: a NAT agent whose memory provider errors at runtime
+    agent = NatAgent(workflow_path=workflow_path, memory_client=FailingMemoryClient())
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+    captured_prompts: list[str] = []
+    original = agent.make_chat_request
+
+    def capturing(user_prompt: str):  # type: ignore[no-untyped-def]
+        captured_prompts.append(user_prompt)
+        return original(user_prompt)
+
+    agent.make_chat_request = capturing  # type: ignore[assignment]
+
+    # WHEN: invoke is called
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN: the run still completes and the unresolved placeholder is removed
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert captured_prompts == ["Memory:\n\n\nLatest: Follow-up"]
+    assert "{memory}" not in captured_prompts[0]
+
+
+async def test_invoke_does_not_store_memory_when_workflow_fails(workflow_path):
+    async def failing_result_stream():
+        raise RuntimeError("workflow failed")
+        yield "unreachable"  # pragma: no cover
+
+    # GIVEN: a NAT agent whose workflow fails after memory retrieval
+    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
+    agent = NatAgent(workflow_path=workflow_path, memory_client=memory_client)
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(id="message_id", content="Memory:\n{memory}\n\nLatest: Follow-up")],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+    intermediate_future: asyncio.Future[list[IntermediateStep]] = asyncio.Future()
+    intermediate_future.set_result([])
+    mock_run = MagicMock()
+    mock_run.return_value.__aenter__.return_value = AsyncMock(result_stream=failing_result_stream)
+    mock_session = MagicMock()
+    mock_session.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
+
+    with (
+        patch("datarobot_genai.nat.agent.pull_intermediate_structured") as mock_intermediate,
+        patch("datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock) as mock_load,
+    ):
+        mock_intermediate.return_value = intermediate_future
+        mock_load.return_value.__aenter__.return_value = AsyncMock(session=mock_session)
+
+        # WHEN: invoke is called and the workflow fails
+        with pytest.raises(RuntimeError, match="workflow failed"):
+            _ = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN: retrieval happens, but storage is skipped because the run never finishes
+    assert memory_client.retrieve_calls == [
+        {
+            "prompt": "Memory:\n{memory}\n\nLatest: Follow-up",
+            "run_id": None,
+            "agent_id": "NatAgent",
+            "app_id": "datarobot_genai.nat.agent",
+            "attributes": {"thread_id": "thread_id"},
+        }
+    ]
+    assert memory_client.store_calls == []
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")

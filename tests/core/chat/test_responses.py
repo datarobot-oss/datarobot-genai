@@ -69,7 +69,7 @@ def test_to_custom_model_streaming_response_sequence() -> None:
         )
         chunks = list(response_generator)
     assert isinstance(chunks[0], CustomModelStreamingResponse)
-    # RunStartedEvent and RunFinishedEvent are skipped - first chunk is TextMessageStart
+    # RunStartedEvent is skipped; first chunk is TextMessageStart. RunFinished is emitted.
     content_chunks = [c for c in chunks if c.choices[0].delta.content]
     assert content_chunks[0].choices[0].delta.content == "Hello "
     assert content_chunks[0].choices[0].finish_reason is None
@@ -124,6 +124,8 @@ def test_to_custom_model_streaming_response_sequence_with_event() -> None:
     assert chunks[2].choices[0].delta.content == ""
     assert chunks[2].event is not None
     assert chunks[2].event.type == EventType.TEXT_MESSAGE_END
+    assert chunks[3].event is not None
+    assert chunks[3].event.type == EventType.RUN_FINISHED
 
     assert chunks[-1].choices[0].finish_reason == "stop"
     assert chunks[-1].usage is not None

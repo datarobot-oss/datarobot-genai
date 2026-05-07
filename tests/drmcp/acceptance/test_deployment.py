@@ -67,11 +67,7 @@ def expectations_for_get_model_info_from_deployment_failure(
             ToolCallTestExpectations(
                 name="get_model_info_from_deployment",
                 parameters={"deployment_id": nonexistent_deployment_id},
-                result=(
-                    "Error in "
-                    "get_model_info_from_deployment: ClientError: 404 client error: "
-                    "{'message': 'Not Found'}"
-                ),
+                result="[not_found] DataRobot API error (404):",
             ),
         ],
         llm_response_content_contains_expectations=[

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import Literal
 
 from nat.cli.register_workflow import register_per_user_function_group
@@ -131,6 +132,23 @@ class DataRobotMCPStreamableHTTPClient(MCPStreamableHTTPClient):
         )
 
 
+def _make_input_schema_enum_safe(tool_fn: Any) -> Any:
+    """Workaround for BUZZOK-30556. Configure the registered input schema
+    with ``use_enum_values=True`` so NAT's ``_convert_input_pydantic``
+    extracts plain strings via ``getattr`` instead of ``Enum`` instances.
+    Without this, NAT's downstream ``session_tool.input_schema.model_validate
+    (kwargs)`` rejects ``Enum`` instances whose class identity differs from
+    the cached enum class (which happens when LangChain builds its own
+    ``args_schema`` from the same JSON schema).
+    """
+    schema = tool_fn.input_schema
+    if schema is None or schema is type(None):  # noqa: E721
+        return tool_fn
+    schema.model_config["use_enum_values"] = True
+    schema.model_rebuild(force=True)
+    return tool_fn
+
+
 @register_per_user_function_group(config_type=DataRobotMCPClientConfig)
 async def datarobot_mcp_client_function_group(
     config: DataRobotMCPClientConfig, _builder: Builder
@@ -237,8 +255,11 @@ async def datarobot_mcp_client_function_group(
                     override.description if override and override.description else tool.description
                 )
 
-                # Create the tool function according to configuration
-                tool_fn = mcp_session_tool_function(tool, group)
+                # Create the tool function according to configuration.
+                # Patch the input schema to store enum values as strings so
+                # NAT's downstream model_validate(kwargs) never trips on
+                # cross-class enum identity (BUZZOK-30556).
+                tool_fn = _make_input_schema_enum_safe(mcp_session_tool_function(tool, group))
 
                 # Normalize optional typing for linter/type-checker compatibility
                 single_fn = tool_fn.single_fn

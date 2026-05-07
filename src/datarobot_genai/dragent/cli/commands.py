@@ -39,11 +39,17 @@ class DRAgentCommandGroup(StartCommandGroup):
     def _build_params(self, front_end: RegisteredFrontEndInfo) -> list[click.Parameter]:
         params = super()._build_params(front_end)
         for param in params:
-            if isinstance(param, click.Option) and "--config_file" in param.opts:
+            if not isinstance(param, click.Option):
+                continue
+            if "--config_file" in param.opts:
                 param.required = False
                 param.envvar = "DRAGENT_CONFIG_FILE"
-            elif isinstance(param, click.Option) and "--port" in param.opts:
+            elif "--port" in param.opts:
                 param.envvar = "AGENT_PORT"
+            elif "--user_prompt" in param.opts:
+                param.opts.insert(0, "--input")
+            elif "--input_file" in param.opts:
+                param.opts.insert(0, "--file")
         return params
 
     def invoke_subcommand(  # type: ignore[override]
@@ -138,8 +144,21 @@ def dragent_command(ctx: click.Context, api_token: str | None, base_url: str | N
     envvar="AGENT_PORT",
     help="Port for --local. Falls back to AGENT_PORT env var.",
 )
-@click.option("--deployment-id", "deployment_id", default=None, help="DataRobot deployment ID.")
-@click.option("--input", "input_query", required=True, help="Prompt string.")
+@click.option(
+    "--deployment-id",
+    "--deployment_id",
+    "deployment_id",
+    default=None,
+    help="DataRobot deployment ID.",
+)
+@click.option("--input", "--user_prompt", "input_query", default=None, help="Prompt string.")
+@click.option(
+    "--file",
+    "--input-file",
+    "input_file",
+    default=None,
+    help="Path to a text file whose contents are used as the prompt.",
+)
 @click.option(
     "--show-payload", "show_payload", is_flag=True, help="Show the request payload sent to the API."
 )
@@ -149,13 +168,33 @@ def query_command(
     local: bool,
     port: int | None,
     deployment_id: str | None,
-    input_query: str,
+    input_query: str | None,
+    input_file: str | None,
     show_payload: bool,
 ) -> None:
     if local and deployment_id:
         raise click.UsageError("Specify either --local or --deployment-id, not both.")
     if not local and not deployment_id:
         raise click.UsageError("Specify --local or --deployment-id.")
+    if input_query is None and input_file is None:
+        raise click.UsageError("Specify --input or --file.")
+    if input_query is not None and input_file is not None:
+        raise click.UsageError("Specify --input or --file, not both.")
+
+    if input_file is not None:
+        try:
+            with open(input_file, encoding="utf-8") as f:
+                prompt_text = f.read()
+        except FileNotFoundError:
+            raise click.ClickException(f"File not found: {input_file}")
+        except OSError as exc:
+            raise click.ClickException(f"Cannot read {input_file}: {exc}")
+        if not prompt_text.strip():
+            raise click.UsageError("Input file is empty.")
+        payload = build_agui_payload(prompt_text)
+    else:
+        assert input_query is not None
+        payload = build_agui_payload(input_query)
 
     if deployment_id:
         api_token, base_url = require_auth(ctx)
@@ -177,7 +216,6 @@ def query_command(
             **get_local_auth_context_headers(),
         }
 
-    payload = build_agui_payload(input_query)
     if show_payload:
         click.echo(json.dumps(payload, indent=2))
     stream_agui_events(target_url, payload, headers)

@@ -27,6 +27,7 @@ import abc
 import logging
 import uuid
 from collections.abc import Callable
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -59,6 +60,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
@@ -76,7 +78,81 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
     Subclasses should define the ``agents`` and ``tasks`` properties
     and may override ``crew`` to customize the workflow construction.
+
+    Framework-specific parameters:
+
+    - ``roles``: One role string per crew agent (length ``len(agents)``); sets
+      each agent's ``role``.
+    - ``goals``: One goal string per agent; sets each agent's ``goal``.
+    - ``backstories``: One backstory string per agent; sets each agent's
+      ``backstory``.
+    - ``max_iter``: Upper bound on iterations (tool / act loops) per agent.
+    - ``max_rpm``: Requests-per-minute limit per agent.
+    - ``max_execution_time``: Wall-clock seconds cap per agent (only applied
+      when not ``None``).
+    - ``allow_delegation``: Whether agents may delegate work to other crew
+      members.
+    - ``max_retry_limit``: Retries per agent after recoverable failures.
+    - ``reasoning``: Turns CrewAI structured reasoning on or off per agent.
+    - ``max_reasoning_attempts``: Maximum reasoning passes per agent (only
+      applied when not ``None``).
     """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[BaseTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+        model: str | None = None,
+        roles: Sequence[str] | None = None,
+        goals: Sequence[str] | None = None,
+        backstories: Sequence[str] | None = None,
+        max_iter: int | None = None,
+        max_rpm: int | None = None,
+        max_execution_time: int | None = None,
+        allow_delegation: bool | None = None,
+        max_retry_limit: int | None = None,
+        reasoning: bool | None = None,
+        max_reasoning_attempts: int | None = None,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            llm=llm,
+            tools=tools,
+            verbose=verbose,
+            timeout=timeout,
+            forwarded_headers=forwarded_headers,
+            max_history_messages=max_history_messages,
+            memory_client=memory_client,
+            model=model,
+        )
+        if roles is not None:
+            self.set_roles(roles)
+        if goals is not None:
+            self.set_goals(goals)
+        if backstories is not None:
+            self.set_backstories(backstories)
+        if max_iter is not None:
+            self.set_max_iter(max_iter)
+        if max_rpm is not None:
+            self.set_max_rpm(max_rpm)
+        if max_execution_time is not None:
+            self.set_max_execution_time(max_execution_time)
+        if allow_delegation is not None:
+            self.set_allow_delegation(allow_delegation)
+        if max_retry_limit is not None:
+            self.set_max_retry_limit(max_retry_limit)
+        if reasoning is not None:
+            self.set_reasoning(reasoning)
+        if max_reasoning_attempts is not None:
+            self.set_max_reasoning_attempts(max_reasoning_attempts)
 
     def set_llm(self, llm: LLM | None) -> None:
         super().set_llm(llm)
@@ -97,6 +173,117 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             agent.verbose = verbose
 
         self.crew.verbose = verbose
+
+    def set_roles(self, roles: Sequence[str]) -> None:
+        """Set each agent's ``role``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(roles) != len(agents):
+            raise ValueError(
+                f"roles length ({len(roles)}) must match number of agents ({len(agents)})"
+            )
+        for agent, role in zip(agents, roles, strict=True):
+            agent.role = role
+
+    def set_goals(self, goals: Sequence[str]) -> None:
+        """Set each agent's ``goal``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(goals) != len(agents):
+            raise ValueError(
+                f"goals length ({len(goals)}) must match number of agents ({len(agents)})"
+            )
+        for agent, goal in zip(agents, goals, strict=True):
+            agent.goal = goal
+
+    def set_backstories(self, backstories: Sequence[str]) -> None:
+        """Set each agent's ``backstory``. Length must match ``len(self.agents)``."""
+        agents = self.agents
+        if len(backstories) != len(agents):
+            raise ValueError(
+                f"backstories ({len(backstories)}) must match number of agents ({len(agents)})"
+            )
+        for agent, backstory in zip(agents, backstories, strict=True):
+            agent.backstory = backstory
+
+    def set_role(self, role: str, *, agent_index: int | None = None) -> None:
+        """Set ``role`` on one agent.
+
+        With multiple agents, pass ``agent_index`` (0-based). If omitted and there is
+        exactly one agent, that agent is updated. With multiple agents and no index,
+        use :meth:`set_roles` instead.
+        """
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_role(role) without agent_index requires exactly one agent; "
+                    "use set_roles() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].role = role
+
+    def set_goal(self, goal: str, *, agent_index: int | None = None) -> None:
+        """Set ``goal`` on one agent. See :meth:`set_role`."""
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_goal(goal) without agent_index requires exactly one agent; "
+                    "use set_goals() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].goal = goal
+
+    def set_backstory(self, backstory: str, *, agent_index: int | None = None) -> None:
+        """Set ``backstory`` on one agent. See :meth:`set_role`."""
+        agents = self.agents
+        if agent_index is None:
+            if len(agents) != 1:
+                raise ValueError(
+                    "set_backstory(backstory) without agent_index requires exactly one agent; "
+                    "use set_backstories() or pass agent_index="
+                )
+            idx = 0
+        else:
+            idx = agent_index
+            if not 0 <= idx < len(agents):
+                raise IndexError(f"agent_index {idx} out of range for {len(agents)} agents")
+        agents[idx].backstory = backstory
+
+    def set_max_iter(self, max_iter: int) -> None:
+        for agent in self.agents:
+            agent.max_iter = max_iter
+
+    def set_max_rpm(self, max_rpm: int) -> None:
+        for agent in self.agents:
+            agent.max_rpm = max_rpm
+
+    def set_max_execution_time(self, max_execution_time: int | None) -> None:
+        for agent in self.agents:
+            agent.max_execution_time = max_execution_time
+
+    def set_allow_delegation(self, allow_delegation: bool) -> None:
+        for agent in self.agents:
+            agent.allow_delegation = allow_delegation
+
+    def set_max_retry_limit(self, max_retry_limit: int) -> None:
+        for agent in self.agents:
+            agent.max_retry_limit = max_retry_limit
+
+    def set_reasoning(self, reasoning: bool) -> None:
+        for agent in self.agents:
+            agent.reasoning = reasoning
+
+    def set_max_reasoning_attempts(self, max_reasoning_attempts: int | None) -> None:
+        for agent in self.agents:
+            agent.max_reasoning_attempts = max_reasoning_attempts
 
     @property
     @abc.abstractmethod
@@ -247,9 +434,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         )
                     except Exception as exc:
                         logger.warning("CrewAI memory retrieval failed: %s", exc)
-            message_id = str(uuid.uuid4())
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""
+            message_id = str(uuid.uuid4())
 
             if isinstance(crew_output, CrewStreamingOutput):
                 reasoning_started = False
@@ -260,6 +447,37 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     if chunk.agent_role != current_agent_role:
                         logger.info(f"[{chunk.agent_role}] Working on task: {chunk.task_name}")
                         if current_agent_role:
+                            # Close any open text/reasoning message scoped to the
+                            # outgoing step so each step gets its own AG-UI message
+                            # with a unique message_id.
+                            if text_started:
+                                yield (
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                text_started = False
+                            if reasoning_started:
+                                yield (
+                                    ReasoningMessageEndEvent(
+                                        type=EventType.REASONING_MESSAGE_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                yield (
+                                    ReasoningEndEvent(
+                                        type=EventType.REASONING_END,
+                                        message_id=message_id,
+                                    ),
+                                    None,
+                                    zero_metrics,
+                                )
+                                reasoning_started = False
                             yield (
                                 StepFinishedEvent(
                                     type=EventType.STEP_FINISHED,
@@ -268,6 +486,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 None,
                                 zero_metrics,
                             )
+                            message_id = str(uuid.uuid4())
                         yield (
                             StepStartedEvent(
                                 type=EventType.STEP_STARTED,
@@ -292,6 +511,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 ReasoningMessageStartEvent(
                                     type=EventType.REASONING_MESSAGE_START,
                                     message_id=message_id,
+                                    role="reasoning",
                                 ),
                                 None,
                                 zero_metrics,
@@ -452,6 +672,9 @@ def datarobot_agent_class_from_crew(
         configurations (e.g. ``{topic}``). Include a ``"chat_history"`` key
         with an empty string value to opt into automatic history injection.
 
+    The returned class accepts the same parameters as :class:`CrewAIAgent`
+    (including optional ``roles``, ``goals``, and ``backstories``).
+
     Returns
     -------
     type[CrewAIAgent]
@@ -462,11 +685,50 @@ def datarobot_agent_class_from_crew(
     class DataRobotAgent(CrewAIAgent):
         def __init__(
             self,
-            *args: Any,
-            **kwargs: Any,
+            api_key: str | None = None,
+            api_base: str | None = None,
+            llm: Any | None = None,
+            tools: list[BaseTool] | None = None,
+            verbose: bool = True,
+            timeout: int = 90,
+            forwarded_headers: dict[str, str] | None = None,
+            max_history_messages: int | None = None,
+            memory_client: BaseMemoryClient | None = None,
+            model: str | None = None,
+            roles: Sequence[str] | None = None,
+            goals: Sequence[str] | None = None,
+            backstories: Sequence[str] | None = None,
+            max_iter: int | None = None,
+            max_rpm: int | None = None,
+            max_execution_time: int | None = None,
+            allow_delegation: bool | None = None,
+            max_retry_limit: int | None = None,
+            reasoning: bool | None = None,
+            max_reasoning_attempts: int | None = None,
         ) -> None:
             self._original_agent_tools = {agent: agent.tools for agent in agents}
-            super().__init__(*args, **kwargs)
+            super().__init__(
+                api_key=api_key,
+                api_base=api_base,
+                llm=llm,
+                tools=tools,
+                verbose=verbose,
+                timeout=timeout,
+                forwarded_headers=forwarded_headers,
+                max_history_messages=max_history_messages,
+                memory_client=memory_client,
+                model=model,
+                roles=roles,
+                goals=goals,
+                backstories=backstories,
+                max_iter=max_iter,
+                max_rpm=max_rpm,
+                max_execution_time=max_execution_time,
+                allow_delegation=allow_delegation,
+                max_retry_limit=max_retry_limit,
+                reasoning=reasoning,
+                max_reasoning_attempts=max_reasoning_attempts,
+            )
 
         def set_tools(self, tools: list[BaseTool]) -> None:
             super().set_tools(tools)

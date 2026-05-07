@@ -135,8 +135,10 @@ def test_build_agui_payload_has_required_fields():
 # --- stream_agui_events ---
 
 
-def test_stream_agui_events_prints_text_content(capsys):
-    # GIVEN SSE events with text content
+@patch(f"{_REMOTE}.render_sse_event")
+def test_stream_agui_events_calls_render_sse_event_per_parsed_event(mock_render):
+    # GIVEN one SSE data line per event (rendering is tested in test_render modules)
+    mock_render.return_value = None
     events = [
         {"type": "TEXT_MESSAGE_CONTENT", "delta": "hello "},
         {"type": "TEXT_MESSAGE_CONTENT", "delta": "world"},
@@ -147,20 +149,36 @@ def test_stream_agui_events_prints_text_content(capsys):
     # WHEN we stream
     with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
         stream_agui_events("http://test", {}, {})
-    # THEN text content is printed
-    out = capsys.readouterr().out
-    assert "hello " in out
-    assert "world" in out
-    assert "Run finished." in out
-    assert "\u2705" in out
+    # THEN each parsed dict is passed to render_sse_event in order
+    assert mock_render.call_count == len(events)
+    assert [c.args[0] for c in mock_render.call_args_list] == events
 
 
-def test_stream_agui_events_raises_on_run_error():
-    # GIVEN a RUN_ERROR event
+@patch(f"{_REMOTE}.render_sse_event")
+def test_stream_agui_events_iterates_events_inside_payload(mock_render):
+    # GIVEN a single SSE line whose JSON has an ``events`` array (remote responsibility)
+    mock_render.return_value = None
+    inner = [
+        {"type": "TEXT_MESSAGE_CONTENT", "delta": "x"},
+        {"type": "RUN_FINISHED"},
+    ]
+    lines = [f"data: {json.dumps({'events': inner})}"]
+    resp = _mock_stream_response(lines)
+    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
+        stream_agui_events("http://test", {}, {})
+    assert mock_render.call_count == 2
+    assert mock_render.call_args_list[0].args[0] == inner[0]
+    assert mock_render.call_args_list[1].args[0] == inner[1]
+
+
+@patch(f"{_REMOTE}.render_sse_event")
+def test_stream_agui_events_raises_on_run_error(mock_render):
+    # GIVEN render_sse_event reports a run error (message only; formatting is not remote's job)
+    mock_render.return_value = "something broke"
     events = [{"type": "RUN_ERROR", "message": "something broke"}]
     resp = _mock_stream_response(_sse_lines(events))
     # WHEN we stream
-    # THEN it raises ClickException with the error message
+    # THEN it raises ClickException including that message
     with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
         with pytest.raises(click.ClickException, match="something broke"):
             stream_agui_events("http://test", {}, {})
@@ -196,8 +214,10 @@ def test_stream_agui_events_raises_on_timeout():
             stream_agui_events("http://test", {}, {})
 
 
-def test_stream_agui_events_skips_malformed_sse_data(capsys):
+@patch(f"{_REMOTE}.render_sse_event")
+def test_stream_agui_events_skips_malformed_sse_data(mock_render):
     # GIVEN a mix of malformed and valid SSE lines
+    mock_render.return_value = None
     lines = [
         "data: not-valid-json",
         f"data: {json.dumps({'type': 'TEXT_MESSAGE_CONTENT', 'delta': 'ok'})}",
@@ -207,9 +227,8 @@ def test_stream_agui_events_skips_malformed_sse_data(capsys):
     # WHEN we stream
     with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
         stream_agui_events("http://test", {}, {})
-    # THEN valid events are still printed
-    out = capsys.readouterr().out
-    assert "ok" in out
+    # THEN only valid JSON payloads are passed to render_sse_event
+    assert mock_render.call_count == 2
 
 
 # --- normalize_base_url ---
@@ -295,130 +314,3 @@ def test_get_auth_context_headers_missing_secret_key_returns_empty(monkeypatch):
     headers = get_auth_context_headers("my-token", "https://app.datarobot.com")
     # THEN it returns an empty dict (no API call made)
     assert headers == {}
-
-
-# --- stream_agui_events: tool call events ---
-
-
-def test_stream_agui_events_prints_tool_calls(capsys):
-    # GIVEN SSE events with a tool call lifecycle
-    events = [
-        {"type": "TOOL_CALL_START", "tool_call_name": "search", "tool_call_id": "c1"},
-        {"type": "TOOL_CALL_ARGS", "tool_call_id": "c1", "delta": '{"q": "test"}'},
-        {"type": "TOOL_CALL_END", "tool_call_id": "c1"},
-        {"type": "TOOL_CALL_RESULT", "tool_call_id": "c1", "content": "found it", "role": "tool"},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN tool info is printed to stderr
-    captured = capsys.readouterr()
-    assert "search" in captured.err
-    assert '{"q": "test"}' in captured.err
-    assert "found it" in captured.err
-
-
-def test_stream_agui_events_truncates_long_tool_result(capsys):
-    # GIVEN a tool result longer than _TOOL_RESULT_MAX_LEN
-    events = [
-        {"type": "TOOL_CALL_RESULT", "tool_call_id": "c1", "content": "x" * 1500, "role": "tool"},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN the result is truncated with ellipsis
-    captured = capsys.readouterr()
-    assert "\u2026" in captured.err
-    assert "x" * 1500 not in captured.err
-
-
-# --- stream_agui_events: reasoning events ---
-
-
-def test_stream_agui_events_prints_reasoning(capsys):
-    # GIVEN SSE events with reasoning content
-    events = [
-        {"type": "REASONING_MESSAGE_CONTENT", "delta": "thinking hard"},
-        {"type": "REASONING_MESSAGE_END"},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN reasoning is printed to stderr
-    captured = capsys.readouterr()
-    assert "thinking hard" in captured.err
-
-
-# --- stream_agui_events: step events ---
-
-
-def test_stream_agui_events_prints_step_started(capsys):
-    # GIVEN a STEP_STARTED event
-    events = [
-        {"type": "STEP_STARTED", "step_name": "agent_workflow"},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN step name is printed to stderr
-    captured = capsys.readouterr()
-    assert "agent_workflow" in captured.err
-
-
-# --- stream_agui_events: run lifecycle events ---
-
-
-def test_stream_agui_events_prints_run_started(capsys):
-    # GIVEN a RUN_STARTED event
-    events = [
-        {"type": "RUN_STARTED", "thread_id": "t1", "run_id": "r1"},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN run started is printed to stderr
-    captured = capsys.readouterr()
-    assert "Run started" in captured.err
-
-
-# --- stream_agui_events: custom events ---
-
-
-def test_stream_agui_events_skips_heartbeat(capsys):
-    # GIVEN a Heartbeat custom event
-    events = [
-        {"type": "CUSTOM", "name": "Heartbeat", "value": {}},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN Heartbeat is NOT printed
-    captured = capsys.readouterr()
-    assert "Heartbeat" not in captured.err
-
-
-def test_stream_agui_events_prints_non_heartbeat_custom(capsys):
-    # GIVEN a non-Heartbeat custom event
-    events = [
-        {"type": "CUSTOM", "name": "MyCustomEvent", "value": {"foo": 1}},
-        {"type": "RUN_FINISHED"},
-    ]
-    resp = _mock_stream_response(_sse_lines(events))
-    # WHEN we stream
-    with patch(f"{_REMOTE}.httpx.stream", return_value=resp):
-        stream_agui_events("http://test", {}, {})
-    # THEN custom event name is printed to stderr
-    captured = capsys.readouterr()
-    assert "MyCustomEvent" in captured.err

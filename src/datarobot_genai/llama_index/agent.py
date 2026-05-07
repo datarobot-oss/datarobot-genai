@@ -38,6 +38,7 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from llama_index.core.agent.workflow import AgentWorkflow
 from llama_index.core.agent.workflow import BaseWorkflowAgent
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.base.llms.types import LLMMetadata
 from llama_index.core.tools import BaseTool
 from llama_index.core.workflow import Event
@@ -48,6 +49,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.memory.base import BaseMemoryClient
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -71,7 +73,41 @@ class DataRobotLiteLLM(LiteLLM):
 
 
 class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
-    """Abstract base agent for LlamaIndex workflows."""
+    """Abstract base agent for LlamaIndex workflows.
+
+    Framework-specific parameters:
+
+    - ``allow_parallel_tool_calls``: when true (default), LlamaIndex workflow
+      agents that support it may issue parallel tool calls
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        llm: Any | None = None,
+        tools: list[BaseTool] | None = None,
+        verbose: bool = True,
+        timeout: int = 90,
+        forwarded_headers: dict[str, str] | None = None,
+        max_history_messages: int | None = None,
+        memory_client: BaseMemoryClient | None = None,
+        model: str | None = None,
+        allow_parallel_tool_calls: bool = True,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            api_base=api_base,
+            llm=llm,
+            tools=tools,
+            verbose=verbose,
+            timeout=timeout,
+            forwarded_headers=forwarded_headers,
+            max_history_messages=max_history_messages,
+            memory_client=memory_client,
+            model=model,
+        )
+        self.allow_parallel_tool_calls = allow_parallel_tool_calls
 
     @abc.abstractmethod
     async def build_workflow(self) -> Any:
@@ -126,13 +162,44 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         current_agent_name: str | None = None
         message_id = str(uuid.uuid4())
         text_started = False
-        agent: str | None = None
+        any_text_emitted = False
 
         async for event in handler.stream_events():
             events.append(event)
+
+            # Detect agent transition first so the first delta of a new agent
+            # is attributed to the new agent's text bubble, not the previous one.
+            new_agent = getattr(event, "current_agent_name", None)
+            if new_agent is not None and new_agent != current_agent_name:
+                # Close any open text message from the outgoing agent so each
+                # step's text commits as its own AG-UI message.
+                if text_started:
+                    yield (
+                        TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                        None,
+                        usage_metrics,
+                    )
+                    text_started = False
+                if current_agent_name is not None:
+                    yield (
+                        StepFinishedEvent(
+                            type=EventType.STEP_FINISHED, step_name=current_agent_name
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                yield (
+                    StepStartedEvent(type=EventType.STEP_STARTED, step_name=new_agent),
+                    None,
+                    usage_metrics,
+                )
+                current_agent_name = new_agent
+                # Fresh id for the new step's first text bubble.
+                message_id = str(uuid.uuid4())
+                logger.info(f"Agent: {current_agent_name}")
+
             # Best-effort extraction of incremental text from LlamaIndex events
             delta: str | None = None
-
             try:
                 if hasattr(event, "delta") and isinstance(getattr(event, "delta"), str):
                     delta = getattr(event, "delta")
@@ -153,6 +220,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     text_started = True
+                    any_text_emitted = True
                 yield (
                     TextMessageContentEvent(
                         type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=delta
@@ -161,34 +229,36 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
 
-                # Agent switch banner if available on event
-            if hasattr(event, "current_agent_name"):
-                agent = getattr(event, "current_agent_name", None)
-                if agent is not None and agent != current_agent_name:
-                    if current_agent_name is not None:
-                        yield (
-                            StepFinishedEvent(step_name=current_agent_name),
-                            None,
-                            usage_metrics,
-                        )
-
-                    yield (
-                        StepStartedEvent(step_name=agent),
-                        None,
-                        usage_metrics,
-                    )
-                    current_agent_name = agent
-                    agent = None
-                    logger.info(f"Agent: {current_agent_name}")
-
             event_type = type(event).__name__
             if event_type == "AgentInput" and hasattr(event, "input"):
                 logger.info(f"Input: {getattr(event, 'input')}")
             elif event_type == "AgentOutput":
-                # Output content
+                # When no deltas streamed for this turn, attach the full response
+                # content to the current step's open text message. Step transition
+                # or end-of-run closes it.
                 resp = getattr(event, "response", None)
                 if resp is not None and hasattr(resp, "content") and getattr(resp, "content"):
-                    logger.info(f"Output: {getattr(resp, 'content')}")
+                    content_str = str(getattr(resp, "content"))
+                    logger.info(f"Output: {content_str}")
+                    if not text_started:
+                        yield (
+                            TextMessageStartEvent(
+                                type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        text_started = True
+                        any_text_emitted = True
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message_id,
+                                delta=content_str,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
                 # Planned tool calls
                 tcalls = getattr(event, "tool_calls", None)
                 if isinstance(tcalls, list) and tcalls:
@@ -223,7 +293,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 yield (
                     ToolCallResultEvent(
                         type=EventType.TOOL_CALL_RESULT,
-                        message_id=message_id,
+                        message_id=tid,
                         tool_call_id=tid,
                         content=json.dumps(tout, default=str),
                         role="tool",
@@ -232,6 +302,16 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
             elif event_type == "ToolCall":
+                # Close any open text message so the tool widget renders below
+                # the preceding text and the next text run starts a fresh bubble.
+                if text_started:
+                    yield (
+                        TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
+                        None,
+                        usage_metrics,
+                    )
+                    text_started = False
+                    message_id = str(uuid.uuid4())
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
                 tid = getattr(event, "tool_id", None)
@@ -256,14 +336,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     usage_metrics,
                 )
 
-        if agent is not None:
-            yield (
-                StepFinishedEvent(step_name=agent),
-                None,
-                usage_metrics,
-            )
-            agent = None
-
+        # Close any text message still open from the final agent before the
+        # step is finished so the message commits inside its step boundaries.
         if text_started:
             yield (
                 TextMessageEndEvent(
@@ -273,6 +347,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 None,
                 usage_metrics,
             )
+            text_started = False
+            message_id = str(uuid.uuid4())
 
         # After streaming completes, build final interactions and finish chunk
         # Extract state from workflow context (supports sync/async get or attribute)
@@ -289,8 +365,41 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         except (AttributeError, TypeError):
             state = None
 
-        # Run subclass-defined response extraction (not streamed) for completeness
-        _ = self.extract_response_text(state, events)
+        # Use subclass-defined response extraction as final fallback when no text was streamed
+        fallback_text = self.extract_response_text(state, events)
+        if not any_text_emitted and fallback_text:
+            yield (
+                TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
+                None,
+                usage_metrics,
+            )
+            yield (
+                TextMessageContentEvent(
+                    type=EventType.TEXT_MESSAGE_CONTENT,
+                    message_id=message_id,
+                    delta=fallback_text,
+                ),
+                None,
+                usage_metrics,
+            )
+            yield (
+                TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=message_id,
+                ),
+                None,
+                usage_metrics,
+            )
+            message_id = str(uuid.uuid4())
+
+        # Close the final agent's step. Each STEP_STARTED needs a matching
+        # STEP_FINISHED; without this, the UI shows the last step as still running.
+        if current_agent_name is not None:
+            yield (
+                StepFinishedEvent(type=EventType.STEP_FINISHED, step_name=current_agent_name),
+                None,
+                usage_metrics,
+            )
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
         if uses_memory:
@@ -364,6 +473,37 @@ def datarobot_agent_class_from_llamaindex(
     original_agent_tools = {agent.name: agent.tools for agent in agents}
 
     class DataRobotLlamaIndexAgent(LlamaIndexAgent):
+        def __init__(
+            self,
+            api_key: str | None = None,
+            api_base: str | None = None,
+            llm: Any | None = None,
+            tools: list[BaseTool] | None = None,
+            verbose: bool = True,
+            timeout: int = 90,
+            forwarded_headers: dict[str, str] | None = None,
+            max_history_messages: int | None = None,
+            memory_client: BaseMemoryClient | None = None,
+            model: str | None = None,
+            allow_parallel_tool_calls: bool = True,
+        ) -> None:
+            super().__init__(
+                api_key=api_key,
+                api_base=api_base,
+                llm=llm,
+                tools=tools,
+                verbose=verbose,
+                timeout=timeout,
+                forwarded_headers=forwarded_headers,
+                max_history_messages=max_history_messages,
+                memory_client=memory_client,
+                model=model,
+                allow_parallel_tool_calls=allow_parallel_tool_calls,
+            )
+            for agent in agents:
+                if isinstance(agent, FunctionAgent):
+                    agent.allow_parallel_tool_calls = allow_parallel_tool_calls
+
         def set_llm(self, llm: Any) -> None:
             super().set_llm(llm)
             for agent in agents:
@@ -373,6 +513,12 @@ def datarobot_agent_class_from_llamaindex(
             super().set_tools(tools)
             for agent in agents:
                 agent.tools = original_agent_tools[agent.name] + tools
+
+        def set_allow_parallel_tool_calls(self, allow_parallel_tool_calls: bool) -> None:
+            self.allow_parallel_tool_calls = allow_parallel_tool_calls
+            for agent in agents:
+                if isinstance(agent, FunctionAgent):
+                    agent.allow_parallel_tool_calls = allow_parallel_tool_calls
 
         async def build_workflow(self) -> AgentWorkflow:
             return workflow

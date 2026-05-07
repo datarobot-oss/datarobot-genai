@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from ag_ui.verify import validate_sequence
+from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import AGENT

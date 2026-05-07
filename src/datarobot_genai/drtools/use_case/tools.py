@@ -22,23 +22,33 @@ from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
 
-@tool_metadata(tags={"use_case", "read", "list", "daria"})
+@tool_metadata(
+    tags={"use_case", "read", "list", "daria"},
+    description=(
+        "[Use case—list] Use when the user needs DataRobot use cases (workspace bundles) as "
+        "id+name, optionally filtered by name search. Read-only. Not assets inside a known case "
+        "(list_use_case_assets), not modeling project ids (list_projects), not deployments alone "
+        "(list_deployments)."
+    ),
+)
 async def list_use_cases(
     *,
     search: Annotated[str | None, "Optional search filter for use case names"] = None,
     limit: Annotated[int, "Maximum number of use cases to return"] = 100,
 ) -> dict[str, Any]:
-    """List DataRobot use cases with optional search filter."""
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
     rest_client = dr_module.client.get_client()
 
     if search is not None and (not search or not search.strip()):
-        raise ToolError("Argument validation error: 'search' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'search' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     params: dict = {"limit": limit}
     if search:
@@ -52,28 +62,42 @@ async def list_use_cases(
     }
 
 
-@tool_metadata(tags={"use_case", "read", "assets", "daria"})
+@tool_metadata(
+    tags={"use_case", "read", "assets", "daria"},
+    description=(
+        "[Use case—assets] Use when you have one or more use_case_id values and need what is "
+        "linked: datasets, deployments, and experiments as id+name per case. Read-only. Not "
+        "discovering use case ids (list_use_cases), not Jira/Confluence content."
+    ),
+)
 async def list_use_case_assets(
     *,
     use_case_id: Annotated[str | None, "The ID of a single DataRobot use case"] = None,
     use_case_ids: Annotated[list[str] | None, "List of use case IDs to fetch assets for"] = None,
 ) -> dict[str, Any]:
-    """List datasets, deployments, and experiments belonging to one or more use cases."""
     ids: list[str] = []
     if use_case_ids is not None:
         if not use_case_ids:
-            raise ToolError("use_case_ids must not be empty.")
+            raise ToolError("use_case_ids must not be empty.", kind=ToolErrorKind.VALIDATION)
         # Validate each ID in the list
         for uc_id in use_case_ids:
             if not uc_id or not uc_id.strip():
-                raise ToolError("Argument validation error: use_case IDs in list cannot be empty.")
+                raise ToolError(
+                    "Argument validation error: use_case IDs in list cannot be empty.",
+                    kind=ToolErrorKind.VALIDATION,
+                )
         ids = use_case_ids
     elif use_case_id:
         if not use_case_id or not use_case_id.strip():
-            raise ToolError("Argument validation error: 'use_case_id' cannot be empty.")
+            raise ToolError(
+                "Argument validation error: 'use_case_id' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
         ids = [use_case_id]
     else:
-        raise ToolError("Either use_case_id or use_case_ids must be provided.")
+        raise ToolError(
+            "Either use_case_id or use_case_ids must be provided.", kind=ToolErrorKind.VALIDATION
+        )
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()

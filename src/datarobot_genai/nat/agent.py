@@ -23,6 +23,7 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
@@ -46,6 +47,24 @@ if TYPE_CHECKING:
     from ragas.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_text(result: Any) -> str:
+    """Pull plain text from a stream result.
+
+    ``ChatResponse`` → ``choices[0].message.content``
+    ``DRAgentEventResponse`` (has *events*) → joined text deltas
+    Anything else → ``str(result)``
+    """
+    if isinstance(result, ChatResponse):
+        return result.choices[0].message.content or ""
+    if hasattr(result, "events"):
+        return "".join(
+            event.delta or ""
+            for event in result.events
+            if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent))
+        )
+    return str(result)
 
 
 def convert_to_ragas_messages(
@@ -133,6 +152,8 @@ class NatAgent(BaseAgent[None]):
 
         Chat history is automatically appended by `invoke` when
         max_history_messages > 0 (controlled via DATAROBOT_GENAI_MAX_HISTORY_MESSAGES env var).
+        Include a `{memory}` placeholder in the returned prompt to opt into
+        automatic long-term memory retrieval and storage for the run.
 
         Default implementation returns the raw user message content.
         """
@@ -155,7 +176,17 @@ class NatAgent(BaseAgent[None]):
 
         """
         # Build the user prompt from the template
+        user_prompt_content = extract_user_prompt_content(run_agent_input)
         user_prompt = self.make_user_prompt(run_agent_input)
+        uses_memory = "{memory}" in user_prompt
+
+        if uses_memory:
+            memory = ""
+            try:
+                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
+            except Exception as exc:
+                logger.warning("NAT memory retrieval failed: %s", exc)
+            user_prompt = user_prompt.replace("{memory}", memory)
 
         # Automatically inject chat history when enabled (max_history_messages > 0)
         history_summary = self.build_history_summary(run_agent_input)
@@ -193,16 +224,13 @@ class NatAgent(BaseAgent[None]):
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
                     async for result in runner.result_stream():
-                        if isinstance(result, ChatResponse):
-                            result_text = result.choices[0].message.content
-                        else:
-                            result_text = str(result)
-
+                        result_text = _extract_text(result)
                         if result_text:
                             if not text_started:
                                 yield (
                                     TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START, message_id=message_id
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=message_id,
                                     ),
                                     None,
                                     zero_metrics,
@@ -244,6 +272,11 @@ class NatAgent(BaseAgent[None]):
                             usage_metrics["completion_tokens"] += token_usage.completion_tokens
 
                     pipeline_interactions = self.create_pipeline_interactions_from_steps(steps)
+                    if uses_memory:
+                        try:
+                            await self.store_memory_for_run(user_prompt_content, run_agent_input)
+                        except Exception as exc:
+                            logger.warning("NAT memory storage failed: %s", exc)
                     yield (
                         RunFinishedEvent(
                             type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id

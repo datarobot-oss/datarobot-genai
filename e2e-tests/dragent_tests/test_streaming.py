@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from ag_ui.verify import validate_sequence
+from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH

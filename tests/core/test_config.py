@@ -122,10 +122,10 @@ def test_default_model_name_returns_configured_value() -> None:
         assert default_model_name() == "azure/gpt-4o"
 
 
-def test_default_model_name_falls_back_to_builtin() -> None:
+def test_default_model_name_returns_none_when_unset() -> None:
     cfg = _make_config(llm_default_model=None)
     with patch.object(config_mod, "Config", return_value=cfg):
-        assert default_model_name() == "datarobot-deployed-llm"
+        assert default_model_name() is None
 
 
 # --- default_use_datarobot_llm_gateway ---

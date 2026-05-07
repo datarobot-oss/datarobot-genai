@@ -23,11 +23,32 @@ from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceClient
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
+_CQL_DOCS = "https://developer.atlassian.com/cloud/confluence/advanced-searching-using-cql/"
+_PAGE_REST_DOCS = "https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/"
+_PAGE_BODY_DOCS = (
+    "https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/#api-pages-post"
+)
+_FOOTER_COMMENTS_DOCS = (
+    "https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-footer-comments/"
+)
 
-@tool_metadata(tags={"confluence", "read", "get", "page"})
+
+@tool_metadata(
+    tags={"confluence", "read", "get", "page"},
+    description=(
+        "[Confluence—get page] Use when you have a numeric page id, or an exact page title plus "
+        "space_key, and need the page body (storage HTML). Not CQL multi-page search "
+        "(confluence_search), not Jira (jira_get_issue).\n\n"
+        'Examples: By ID: page_id_or_title="856391684". By title: '
+        'page_id_or_title="Meeting Notes", space_key="TEAM" (space_key is required when '
+        "using a title).\n\n"
+        f"Reference: {_PAGE_REST_DOCS}"
+    ),
+)
 async def confluence_get_page(
     *,
     page_id_or_title: Annotated[str, "The ID or the exact title of the Confluence page."],
@@ -36,19 +57,11 @@ async def confluence_get_page(
         "Required if identifying the page by title. The space key (e.g., 'PROJ').",
     ] = None,
 ) -> dict[str, Any]:
-    """Retrieve the content of a specific Confluence page.
-
-    Use this tool to fetch Confluence pages by their numeric ID or by title.
-    Returns page content in HTML storage format.
-
-    Usage:
-        - By ID: page_id_or_title="856391684"
-        - By title: page_id_or_title="Meeting Notes", space_key="TEAM"
-
-    When using a page title, the space_key parameter is required.
-    """
     if not page_id_or_title:
-        raise ToolError("Argument validation error: 'page_id_or_title' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'page_id_or_title' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
@@ -61,14 +74,25 @@ async def confluence_get_page(
             if not space_key:
                 raise ToolError(
                     "Argument validation error: "
-                    "'space_key' is required when identifying a page by title."
+                    "'space_key' is required when identifying a page by title.",
+                    kind=ToolErrorKind.VALIDATION,
                 )
             page_response = await client.get_page_by_title(page_id_or_title, space_key)
 
     return page_response.as_flat_dict()
 
 
-@tool_metadata(tags={"confluence", "write", "create", "page"})
+@tool_metadata(
+    tags={"confluence", "write", "create", "page"},
+    description=(
+        "[Confluence—create page] Use when publishing a new page in a space (space_key, title, "
+        "body storage format), optional parent page id. Not updating an existing page "
+        "(confluence_update_page), not comments (confluence_add_comment).\n\n"
+        'Examples: Root page: space_key="PROJ", title="New Page", '
+        'body_content="<p>Content</p>". Child page: same fields plus parent_id=123456.\n\n'
+        f"References (body representation / storage): {_PAGE_BODY_DOCS} {_PAGE_REST_DOCS}"
+    ),
+)
 async def confluence_create_page(
     *,
     space_key: Annotated[str, "The key of the Confluence space where the new page should live."],
@@ -82,20 +106,10 @@ async def confluence_create_page(
         "The ID of the parent page, used to create a child page.",
     ] = None,
 ) -> dict[str, Any]:
-    """Create a new documentation page in a specified Confluence space.
-
-    Use this tool to create new Confluence pages with content in storage format.
-    The page will be created at the root level of the space unless a parent_id
-    is provided, in which case it will be created as a child page.
-
-    Usage:
-        - Root page: space_key="PROJ", title="New Page", body_content="<p>Content</p>"
-        - Child page: space_key="PROJ", title="Sub Page", body_content="<p>Content</p>",
-                      parent_id=123456
-    """
     if not all([space_key, title, body_content]):
         raise ToolError(
-            "Argument validation error: space_key, title, and body_content are required fields."
+            "Argument validation error: space_key, title, and body_content are required fields.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     access_token = await get_atlassian_access_token()
@@ -113,25 +127,31 @@ async def confluence_create_page(
     return {"new_page_id": page_response.page_id, "title": page_response.title}
 
 
-@tool_metadata(tags={"confluence", "write", "add", "comment"})
+@tool_metadata(
+    tags={"confluence", "write", "add", "comment"},
+    description=(
+        "[Confluence—comment] Use when appending a page-level comment on an existing page by "
+        "numeric page_id. Not page body edits (confluence_update_page), not new pages "
+        "(confluence_create_page).\n\n"
+        'Example: page_id="856391684", comment_body="Great work on this documentation!"\n\n'
+        f"Reference: {_FOOTER_COMMENTS_DOCS}"
+    ),
+)
 async def confluence_add_comment(
     *,
     page_id: Annotated[str, "The numeric ID of the page where the comment will be added."],
     comment_body: Annotated[str, "The text content of the comment."],
 ) -> dict[str, Any]:
-    """Add a new comment to a specified Confluence page for collaboration.
-
-    Use this tool to add comments to Confluence pages to facilitate collaboration
-    and discussion. Comments are added at the page level.
-
-    Usage:
-        - Add comment: page_id="856391684", comment_body="Great work on this documentation!"
-    """
     if not page_id:
-        raise ToolError("Argument validation error: 'page_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'page_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if not comment_body:
-        raise ToolError("Argument validation error: 'comment_body' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'comment_body' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
@@ -149,7 +169,17 @@ async def confluence_add_comment(
     }
 
 
-@tool_metadata(tags={"confluence", "search", "content"})
+@tool_metadata(
+    tags={"confluence", "search", "content"},
+    description=(
+        "[Confluence—CQL search] Use when finding pages or content with Confluence Query Language "
+        "(type, space, text filters). Optional full body per hit. "
+        "Not Jira JQL (jira_search_issues), "
+        "not single-page fetch by id alone (confluence_get_page when key already known).\n\n"
+        'Example: cql_query="type=page and space=DOC", max_results=10, include_body=false.\n\n'
+        f"Reference (CQL): {_CQL_DOCS}"
+    ),
+)
 async def confluence_search(
     *,
     cql_query: Annotated[
@@ -164,18 +194,16 @@ async def confluence_search(
         "makes additional API calls). Default is False, which returns only excerpts.",
     ] = False,
 ) -> dict[str, Any]:
-    """
-    Search Confluence pages and content efficiently using a CQL query string.
-    This pushes the search logic to the Confluence API (Push-Down).
-
-    Refer to Confluence documentation for advanced searching using CQL:
-    https://developer.atlassian.com/cloud/confluence/advanced-searching-using-cql/
-    """
     if not cql_query:
-        raise ToolError("Argument validation error: 'cql_query' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'cql_query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if max_results < 1 or max_results > 100:
-        raise ToolError("Argument validation error: 'max_results' must be between 1 and 100.")
+        raise ToolError(
+            "Argument validation error: 'max_results' must be between 1 and 100.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     access_token = await get_atlassian_access_token()
     if isinstance(access_token, ToolError):
@@ -204,7 +232,18 @@ async def confluence_search(
     return {"data": data, "count": n}
 
 
-@tool_metadata(tags={"confluence", "write", "update", "page"})
+@tool_metadata(
+    tags={"confluence", "write", "update", "page"},
+    description=(
+        "[Confluence—update page] Use when replacing page body content for an existing page_id; "
+        "version_number must match current version from confluence_get_page (optimistic lock). "
+        "Not new pages (confluence_create_page), not comments (confluence_add_comment).\n\n"
+        'Example: page_id="856391684", new_body_content="<p>New content</p>", '
+        "version_number=5. Always call confluence_get_page first to read the current "
+        f"version_number.\n\nReferences (body representation / storage): {_PAGE_BODY_DOCS} "
+        f"{_PAGE_REST_DOCS}"
+    ),
+)
 async def confluence_update_page(
     *,
     page_id: Annotated[str, "The ID of the Confluence page to update."],
@@ -218,28 +257,21 @@ async def confluence_update_page(
         "Get this from the confluence_get_page tool.",
     ],
 ) -> dict[str, Any]:
-    """Update the content of an existing Confluence page.
-
-    Requires the current version number to ensure atomic updates.
-    Use this tool to update the body content of an existing Confluence page.
-    The version_number is required for optimistic locking - it prevents overwriting
-    changes made by others since you last fetched the page.
-
-    Usage:
-        page_id="856391684", new_body_content="<p>New content</p>", version_number=5
-
-    Important: Always fetch the page first using confluence_get_page to get the
-    current version number before updating.
-    """
     if not page_id:
-        raise ToolError("Argument validation error: 'page_id' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'page_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
 
     if not new_body_content:
-        raise ToolError("Argument validation error: 'new_body_content' cannot be empty.")
+        raise ToolError(
+            "Argument validation error: 'new_body_content' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     if version_number < 1:
         raise ToolError(
-            "Argument validation error: 'version_number' must be a positive integer (>= 1)."
+            "Argument validation error: 'version_number' must be a positive integer (>= 1).",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     access_token = await get_atlassian_access_token()
