@@ -913,6 +913,53 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
     assert result.usage == NATChatUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3)
 
 
+async def test_function_middleware_stream_integration_executes_real_moderations(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN a real moderation config with token-count guards for streaming output
+    model_dir = Path(__file__).resolve().parents[2] / "e2e-tests" / "dragent"
+
+    async def upstream() -> Any:
+        yield _text_response("This is a test response.")
+
+    stream_next = MagicMock(return_value=upstream())
+    chunks: list[DRAgentEventResponse]
+    with (
+        patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+
+        # WHEN middleware stream runs end-to-end without patched moderation internals
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("Count moderation tokens for this prompt."),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    # THEN streamed output includes real moderation metadata with prompt and response metrics
+    assert chunks
+    moderation_payloads = [c.datarobot_moderations for c in chunks if c.datarobot_moderations]
+    assert moderation_payloads
+    all_keys = {k for payload in moderation_payloads for k in payload}
+    assert "Prompts_token_count" in all_keys
+    assert "Responses_token_count" in all_keys
+
+
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
     builder_mock: MagicMock,
 ) -> None:
