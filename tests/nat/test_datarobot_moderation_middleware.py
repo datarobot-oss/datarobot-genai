@@ -833,7 +833,8 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
 async def test_function_middleware_invoke_integration_executes_real_moderations(
     builder_mock: MagicMock,
 ) -> None:
-    # GIVEN a real moderation config with token-count guards
+    # GIVEN a real moderation config with token-count, cost, and ROUGE-1 guards (ROUGE-1 needs
+    # citation columns; this path only asserts metrics that are always emitted here)
     model_dir = INTEGRATION_MODERATION_MODEL_DIR
     result: DRAgentEventResponse
     with (
@@ -863,12 +864,15 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
             context=_fn_context(),
         )
 
-    # THEN real moderation metadata includes both prescore prompt and postscore response metrics
+    # THEN real moderation metadata includes prompt/response token counts and zero-priced cost
     assert isinstance(result, DRAgentEventResponse)
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
-    assert "Prompts_token_count" in mods
-    assert "Responses_token_count" in mods
+    assert mods["Prompts_token_count"] == 7
+    assert mods["Responses_token_count"] == 6
+    assert mods["cost"] == 0.0
+    assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
+    assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
 
 
 async def test_function_middleware_invoke_integration_nat_chat_input_chat_response_real_moderations(
@@ -917,7 +921,7 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
 async def test_function_middleware_stream_integration_executes_real_moderations(
     builder_mock: MagicMock,
 ) -> None:
-    # GIVEN a real moderation config with token-count guards for streaming output
+    # GIVEN a real moderation config with token-count, cost, and ROUGE-1 guards for streaming
     model_dir = INTEGRATION_MODERATION_MODEL_DIR
 
     async def upstream() -> Any:
@@ -952,13 +956,18 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
             )
         ]
 
-    # THEN streamed output includes real moderation metadata with prompt and response metrics
+    # THEN streamed output includes real moderation metadata with prompt/response tokens and cost
     assert chunks
     moderation_payloads = [c.datarobot_moderations for c in chunks if c.datarobot_moderations]
     assert moderation_payloads
     all_keys = {k for payload in moderation_payloads for k in payload}
     assert "Prompts_token_count" in all_keys
     assert "Responses_token_count" in all_keys
+    assert "cost" in all_keys
+    final_mods = moderation_payloads[-1]
+    assert final_mods["Prompts_token_count"] == 7
+    assert final_mods["Responses_token_count"] == 6
+    assert final_mods["cost"] == 0.0
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
