@@ -8,6 +8,7 @@ on:
 
 env:
   TASK_VERSION: 3.48.0
+  TARGET_NAME: response
 
 jobs:
   detect-changes:
