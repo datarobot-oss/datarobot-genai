@@ -864,13 +864,14 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
             context=_fn_context(),
         )
 
-    # THEN real moderation metadata includes prompt/response token counts and zero-priced cost
+    # THEN real moderation metadata includes prompt/response token counts and priced cost
+    # (fixture: $1/1k prompt tokens, $2/1k completion tokens → 7/1000 + 12/1000)
     assert isinstance(result, DRAgentEventResponse)
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
     assert mods["Prompts_token_count"] == 7
     assert mods["Responses_token_count"] == 6
-    assert mods["cost"] == 0.0
+    assert mods["cost"] == pytest.approx(0.019)
     assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
     assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
 
@@ -967,7 +968,7 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
     final_mods = moderation_payloads[-1]
     assert final_mods["Prompts_token_count"] == 7
     assert final_mods["Responses_token_count"] == 6
-    assert final_mods["cost"] == 0.0
+    assert final_mods["cost"] == pytest.approx(0.019)
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(

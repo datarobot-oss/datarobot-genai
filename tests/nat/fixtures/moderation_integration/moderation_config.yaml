@@ -47,9 +47,9 @@ guards:
   - additional_guard_config:
       cost:
         currency: USD
-        input_price: 0.0
+        input_price: 1.0
         input_unit: 1000
-        output_price: 0.0
+        output_price: 2.0
         output_unit: 1000
     aws_model: null
     aws_region: null
