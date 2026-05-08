@@ -917,6 +917,13 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
     assert isinstance(result, ChatResponse)
     assert result.choices[0].message.content == "This is a test response."
     assert result.usage == NATChatUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3)
+    assert result.datarobot_moderations is not None
+    mods = result.datarobot_moderations
+    assert mods["Prompts_token_count"] == 7
+    assert mods["Responses_token_count"] == 6
+    assert mods["cost"] == pytest.approx(0.019)
+    assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
+    assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
 
 
 async def test_function_middleware_stream_integration_executes_real_moderations(

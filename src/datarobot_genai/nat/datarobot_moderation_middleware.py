@@ -817,7 +817,9 @@ def _nat_chat_response_from_postscore_assistant_text(
     """Build NAT ``ChatResponse`` after postscore without an intermediate OpenAI ``ChatCompletion``.
 
     Preserves ``usage`` from ``original_nat_response`` when present (same as the former
-    ``build_non_streaming_chat_completion`` + ``model_validate`` path).
+    ``build_non_streaming_chat_completion`` + ``model_validate`` path). Attaches
+    ``datarobot_moderations`` as an extra field (NAT ``ChatResponse`` allows extras), aligned
+    with ``_dragent_event_response_from_postscore_assistant_text``.
     """
     usage = original_nat_response.usage
     if usage is None:
@@ -847,6 +849,10 @@ def _nat_chat_response_from_postscore_assistant_text(
             )
         ],
         usage=usage,
+        datarobot_moderations=_datarobot_moderations_merged_prompt_and_response_eval(
+            response_eval,
+            prompt_eval=prompt_eval,
+        ),
     )
 
 
