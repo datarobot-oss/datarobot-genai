@@ -75,11 +75,22 @@ def _path_join(*parts: str) -> str:
     return out
 
 
+# ``urlsafe_b64encode(b"")`` decodes to an empty string; ``_path_join`` drops empty
+# segments. That folded the default empty ``checkpoint_ns`` into ``.../threads/.../ns`` so
+# ``cpts`` / ``blobs`` / ``writes`` sat directly under ``ns`` and ``list()`` tried to
+# base64-decode those directory names as namespaces.
+_EMPTY_SEGMENT_TOKEN = "dr_genai_langgraph_empty_segment"
+
+
 def _encoder_segment(s: str) -> str:
+    if s == "":
+        return _EMPTY_SEGMENT_TOKEN
     return urlsafe_b64encode(s.encode()).decode().rstrip("=")
 
 
 def _decoder_segment(enc: str) -> str:
+    if enc == _EMPTY_SEGMENT_TOKEN:
+        return ""
     pad = "=" * ((4 - len(enc) % 4) % 4)
     return urlsafe_b64decode(enc + pad).decode()
 
@@ -97,6 +108,8 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
     Layout under ``root``:
 
     - ``threads/<b64(thread_id)>/ns/<b64(checkpoint_ns)>/cpts/<checkpoint_id>.pkl``
+      (empty ``thread_id`` or ``checkpoint_ns`` uses ``dr_genai_langgraph_empty_segment``
+      instead of an empty path segment)
     - ``threads/.../writes/<checkpoint_id>.pkl`` (pickled writes dict)
     - ``threads/.../blobs/<sha256(channel,version)>.pkl`` (pickled ``serde.dumps_typed`` result)
 

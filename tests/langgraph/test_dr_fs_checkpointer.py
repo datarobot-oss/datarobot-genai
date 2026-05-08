@@ -22,7 +22,36 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import empty_checkpoint
 
 from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSaver
+from datarobot_genai.langgraph.dr_fs_checkpointer import _decoder_segment
+from datarobot_genai.langgraph.dr_fs_checkpointer import _encoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _register_checkpoint_root_cleanup
+
+
+def test_encoder_empty_string_is_non_empty_path_segment() -> None:
+    assert _encoder_segment("") != ""
+    assert _decoder_segment(_encoder_segment("")) == ""
+
+
+def test_list_with_default_empty_checkpoint_ns_does_not_crash() -> None:
+    fs = MemoryFileSystem()
+    root = "/cp-root"
+    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    thread_id = "t-list"
+    base_cfg: RunnableConfig = {
+        "configurable": {"thread_id": thread_id, "checkpoint_ns": ""},
+    }
+    cp = empty_checkpoint()
+    meta = {"source": "input", "step": -1}
+    new_versions = deepcopy(cp["channel_versions"])
+    out_cfg = saver.put(base_cfg, cp, meta, new_versions)
+    items = list(saver.list(None))
+    assert len(items) >= 1
+    assert items[0].config["configurable"]["checkpoint_ns"] == ""
+    assert items[0].config["configurable"]["thread_id"] == thread_id
+    # Scoped list for same thread + empty ns
+    scoped = list(saver.list({"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}))
+    assert len(scoped) >= 1
+    assert saver.get_tuple(out_cfg) is not None
 
 
 def test_data_robot_file_system_saver_roundtrip() -> None:
