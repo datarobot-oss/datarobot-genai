@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import asynccontextmanager
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -61,6 +62,33 @@ class TestDRAgentAGUISessionManager:
     ):
         schema = session_manager.get_workflow_streaming_output_schema()
         assert schema is DRAgentEventResponse
+
+    @pytest.mark.asyncio
+    async def test_session_passes_preset_context_user_id_to_nat_session(self, session_manager):
+        """Regression guard for NAT 1.6 A2A + per-user workflows without Bearer JWT.
+
+        The A2A executor presets ``ContextState.user_id`` from ``context_id`` then calls
+        ``session()`` with no arguments. NAT's ``SessionManager.session`` used to replace
+        that context value with ``None``, triggering "user_id is required for per-user
+        workflow". DRAgent must forward the preset into the explicit ``user_id`` kwarg.
+        """
+        preset = "efeb8b83-ea1c-4d63-928b-aba9927520ee"
+        token = session_manager._context_state.user_id.set(preset)
+        captured: dict[str, object] = {}
+
+        @asynccontextmanager
+        async def fake_nat_session(self, **kwargs: object):
+            captured.update(kwargs)
+            yield MagicMock()
+
+        try:
+            with patch.object(SessionManager, "session", fake_nat_session):
+                async with session_manager.session():
+                    pass
+        finally:
+            session_manager._context_state.user_id.reset(token)
+
+        assert captured.get("user_id") == preset
 
 
 class TestUserManagerPatch:
