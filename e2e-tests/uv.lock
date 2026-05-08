@@ -997,7 +997,7 @@ dragent = [
     { name = "colorama" },
     { name = "datarobot" },
     { name = "datarobot-early-access" },
-    { name = "datarobot-moderations" },
+    { name = "datarobot-moderations", extra = ["datarobot-sdk"] },
     { name = "datarobot-predict" },
     { name = "fastapi" },
     { name = "litellm" },
@@ -1114,7 +1114,7 @@ requires-dist = [
     { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-moderations", marker = "extra == 'dragent'", specifier = ">=11.2.24,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["datarobot-sdk"], marker = "extra == 'dragent'", specifier = ">=11.2.24,<12.0.0" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
@@ -1358,6 +1358,12 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/74/0866625be275c5c6465baafc0f4758a25bbad1cbd293178aa87374acf268/datarobot_moderations-11.2.27-py3-none-any.whl", hash = "sha256:b08615319662ea9c922b7807f5c91815006d5611f0c7baf7ef17c7708faf76f5", size = 108343, upload-time = "2026-04-29T18:20:39.424Z" },
+]
+
+[package.optional-dependencies]
+datarobot-sdk = [
+    { name = "datarobot" },
+    { name = "datarobot-predict" },
 ]
 
 [[package]]

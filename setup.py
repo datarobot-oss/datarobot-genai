@@ -93,7 +93,7 @@ dragent = nat + [
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "fastapi<0.133.0",
     "starlette<1.0.0",
-    "datarobot-moderations>=11.2.24,<12.0.0",
+    "datarobot-moderations[datarobot-sdk]>=11.2.24,<12.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
