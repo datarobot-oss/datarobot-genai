@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -825,6 +827,45 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
 
     assert seen_in_evaluate_response[t_aaa] == "aaa-only"
     assert seen_in_evaluate_response[t_bbb] == "bbb-only"
+
+
+async def test_function_middleware_invoke_integration_executes_real_moderations(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN a real moderation config with token-count guards
+    model_dir = Path(__file__).resolve().parents[2] / "e2e-tests" / "dragent"
+    result: DRAgentEventResponse
+    with (
+        patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+
+        async def call_next(*_a: Any, **_k: Any) -> DRAgentEventResponse:
+            return _text_response("This is a test response.")
+
+        # WHEN middleware invoke runs end-to-end without patched moderation internals
+        result = await mw.function_middleware_invoke(
+            _make_run_input("Count moderation tokens for this prompt."),
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    # THEN real moderation metadata is attached to the output
+    assert isinstance(result, DRAgentEventResponse)
+    assert result.datarobot_moderations is not None
+    assert any("token_count" in key for key in result.datarobot_moderations)
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
