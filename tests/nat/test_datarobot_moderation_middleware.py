@@ -81,6 +81,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_t
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
+INTEGRATION_MODERATION_MODEL_DIR = Path(__file__).parent / "fixtures" / "moderation_integration"
 
 
 def _nat_chat_response_assistant_text(content: str) -> ChatResponse:
@@ -833,7 +834,7 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
     builder_mock: MagicMock,
 ) -> None:
     # GIVEN a real moderation config with token-count guards
-    model_dir = Path(__file__).resolve().parents[2] / "e2e-tests" / "dragent"
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
     result: DRAgentEventResponse
     with (
         patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
@@ -875,7 +876,7 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
 ) -> None:
     # GIVEN NAT ``ChatRequestOrMessage`` (not AG-UI ``RunAgentInput``) and ``call_next`` returns
     # ``ChatResponse`` (single_fn / LLM Gateway style), with real moderation loaded from disk
-    model_dir = Path(__file__).resolve().parents[2] / "e2e-tests" / "dragent"
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
     crm = ChatRequestOrMessage(
         messages=[
             NATAPIMessage(role="user", content="Count moderation tokens for this prompt."),
@@ -917,7 +918,7 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
     builder_mock: MagicMock,
 ) -> None:
     # GIVEN a real moderation config with token-count guards for streaming output
-    model_dir = Path(__file__).resolve().parents[2] / "e2e-tests" / "dragent"
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
 
     async def upstream() -> Any:
         yield _text_response("This is a test response.")
