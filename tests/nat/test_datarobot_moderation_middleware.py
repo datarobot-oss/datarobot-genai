@@ -862,10 +862,12 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
             context=_fn_context(),
         )
 
-    # THEN real moderation metadata is attached to the output
+    # THEN real moderation metadata includes both prescore prompt and postscore response metrics
     assert isinstance(result, DRAgentEventResponse)
     assert result.datarobot_moderations is not None
-    assert any("token_count" in key for key in result.datarobot_moderations)
+    mods = result.datarobot_moderations
+    assert "Prompts_token_count" in mods
+    assert "Responses_token_count" in mods
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(

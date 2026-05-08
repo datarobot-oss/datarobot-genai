@@ -629,6 +629,20 @@ def _datarobot_moderations_from_evaluation_result(
     return cast(dict[str, Any], _json_safe_moderation_metadata(eval_result.metrics))
 
 
+def _datarobot_moderations_merged_prompt_and_response_eval(
+    response_eval: EvaluationResult,
+    *,
+    prompt_eval: EvaluationResult | None,
+) -> dict[str, Any] | None:
+    """Merge prescore (prompt-stage) and postscore metrics for a single client metadata dict."""
+    merged: dict[str, Any] = {}
+    if prompt_eval is not None and prompt_eval.metrics:
+        merged.update(_json_safe_moderation_metadata(prompt_eval.metrics))
+    if response_eval.metrics:
+        merged.update(_json_safe_moderation_metadata(response_eval.metrics))
+    return cast(dict[str, Any], merged) if merged else None
+
+
 def _infer_parent_message_id_for_tool_calls(
     source_ag_ui_events: list[Any] | None,
     built_text_events: list[Any],
@@ -785,7 +799,10 @@ def _dragent_event_response_from_postscore_assistant_text(
         usage_metrics=default_usage_metrics(),
         original_chunk=chunk,
         model=response_model,
-        datarobot_moderations=_datarobot_moderations_from_evaluation_result(response_eval),
+        datarobot_moderations=_datarobot_moderations_merged_prompt_and_response_eval(
+            response_eval,
+            prompt_eval=prompt_eval,
+        ),
     )
 
 
