@@ -33,6 +33,9 @@ when a real DataRobot endpoint and token are available. Catalog:
 
 Edit ``llm_gateway_model_id`` on each LLM guard in that YAML if your tenant uses a different
 gateway model slug (defaults follow ``LLM_DEFAULT_MODEL`` in ``tests/nat/integration/.env.sample``).
+
+You will need to add llm-eval extra to datarobot moderations and relax the override on ragas
+to run these tests locally.
 """
 
 from __future__ import annotations
