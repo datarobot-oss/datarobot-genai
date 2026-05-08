@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Iterator
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
@@ -76,10 +77,19 @@ from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     chat_completion_to_dragent_event_response,
 )
+from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
+
+
+@pytest.fixture(autouse=True)
+def _noop_datarobot_moderation_credential_check() -> Iterator[None]:
+    """11.2.28+ validates DR credentials when loading pipelines; unit tests use stub endpoints."""
+    with patch("datarobot_dome.api._verify_datarobot_credentials"):
+        yield
+
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
@@ -274,6 +284,36 @@ def test_moderation_prompt_from_workflow_input_parity_with_completion_dict() -> 
     direct = moderation_prompt_from_workflow_input(run_input)
     via_ccp = get_chat_prompt(workflow_input_to_completion_dict(run_input))
     assert direct == via_ccp
+
+
+def test_load_llm_moderation_pipeline_reads_moderation_from_workflow_yaml(tmp_path: Path) -> None:
+    (tmp_path / "workflow.yaml").write_text(
+        """
+llms:
+  x:
+    _type: datarobot-llm-component
+moderation:
+  guards:
+    - name: Prompt Tokens
+      type: ootb
+      ootb_type: token_count
+      stage: prompt
+  timeout_sec: 60
+  timeout_action: score
+""".lstrip(),
+        encoding="utf-8",
+    )
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        pipeline = load_llm_moderation_pipeline(str(tmp_path))
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
 
 
 @pytest.fixture

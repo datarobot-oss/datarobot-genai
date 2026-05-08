@@ -34,6 +34,7 @@ from typing import cast
 
 import numpy as np
 import pandas as pd
+import yaml
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -105,9 +106,40 @@ from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_c
 
 _logger = logging.getLogger(__name__)
 
+_WORKFLOW_YAML_NAME = "workflow.yaml"
+
+
+def _is_agent_workflow_yaml_document(data: dict[str, Any]) -> bool:
+    """Check if the YAML looks like a NAT / DRAgent workflow (not a bare moderation file)."""
+    return any(
+        k in data for k in ("functions", "llms", "function_groups", "authentication", "general")
+    )
+
+
+def _moderation_dict_from_workflow_document(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Pick out moderation config embedded in a workflow document, if present."""
+    if "moderation" in data:
+        mod = data["moderation"]
+        return mod if isinstance(mod, dict) else None
+    if ("guards" in data or "targets" in data) and not _is_agent_workflow_yaml_document(data):
+        return data
+    return None
+
+
+def _moderation_pipeline_from_workflow_yaml(workflow_yaml_path: str) -> ModerationPipeline | None:
+    workflow_dir = os.path.dirname(os.path.abspath(workflow_yaml_path))
+    with open(workflow_yaml_path, encoding="utf-8") as f:
+        doc = yaml.safe_load(f)
+    if not isinstance(doc, dict):
+        return None
+    payload = _moderation_dict_from_workflow_document(doc)
+    if payload is None:
+        return None
+    return ModerationPipeline.from_dict(payload, model_dir=workflow_dir)
+
 
 def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | None:
-    """Load YAML LLM moderation for NAT via ``ModerationPipeline.from_yaml`` (not DRUM ``init``)."""
+    """Load LLM moderation: prefer ``workflow.yaml`` in ``model_dir``, then ``moderation_config.yaml``."""
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
@@ -116,15 +148,34 @@ def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | 
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
 
     base = model_dir if model_dir is not None else os.getcwd()
+    workflow_yaml_path = os.path.join(base, _WORKFLOW_YAML_NAME)
     guard_config_file = os.path.join(base, MODERATION_CONFIG_FILE_NAME)
-    if not os.path.exists(guard_config_file):
+
+    pipeline: ModerationPipeline | None = None
+    if os.path.isfile(workflow_yaml_path):
+        pipeline = _moderation_pipeline_from_workflow_yaml(workflow_yaml_path)
+        if pipeline is None and os.path.isfile(guard_config_file):
+            pipeline = ModerationPipeline.from_yaml(guard_config_file)
+        elif pipeline is None:
+            _logger.warning(
+                "%s has no usable moderation section (expected key %r with guard config); "
+                "and %s was not found — moderations will not be enforced",
+                workflow_yaml_path,
+                "moderation",
+                guard_config_file,
+            )
+            return None
+    elif os.path.isfile(guard_config_file):
+        pipeline = ModerationPipeline.from_yaml(guard_config_file)
+    else:
         _logger.warning(
-            "Guard config file: %s not found; moderations will not be enforced",
-            guard_config_file,
+            "Neither %s nor %s found under %s; moderations will not be enforced",
+            _WORKFLOW_YAML_NAME,
+            MODERATION_CONFIG_FILE_NAME,
+            base,
         )
         return None
 
-    pipeline = ModerationPipeline.from_yaml(guard_config_file)
     # LLMPipeline.get_input_column(GuardStage.RESPONSE) falls back to TARGET_NAME when the YAML
     # does not set a response column. DRUM sets TARGET_NAME; local NAT often does not (see e2e CI env).
     os.environ.setdefault("TARGET_NAME", "response")
@@ -1323,11 +1374,14 @@ class DataRobotModerationConfig(
     FunctionMiddlewareBaseConfig,  # type: ignore[misc]
     name="datarobot_moderation",  # type: ignore[call-arg]
 ):
-    """NAT middleware: DataRobot prescore / postscore guard pipeline (moderation_config.yaml)."""
+    """NAT middleware: DataRobot prescore / postscore guard pipeline from workflow YAML."""
 
     model_dir: str | None = Field(
         default=None,
-        description="Directory that contains moderation_config.yaml (defaults to process CWD).",
+        description=(
+            "Directory containing workflow.yaml with a ``moderation:`` guard block "
+            "(or moderation_config.yaml as fallback; defaults to process CWD)."
+        ),
     )
 
 
