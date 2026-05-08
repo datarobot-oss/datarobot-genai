@@ -13,13 +13,16 @@
 # limitations under the License.
 from __future__ import annotations
 
+import atexit
 from copy import deepcopy
 
+import pytest
 from fsspec.implementations.memory import MemoryFileSystem
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import empty_checkpoint
 
 from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSaver
+from datarobot_genai.langgraph.dr_fs_checkpointer import _register_checkpoint_root_cleanup
 
 
 def test_data_robot_file_system_saver_roundtrip() -> None:
@@ -38,3 +41,37 @@ def test_data_robot_file_system_saver_roundtrip() -> None:
     tup = saver.get_tuple(out_cfg)
     assert tup is not None
     assert tup.checkpoint["id"] == cp["id"]
+
+
+def test_register_checkpoint_root_cleanup_runs_once_and_removes_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
+
+    dr_cp._atexit_cleanup_registered[0] = False
+    callbacks: list[object] = []
+
+    def _capture_register(fn: object) -> None:
+        callbacks.append(fn)
+
+    monkeypatch.setattr(atexit, "register", _capture_register)
+
+    fs = MemoryFileSystem()
+    root = "/ephemeral/cp"
+    with fs.open(f"{root}/marker.txt", "wb") as f:
+        f.write(b"x")
+
+    _register_checkpoint_root_cleanup(fs, root)
+    _register_checkpoint_root_cleanup(fs, root)
+    assert len(callbacks) == 1
+    assert fs.exists(root)
+    callbacks[0]()
+    assert not fs.exists(root)
+
+
+def test_reset_default_langgraph_checkpointer_clears_atexit_flag() -> None:
+    import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
+
+    dr_cp._atexit_cleanup_registered[0] = True
+    dr_cp.reset_default_langgraph_checkpointer_for_tests()
+    assert dr_cp._atexit_cleanup_registered[0] is False

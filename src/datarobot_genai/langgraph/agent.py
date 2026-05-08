@@ -95,8 +95,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     Framework-specific parameters:
 
     - ``checkpointer``: checkpoint store for ``interrupt()`` and thread resume. If omitted,
-      a process-wide default backed by ``datarobot.fs.DataRobotFileSystem`` is used (see
-      ``default_langgraph_checkpointer`` in ``dr_fs_checkpointer``).
+      use ``use_datarobot_fs_checkpointer=True`` for the process-wide DR FS default (see
+      ``default_langgraph_checkpointer`` in ``dr_fs_checkpointer``), or pass any explicit
+      saver; otherwise no checkpointer is installed.
+    - ``use_datarobot_fs_checkpointer``: when ``True`` and ``checkpointer`` is omitted, use
+      the process-wide ``DataRobotFileSystem`` saver (ignored if ``checkpointer`` is set).
     - ``interrupt_before`` / ``interrupt_after``: compile-time interrupt node lists.
     - ``debug``: forwarded to ``StateGraph.compile(debug=...)``.
     - ``name``: optional name for the compiled graph.
@@ -115,14 +118,18 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
         checkpointer: Any | None = None,
+        use_datarobot_fs_checkpointer: bool = False,
         interrupt_before: Any | None = None,
         interrupt_after: Any | None = None,
         debug: bool = False,
         name: str | None = None,
     ) -> None:
-        self.checkpointer = (
-            checkpointer if checkpointer is not None else default_langgraph_checkpointer()
-        )
+        if checkpointer is not None:
+            self.checkpointer = checkpointer
+        elif use_datarobot_fs_checkpointer:
+            self.checkpointer = default_langgraph_checkpointer()
+        else:
+            self.checkpointer = None
         self.interrupt_before = interrupt_before
         self.interrupt_after = interrupt_after
         self.debug = debug
@@ -188,6 +195,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         run_agent_input: RunAgentInput,
     ) -> Command | None:
         """When the thread is paused on `interrupt()`, map the user message to `resume`."""
+        if self.checkpointer is None:
+            return None
         config = cast(Any, self.build_langgraph_runnable_config(run_agent_input))
         snap = await compiled_graph.aget_state(config)
         interrupts = getattr(snap, "interrupts", None)
@@ -614,12 +623,12 @@ def datarobot_agent_class_from_langgraph(
 
     Human-in-the-loop
     ------------------
-    Unless you pass ``checkpointer=...``, a **process-wide** default checkpointer backed by
-    ``datarobot.fs.DataRobotFileSystem`` is used so graphs can resume after ``interrupt()``
-    when the client reuses the same ``thread_id`` (e.g. chat id). Set
-    ``DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE`` to a stable ``dr://`` prefix for cross-restart
-    persistence. You can also pass resume payloads explicitly via
-    ``run_agent_input.state["langgraph_resume"]``.
+    Pass ``use_datarobot_fs_checkpointer=True`` (and omit ``checkpointer``) to use the
+    **process-wide** DR FS default so graphs can resume after ``interrupt()`` when the client
+    reuses the same ``thread_id`` within one process. Optional env
+    ``DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE`` sets the ``dr://`` prefix; that default removes
+    the tree best-effort on interpreter exit. Alternatively pass any explicit ``checkpointer=``.
+    You can also pass resume payloads via ``run_agent_input.state["langgraph_resume"]``.
     """
 
     class DataRobotLangAgent(LangGraphAgent):

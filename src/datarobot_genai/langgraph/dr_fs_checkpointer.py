@@ -19,6 +19,7 @@ by writing files at nested paths (same pattern as normal DR FS uploads).
 
 from __future__ import annotations
 
+import atexit
 import os
 import pickle
 import random
@@ -43,6 +44,24 @@ from langgraph.checkpoint.base import get_checkpoint_id
 from langgraph.checkpoint.base import get_checkpoint_metadata
 
 _default_process_checkpointer: list[Any | None] = [None]
+_atexit_cleanup_registered: list[bool] = [False]
+
+
+def _register_checkpoint_root_cleanup(fs: AbstractFileSystem, root: str) -> None:
+    """Remove ``root`` recursively on interpreter exit (best-effort)."""
+    if _atexit_cleanup_registered[0]:
+        return
+    root_norm = root.rstrip("/")
+
+    def _cleanup() -> None:
+        try:
+            if fs.exists(root_norm):
+                fs.rm(root_norm, recursive=True)
+        except Exception:
+            pass
+
+    atexit.register(_cleanup)
+    _atexit_cleanup_registered[0] = True
 
 
 def _path_join(*parts: str) -> str:
@@ -56,11 +75,11 @@ def _path_join(*parts: str) -> str:
     return out
 
 
-def _enc_segment(s: str) -> str:
+def _encoder_segment(s: str) -> str:
     return urlsafe_b64encode(s.encode()).decode().rstrip("=")
 
 
-def _dec_segment(enc: str) -> str:
+def _decoder_segment(enc: str) -> str:
     pad = "=" * ((4 - len(enc) % 4) % 4)
     return urlsafe_b64decode(enc + pad).decode()
 
@@ -100,9 +119,9 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         return _path_join(
             self.root,
             "threads",
-            _enc_segment(thread_id),
+            _encoder_segment(thread_id),
             "ns",
-            _enc_segment(checkpoint_ns),
+            _encoder_segment(checkpoint_ns),
         )
 
     def _blob_path(
@@ -259,18 +278,18 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             thread_ids = []
             for e in self.fs.ls(threads_base, detail=False):
                 seg = e.rstrip("/").rsplit("/", 1)[-1]
-                thread_ids.append(_dec_segment(seg))
+                thread_ids.append(_decoder_segment(seg))
 
         config_checkpoint_ns = config["configurable"].get("checkpoint_ns") if config else None
         config_checkpoint_id = get_checkpoint_id(config) if config else None
 
         for thread_id in thread_ids:
-            troot = _path_join(threads_base, _enc_segment(thread_id), "ns")
+            troot = _path_join(threads_base, _encoder_segment(thread_id), "ns")
             if not self.fs.exists(troot):
                 continue
             for ns_entry in self.fs.ls(troot, detail=False):
                 enc_ns = ns_entry.rstrip("/").rsplit("/", 1)[-1]
-                checkpoint_ns = _dec_segment(enc_ns)
+                checkpoint_ns = _decoder_segment(enc_ns)
                 if config_checkpoint_ns is not None and checkpoint_ns != config_checkpoint_ns:
                     continue
                 cpts_dir = _path_join(ns_entry.rstrip("/"), "cpts")
@@ -379,7 +398,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         self._save_writes_map(thread_id, checkpoint_ns, checkpoint_id, writes_map)
 
     def delete_thread(self, thread_id: str) -> None:
-        tdir = _path_join(self.root, "threads", _enc_segment(thread_id))
+        tdir = _path_join(self.root, "threads", _encoder_segment(thread_id))
         if self.fs.exists(tdir):
             self.fs.rm(tdir, recursive=True)
 
@@ -433,8 +452,11 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
 def default_langgraph_checkpointer() -> DataRobotFileSystemSaver:
     """Return a process-wide default saver using :class:`datarobot.fs.DataRobotFileSystem`.
 
-    Set ``DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE`` to a stable ``dr://`` prefix for
-    cross-restart persistence. If unset, ``create_catalog_item_dir()`` is used once per process.
+    ``DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE`` selects the ``dr://`` prefix for checkpoint
+    files (if unset, ``create_catalog_item_dir()`` is used once per process). Best-effort
+    removal of that prefix is registered with :mod:`atexit` so it is deleted when the
+    interpreter exits normally. For checkpoints that must survive process shutdown, construct
+    and pass your own ``checkpointer=`` instead of relying on this default.
     """
     existing = _default_process_checkpointer[0]
     if existing is not None:
@@ -448,9 +470,11 @@ def default_langgraph_checkpointer() -> DataRobotFileSystemSaver:
         root = f"dr://{catalog_id}/langgraph_checkpoints"
     saver = DataRobotFileSystemSaver(fs=fs, root=root.rstrip("/"))
     _default_process_checkpointer[0] = saver
+    _register_checkpoint_root_cleanup(fs, saver.root)
     return saver
 
 
 def reset_default_langgraph_checkpointer_for_tests() -> None:
     """Clear the process-wide default (for test isolation)."""
     _default_process_checkpointer[0] = None
+    _atexit_cleanup_registered[0] = False
