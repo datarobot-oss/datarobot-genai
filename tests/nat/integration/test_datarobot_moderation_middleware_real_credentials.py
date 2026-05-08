@@ -22,6 +22,9 @@ verification patch so ``datarobot_dome`` validates ``DATAROBOT_API_TOKEN`` again
 Load credentials from the repository root ``.env`` and/or ``tests/nat/integration/.env``
 (``python-dotenv``, ``override=False``). If either variable is missing or the token is
 the MCP stub token, tests skip so CI and default ``task test`` runs stay green.
+
+Moderation YAML lives under ``tests/nat/integration/fixtures/moderation_real_credentials/``,
+separate from ``tests/nat/fixtures/moderation_integration/``.
 """
 
 from __future__ import annotations
@@ -45,7 +48,6 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
-from tests.nat.test_datarobot_moderation_middleware import INTEGRATION_MODERATION_MODEL_DIR
 from tests.nat.test_datarobot_moderation_middleware import _fn_context
 from tests.nat.test_datarobot_moderation_middleware import _make_run_input
 from tests.nat.test_datarobot_moderation_middleware import _nat_chat_response_assistant_text
@@ -58,6 +60,11 @@ def _repo_root() -> Path:
 
 def _integration_dir() -> Path:
     return Path(__file__).resolve().parent
+
+
+REAL_CREDENTIALS_MODERATION_MODEL_DIR = (
+    _integration_dir() / "fixtures" / "moderation_real_credentials"
+)
 
 
 @pytest.fixture(scope="module")
@@ -92,7 +99,7 @@ def moderation_middleware_with_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> DataRobotModerationMiddleware:
     monkeypatch.setenv("TARGET_NAME", '"response"')
-    model_dir = INTEGRATION_MODERATION_MODEL_DIR
+    model_dir = REAL_CREDENTIALS_MODERATION_MODEL_DIR
     try:
         mw = DataRobotModerationMiddleware(
             DataRobotModerationConfig(model_dir=str(model_dir)),
