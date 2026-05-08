@@ -42,6 +42,7 @@ from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
+from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -82,6 +83,18 @@ from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_t
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
 INTEGRATION_MODERATION_MODEL_DIR = Path(__file__).parent / "fixtures" / "moderation_integration"
+INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR = (
+    Path(__file__).parent / "fixtures" / "moderation_prompt_length_block"
+)
+
+# ``moderation_prompt_length_block/moderation_config.yaml`` blocks when prompt token count
+# is greater than 32 (81 tokens for this string).
+_LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD = " ".join(["moderation"] * 80)
+_PROMPT_TOKEN_CAP_BLOCK_MESSAGE = "Prompt exceeds the configured maximum length (token count)."
+
+
+def _assistant_text_joined_from_dragent_response(response: DRAgentEventResponse) -> str:
+    return "".join(ev.delta for ev in response.events if isinstance(ev, TextMessageContentEvent))
 
 
 def _nat_chat_response_assistant_text(content: str) -> ChatResponse:
@@ -837,16 +850,13 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
     # citation columns; this path only asserts metrics that are always emitted here)
     model_dir = INTEGRATION_MODERATION_MODEL_DIR
     result: DRAgentEventResponse
-    with (
-        patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
-        patch.dict(
-            os.environ,
-            {
-                "DATAROBOT_API_TOKEN": "test-token",
-                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
-            },
-        ),
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
     ):
         mw = DataRobotModerationMiddleware(
             DataRobotModerationConfig(model_dir=str(model_dir)),
@@ -888,16 +898,13 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
         ],
     )
     result: ChatResponse
-    with (
-        patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
-        patch.dict(
-            os.environ,
-            {
-                "DATAROBOT_API_TOKEN": "test-token",
-                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
-            },
-        ),
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
     ):
         mw = DataRobotModerationMiddleware(
             DataRobotModerationConfig(model_dir=str(model_dir)),
@@ -937,16 +944,13 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
 
     stream_next = MagicMock(return_value=upstream())
     chunks: list[DRAgentEventResponse]
-    with (
-        patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
-        patch.dict(
-            os.environ,
-            {
-                "DATAROBOT_API_TOKEN": "test-token",
-                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
-            },
-        ),
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
     ):
         mw = DataRobotModerationMiddleware(
             DataRobotModerationConfig(model_dir=str(model_dir)),
@@ -976,6 +980,126 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
     assert final_mods["Prompts_token_count"] == 7
     assert final_mods["Responses_token_count"] == 6
     assert final_mods["cost"] == pytest.approx(0.019)
+
+
+async def test_function_middleware_invoke_prompt_token_limit_blocks(
+    builder_mock: MagicMock,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR
+    call_next = AsyncMock()
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            _make_run_input(_LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD),
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_not_awaited()
+    assert isinstance(result, DRAgentEventResponse)
+    assert result.model == MODERATION_MODEL_NAME
+    assert _assistant_text_joined_from_dragent_response(result) == _PROMPT_TOKEN_CAP_BLOCK_MESSAGE
+    assert result.datarobot_moderations is not None
+    mods = result.datarobot_moderations
+    assert mods["Prompts_token_count"] == 81
+    assert any(k.endswith("_blocked_promptText") and mods[k] is True for k in mods), (
+        f"expected a blocked_promptText flag in {mods!r}"
+    )
+
+
+async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_token_limit_blocks(
+    builder_mock: MagicMock,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR
+    crm = ChatRequestOrMessage(
+        messages=[
+            NATAPIMessage(role="user", content=_LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD),
+        ],
+    )
+    call_next = AsyncMock()
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            crm,
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_not_awaited()
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == _PROMPT_TOKEN_CAP_BLOCK_MESSAGE
+    assert result.datarobot_moderations is not None
+    mods = result.datarobot_moderations
+    assert mods["Prompts_token_count"] == 81
+    assert any(k.endswith("_blocked_promptText") and mods[k] is True for k in mods), (
+        f"expected a blocked_promptText flag in {mods!r}"
+    )
+
+
+async def test_function_middleware_stream_prompt_token_limit_blocks(
+    builder_mock: MagicMock,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR
+
+    async def upstream() -> Any:
+        yield _text_response("This path must not run.")
+
+    stream_next = MagicMock(return_value=upstream())
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input(_LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    stream_next.assert_not_called()
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert isinstance(chunk, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(chunk) == _PROMPT_TOKEN_CAP_BLOCK_MESSAGE
+    assert chunk.datarobot_moderations is not None
+    mods = chunk.datarobot_moderations
+    assert mods["Prompts_token_count"] == 81
+    assert any(k.endswith("_blocked_promptText") and mods[k] is True for k in mods), (
+        f"expected a blocked_promptText flag in {mods!r}"
+    )
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
