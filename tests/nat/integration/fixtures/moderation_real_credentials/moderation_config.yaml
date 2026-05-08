@@ -6,6 +6,12 @@
 #
 # Faithfulness needs CITATION_CONTENT_* columns in the moderation dataframe; without RAG
 # citations the executor logs a config error and does not emit Responses_faithfulness.
+#
+# agent_goal_accuracy is omitted: with llmGateway, dome wraps the client as LlamaIndexLLMWrapper
+# for Ragas, but ragas>=0.3 collections metrics require InstructorLLM (see AgentGoalAccuracyWithoutReference).
+#
+# task_adherence is omitted: DeepEval TaskCompletionMetric may omit task_adherence_score when
+# embeddings are disabled (e.g. "Using MockEmbedding"), so the column is absent from metrics.
 timeout_action: score
 timeout_sec: 180
 guards:
@@ -91,39 +97,7 @@ guards:
     stage: response
     type: ootb
     llm_type: llmGateway
-    llm_gateway_model_id: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
-  - additional_guard_config: null
-    aws_model: null
-    aws_region: null
-    description: Task completion score for the user request vs assistant reply (LLM gateway).
-    google_model: null
-    google_region: null
-    is_agentic: false
-    name: Task adherence (gateway)
-    ootb_type: task_adherence
-    openai_api_base: null
-    openai_api_key: null
-    openai_deployment_id: null
-    stage: response
-    type: ootb
-    llm_type: llmGateway
-    llm_gateway_model_id: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
-  - additional_guard_config: null
-    aws_model: null
-    aws_region: null
-    description: Agent goal accuracy without reference labels (LLM gateway).
-    google_model: null
-    google_region: null
-    is_agentic: false
-    name: Agent goal accuracy (gateway)
-    ootb_type: agent_goal_accuracy
-    openai_api_base: null
-    openai_api_key: null
-    openai_deployment_id: null
-    stage: response
-    type: ootb
-    llm_type: llmGateway
-    llm_gateway_model_id: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+    llm_gateway_model_id: datarobot/azure/gpt-4o-2024-11-20
   - additional_guard_config: null
     aws_model: null
     aws_region: null
@@ -139,4 +113,4 @@ guards:
     stage: response
     type: ootb
     llm_type: llmGateway
-    llm_gateway_model_id: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+    llm_gateway_model_id: datarobot/azure/gpt-4o-2024-11-20

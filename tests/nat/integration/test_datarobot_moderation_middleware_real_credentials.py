@@ -25,9 +25,10 @@ the MCP stub token, tests skip so CI and default ``task test`` runs stay green.
 
 A single ``moderation_config.yaml`` under
 ``tests/nat/integration/fixtures/moderation_real_credentials/`` combines token / ROUGE / cost
-guards with OOTB LLM-gateway guards (guideline adherence, task adherence, agent goal accuracy,
-faithfulness). The integration tests below assert both deterministic token/cost metrics and
-LLM-gateway score columns when a real DataRobot endpoint and token are available. Catalog:
+guards with an OOTB LLM-gateway guideline-adherence guard and a faithfulness guard (no
+citations in this test path). The
+integration tests below assert deterministic token/cost metrics and LLM-gateway score columns
+when a real DataRobot endpoint and token are available. Catalog:
 `GUARDRAILS.md <https://github.com/datarobot/moderations/blob/main/docs/GUARDRAILS.md>`_.
 
 Edit ``llm_gateway_model_id`` on each LLM guard in that YAML if your tenant uses a different
@@ -51,9 +52,7 @@ from nat.data_models.api_server import Usage as NATChatUsage
 
 pytest.importorskip("datarobot_dome")
 
-from datarobot_dome.constants import AGENT_GOAL_ACCURACY_COLUMN_NAME
 from datarobot_dome.constants import GUIDELINE_ADHERENCE_COLUMN_NAME
-from datarobot_dome.constants import TASK_ADHERENCE_SCORE_COLUMN_NAME
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
@@ -80,8 +79,6 @@ REAL_CREDENTIALS_MODERATION_MODEL_DIR = (
 
 def _assert_llm_gateway_ootb_metrics(mods: dict[str, Any]) -> None:
     assert GUIDELINE_ADHERENCE_COLUMN_NAME in mods
-    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in mods
-    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in mods
 
 
 def _build_moderation_middleware_for_model_dir(
@@ -229,6 +226,4 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
     assert final_mods["Responses_token_count"] == 6
     assert final_mods["cost"] == pytest.approx(0.019)
     assert GUIDELINE_ADHERENCE_COLUMN_NAME in all_keys
-    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in all_keys
-    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in all_keys
     _assert_llm_gateway_ootb_metrics(final_mods)
