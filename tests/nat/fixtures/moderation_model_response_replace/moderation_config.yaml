@@ -1,0 +1,23 @@
+---
+# Model guard (Regression) on response: when ``trigger_pred`` > 0.5, replace assistant text
+# with ``replacement_col`` from deployment predictions. Tests patch ``datarobot.Deployment.get``
+# and ``AsyncHTTPClient.predict`` so streaming and invoke postscore run real moderations code.
+timeout_action: score
+timeout_sec: 180
+guards:
+  - name: Response replace model
+    description: Mock deployment returns a replacement string for the assistant response.
+    type: model
+    stage: response
+    deployment_id: "507f191e810c19729de860ea"
+    is_agentic: false
+    model_info:
+      input_column_name: response
+      target_name: trigger_pred
+      target_type: Regression
+      replacement_text_column_name: replacement_col
+    intervention:
+      action: replace
+      conditions:
+        - comparand: 0.5
+          comparator: greaterThan

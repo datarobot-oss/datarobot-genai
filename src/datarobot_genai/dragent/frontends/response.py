@@ -13,9 +13,12 @@
 # limitations under the License.
 
 
+from typing import Any
+
 from ag_ui.core import Event
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ResponseBaseModelOutput
+from pydantic import Field
 
 
 class DRAgentEventResponse(ResponseBaseModelOutput):
@@ -23,3 +26,10 @@ class DRAgentEventResponse(ResponseBaseModelOutput):
     model: str | None = None
     usage_metrics: dict[str, int] | None = None
     original_chunk: ChatResponseChunk | None = None
+    datarobot_moderations: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Serialized guard pipeline output (scores, token counts, etc.) "
+            "when moderation is enabled."
+        ),
+    )

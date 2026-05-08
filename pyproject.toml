@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.15.41"
+version = "0.15.42"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -48,6 +48,15 @@ override-dependencies = [
   "crewai[litellm]>=1.11.0",
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.3.8,<0.4.0",
+  # crewai pins OpenTelemetry <1.35; datarobot-moderations (via `[dragent]`)
+  # requires opentelemetry-instrumentation 0.60b1, which pulls otel-api 1.39.x. Align the
+  # stack so `--all-extras` / `[crewai,dragent]` resolves (same approach as the agent app recipe).
+  "opentelemetry-api>=1.39.0,<2.0.0",
+  "opentelemetry-sdk>=1.39.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-http>=1.39.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-common>=1.39.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.39.0,<2.0.0",
+  "opentelemetry-instrumentation>=0.60b1,<0.61",
 ]
 exclude-dependencies = [
   "uv",                       # package manager bundled by crewai; runtime unnecessary
@@ -139,6 +148,13 @@ fixable = [
 ]
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
+]
+"src/datarobot_genai/nat/datarobot_moderation_middleware.py" = [
+    "D301", # Ported docstrings use escaped markup incompatible with r""" convention here
+    "D406", # Ported Google-style sections vs numpy section naming
+    "D407",
+    "E501", # Long comments/docstrings carried over from upstream recipe
+    "PLR0911", # Ported post_invoke has many early exits mirroring upstream control flow
 ]
 "docs/**/*.py" = [
     "INP001", # implicit-namespace-package: standalone example scripts
