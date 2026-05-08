@@ -4,11 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.43
+## 0.15.42
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). When enabled, the default saver registers best-effort deletion of its checkpoint `dr://` root on interpreter exit (`atexit`). Pass an explicit `checkpointer=` for durable storage across normal shutdowns or other backends.
 
+## 0.15.41
+- Added a NAT `dr_mem0_memory` provider that adapts `datarobot-genai[memory]`'s Mem0 client to NAT's `MemoryEditor` interface for `auto_memory_agent`.
+- Documented Mem0 automatic-memory workflow configuration for NAT.
+
+## 0.15.40
+- Simplified cross-application access `workflow.yaml` config: IETF URNs and auth method defaults are now injected by the AgentCard generator rather than declared by the developer.
+- Added `urn:datarobot:agent:identity:internal` and `urn:datarobot:agent:identity:external` AgentCard extensions, and an optional external URL override (`general.frontend.a2a.external.url`).
+
+## 0.15.39
+- Added documentation `docs/nat/a2a-auth.md` on how to configure various auth options for A2A agents.
+
 ## 0.15.38
-- LangGraph `LangGraphAgent` can use a process-wide `DataRobotFileSystemSaver` when `use_datarobot_fs_checkpointer=True`. Set `DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE` to a stable `dr://` path when using that default.
+- Fixed NAT MCP tool calls failing with `Enum` field `ValidationError` (e.g. Tavily) by setting `use_enum_values=True` on tool input schemas.
 
 ## 0.15.37
 - Added an optional `model` identifier to `BaseAgent`. Updated CrewAI, LangGraph, and LlamaIndex agents to use explicit named `__init__` parameters (instead of forwarding arbitrary kwargs). Possible breaking change moving away from `kwargs` to named parameters.

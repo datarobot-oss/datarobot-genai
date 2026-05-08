@@ -90,6 +90,8 @@ def _make_agent_card() -> AgentCard:
             "ref": {"scheme": "oauth2", "flow": "clientCredentials"},
             "token_endpoint_auth_method": _AUTH_METHOD,
             "token_exchange": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "requested_token_type": "urn:ietf:params:oauth:token-type:id-jag",
                 "trusted_issuer": _TRUSTED_ISSUER,
                 "audience": _EXCHANGE_AUDIENCE,
             },

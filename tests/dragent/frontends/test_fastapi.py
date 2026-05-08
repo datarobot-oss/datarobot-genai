@@ -31,8 +31,12 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
+from datarobot_genai.dragent.frontends.a2a import EXTERNAL_IDENTITY_URI
+from datarobot_genai.dragent.frontends.a2a import INTERNAL_IDENTITY_URI
 from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
+from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
+from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
@@ -40,6 +44,7 @@ from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlug
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
+from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.server_auth import CrossApplicationAccessConfig
 from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenExchange
@@ -375,7 +380,6 @@ class TestCreateAgentCard:
                 audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             ),
             token_request=CrossAppTokenRequest(
-                grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
                 token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
                 audience="https://app.datarobot.com/dr_org_id/my_agent_id",
                 scopes=["blog:write"],
@@ -411,11 +415,13 @@ class TestCreateAgentCard:
             },
             "token_endpoint_auth_method": "private_key_jwt",
             "token_exchange": {
+                "grant_type": TOKEN_EXCHANGE_GRANT_TYPE_URI,
+                "requested_token_type": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
                 "trusted_issuer": "https://your-org.oktapreview.com",
                 "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             },
             "token_request": {
-                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "grant_type": JWT_BEARER_GRANT_TYPE_URI,
                 "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             },
         }
@@ -462,7 +468,6 @@ class TestCreateAgentCard:
                 audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             ),
             token_request=CrossAppTokenRequest(
-                grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
                 token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
                 audience="https://app.datarobot.com/dr_org_id/my_agent_id",
                 scopes=["blog:write"],
@@ -493,7 +498,7 @@ class TestCreateAgentCard:
         # Merged scopes (deduplicated)
         assert card.security == [{"oauth2": ["read", "blog:write"]}]
 
-        # JWT Bearer extension: nested params; token_url/scopes only under OpenAPI flows
+        # Cross-app extension: nested params; token_url/scopes only under OpenAPI flows
         assert card.capabilities.extensions is not None
         ext = card.capabilities.extensions[0]
         assert ext.uri == JWT_BEARER_GRANT_TYPE_URI
@@ -505,11 +510,13 @@ class TestCreateAgentCard:
             },
             "token_endpoint_auth_method": "private_key_jwt",
             "token_exchange": {
+                "grant_type": TOKEN_EXCHANGE_GRANT_TYPE_URI,
+                "requested_token_type": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
                 "trusted_issuer": "https://your-org.oktapreview.com",
                 "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             },
             "token_request": {
-                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "grant_type": JWT_BEARER_GRANT_TYPE_URI,
                 "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             },
         }
@@ -520,6 +527,117 @@ class TestCreateAgentCard:
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
         assert card.security_schemes is None
         assert card.security is None
+
+    async def test_internal_identity_extension_when_deployment_id_set(self, a2a_frontend_config):
+        """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN create_agent_card is called THEN the internal
+        identity extension is present with the deployment_id.
+        """
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "dep-abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env):
+            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+
+        assert card.capabilities.extensions is not None
+        uris = [ext.uri for ext in card.capabilities.extensions]
+        assert INTERNAL_IDENTITY_URI in uris
+        internal = next(e for e in card.capabilities.extensions if e.uri == INTERNAL_IDENTITY_URI)
+        assert internal.required is True
+        assert internal.params == {"deployment_id": "dep-abc123"}
+
+    async def test_no_internal_identity_extension_in_local_dev(self, a2a_frontend_config):
+        """GIVEN MLOPS_DEPLOYMENT_ID is not set WHEN create_agent_card is called THEN the
+        internal identity extension is absent.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+
+        extensions = card.capabilities.extensions or []
+        assert not any(e.uri == INTERNAL_IDENTITY_URI for e in extensions)
+
+    async def test_external_identity_extension_when_external_id_set(self, a2a_frontend_config):
+        """GIVEN external.id is provided WHEN create_agent_card is called THEN the external
+        identity extension is present with the correct id.
+        """
+        external = DRAgentA2AExternalConfig(id="catalog-id-xyz")
+        card = await create_agent_card(
+            a2a_frontend_config, cross_app_access=None, skills=[], external=external
+        )
+
+        assert card.capabilities.extensions is not None
+        uris = [ext.uri for ext in card.capabilities.extensions]
+        assert EXTERNAL_IDENTITY_URI in uris
+        ext = next(e for e in card.capabilities.extensions if e.uri == EXTERNAL_IDENTITY_URI)
+        assert ext.required is False
+        assert ext.params == {"id": "catalog-id-xyz"}
+
+    async def test_no_external_identity_extension_when_external_absent(self, a2a_frontend_config):
+        """GIVEN external is None WHEN create_agent_card is called THEN no external identity
+        extension is present.
+        """
+        card = await create_agent_card(
+            a2a_frontend_config, cross_app_access=None, skills=[], external=None
+        )
+
+        extensions = card.capabilities.extensions or []
+        assert not any(e.uri == EXTERNAL_IDENTITY_URI for e in extensions)
+
+    async def test_external_url_overrides_agent_card_url(self, a2a_frontend_config):
+        """GIVEN external.url is set WHEN create_agent_card is called THEN the agent card url
+        uses the external URL exactly as provided.
+        """
+        external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent/")
+        card = await create_agent_card(
+            a2a_frontend_config, cross_app_access=None, skills=[], external=external
+        )
+
+        assert card.url == "https://custom.example.com/agent/"
+
+    async def test_external_url_used_as_provided(self, a2a_frontend_config):
+        """GIVEN external.url is set without a trailing slash WHEN create_agent_card is called
+        THEN the url is used exactly as provided, without modification.
+        """
+        external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent")
+        card = await create_agent_card(
+            a2a_frontend_config, cross_app_access=None, skills=[], external=external
+        )
+
+        assert card.url == "https://custom.example.com/agent"
+
+    async def test_all_extensions_combined(self, a2a_frontend_config):
+        """GIVEN cross_app_access, MLOPS_DEPLOYMENT_ID, and external.id are all set WHEN
+        create_agent_card is called THEN all three extensions are present.
+        """
+        cross_app_access = CrossApplicationAccessConfig(
+            token_endpoint_auth_method="private_key_jwt",
+            token_exchange=CrossAppTokenExchange(
+                trusted_issuer="https://your-org.oktapreview.com",
+                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
+            ),
+            token_request=CrossAppTokenRequest(
+                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
+            ),
+        )
+        external = DRAgentA2AExternalConfig(id="catalog-id-combined")
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "dep-combined",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env):
+            card = await create_agent_card(
+                a2a_frontend_config,
+                cross_app_access=cross_app_access,
+                skills=[],
+                external=external,
+            )
+
+        assert card.capabilities.extensions is not None
+        uris = [ext.uri for ext in card.capabilities.extensions]
+        assert JWT_BEARER_GRANT_TYPE_URI in uris
+        assert INTERNAL_IDENTITY_URI in uris
+        assert EXTERNAL_IDENTITY_URI in uris
 
 
 class TestDRAgentFastApiFrontEndConfig:
@@ -538,7 +656,6 @@ class TestDRAgentFastApiFrontEndConfig:
                 audience="https://idp.example.com/oauth2/ausXXX",
             ),
             token_request=CrossAppTokenRequest(
-                grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer",
                 token_url="https://idp.example.com/oauth2/v1/token",
                 audience="api://my-agent",
                 scopes=["agent:use"],
@@ -566,6 +683,18 @@ class TestDRAgentFastApiFrontEndConfig:
     def test_a2a_enables_endpoints(self):
         config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
         assert config.a2a is not None
+
+    def test_a2a_external_config_optional(self):
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
+        assert config.a2a.external is None
+
+    def test_a2a_with_external_config(self):
+        external = DRAgentA2AExternalConfig(id="ext-id-123", url="https://external.example.com/")
+        config = DRAgentFastApiFrontEndConfig(
+            a2a=DRAgentA2AConfig(server=A2AFrontEndConfig(), external=external)
+        )
+        assert config.a2a.external.id == "ext-id-123"
+        assert config.a2a.external.url == "https://external.example.com/"
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
