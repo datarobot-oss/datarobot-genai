@@ -760,3 +760,150 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
     # ToolMessage filtered out; order preserved
     msgs = sample.user_input
     assert len(msgs) == 2
+
+
+class ThinkingBlockLangGraphAgent(LangGraphAgent):
+    """Agent whose graph stream emits AIMessageChunks with list-form content
+    (Anthropic-style thinking blocks alongside text).
+    """
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        async def mock_stream_generator():
+            yield (
+                "agent",
+                "messages",
+                (
+                    AIMessageChunk(
+                        content=[
+                            {"type": "thinking", "thinking": "The user is asking..."},
+                        ],
+                        id="111",
+                    ),
+                    {},
+                ),
+            )
+            yield (
+                "agent",
+                "messages",
+                (
+                    AIMessageChunk(
+                        content=[
+                            {"type": "thinking", "thinking": " let me search."},
+                            {"type": "text", "text": "I am an assistant."},
+                        ],
+                        id="111",
+                    ),
+                    {},
+                ),
+            )
+            yield (
+                "agent",
+                "messages",
+                (
+                    AIMessageChunk(
+                        content=[
+                            {"type": "text", "text": " Nice to meet you."},
+                        ],
+                        id="111",
+                    ),
+                    {},
+                ),
+            )
+            yield (
+                "agent",
+                "updates",
+                {
+                    "agent": {
+                        "usage": {
+                            "total_tokens": 10,
+                            "prompt_tokens": 5,
+                            "completion_tokens": 5,
+                        },
+                        "messages": [
+                            HumanMessage(content="who are you?"),
+                            AIMessage(
+                                content=[
+                                    {"type": "thinking", "thinking": "..."},
+                                    {
+                                        "type": "text",
+                                        "text": "I am an assistant. Nice to meet you.",
+                                    },
+                                ],
+                                id="111",
+                            ),
+                        ],
+                    }
+                },
+            )
+
+        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream_generator()))
+        mock_state_graph = Mock(compile=Mock(return_value=mock_graph_stream))
+        return mock_state_graph
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {"role": "system", "content": "You are an assistant about {topic}."},
+                {"role": "user", "content": "Hi, tell me about {topic}."},
+            ]
+        )
+
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_stream_generator_extracts_text_from_thinking_block_content(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """When the model emits AIMessageChunks with list-form content (thinking
+    blocks + text), the streamed TextMessageContent deltas must contain only
+    the text portion, not the Python repr of the content list.
+    """
+    agent = ThinkingBlockLangGraphAgent()
+
+    events: list[BaseEvent] = []
+    async for response_event, _, _ in agent.invoke(run_agent_input):
+        if isinstance(response_event, BaseEvent):
+            events.append(response_event)
+
+    text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
+    # Thinking-only chunks should not produce any visible delta.
+    # Mixed and text-only chunks should produce only the text portion.
+    assert text_deltas == ["I am an assistant.", " Nice to meet you."]
+    # No delta should ever contain the dict repr of a thinking block.
+    for delta in text_deltas:
+        assert "thinking" not in delta
+        assert "{'type'" not in delta
+
+
+def test_create_pipeline_interactions_from_events_handles_list_content_with_thinking() -> None:
+    """AIMessage content can be a list of content blocks (thinking + text) when
+    the underlying model emits reasoning. ragas's converter only accepts string
+    content, so the agent must normalize list-form content before handing it
+    over.
+    """
+    human = HumanMessage(content="who are you?")
+    ai = AIMessage(
+        content=[
+            {"type": "thinking", "thinking": "The user is asking..."},
+            {"type": "thinking", "thinking": " let me search."},
+            {"type": "text", "text": "I am an assistant."},
+            {"type": "text", "text": " Nice to meet you."},
+        ],
+        id="111",
+    )
+    events: list[dict[str, Any]] = [
+        {"node1": {"messages": [human]}},
+        {"node2": {"messages": [ai]}},
+    ]
+
+    sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
+    assert sample is not None
+    msgs = sample.user_input
+    assert len(msgs) == 2
+    # The AIMessage should have been normalized to plain text, with thinking blocks dropped.
+    assert msgs[1].content == "I am an assistant. Nice to meet you."

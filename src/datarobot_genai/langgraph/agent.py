@@ -418,38 +418,43 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                     None,
                                     usage_metrics,
                                 )
-                    elif message.content:
-                        # Its a text message
-                        # Handle the start and end of the text message
-                        if message.id != current_message_id:
-                            if current_message_id:
+                    else:
+                        # AIMessage.text strips reasoning/thinking blocks and
+                        # joins any remaining text-typed blocks; only user-visible
+                        # text is streamed as message deltas.
+                        text_delta = message.text
+                        if text_delta:
+                            # Its a text message
+                            # Handle the start and end of the text message
+                            if message.id != current_message_id:
+                                if current_message_id:
+                                    yield (
+                                        TextMessageEndEvent(
+                                            type=EventType.TEXT_MESSAGE_END,
+                                            message_id=current_message_id,
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                                current_message_id = str(message.id or "")
                                 yield (
-                                    TextMessageEndEvent(
-                                        type=EventType.TEXT_MESSAGE_END,
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
                                         message_id=current_message_id,
+                                        role="assistant",
                                     ),
                                     None,
                                     usage_metrics,
                                 )
-                            current_message_id = str(message.id or "")
                             yield (
-                                TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
                                     message_id=current_message_id,
-                                    role="assistant",
+                                    delta=text_delta,
                                 ),
                                 None,
                                 usage_metrics,
                             )
-                        yield (
-                            TextMessageContentEvent(
-                                type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=current_message_id,
-                                delta=str(message.content),
-                            ),
-                            None,
-                            usage_metrics,
-                        )
                 else:
                     raise ValueError(f"Invalid message event: {message_event}")
             elif mode == "updates":
@@ -572,7 +577,14 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             for _, v in e.items():
                 if v is not None:
                     messages.extend(v.get("messages", []))
-        messages = [m for m in messages if not isinstance(m, ToolMessage)]
+        # Ragas only accepts string content. Models that emit reasoning return
+        # AIMessage.content as a list of content blocks; collapse them to plain
+        # text via .text (drops thinking blocks) before handing the list off.
+        messages = [
+            m if isinstance(m.content, str) else m.model_copy(update={"content": m.text})
+            for m in messages
+            if not isinstance(m, ToolMessage)
+        ]
         # Lazy import to reduce memory overhead when ragas is not used
         from ragas import MultiTurnSample
         from ragas.integrations.langgraph import convert_to_ragas_messages
