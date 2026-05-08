@@ -80,17 +80,30 @@ class JiraClient:
     At the moment of creating this client, official Jira SDK is not supporting async.
     """
 
-    def __init__(self, access_token: str) -> None:
+    def __init__(self, access_token: str | dict[str, str]) -> None:
         """
         Initialize Jira client with access token.
 
         Args:
-            access_token: OAuth access token for Atlassian API
+            access_token: OAuth access token string, or a dict with
+                ``username``, ``token``, and ``base_url`` keys for Basic Auth
+                (API token flow).
         """
+        self._base_url_override: str | None = None
+        if isinstance(access_token, dict):
+            import base64
+            credentials = base64.b64encode(
+                f"{access_token['username']}:{access_token['token']}".encode()
+            ).decode()
+            auth_header = f"Basic {credentials}"
+            self._base_url_override = access_token["base_url"]
+        else:
+            auth_header = f"Bearer {access_token}"
+
         self.access_token = access_token
         self._client = httpx.AsyncClient(
             headers={
-                "Authorization": f"Bearer {access_token}",
+                "Authorization": auth_header,
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
@@ -121,6 +134,8 @@ class JiraClient:
 
     async def _get_full_url(self, path: str) -> str:
         """Return URL for Jira API."""
+        if self._base_url_override:
+            return f"{self._base_url_override}/rest/api/3/{path}"
         cloud_id = await self._get_cloud_id()
         return f"{ATLASSIAN_API_BASE}/ex/jira/{cloud_id}/rest/api/3/{path}"
 

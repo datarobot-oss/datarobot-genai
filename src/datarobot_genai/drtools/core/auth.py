@@ -54,6 +54,11 @@ except ImportError:
         """
         return None
 
+    class Middleware:  # type: ignore[no-redef]
+        """Stub base class when FastMCP is not installed."""
+
+        pass
+
 
 logger = logging.getLogger(__name__)
 

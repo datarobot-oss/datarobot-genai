@@ -15,9 +15,11 @@
 """Tavily API Client and utilities for API key authentication."""
 
 import logging
+import os
 from typing import Any
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
@@ -38,7 +40,11 @@ CHUNKS_PER_SOURCE_DEFAULT: int = 1
 
 async def get_tavily_access_token() -> str:
     """
-    Get Tavily API key from HTTP headers.
+    Get Tavily API key.
+
+    Resolution order:
+    1. ``TAVILY_API_KEY`` environment variable (also loaded from ``.env``).
+    2. ``x-tavily-api-key`` request header.
 
     Returns
     -------
@@ -46,14 +52,20 @@ async def get_tavily_access_token() -> str:
 
     Raises
     ------
-        ToolError: If API key is not found in headers
+        ToolError: If API key is not found
     """
+    load_dotenv(override=False)
+    env_key = os.environ.get("TAVILY_API_KEY", "").strip()
+    if env_key:
+        logger.info("Using Tavily API key from environment variable.")
+        return env_key
     if api_key := get_api_key_from_headers("x-tavily-api-key"):
         return api_key
 
-    logger.warning("Tavily API key not found in headers")
+    logger.warning("Tavily API key not found in environment or headers")
     raise ToolError(
-        "Tavily API key not found in headers. Please provide it via 'x-tavily-api-key' header.",
+        "Tavily API key not found. Set TAVILY_API_KEY in .env or pass it via "
+        "'x-tavily-api-key' header.",
         kind=ToolErrorKind.AUTHENTICATION,
     )
 

@@ -122,10 +122,21 @@ class ConfluenceClient:
         Args:
             access_token: OAuth access token for Atlassian API
         """
+        self._base_url_override: str | None = None
+        if isinstance(access_token, dict):
+            import base64
+            credentials = base64.b64encode(
+                f"{access_token['username']}:{access_token['token']}".encode()
+            ).decode()
+            auth_header = f"Basic {credentials}"
+            self._base_url_override = access_token["base_url"]
+        else:
+            auth_header = f"Bearer {access_token}"
+        
         self.access_token = access_token
         self._client = httpx.AsyncClient(
             headers={
-                "Authorization": f"Bearer {access_token}",
+                "Authorization": auth_header,
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
@@ -153,6 +164,13 @@ class ConfluenceClient:
 
         self._cloud_id = await get_atlassian_cloud_id(self._client, service_type="confluence")
         return self._cloud_id
+
+    async def _get_api_base(self) -> str:
+        """Return the base URL for Confluence REST API calls."""
+        if self._base_url_override:
+            return f"{self._base_url_override}/wiki/rest/api"
+        cloud_id = await self._get_cloud_id()
+        return f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api"
 
     def _parse_response(self, data: dict) -> ConfluencePage:
         """Parse API response into ConfluencePage."""
@@ -194,8 +212,8 @@ class ConfluenceClient:
             ConfluenceError: If page is not found
             httpx.HTTPStatusError: If the API request fails
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content/{page_id}"
+        api_base = await self._get_api_base()
+        url = f"{api_base}/content/{page_id}"
 
         response = await self._client.get(url, params={"expand": self.EXPAND_FIELDS})
 
@@ -222,8 +240,8 @@ class ConfluenceClient:
             ConfluenceError: If the page is not found
             httpx.HTTPStatusError: If the API request fails
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content"
+        api_base = await self._get_api_base()
+        url = f"{api_base}/content"
 
         response = await self._client.get(
             url,
@@ -290,8 +308,8 @@ class ConfluenceClient:
                             permission denied, or invalid content
             httpx.HTTPStatusError: If the API request fails with unexpected status
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content"
+        api_base = await self._get_api_base()
+        url = f"{api_base}/content"
 
         payload: dict[str, Any] = {
             "type": "page",
@@ -370,8 +388,8 @@ class ConfluenceClient:
                             or rate limited (429)
             httpx.HTTPStatusError: If the API request fails with unexpected status
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content/{page_id}"
+        api_base = await self._get_api_base()
+        url = f"{api_base}/content/{page_id}"
 
         try:
             current_page = await self.get_page_by_id(page_id)
@@ -463,8 +481,8 @@ class ConfluenceClient:
             ConfluenceError: If page not found, permission denied, or invalid content
             httpx.HTTPStatusError: If the API request fails with unexpected status
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/content"
+        api_base = await self._get_api_base()
+        url = f"{api_base}/content"
 
         payload: dict[str, Any] = {
             "type": "comment",
@@ -521,8 +539,8 @@ class ConfluenceClient:
         ------
             ConfluenceError: If the API request fails (400, 403, 429)
         """
-        cloud_id = await self._get_cloud_id()
-        url = f"{ATLASSIAN_API_BASE}/ex/confluence/{cloud_id}/wiki/rest/api/search"
+        api_base = await self._get_api_base()
+        url = f"{api_base}/search"
 
         response = await self._client.get(
             url,

@@ -15,10 +15,12 @@
 """Atlassian API client utilities for OAuth and cloud ID management."""
 
 import logging
+import os
 from typing import Any
 from typing import Literal
 
 import httpx
+from dotenv import load_dotenv
 
 from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -39,7 +41,10 @@ async def get_atlassian_access_token() -> str | ToolError:
     """
     Get Atlassian OAuth access token with error handling.
 
-    Uses DataRobot OBO when available; otherwise ``x-datarobot-atlassian-access-token``.
+    Resolution order:
+    1. ``ATLASSIAN_ACCESS_TOKEN`` environment variable (also loaded from ``.env``).
+    2. DataRobot OBO OAuth flow.
+    3. ``x-datarobot-atlassian-access-token`` request header.
 
     Returns
     -------
@@ -54,11 +59,24 @@ async def get_atlassian_access_token() -> str | ToolError:
         # Use token
         ```
     """
-    return await get_oauth_access_token_with_header_fallback(
-        "atlassian",
-        display_name="Atlassian",
-        access_token_header_segment="atlassian",
-    )
+    load_dotenv(override=False)
+    env_token = os.environ.get("ATLASSIAN_ACCESS_TOKEN", "").strip()
+    username = os.environ.get("ATLASSIAN_API_USERNAME", "").strip()
+    base_url = os.environ.get("ATLASSIAN_API_BASE_URL", "").strip()
+    
+    if (env_token and username and base_url):    
+        logger.info("Using Atlassian access token from environment variable.")
+        return {
+            "username": username,
+            "token": env_token,
+            "base_url": base_url.rstrip("/"),
+        } 
+    else:
+        return await get_oauth_access_token_with_header_fallback(
+            "atlassian",
+            display_name="Atlassian",
+            access_token_header_segment="atlassian",
+        )
 
 
 def _find_resource_by_service(
