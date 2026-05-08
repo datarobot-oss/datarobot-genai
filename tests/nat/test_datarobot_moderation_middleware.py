@@ -46,6 +46,7 @@ from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
+from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
@@ -286,23 +287,22 @@ def test_moderation_prompt_from_workflow_input_parity_with_completion_dict() -> 
     assert direct == via_ccp
 
 
-def test_load_llm_moderation_pipeline_reads_moderation_from_workflow_yaml(tmp_path: Path) -> None:
-    (tmp_path / "workflow.yaml").write_text(
-        """
-llms:
-  x:
-    _type: datarobot-llm-component
-moderation:
-  guards:
-    - name: Prompt Tokens
-      type: ootb
-      ootb_type: token_count
-      stage: prompt
-  timeout_sec: 60
-  timeout_action: score
-""".lstrip(),
-        encoding="utf-8",
+def test_load_llm_moderation_pipeline_from_config_moderation_field(tmp_path: Path) -> None:
+    moderation = ModerationConfig.model_validate(
+        {
+            "guards": [
+                {
+                    "name": "Prompt Tokens",
+                    "type": "ootb",
+                    "ootb_type": "token_count",
+                    "stage": "prompt",
+                }
+            ],
+            "timeout_sec": 60,
+            "timeout_action": "score",
+        }
     )
+    cfg = DataRobotModerationConfig(model_dir=str(tmp_path), moderation=moderation)
     with patch.dict(
         os.environ,
         {
@@ -311,7 +311,7 @@ moderation:
             "TARGET_NAME": '"response"',
         },
     ):
-        pipeline = load_llm_moderation_pipeline(str(tmp_path))
+        pipeline = load_llm_moderation_pipeline(cfg)
     assert pipeline is not None
     assert pipeline._pipeline.get_prescore_guards()
 

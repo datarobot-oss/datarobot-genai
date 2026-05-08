@@ -34,7 +34,6 @@ from typing import cast
 
 import numpy as np
 import pandas as pd
-import yaml
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -60,6 +59,7 @@ from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
+from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from nat.builder.builder import Builder
@@ -106,40 +106,28 @@ from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_c
 
 _logger = logging.getLogger(__name__)
 
-_WORKFLOW_YAML_NAME = "workflow.yaml"
 
+class DataRobotModerationConfig(
+    FunctionMiddlewareBaseConfig,  # type: ignore[misc]
+    name="datarobot_moderation",  # type: ignore[call-arg]
+):
+    """NAT middleware: DataRobot prescore / postscore guards."""
 
-def _is_agent_workflow_yaml_document(data: dict[str, Any]) -> bool:
-    """Check if the YAML looks like a NAT / DRAgent workflow (not a bare moderation file)."""
-    return any(
-        k in data for k in ("functions", "llms", "function_groups", "authentication", "general")
+    model_dir: str | None = Field(
+        default=None,
+        description=(
+            "Base directory for resolving guard assets and for ``moderation_config.yaml`` "
+            "when ``moderation`` is omitted (defaults to process CWD)."
+        ),
+    )
+    moderation: ModerationConfig | None = Field(
+        default=None,
+        description="Guard configuration (validated as ``ModerationConfig`` from datarobot_dome).",
     )
 
 
-def _moderation_dict_from_workflow_document(data: dict[str, Any]) -> dict[str, Any] | None:
-    """Pick out moderation config embedded in a workflow document, if present."""
-    if "moderation" in data:
-        mod = data["moderation"]
-        return mod if isinstance(mod, dict) else None
-    if ("guards" in data or "targets" in data) and not _is_agent_workflow_yaml_document(data):
-        return data
-    return None
-
-
-def _moderation_pipeline_from_workflow_yaml(workflow_yaml_path: str) -> ModerationPipeline | None:
-    workflow_dir = os.path.dirname(os.path.abspath(workflow_yaml_path))
-    with open(workflow_yaml_path, encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
-    if not isinstance(doc, dict):
-        return None
-    payload = _moderation_dict_from_workflow_document(doc)
-    if payload is None:
-        return None
-    return ModerationPipeline.from_dict(payload, model_dir=workflow_dir)
-
-
-def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | None:
-    """Load LLM moderation: prefer ``workflow.yaml`` in ``model_dir``, then ``moderation_config.yaml``."""
+def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
+    """Build an LLM moderation pipeline from middleware config or ``moderation_config.yaml`` fallback."""
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
@@ -147,30 +135,18 @@ def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | 
     os.environ["RAGAS_DO_NOT_TRACK"] = "true"
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
 
-    base = model_dir if model_dir is not None else os.getcwd()
-    workflow_yaml_path = os.path.join(base, _WORKFLOW_YAML_NAME)
+    base = os.path.abspath(config.model_dir if config.model_dir is not None else os.getcwd())
     guard_config_file = os.path.join(base, MODERATION_CONFIG_FILE_NAME)
 
     pipeline: ModerationPipeline | None = None
-    if os.path.isfile(workflow_yaml_path):
-        pipeline = _moderation_pipeline_from_workflow_yaml(workflow_yaml_path)
-        if pipeline is None and os.path.isfile(guard_config_file):
-            pipeline = ModerationPipeline.from_yaml(guard_config_file)
-        elif pipeline is None:
-            _logger.warning(
-                "%s has no usable moderation section (expected key %r with guard config); "
-                "and %s was not found — moderations will not be enforced",
-                workflow_yaml_path,
-                "moderation",
-                guard_config_file,
-            )
-            return None
+    if config.moderation is not None:
+        pipeline = ModerationPipeline.from_config(config.moderation, model_dir=base)
     elif os.path.isfile(guard_config_file):
         pipeline = ModerationPipeline.from_yaml(guard_config_file)
     else:
         _logger.warning(
-            "Neither %s nor %s found under %s; moderations will not be enforced",
-            _WORKFLOW_YAML_NAME,
+            "Middleware has no ``moderation`` block and %s was not found under %s; "
+            "moderations will not be enforced",
             MODERATION_CONFIG_FILE_NAME,
             base,
         )
@@ -1370,27 +1346,12 @@ def _clear_moderation_invoke_state_if_set() -> None:
     _moderation_invoke_state_ctx.reset(state.ctx_token)
 
 
-class DataRobotModerationConfig(
-    FunctionMiddlewareBaseConfig,  # type: ignore[misc]
-    name="datarobot_moderation",  # type: ignore[call-arg]
-):
-    """NAT middleware: DataRobot prescore / postscore guard pipeline from workflow YAML."""
-
-    model_dir: str | None = Field(
-        default=None,
-        description=(
-            "Directory containing workflow.yaml with a ``moderation:`` guard block "
-            "(or moderation_config.yaml as fallback; defaults to process CWD)."
-        ),
-    )
-
-
 class DataRobotModerationMiddleware(
     FunctionMiddleware,  # type: ignore[misc]
 ):
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
         super().__init__()
-        self._moderation = load_llm_moderation_pipeline(config.model_dir)
+        self._moderation = load_llm_moderation_pipeline(config)
 
     @property
     def enabled(self) -> bool:

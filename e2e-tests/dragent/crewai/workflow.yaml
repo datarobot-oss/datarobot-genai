@@ -12,41 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-moderation:
-  guards:
-    - additional_guard_config: null
-      aws_model: null
-      aws_region: null
-      description: Track the number of tokens associated with the input to the LLM, and/or
-        retrieved text from the vector database.
-      google_model: null
-      google_region: null
-      is_agentic: false
-      name: Prompt Tokens
-      ootb_type: token_count
-      openai_api_base: null
-      openai_api_key: null
-      openai_deployment_id: null
-      stage: prompt
-      type: ootb
-    - additional_guard_config: null
-      aws_model: null
-      aws_region: null
-      description: Track the number of tokens associated with the output from the LLM,
-        and/or retrieved text from the vector database.
-      google_model: null
-      google_region: null
-      is_agentic: false
-      name: Response Tokens
-      ootb_type: token_count
-      openai_api_base: null
-      openai_api_key: null
-      openai_deployment_id: null
-      stage: response
-      type: ootb
-  timeout_action: score
-  timeout_sec: 60
-
 general:
   front_end:
     _type: dragent_fastapi
@@ -61,6 +26,41 @@ middleware:
   datarobot_guardrails:
     _type: datarobot_moderation
     model_dir: "."
+    moderation:
+      guards:
+        - additional_guard_config: null
+          aws_model: null
+          aws_region: null
+          description: Track the number of tokens associated with the input to the LLM, and/or
+            retrieved text from the vector database.
+          google_model: null
+          google_region: null
+          is_agentic: false
+          name: Prompt Tokens
+          ootb_type: token_count
+          openai_api_base: null
+          openai_api_key: null
+          openai_deployment_id: null
+          stage: prompt
+          type: ootb
+        - additional_guard_config: null
+          aws_model: null
+          aws_region: null
+          description: Track the number of tokens associated with the output from the LLM,
+            and/or retrieved text from the vector database.
+          google_model: null
+          google_region: null
+          is_agentic: false
+          name: Response Tokens
+          ootb_type: token_count
+          openai_api_base: null
+          openai_api_key: null
+          openai_deployment_id: null
+          stage: response
+          type: ootb
+      timeout_action: score
+      timeout_sec: 60
+
 
 workflow:
   _type: crewai_agent
