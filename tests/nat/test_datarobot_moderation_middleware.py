@@ -870,6 +870,49 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
     assert "Responses_token_count" in mods
 
 
+async def test_function_middleware_invoke_integration_nat_chat_input_chat_response_real_moderations(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN NAT ``ChatRequestOrMessage`` (not AG-UI ``RunAgentInput``) and ``call_next`` returns
+    # ``ChatResponse`` (single_fn / LLM Gateway style), with real moderation loaded from disk
+    model_dir = Path(__file__).resolve().parents[2] / "e2e-tests" / "dragent"
+    crm = ChatRequestOrMessage(
+        messages=[
+            NATAPIMessage(role="user", content="Count moderation tokens for this prompt."),
+        ],
+    )
+    result: ChatResponse
+    with (
+        patch("datarobot_dome.api._verify_datarobot_credentials", return_value=None),
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+
+        async def call_next(*_a: Any, **_k: Any) -> ChatResponse:
+            return _nat_chat_response_assistant_text("This is a test response.")
+
+        result = await mw.function_middleware_invoke(
+            crm,
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    assert isinstance(result, ChatResponse)
+    assert result.choices[0].message.content == "This is a test response."
+    assert result.usage == NATChatUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3)
+
+
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
     builder_mock: MagicMock,
 ) -> None:
