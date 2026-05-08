@@ -86,11 +86,20 @@ INTEGRATION_MODERATION_MODEL_DIR = Path(__file__).parent / "fixtures" / "moderat
 INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR = (
     Path(__file__).parent / "fixtures" / "moderation_prompt_length_block"
 )
+INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR = (
+    Path(__file__).parent / "fixtures" / "moderation_response_token_length_block"
+)
 
 # ``moderation_prompt_length_block/moderation_config.yaml`` blocks when prompt token count
 # is greater than 32 (81 tokens for this string).
 _LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD = " ".join(["moderation"] * 80)
 _PROMPT_TOKEN_CAP_BLOCK_MESSAGE = "Prompt exceeds the configured maximum length (token count)."
+
+# ``moderation_response_token_length_block/moderation_config.yaml`` blocks when response
+# token count is greater than 32 (80 tokens for this string).
+_SHORT_USER_PROMPT_FOR_RESPONSE_BLOCK = "hi"
+_LONG_RESPONSE_FOR_TOKEN_BLOCK_GUARD = " ".join(["reply"] * 80)
+_RESPONSE_TOKEN_CAP_BLOCK_MESSAGE = "Response exceeds the configured maximum length (token count)."
 
 
 def _assistant_text_joined_from_dragent_response(response: DRAgentEventResponse) -> str:
@@ -1099,6 +1108,132 @@ async def test_function_middleware_stream_prompt_token_limit_blocks(
     assert mods["Prompts_token_count"] == 81
     assert any(k.endswith("_blocked_promptText") and mods[k] is True for k in mods), (
         f"expected a blocked_promptText flag in {mods!r}"
+    )
+
+
+async def test_function_middleware_invoke_response_token_limit_blocks(
+    builder_mock: MagicMock,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR
+    call_next = AsyncMock(return_value=_text_response(_LONG_RESPONSE_FOR_TOKEN_BLOCK_GUARD))
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            _make_run_input(_SHORT_USER_PROMPT_FOR_RESPONSE_BLOCK),
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_awaited_once()
+    assert isinstance(result, DRAgentEventResponse)
+    assert result.model == MODERATION_MODEL_NAME
+    assert _assistant_text_joined_from_dragent_response(result) == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
+    assert result.original_chunk is not None
+    assert result.original_chunk.choices[0].finish_reason == "content_filter"
+    assert result.datarobot_moderations is not None
+    mods = result.datarobot_moderations
+    assert mods["Responses_token_count"] == 80
+    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
+        f"expected a blocked_response flag in {mods!r}"
+    )
+
+
+async def test_function_middleware_invoke_nat_chat_input_chat_response_response_token_limit_blocks(
+    builder_mock: MagicMock,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR
+    crm = ChatRequestOrMessage(
+        messages=[
+            NATAPIMessage(role="user", content=_SHORT_USER_PROMPT_FOR_RESPONSE_BLOCK),
+        ],
+    )
+    call_next = AsyncMock(
+        return_value=_nat_chat_response_assistant_text(_LONG_RESPONSE_FOR_TOKEN_BLOCK_GUARD)
+    )
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            crm,
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_awaited_once()
+    assert isinstance(result, ChatResponse)
+    assert result.choices[0].message.content == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
+    assert result.choices[0].finish_reason == "content_filter"
+    assert result.model == MODERATION_MODEL_NAME
+    assert result.datarobot_moderations is not None
+    mods = result.datarobot_moderations
+    assert mods["Responses_token_count"] == 80
+    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
+        f"expected a blocked_response flag in {mods!r}"
+    )
+
+
+async def test_function_middleware_stream_response_token_limit_blocks(
+    builder_mock: MagicMock,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR
+
+    async def upstream() -> Any:
+        yield _text_response(_LONG_RESPONSE_FOR_TOKEN_BLOCK_GUARD)
+
+    stream_next = MagicMock(return_value=upstream())
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input(_SHORT_USER_PROMPT_FOR_RESPONSE_BLOCK),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    stream_next.assert_called_once()
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert isinstance(chunk, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(chunk) == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
+    assert chunk.datarobot_moderations is not None
+    mods = chunk.datarobot_moderations
+    assert mods["Responses_token_count"] == 80
+    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
+        f"expected a blocked_response flag in {mods!r}"
     )
 
 
