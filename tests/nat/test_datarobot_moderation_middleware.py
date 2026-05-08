@@ -41,6 +41,7 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
+from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
@@ -89,6 +90,12 @@ INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR = (
 INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR = (
     Path(__file__).parent / "fixtures" / "moderation_response_token_length_block"
 )
+INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR = (
+    Path(__file__).parent / "fixtures" / "moderation_model_prompt_replace"
+)
+INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR = (
+    Path(__file__).parent / "fixtures" / "moderation_model_response_replace"
+)
 
 # ``moderation_prompt_length_block/moderation_config.yaml`` blocks when prompt token count
 # is greater than 32 (81 tokens for this string).
@@ -101,9 +108,43 @@ _SHORT_USER_PROMPT_FOR_RESPONSE_BLOCK = "hi"
 _LONG_RESPONSE_FOR_TOKEN_BLOCK_GUARD = " ".join(["reply"] * 80)
 _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE = "Response exceeds the configured maximum length (token count)."
 
+# Model-guard replace fixtures use deployment_id below; tests stub ``Deployment.get`` and
+# ``AsyncHTTPClient.predict`` so ``GuardFactory`` / ``run_model_guard`` / ``run_guards`` run
+# without contacting a real prediction server.
+_MODEL_GUARD_DEPLOYMENT_ID = "507f191e810c19729de860ea"
+_MODEL_PROMPT_REPLACEMENT = "[model-moderated-prompt]"
+_MODEL_RESPONSE_REPLACEMENT = "[model-moderated-response]"
+
 
 def _assistant_text_joined_from_dragent_response(response: DRAgentEventResponse) -> str:
     return "".join(ev.delta for ev in response.events if isinstance(ev, TextMessageContentEvent))
+
+
+def _model_guard_deployment_stub() -> MagicMock:
+    dep = MagicMock()
+    dep.id = _MODEL_GUARD_DEPLOYMENT_ID
+    dep.default_prediction_server = {
+        "url": "https://test-moderation.invalid",
+        "datarobot-key": "test-key",
+    }
+    return dep
+
+
+def _model_guard_predict_stub(
+    replacement_text: str,
+    *,
+    predict_inputs: list[pd.DataFrame],
+) -> Any:
+    """Return an ``AsyncHTTPClient.predict`` replacement that records inputs and fires replace."""
+
+    async def fake_predict(_self: Any, deployment: Any, input_df: pd.DataFrame) -> pd.DataFrame:
+        predict_inputs.append(input_df.copy())
+        return pd.DataFrame(
+            {"trigger_pred": [1.0], "replacement_col": [replacement_text]},
+            index=input_df.index,
+        )
+
+    return fake_predict
 
 
 def _nat_chat_response_assistant_text(content: str) -> ChatResponse:
@@ -1235,6 +1276,280 @@ async def test_function_middleware_stream_response_token_limit_blocks(
     assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
         f"expected a blocked_response flag in {mods!r}"
     )
+
+
+async def test_function_middleware_invoke_prompt_replace(
+    builder_mock: MagicMock,
+) -> None:
+    pytest.importorskip("datarobot")
+    model_dir = INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR
+    run_input = _make_run_input("user-secret-before-moderation")
+    call_next = AsyncMock(return_value=_text_response("model-out"))
+    predict_inputs: list[pd.DataFrame] = []
+    fake_predict = _model_guard_predict_stub(
+        _MODEL_PROMPT_REPLACEMENT,
+        predict_inputs=predict_inputs,
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+        patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            run_input,
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_awaited_once()
+    assert predict_inputs, "model guard should call AsyncHTTPClient.predict"
+    assert run_input.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == "model-out"
+
+
+async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_replace(
+    builder_mock: MagicMock,
+) -> None:
+    pytest.importorskip("datarobot")
+    model_dir = INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR
+    crm = ChatRequestOrMessage(
+        messages=[NATAPIMessage(role="user", content="user-secret-before-moderation")],
+    )
+    call_next = AsyncMock(return_value=_nat_chat_response_assistant_text("model-out"))
+    predict_inputs: list[pd.DataFrame] = []
+    fake_predict = _model_guard_predict_stub(
+        _MODEL_PROMPT_REPLACEMENT,
+        predict_inputs=predict_inputs,
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+        patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            crm,
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_awaited_once()
+    assert predict_inputs
+    assert crm.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
+    assert isinstance(result, ChatResponse)
+    assert result.choices[0].message.content == "model-out"
+
+
+async def test_function_middleware_stream_prompt_replace(
+    builder_mock: MagicMock,
+) -> None:
+    pytest.importorskip("datarobot")
+    model_dir = INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR
+    run_input = _make_run_input("user-secret-before-moderation")
+
+    async def upstream() -> Any:
+        yield _text_response("streamed-model-out")
+
+    stream_next = MagicMock(return_value=upstream())
+    predict_inputs: list[pd.DataFrame] = []
+    fake_predict = _model_guard_predict_stub(
+        _MODEL_PROMPT_REPLACEMENT,
+        predict_inputs=predict_inputs,
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+        patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                run_input,
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    stream_next.assert_called_once()
+    assert predict_inputs
+    assert run_input.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
+    assert len(chunks) == 1
+    assert _assistant_text_joined_from_dragent_response(chunks[0]) == "streamed-model-out"
+
+
+async def test_function_middleware_invoke_response_replace(
+    builder_mock: MagicMock,
+) -> None:
+    pytest.importorskip("datarobot")
+    model_dir = INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR
+    call_next = AsyncMock(return_value=_text_response("upstream-assistant-text"))
+    predict_inputs: list[pd.DataFrame] = []
+    fake_predict = _model_guard_predict_stub(
+        _MODEL_RESPONSE_REPLACEMENT,
+        predict_inputs=predict_inputs,
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+        patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            _make_run_input("hi"),
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_awaited_once()
+    assert predict_inputs
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == _MODEL_RESPONSE_REPLACEMENT
+    assert result.model == MODERATION_MODEL_NAME
+    assert result.original_chunk is not None
+    assert result.original_chunk.choices[0].finish_reason == "content_filter"
+
+
+async def test_function_middleware_invoke_nat_chat_input_chat_response_response_replace(
+    builder_mock: MagicMock,
+) -> None:
+    pytest.importorskip("datarobot")
+    model_dir = INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR
+    crm = ChatRequestOrMessage(messages=[NATAPIMessage(role="user", content="hi")])
+    call_next = AsyncMock(return_value=_nat_chat_response_assistant_text("upstream-assistant"))
+    predict_inputs: list[pd.DataFrame] = []
+    fake_predict = _model_guard_predict_stub(
+        _MODEL_RESPONSE_REPLACEMENT,
+        predict_inputs=predict_inputs,
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+        patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        result = await mw.function_middleware_invoke(
+            crm,
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    call_next.assert_awaited_once()
+    assert predict_inputs
+    assert isinstance(result, ChatResponse)
+    assert result.choices[0].message.content == _MODEL_RESPONSE_REPLACEMENT
+    assert result.choices[0].finish_reason == "content_filter"
+    assert result.model == MODERATION_MODEL_NAME
+
+
+async def test_function_middleware_stream_response_replace(
+    builder_mock: MagicMock,
+) -> None:
+    pytest.importorskip("datarobot")
+    model_dir = INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR
+
+    async def upstream() -> Any:
+        yield _text_response("upstream-stream-chunk")
+
+    stream_next = MagicMock(return_value=upstream())
+    predict_inputs: list[pd.DataFrame] = []
+    fake_predict = _model_guard_predict_stub(
+        _MODEL_RESPONSE_REPLACEMENT,
+        predict_inputs=predict_inputs,
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_API_TOKEN": "test-token",
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "TARGET_NAME": '"response"',
+            },
+        ),
+        patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+    ):
+        mw = DataRobotModerationMiddleware(
+            DataRobotModerationConfig(model_dir=str(model_dir)),
+            builder_mock,
+        )
+        assert mw.enabled is True
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    stream_next.assert_called_once()
+    assert predict_inputs
+    assert len(chunks) == 1
+    assert _assistant_text_joined_from_dragent_response(chunks[0]) == _MODEL_RESPONSE_REPLACEMENT
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
