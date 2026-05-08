@@ -68,7 +68,7 @@ langgraph = core + [
 llamaindex = core + [
     "llama-index>=0.14.0,<0.15.0",
     "llama-index-core>=0.14.0,<0.15.0",
-    "llama-index-llms-langchain>=0.6.1,<0.8.0",
+    "llama-index-llms-langchain>=0.8.0,<1.0.0",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
     "litellm>=1.83.0,<2.0.0",
     "llama-index-llms-openai>=0.6.0,<0.7.0",
@@ -93,7 +93,7 @@ dragent = nat + [
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "fastapi<0.133.0",
     "starlette<1.0.0",
-    "datarobot-moderations>=11.2.28,<12.0.0",
+    "datarobot-moderations[all]>=11.2.28,<12.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
