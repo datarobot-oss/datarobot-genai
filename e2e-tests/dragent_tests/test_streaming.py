@@ -54,5 +54,5 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
 
     # THEN: token-count guards attach serialized moderation metadata to at least one chunk
     assert any(
-        chunk.datarobot_moderations is not None for chunk in sse_responses
+        chunk.datarobot_moderations for chunk in sse_responses
     ), "Expected streamed chunks to include datarobot_moderations when guards are configured"

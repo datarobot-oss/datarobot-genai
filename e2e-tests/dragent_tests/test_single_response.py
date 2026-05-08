@@ -56,6 +56,6 @@ def test_generate_single(http_client: httpx.Client) -> None:
     full_text = collect_text(response_data.events)
     assert len(full_text) > 0, "Expected non-empty text response"
 
-    assert response_data.datarobot_moderations is not None, (
+    assert response_data.datarobot_moderations, (
         "Expected datarobot_moderations on non-streaming generate when guards are configured"
     )
