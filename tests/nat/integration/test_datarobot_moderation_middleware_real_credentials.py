@@ -63,6 +63,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerat
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 from tests.nat.test_datarobot_moderation_middleware import _fn_context
 from tests.nat.test_datarobot_moderation_middleware import _make_run_input
+from tests.nat.test_datarobot_moderation_middleware import _moderation_config_from_fixture_dir
 from tests.nat.test_datarobot_moderation_middleware import _nat_chat_response_assistant_text
 from tests.nat.test_datarobot_moderation_middleware import _text_response
 
@@ -93,7 +94,7 @@ def _build_moderation_middleware_for_model_dir(
     monkeypatch.setenv("TARGET_NAME", '"response"')
     try:
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
     except RuntimeError as exc:

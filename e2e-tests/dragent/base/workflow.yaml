@@ -25,7 +25,6 @@ llms:
 middleware:
   datarobot_guardrails:
     _type: datarobot_moderation
-    model_dir: "."
     moderation:
       guards:
         - additional_guard_config: null

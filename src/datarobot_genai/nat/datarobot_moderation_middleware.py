@@ -55,7 +55,6 @@ from datarobot_dome.api import _from_dataframe
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
-from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
@@ -113,13 +112,6 @@ class DataRobotModerationConfig(
 ):
     """NAT middleware: DataRobot prescore / postscore guards."""
 
-    model_dir: str | None = Field(
-        default=None,
-        description=(
-            "Base directory for resolving guard assets and for ``moderation_config.yaml`` "
-            "when ``moderation`` is omitted (defaults to process CWD)."
-        ),
-    )
     moderation: ModerationConfig | None = Field(
         default=None,
         description="Guard configuration (validated as ``ModerationConfig`` from datarobot_dome).",
@@ -127,7 +119,7 @@ class DataRobotModerationConfig(
 
 
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
-    """Build an LLM moderation pipeline from middleware config or ``moderation_config.yaml`` fallback."""
+    """Build an LLM moderation pipeline via ``ModerationPipeline.from_config``."""
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
@@ -135,22 +127,12 @@ def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> Moderatio
     os.environ["RAGAS_DO_NOT_TRACK"] = "true"
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
 
-    base = os.path.abspath(config.model_dir if config.model_dir is not None else os.getcwd())
-    guard_config_file = os.path.join(base, MODERATION_CONFIG_FILE_NAME)
-
-    pipeline: ModerationPipeline | None = None
-    if config.moderation is not None:
-        pipeline = ModerationPipeline.from_config(config.moderation, model_dir=base)
-    elif os.path.isfile(guard_config_file):
-        pipeline = ModerationPipeline.from_yaml(guard_config_file)
-    else:
-        _logger.warning(
-            "Middleware has no ``moderation`` block and %s was not found under %s; "
-            "moderations will not be enforced",
-            MODERATION_CONFIG_FILE_NAME,
-            base,
-        )
+    if config.moderation is None:
+        _logger.warning("Middleware has no ``moderation`` block; moderations will not be enforced")
         return None
+
+    model_dir = os.path.abspath(os.getcwd())
+    pipeline = ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
 
     # LLMPipeline.get_input_column(GuardStage.RESPONSE) falls back to TARGET_NAME when the YAML
     # does not set a response column. DRUM sets TARGET_NAME; local NAT often does not (see e2e CI env).
