@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.57
+- NAT / dragent moderation: `DataRobotModerationConfig` no longer uses `model_dir` to locate guard YAML. Configure guards with the optional `moderation` field (`ModerationConfig` from `datarobot_dome`). In `workflow.yaml`, nest guard definitions under `middleware.datarobot_guardrails.moderation` instead of setting `model_dir` to a directory that contained `moderation_config.yaml`.
+- The `dragent` extra now depends on `datarobot-moderations[all]>=11.2.28,<12.0.0` (full moderation extras; previously a lower minimum without `[all]`).
+- Raised minimum `ragas` to `>=0.4.3,<0.5.0` (from 0.3.x) for stacks that pull evaluation metrics; `uv` `override-dependencies` matches this range.
+
 ## 0.15.56
 - `AgentKernel.custom_model`: HTTP 4xx/5xx now raise `requests.HTTPError` (via `response.raise_for_status()`) instead of plain `Exception`, so callers can classify failures by status code.
 
