@@ -124,7 +124,7 @@ jobs:
           working-directory: e2e-tests
           run: task dragent:run-${{ matrix.agent }} &
           wait-on: http-get://localhost:8080/health
-          wait-for: 30s
+          wait-for: 60s
 
       - name: Run e2e tests with LLM Gateway (full test suite)
         working-directory: e2e-tests
@@ -211,7 +211,7 @@ jobs:
           working-directory: e2e-tests
           run: task dragent:run-${{ matrix.agent }} &
           wait-on: http-get://localhost:8080/health
-          wait-for: 30s
+          wait-for: 60s
 
       - name: Run e2e tests with DataRobot LLM Deployment (only tool calls)
         working-directory: e2e-tests
@@ -293,7 +293,7 @@ jobs:
           working-directory: e2e-tests
           run: task dragent:run-${{ matrix.agent }} &
           wait-on: http-get://localhost:8080/health
-          wait-for: 30s
+          wait-for: 60s
 
       - name: Run e2e tests with external LLM (only tool calls)
         working-directory: e2e-tests
@@ -367,7 +367,7 @@ jobs:
           working-directory: e2e-tests
           run: task dragent:run-router &
           wait-on: http-get://localhost:8080/health
-          wait-for: 30s
+          wait-for: 60s
 
       - name: Run router e2e tests
         working-directory: e2e-tests
