@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.57
+- Registered DataRobot moderation middleware on the `nat.plugins` entry point `datarobot_moderation_middleware` so `_type: datarobot_moderation` is available when NAT loads plugins (no custom recipe `nat.plugins` mapping required). Registration runs only if `datarobot_dome` is installed (for example via `datarobot-genai[dragent]`).
 - NAT / dragent moderation: `DataRobotModerationConfig` no longer uses `model_dir` to locate guard YAML. Configure guards with the optional `moderation` field (`ModerationConfig` from `datarobot_dome`). In `workflow.yaml`, nest guard definitions under `middleware.datarobot_guardrails.moderation` instead of setting `model_dir` to a directory that contained `moderation_config.yaml`.
 - The `dragent` extra now depends on `datarobot-moderations[all]>=11.2.28,<12.0.0` (full moderation extras; previously a lower minimum without `[all]`).
-- Raised minimum `ragas` to `>=0.4.3,<0.5.0` (from 0.3.x) for stacks that pull evaluation metrics; `uv` `override-dependencies` matches this range.
 - The `llamaindex` extra now pins `llama-index-llms-langchain` to `>=0.8.0,<1.0.0` (previously `>=0.6.1,<0.8.0`); 0.6.x and 0.7.x are no longer in range.
 
 ## 0.15.56
