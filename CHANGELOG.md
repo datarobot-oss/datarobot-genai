@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.44
+- Added HTTP request headers forwarding into the NAT `Context` for A2A JSON-RPC routes.
+- Renamed `OktaCrossApplicationAccessAuthProvider` → `OAuth2CrossApplicationAccessOAuth2AuthProvider` and `OktaCrossApplicationAccessAuthProviderConfig` → `OAuth2CrossApplicationAccessAuthProviderConfig` to satisfy the NAT SDK's name-based OAuth2 compatibility check.
+
 ## 0.15.43
 - Fixed dragent A2A + per-user workflows when no Bearer JWT is present: `DRAgentAGUISessionManager.session` now forwards a preset `ContextState.user_id` (set from the A2A `context_id` by the FastAPI executor) into NAT’s explicit `user_id` argument. NAT 1.6+ otherwise replaced the context value with `None`, causing per-user workflows to fail in local dev and message-only A2A scenarios.
 

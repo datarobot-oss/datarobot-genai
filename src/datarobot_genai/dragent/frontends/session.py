@@ -77,7 +77,7 @@ def _patch_user_manager() -> None:
 _patch_user_manager()
 
 # ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
-# request headers into the NAT context so auth providers (e.g. OktaCrossApplicationAccess)
+# request headers into the NAT context so auth providers (e.g. OAuth2CrossApplicationAccess)
 # can read them via Context.get().metadata.headers.  Module-level so the same var is
 # shared across all DRAgentAGUISessionManager instances (ContextVars are per-async-task).
 _a2a_headers: ContextVar[dict[str, str] | None] = ContextVar("_a2a_headers", default=None)
