@@ -17,8 +17,12 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 @pytest.fixture(autouse=True)
 def _langgraph_default_checkpointer_memory(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Avoid creating DataRobot FS catalogs during unrelated LangGraph agent tests."""
+    """Use in-memory checkpointing in LangGraph agent tests (no real DataRobotFileSystem)."""
     from datarobot_genai.langgraph import agent as langgraph_agent
 
     saver = InMemorySaver()
-    monkeypatch.setattr(langgraph_agent, "default_langgraph_checkpointer", lambda: saver)
+    monkeypatch.setattr(
+        langgraph_agent,
+        "default_langgraph_checkpointer",
+        lambda *args, **kwargs: saver,
+    )

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.44
-- LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). When enabled, the default saver registers best-effort deletion of its checkpoint `dr://` root on interpreter exit (`atexit`). Pass an explicit `checkpointer=` for durable storage across normal shutdowns or other backends.
+- LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`.
 
 ## 0.15.43
 - Fixed dragent A2A + per-user workflows when no Bearer JWT is present: `DRAgentAGUISessionManager.session` now forwards a preset `ContextState.user_id` (set from the A2A `context_id` by the FastAPI executor) into NAT’s explicit `user_id` argument. NAT 1.6+ otherwise replaced the context value with `None`, causing per-user workflows to fail in local dev and message-only A2A scenarios.

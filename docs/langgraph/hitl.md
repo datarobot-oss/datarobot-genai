@@ -24,13 +24,13 @@ LangGraph only **remembers** a paused run if the compiled graph was built with a
 
 If you omit `checkpointer`, pass **`use_datarobot_fs_checkpointer=True`** on `LangGraphAgent` to
 use the **process-wide default** backed by `datarobot.fs.DataRobotFileSystem` so interrupts can
-resume when the client reuses the same `thread_id` within one process lifetime. Optional env
-`DATAROBOT_GENAI_LANGGRAPH_CHECKPOINT_BASE` sets the `dr://` prefix; if unset, a catalog-scoped
-path is created once per process. That default registers **best-effort deletion** of that prefix
-when the process exits normally (`atexit`). For checkpoint data that must **survive** planned
-restarts or deployments, pass your own `checkpointer=` instead (see
-[`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py) and
-[`langgraph/dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)).
+resume when the client reuses the same `thread_id` within one process lifetime. Pass
+**`langgraph_checkpoint_base`** for the `dr://` prefix (for example from your app’s
+`DataRobotAppFrameworkBaseSettings`); if omitted, the checkpoint root is `dr://`.
+That default registers **best-effort deletion** of that prefix when the process exits normally
+(`atexit`). For checkpoint data that must **survive** planned restarts or deployments, pass your
+own `checkpointer=` instead (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)
+and [`langgraph/dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)).
 
 ## What clients see in the event stream
 

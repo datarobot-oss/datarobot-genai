@@ -24,7 +24,19 @@ from langgraph.checkpoint.base import empty_checkpoint
 from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSaver
 from datarobot_genai.langgraph.dr_fs_checkpointer import _decoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _encoder_segment
+from datarobot_genai.langgraph.dr_fs_checkpointer import _normalize_dr_fs_root
 from datarobot_genai.langgraph.dr_fs_checkpointer import _register_checkpoint_root_cleanup
+from datarobot_genai.langgraph.dr_fs_checkpointer import _resolved_checkpoint_root
+
+
+def test_normalize_dr_fs_root_preserves_dr_colon_slash_slash() -> None:
+    assert _normalize_dr_fs_root("dr://") == "dr://"
+
+
+def test_resolved_checkpoint_root_null_is_dr_scheme_root() -> None:
+    assert _resolved_checkpoint_root(None) == "dr://"
+    assert _resolved_checkpoint_root("") == "dr://"
+    assert _resolved_checkpoint_root("   ") == "dr://"
 
 
 def test_encoder_empty_string_is_non_empty_path_segment() -> None:
@@ -77,7 +89,7 @@ def test_register_checkpoint_root_cleanup_runs_once_and_removes_root(
 ) -> None:
     import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
 
-    dr_cp._atexit_cleanup_registered[0] = False
+    dr_cp._cleanup_registered_roots.clear()
     callbacks: list[object] = []
 
     def _capture_register(fn: object) -> None:
@@ -98,9 +110,11 @@ def test_register_checkpoint_root_cleanup_runs_once_and_removes_root(
     assert not fs.exists(root)
 
 
-def test_reset_default_langgraph_checkpointer_clears_atexit_flag() -> None:
+def test_reset_default_langgraph_checkpointer_clears_caches() -> None:
     import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
 
-    dr_cp._atexit_cleanup_registered[0] = True
+    dr_cp._default_process_checkpointers["k"] = object()  # type: ignore[assignment]
+    dr_cp._cleanup_registered_roots.add("/x")
     dr_cp.reset_default_langgraph_checkpointer_for_tests()
-    assert dr_cp._atexit_cleanup_registered[0] is False
+    assert dr_cp._default_process_checkpointers == {}
+    assert dr_cp._cleanup_registered_roots == set()
