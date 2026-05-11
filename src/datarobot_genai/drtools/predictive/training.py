@@ -22,6 +22,9 @@ from typing import Any
 
 import pandas as pd
 from datarobot.errors import ClientError
+from datarobot.utils import from_api
+from datarobot.utils import is_convertable_to_api
+from datarobot.utils import to_api
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
@@ -59,33 +62,56 @@ class DatasetInsight:
     missing_data_summary: dict[str, float]
 
 
-def _serialize_catalog_dataset_feature(feature: Any) -> dict[str, Any]:
-    """Map a SDK DatasetFeature to a JSON-friendly dict (DataRobot catalog / allFeaturesDetails)."""
+# Public catalog-feature attributes for plain-object fallbacks (stubs / MagicMock in tests).
+_CATALOG_DATASET_FEATURE_JSON_KEYS: tuple[str, ...] = (
+    "name",
+    "feature_type",
+    "unique_count",
+    "na_count",
+    "date_format",
+    "min",
+    "max",
+    "mean",
+    "median",
+    "std_dev",
+    "low_information",
+    "time_series_eligible",
+    "time_series_eligibility_reason",
+    "time_step",
+    "time_unit",
+    "target_leakage",
+    "target_leakage_reason",
+)
+
+
+def _serialize_catalog_dataset_feature_plain(feature: Any) -> dict[str, Any]:
+    """Serialize a feature-like object that is not an SDK ``APIObject`` (e.g. test doubles)."""
     out: dict[str, Any] = {}
-    for key in (
-        "name",
-        "feature_type",
-        "unique_count",
-        "na_count",
-        "date_format",
-        "min",
-        "max",
-        "mean",
-        "median",
-        "std_dev",
-        "low_information",
-        "time_series_eligible",
-        "time_series_eligibility_reason",
-        "time_step",
-        "time_unit",
-        "target_leakage",
-        "target_leakage_reason",
-    ):
+    for key in _CATALOG_DATASET_FEATURE_JSON_KEYS:
         if hasattr(feature, key):
             val = getattr(feature, key)
             if val is not None:
                 out[key] = val
     return out
+
+
+def _serialize_catalog_dataset_feature(feature: Any) -> dict[str, Any]:
+    """Map a catalog ``DatasetFeature`` (SDK) to a JSON-friendly dict (snake_case).
+
+    Real ``DatasetFeature`` extends ``APIObject``; use ``to_api`` / ``from_api`` so serialization
+    stays aligned with the client library instead of hand-maintaining field lists. Non-APIObject
+    stand-ins (stubs, ``MagicMock``) use a fixed attribute allowlist.
+    """
+    if is_convertable_to_api(feature):
+        payload = to_api(feature)
+        if not isinstance(payload, dict):
+            raise TypeError(f"to_api(feature) must return dict, got {type(payload).__name__}")
+        normalized = from_api(payload, do_recursive=True)
+        if not isinstance(normalized, dict):
+            got = type(normalized).__name__
+            raise TypeError(f"from_api(to_api(feature)) must return dict, got {got}")
+        return normalized
+    return _serialize_catalog_dataset_feature_plain(feature)
 
 
 def _find_catalog_dataset_feature_by_name(dataset: Any, feature_name: str) -> Any | None:
