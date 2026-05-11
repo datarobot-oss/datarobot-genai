@@ -45,6 +45,9 @@ from langgraph.checkpoint.base import get_checkpoint_metadata
 _default_process_checkpointers: dict[str, Any] = {}
 _cleanup_registered_roots: set[str] = set()
 
+# On-disk subtree for all saver paths under ``root`` (not LangGraph ``thread_id``).
+_CHECKPOINT_TREE_DIR = "checkpoints"
+
 
 def _normalize_dr_fs_root(root: str) -> str:
     """Normalize filesystem root; preserve bare ``dr://`` (plain rstrip yields ``dr:``)."""
@@ -53,19 +56,24 @@ def _normalize_dr_fs_root(root: str) -> str:
 
 
 def _register_checkpoint_root_cleanup(fs: AbstractFileSystem, root: str) -> None:
-    """Remove ``root`` recursively on interpreter exit (best-effort).
+    """Remove ``<root>/checkpoints`` recursively on interpreter exit (best-effort).
 
-    Each distinct ``root`` registers at most one cleanup callback per process.
+    Checkpoints are stored only under the ``checkpoints/`` subtree (see
+    :class:`DataRobotFileSystemSaver`); we never delete the entire configured ``root`` so other
+    objects under the same prefix (for example ``dr://``) are preserved.
+
+    Each distinct cleanup path registers at most one callback per process.
     """
     root_norm = _normalize_dr_fs_root(root)
-    if root_norm in _cleanup_registered_roots:
+    cleanup_path = _path_join(root_norm, _CHECKPOINT_TREE_DIR)
+    if cleanup_path in _cleanup_registered_roots:
         return
-    _cleanup_registered_roots.add(root_norm)
+    _cleanup_registered_roots.add(cleanup_path)
 
     def _cleanup() -> None:
         try:
-            if fs.exists(root_norm):
-                fs.rm(root_norm, recursive=True)
+            if fs.exists(cleanup_path):
+                fs.rm(cleanup_path, recursive=True)
         except Exception:
             pass
 
@@ -79,7 +87,7 @@ def _path_join(*parts: str) -> str:
     for p in parts[1:]:
         seg = p.strip("/")
         if seg:
-            # Bare ``dr://`` already ends with ``/``; avoid ``dr:///threads`` (triple slash).
+            # Bare ``dr://`` already ends with ``/``; avoid ``dr:///checkpoints`` (triple slash).
             if out.endswith("/"):
                 out = f"{out}{seg}"
             else:
@@ -88,7 +96,7 @@ def _path_join(*parts: str) -> str:
 
 
 # ``urlsafe_b64encode(b"")`` decodes to an empty string; ``_path_join`` drops empty
-# segments. That folded the default empty ``checkpoint_ns`` into ``.../threads/.../ns`` so
+# segments. That folded the default empty ``checkpoint_ns`` into ``.../checkpoints/.../ns`` so
 # ``cpts`` / ``blobs`` / ``writes`` sat directly under ``ns`` and ``list()`` tried to
 # base64-decode those directory names as namespaces.
 _EMPTY_SEGMENT_TOKEN = "dr_genai_langgraph_empty_segment"
@@ -119,11 +127,11 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
 
     Layout under ``root``:
 
-    - ``threads/<b64(thread_id)>/ns/<b64(checkpoint_ns)>/cpts/<checkpoint_id>.pkl``
+    - ``checkpoints/<b64(thread_id)>/ns/<b64(checkpoint_ns)>/cpts/<checkpoint_id>.pkl``
       (empty ``thread_id`` or ``checkpoint_ns`` uses ``dr_genai_langgraph_empty_segment``
       instead of an empty path segment)
-    - ``threads/.../writes/<checkpoint_id>.pkl`` (pickled writes dict)
-    - ``threads/.../blobs/<sha256(channel,version)>.pkl`` (pickled ``serde.dumps_typed`` result)
+    - ``checkpoints/.../writes/<checkpoint_id>.pkl`` (pickled writes dict)
+    - ``checkpoints/.../blobs/<sha256(channel,version)>.pkl`` (pickled ``serde.dumps_typed`` result)
 
     ``root`` must be a path the filesystem accepts, for example ``dr://`` or
     ``dr://<catalog_id>/langgraph_checkpoints``.
@@ -143,7 +151,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
     def _ns_root(self, thread_id: str, checkpoint_ns: str) -> str:
         return _path_join(
             self.root,
-            "threads",
+            _CHECKPOINT_TREE_DIR,
             _encoder_segment(thread_id),
             "ns",
             _encoder_segment(checkpoint_ns),
@@ -294,14 +302,14 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> Iterator[CheckpointTuple]:
-        threads_base = _path_join(self.root, "threads")
+        checkpoints_base = _path_join(self.root, _CHECKPOINT_TREE_DIR)
         if config:
             thread_ids = [config["configurable"]["thread_id"]]
         else:
-            if not self.fs.exists(threads_base):
+            if not self.fs.exists(checkpoints_base):
                 return
             thread_ids = []
-            for e in self.fs.ls(threads_base, detail=False):
+            for e in self.fs.ls(checkpoints_base, detail=False):
                 seg = e.rstrip("/").rsplit("/", 1)[-1]
                 thread_ids.append(_decoder_segment(seg))
 
@@ -309,7 +317,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         config_checkpoint_id = get_checkpoint_id(config) if config else None
 
         for thread_id in thread_ids:
-            troot = _path_join(threads_base, _encoder_segment(thread_id), "ns")
+            troot = _path_join(checkpoints_base, _encoder_segment(thread_id), "ns")
             if not self.fs.exists(troot):
                 continue
             for ns_entry in self.fs.ls(troot, detail=False):
@@ -423,7 +431,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         self._save_writes_map(thread_id, checkpoint_ns, checkpoint_id, writes_map)
 
     def delete_thread(self, thread_id: str) -> None:
-        tdir = _path_join(self.root, "threads", _encoder_segment(thread_id))
+        tdir = _path_join(self.root, _CHECKPOINT_TREE_DIR, _encoder_segment(thread_id))
         if self.fs.exists(tdir):
             self.fs.rm(tdir, recursive=True)
 
@@ -496,9 +504,9 @@ def default_langgraph_checkpointer(
 
     ``checkpoint_base`` is the optional ``dr://`` prefix for checkpoint files (typically passed
     from application configuration). If unset or empty, the root is ``dr://``. Best-effort removal
-    of each distinct root is registered with :mod:`atexit`. For checkpoints that must survive
-    process shutdown, construct and pass your own ``checkpointer=`` instead of relying on this
-    default.
+    of each distinct ``<root>/checkpoints`` tree is registered with :mod:`atexit` (not the entire
+    prefix). For checkpoints that must survive process shutdown, construct and pass your own
+    ``checkpointer=`` instead of relying on this default.
     """
     root = _resolved_checkpoint_root(checkpoint_base)
 

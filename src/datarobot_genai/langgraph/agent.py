@@ -635,7 +635,8 @@ def datarobot_agent_class_from_langgraph(
     **process-wide** DR FS default so graphs can resume after ``interrupt()`` when the client
     reuses the same ``thread_id`` within one process. Pass ``langgraph_checkpoint_base`` for the
     ``dr://`` prefix (typically from application configuration); if omitted, the root is
-    ``dr://``. That default removes the tree best-effort on interpreter exit.
+    ``dr://``. That default removes ``<root>/checkpoints`` best-effort on interpreter exit, not the
+    entire configured prefix.
     Alternatively pass any explicit ``checkpointer=``.
     You can also pass resume payloads via ``run_agent_input.state["langgraph_resume"]``.
     """

@@ -35,7 +35,7 @@ def test_normalize_dr_fs_root_preserves_dr_colon_slash_slash() -> None:
 
 
 def test_path_join_preserves_bare_dr_scheme() -> None:
-    assert _path_join("dr://", "threads", "seg") == "dr://threads/seg"
+    assert _path_join("dr://", "checkpoints", "seg") == "dr://checkpoints/seg"
 
 
 def test_resolved_checkpoint_root_null_is_dr_scheme_root() -> None:
@@ -89,7 +89,7 @@ def test_data_robot_file_system_saver_roundtrip() -> None:
     assert tup.checkpoint["id"] == cp["id"]
 
 
-def test_register_checkpoint_root_cleanup_runs_once_and_removes_root(
+def test_register_checkpoint_root_cleanup_runs_once_and_removes_checkpoints_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
@@ -104,15 +104,20 @@ def test_register_checkpoint_root_cleanup_runs_once_and_removes_root(
 
     fs = MemoryFileSystem()
     root = "/ephemeral/cp"
+    checkpoints = f"{root}/checkpoints"
     with fs.open(f"{root}/marker.txt", "wb") as f:
         f.write(b"x")
+    with fs.open(f"{checkpoints}/leaf.pkl", "wb") as f:
+        f.write(b"y")
 
     _register_checkpoint_root_cleanup(fs, root)
     _register_checkpoint_root_cleanup(fs, root)
     assert len(callbacks) == 1
     assert fs.exists(root)
+    assert fs.exists(checkpoints)
     callbacks[0]()
-    assert not fs.exists(root)
+    assert fs.exists(f"{root}/marker.txt")
+    assert not fs.exists(checkpoints)
 
 
 def test_register_checkpoint_root_cleanup_tracks_dr_scheme_not_dr_colon() -> None:
@@ -121,7 +126,7 @@ def test_register_checkpoint_root_cleanup_tracks_dr_scheme_not_dr_colon() -> Non
     dr_cp._cleanup_registered_roots.clear()
     fs = MemoryFileSystem()
     _register_checkpoint_root_cleanup(fs, "dr://")
-    assert dr_cp._cleanup_registered_roots == {"dr://"}
+    assert dr_cp._cleanup_registered_roots == {"dr://checkpoints"}
 
 
 def test_reset_default_langgraph_checkpointer_clears_caches() -> None:
