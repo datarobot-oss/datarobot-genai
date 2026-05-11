@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
+from datarobot_genai.nat.helpers import filter_datarobot_headers
 
 from .a2a import A2A_MOUNT_PATH
 from .a2a import create_agent_card
@@ -58,11 +59,8 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
        workflow instance without requiring a Bearer JWT.
 
     3. ``execute`` does not forward the incoming A2A HTTP request headers into the NAT
-       context.  We extract them from ``context.call_context.state['headers']`` and store
-       them in :attr:`DRAgentAGUISessionManager._a2a_headers` before delegating;
-       :class:`DRAgentAGUISessionManager` injects them into ``ContextState._metadata`` so
-       auth providers (e.g. ``OktaCrossApplicationAccessAuthProvider``) can read
-       ``Context.get().metadata.headers``.
+       context.  We extract DataRobot-relevant headers and store them in order to inject
+       them into ``ContextState._metadata`` so they can be accessible.
     """
 
     def __init__(self, session_manager: SessionManager) -> None:
@@ -83,13 +81,13 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
             token = self.session_manager._context_state.user_id.set(context.context_id)
 
         # Forward incoming A2A HTTP headers so DRAgentAGUISessionManager.session() can
-        # inject them into NAT context metadata (needed by OktaCrossApplicationAccess and
-        # any other auth provider that reads Context.get().metadata.headers).
+        # inject them into NAT context metadata. Only DataRobot-relevant headers are
+        # forwarded.
         token_headers = None
         if context.call_context and isinstance(context.call_context.state, dict):
-            headers: dict[str, str] = context.call_context.state.get("headers") or {}
-            if headers:
-                token_headers = _a2a_headers.set(headers)
+            filtered = filter_datarobot_headers(context.call_context.state.get("headers"))
+            if filtered:
+                token_headers = _a2a_headers.set(filtered)
 
         try:
             await super().execute(context, event_queue)

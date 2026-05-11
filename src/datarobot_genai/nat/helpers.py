@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -138,19 +139,48 @@ def extract_headers_from_context(headers_to_forward: list[str]) -> dict[str, str
     return extracted_headers
 
 
-def extract_datarobot_headers_from_context() -> dict[str, str]:
-    context = Context.get()
-    headers = context.metadata.headers
-    extracted_headers: dict[str, str] = {}
+# Header prefixes to forward between DataRobot components.
+_DATAROBOT_HEADER_PREFIXES = ("x-datarobot-", "x-untrusted-")
+
+
+def filter_datarobot_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
+    """Return only DataRobot-relevant headers from an arbitrary header mapping.
+
+    Selects headers whose *lowercase* key starts with ``x-datarobot-`` or
+    ``x-untrusted-``.  Keys in the returned dict are always lowercase, matching
+    how NAT normalises request headers at runtime.
+
+    This is a pure utility with no dependency on NAT ``Context``, so it can be
+    called from both context-based wrappers and pre-context code paths (e.g. A2A
+    header forwarding in ``_PerUserCompatibleAgentExecutor``).
+
+    Parameters
+    ----------
+    headers : Mapping[str, str] | None
+        Raw header mapping (any key casing).  ``None`` or empty returns ``{}``.
+
+    Returns
+    -------
+    dict[str, str]
+        Filtered headers with lowercase keys.
+    """
     if not headers:
-        return extracted_headers
+        return {}
+    return {
+        key.lower(): value
+        for key, value in headers.items()
+        if key.lower().startswith(_DATAROBOT_HEADER_PREFIXES)
+    }
 
-    for header in headers:
-        # Already lowercase from NAT
-        if header.startswith("x-datarobot-") or header.startswith("x-untrusted-"):
-            extracted_headers[header] = headers[header]
 
-    return extracted_headers
+def extract_datarobot_headers_from_context() -> dict[str, str]:
+    """Return DataRobot-relevant headers from the current NAT request context.
+
+    Thin wrapper around :func:`filter_datarobot_headers` that reads
+    ``Context.get().metadata.headers``.
+    """
+    context = Context.get()
+    return filter_datarobot_headers(context.metadata.headers)
 
 
 def extract_authorization_from_context(secret_key: str | None = None) -> dict[str, Any] | None:

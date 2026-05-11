@@ -96,20 +96,12 @@ class TestDRAgentAGUISessionManager:
     async def test_session_injects_preset_a2a_headers_into_nat_context(self, session_manager):
         """Regression guard: A2A HTTP headers reach Context.get().metadata.headers.
 
-        _PerUserCompatibleAgentExecutor sets the module-level ``_a2a_headers`` ContextVar
-        from context.call_context.state['headers'] before calling super().execute().
-        DRAgentAGUISessionManager.session() must inject those headers into
-        ContextState._metadata *after* super().session() finishes its own setup, so
-        that NAT's internal set_metadata_from_http_request() (called with
-        http_connection=None for A2A) cannot overwrite the headers we supply.
-
         The test captures headers from *inside* the yielded session block — the point
         in time at which auth providers actually read Context.get().metadata.headers.
         """
         incoming = {
-            "content-type": "application/json",
-            "x-datarobot-custom": "foo",
-            "authorization": "Bearer jwt",
+            "x-datarobot-custom": "tok-abc",
+            "x-untrusted-claim": "claim-val",
         }
 
         token = _a2a_headers.set(incoming)
