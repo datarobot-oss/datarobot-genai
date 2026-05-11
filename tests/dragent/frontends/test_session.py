@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import Request
+from nat.builder.context import ContextState
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 from nat.data_models.user_info import UserInfo
@@ -27,6 +28,7 @@ from nat.runtime.user_manager import UserManager
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
+from datarobot_genai.dragent.frontends.session import _a2a_headers
 
 
 @pytest.fixture
@@ -89,6 +91,46 @@ class TestDRAgentAGUISessionManager:
             session_manager._context_state.user_id.reset(token)
 
         assert captured.get("user_id") == preset
+
+    @pytest.mark.asyncio
+    async def test_session_injects_preset_a2a_headers_into_nat_context(self, session_manager):
+        """Regression guard: A2A HTTP headers reach Context.get().metadata.headers.
+
+        _PerUserCompatibleAgentExecutor sets the module-level ``_a2a_headers`` ContextVar
+        from context.call_context.state['headers'] before calling super().execute().
+        DRAgentAGUISessionManager.session() must inject those headers into
+        ContextState._metadata *after* super().session() finishes its own setup, so
+        that NAT's internal set_metadata_from_http_request() (called with
+        http_connection=None for A2A) cannot overwrite the headers we supply.
+
+        The test captures headers from *inside* the yielded session block — the point
+        in time at which auth providers actually read Context.get().metadata.headers.
+        """
+        incoming = {
+            "content-type": "application/json",
+            "x-datarobot-custom": "foo",
+            "authorization": "Bearer jwt",
+        }
+
+        token = _a2a_headers.set(incoming)
+        captured_metadata: dict[str, object] = {}
+
+        @asynccontextmanager
+        async def fake_nat_session(self, **kwargs: object):
+            yield MagicMock()
+
+        try:
+            with patch.object(SessionManager, "session", fake_nat_session):
+                async with session_manager.session() as _sess:
+                    # Headers are injected here — after super().session() has yielded.
+                    context_state = ContextState.get()
+                    captured_metadata["headers"] = dict(
+                        context_state._metadata.get().headers or {}
+                    )
+        finally:
+            _a2a_headers.reset(token)
+
+        assert captured_metadata.get("headers") == incoming
 
 
 class TestUserManagerPatch:

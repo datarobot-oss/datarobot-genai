@@ -17,8 +17,11 @@ from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 
 from fastapi import Request
+from nat.builder.context import ContextState
+from nat.data_models.api_server import Request as NATRequest
 from nat.data_models.authentication import AuthenticatedContext
 from nat.data_models.authentication import AuthFlowType
 from nat.data_models.authentication import AuthProviderBaseConfig
@@ -28,6 +31,7 @@ from nat.data_models.user_info import UserInfo
 from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
+from nat.runtime.user_metadata import RequestAttributes
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
 
@@ -73,6 +77,12 @@ def _patch_user_manager() -> None:
 
 _patch_user_manager()
 
+# ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
+# request headers into the NAT context so auth providers (e.g. OktaCrossApplicationAccess)
+# can read them via Context.get().metadata.headers.  Module-level so the same var is
+# shared across all DRAgentAGUISessionManager instances (ContextVars are per-async-task).
+_a2a_headers: ContextVar[dict[str, str] | None] = ContextVar("_a2a_headers", default=None)
+
 
 class DRAgentAGUISessionManager(SessionManager):
     @asynccontextmanager
@@ -96,11 +106,18 @@ class DRAgentAGUISessionManager(SessionManager):
         ``session()`` would overwrite it with ``None``. Copy any preset non-empty
         value into ``user_id`` before delegating so per-user workflows work without
         a Bearer JWT (local dev / message-only A2A).
+
+        Additionally, A2A HTTP request headers stored in the module-level
+        ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor` are
+        injected into ``ContextState._metadata`` *after* ``super().session()`` has
+        finished its own setup (which would otherwise overwrite an earlier write when
+        ``http_connection`` is ``None``).
         """
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
+
         async with super().session(
             user_id=user_id,
             http_connection=http_connection,
@@ -109,7 +126,20 @@ class DRAgentAGUISessionManager(SessionManager):
             user_input_callback=user_input_callback,
             user_authentication_callback=user_authentication_callback,
         ) as sess:
-            yield sess
+            # Inject A2A request headers AFTER super().session() has completed its own
+            # setup so that NAT's internal set_metadata_from_http_request() (called with
+            # http_connection=None for A2A) cannot overwrite what we set here.
+            token_metadata = None
+            preset_headers = _a2a_headers.get()
+            if preset_headers:
+                attrs = RequestAttributes()
+                attrs._request = NATRequest(headers=preset_headers)
+                token_metadata = self._context_state._metadata.set(attrs)
+            try:
+                yield sess
+            finally:
+                if token_metadata is not None:
+                    self._context_state._metadata.reset(token_metadata)
 
     def get_workflow_input_schema(self) -> type[BaseModel]:
         """Get workflow input schema for OpenAPI documentation."""
