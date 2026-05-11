@@ -46,12 +46,18 @@ _default_process_checkpointers: dict[str, Any] = {}
 _cleanup_registered_roots: set[str] = set()
 
 
+def _normalize_dr_fs_root(root: str) -> str:
+    """Normalize filesystem root; preserve bare ``dr://`` (plain rstrip yields ``dr:``)."""
+    trimmed = root.rstrip("/")
+    return "dr://" if trimmed == "dr:" else trimmed
+
+
 def _register_checkpoint_root_cleanup(fs: AbstractFileSystem, root: str) -> None:
     """Remove ``root`` recursively on interpreter exit (best-effort).
 
     Each distinct ``root`` registers at most one cleanup callback per process.
     """
-    root_norm = root.rstrip("/")
+    root_norm = _normalize_dr_fs_root(root)
     if root_norm in _cleanup_registered_roots:
         return
     _cleanup_registered_roots.add(root_norm)
@@ -69,11 +75,15 @@ def _register_checkpoint_root_cleanup(fs: AbstractFileSystem, root: str) -> None
 def _path_join(*parts: str) -> str:
     if not parts:
         return ""
-    out = parts[0].rstrip("/")
+    out = _normalize_dr_fs_root(parts[0])
     for p in parts[1:]:
         seg = p.strip("/")
         if seg:
-            out = f"{out}/{seg}"
+            # Bare ``dr://`` already ends with ``/``; avoid ``dr:///threads`` (triple slash).
+            if out.endswith("/"):
+                out = f"{out}{seg}"
+            else:
+                out = f"{out}/{seg}"
     return out
 
 
@@ -469,12 +479,6 @@ def _normalize_checkpoint_base(checkpoint_base: str | None) -> str | None:
         return None
     s = checkpoint_base.strip()
     return s or None
-
-
-def _normalize_dr_fs_root(root: str) -> str:
-    """Normalize filesystem root; preserve bare ``dr://`` (plain rstrip yields ``dr:``)."""
-    trimmed = root.rstrip("/")
-    return "dr://" if trimmed == "dr:" else trimmed
 
 
 def _resolved_checkpoint_root(checkpoint_base: str | None) -> str:

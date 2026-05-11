@@ -25,12 +25,17 @@ from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSave
 from datarobot_genai.langgraph.dr_fs_checkpointer import _decoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _encoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _normalize_dr_fs_root
+from datarobot_genai.langgraph.dr_fs_checkpointer import _path_join
 from datarobot_genai.langgraph.dr_fs_checkpointer import _register_checkpoint_root_cleanup
 from datarobot_genai.langgraph.dr_fs_checkpointer import _resolved_checkpoint_root
 
 
 def test_normalize_dr_fs_root_preserves_dr_colon_slash_slash() -> None:
     assert _normalize_dr_fs_root("dr://") == "dr://"
+
+
+def test_path_join_preserves_bare_dr_scheme() -> None:
+    assert _path_join("dr://", "threads", "seg") == "dr://threads/seg"
 
 
 def test_resolved_checkpoint_root_null_is_dr_scheme_root() -> None:
@@ -108,6 +113,15 @@ def test_register_checkpoint_root_cleanup_runs_once_and_removes_root(
     assert fs.exists(root)
     callbacks[0]()
     assert not fs.exists(root)
+
+
+def test_register_checkpoint_root_cleanup_tracks_dr_scheme_not_dr_colon() -> None:
+    import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
+
+    dr_cp._cleanup_registered_roots.clear()
+    fs = MemoryFileSystem()
+    _register_checkpoint_root_cleanup(fs, "dr://")
+    assert dr_cp._cleanup_registered_roots == {"dr://"}
 
 
 def test_reset_default_langgraph_checkpointer_clears_caches() -> None:
