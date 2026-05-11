@@ -13,9 +13,19 @@
 # limitations under the License.
 
 import logging
+from collections.abc import AsyncIterator
+from collections.abc import Awaitable
+from collections.abc import Callable
+from contextlib import asynccontextmanager
 
 from fastapi import Request
+from nat.data_models.authentication import AuthenticatedContext
+from nat.data_models.authentication import AuthFlowType
+from nat.data_models.authentication import AuthProviderBaseConfig
+from nat.data_models.interactive import HumanResponse
+from nat.data_models.interactive import InteractionPrompt
 from nat.data_models.user_info import UserInfo
+from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
 from pydantic import BaseModel
@@ -65,6 +75,42 @@ _patch_user_manager()
 
 
 class DRAgentAGUISessionManager(SessionManager):
+    @asynccontextmanager
+    async def session(
+        self,
+        user_id: str | None = None,
+        http_connection: HTTPConnection | None = None,
+        user_message_id: str | None = None,
+        conversation_id: str | None = None,
+        user_input_callback: Callable[[InteractionPrompt], Awaitable[HumanResponse]] | None = None,
+        user_authentication_callback: Callable[
+            [AuthProviderBaseConfig, AuthFlowType], Awaitable[AuthenticatedContext | None]
+        ]
+        | None = None,
+    ) -> AsyncIterator[Session]:
+        """Bridge A2A and other callers that preset ``ContextState.user_id``.
+
+        NAT 1.6+ assigns ``self._context_state.user_id`` from the explicit ``user_id``
+        argument only. The A2A adapter calls ``session()`` with no arguments; our
+        executor sets ``context_id`` on the context var first, but the parent
+        ``session()`` would overwrite it with ``None``. Copy any preset non-empty
+        value into ``user_id`` before delegating so per-user workflows work without
+        a Bearer JWT (local dev / message-only A2A).
+        """
+        if user_id is None:
+            preset = self._context_state.user_id.get()
+            if preset:
+                user_id = preset
+        async with super().session(
+            user_id=user_id,
+            http_connection=http_connection,
+            user_message_id=user_message_id,
+            conversation_id=conversation_id,
+            user_input_callback=user_input_callback,
+            user_authentication_callback=user_authentication_callback,
+        ) as sess:
+            yield sess
+
     def get_workflow_input_schema(self) -> type[BaseModel]:
         """Get workflow input schema for OpenAPI documentation."""
         return DRAgentRunAgentInput

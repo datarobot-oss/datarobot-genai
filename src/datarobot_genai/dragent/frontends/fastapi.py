@@ -50,10 +50,11 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
     1. ``__init__`` accesses ``session_manager.workflow`` which raises ``ValueError``
        for per-user workflows.  We bypass it and log via ``config.workflow.type`` instead.
 
-    2. ``execute`` calls ``self.session_manager.session()`` with no ``user_id``, which
-       raises ``ValueError`` for per-user workflows.  We override it to pass the A2A
-       ``context_id`` as the ``user_id``, giving each conversation its own isolated
-       per-user workflow instance.
+    2. ``execute`` calls ``self.session_manager.session()`` with no ``user_id``. NAT 1.6+
+       would overwrite a preset ``ContextState.user_id`` with ``None``. We set the A2A
+       ``context_id`` on that context var before delegating; :class:`DRAgentAGUISessionManager`
+       merges it into the ``user_id`` argument so each conversation gets its own per-user
+       workflow instance without requiring a Bearer JWT.
     """
 
     def __init__(self, session_manager: SessionManager) -> None:
@@ -67,9 +68,8 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
         # Inject the A2A context_id as user_id before delegating to the parent execute.
-        # The parent calls self.session_manager.session() with no user_id, which raises
-        # ValueError for per-user workflows.  Setting the context var here means the
-        # SessionManager's _get_user_id_from_context() will find it automatically.
+        # DRAgentAGUISessionManager.session copies this into the explicit user_id
+        # parameter because NAT 1.6+ session() replaces the context var with None.
         token = None
         if context.context_id:
             token = self.session_manager._context_state.user_id.set(context.context_id)
