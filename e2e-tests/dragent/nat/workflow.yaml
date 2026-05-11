@@ -130,7 +130,7 @@ middleware:
           stage: response
           type: ootb
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/azure/gpt-4o-2024-11-20
+          llm_gateway_model_id: azure/gpt-4o-2024-11-20
         - additional_guard_config: null
           aws_model: null
           aws_region: null
@@ -146,7 +146,7 @@ middleware:
           stage: response
           type: ootb
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/azure/gpt-4o-2024-11-20
+          llm_gateway_model_id: azure/gpt-4o-2024-11-20
       timeout_action: score
       timeout_sec: 180
 
