@@ -116,9 +116,7 @@ class TestDRAgentAGUISessionManager:
                 async with session_manager.session() as _sess:
                     # Headers are injected here — after super().session() has yielded.
                     context_state = ContextState.get()
-                    captured_metadata["headers"] = dict(
-                        context_state._metadata.get().headers or {}
-                    )
+                    captured_metadata["headers"] = dict(context_state._metadata.get().headers or {})
         finally:
             _a2a_headers.reset(token)
 

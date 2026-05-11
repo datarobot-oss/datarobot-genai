@@ -461,7 +461,8 @@ def test_filter_datarobot_headers_does_not_mutate_input():
 
 def test_extract_datarobot_headers_from_context_delegates_to_filter(nat_context_set_headers):
     """extract_datarobot_headers_from_context must produce the same result as
-    calling filter_datarobot_headers on the same raw headers dict."""
+    calling filter_datarobot_headers on the same raw headers dict.
+    """
     raw = {
         "X-DataRobot-Foo": "foo",
         "X-Untrusted-Bar": "bar",
@@ -471,4 +472,3 @@ def test_extract_datarobot_headers_from_context_delegates_to_filter(nat_context_
     ctx_result = extract_datarobot_headers_from_context()
     direct_result = filter_datarobot_headers(raw)
     assert ctx_result == direct_result
-

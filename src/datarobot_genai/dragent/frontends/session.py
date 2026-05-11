@@ -20,7 +20,6 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
 from fastapi import Request
-from nat.builder.context import ContextState
 from nat.data_models.api_server import Request as NATRequest
 from nat.data_models.authentication import AuthenticatedContext
 from nat.data_models.authentication import AuthFlowType
