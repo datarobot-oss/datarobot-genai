@@ -59,3 +59,5 @@ def test_generate_single(http_client: httpx.Client) -> None:
     assert response_data.datarobot_moderations, (
         "Expected datarobot_moderations on non-streaming generate when guards are configured"
     )
+    moderation_keys = response_data.datarobot_moderations.keys()
+    assert set(moderation_keys) == {"Prompt token count", "Response token count", "alignment"}

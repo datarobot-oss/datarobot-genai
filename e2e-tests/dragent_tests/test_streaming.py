@@ -56,3 +56,8 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     assert any(
         chunk.datarobot_moderations for chunk in sse_responses
     ), "Expected streamed chunks to include datarobot_moderations when guards are configured"
+    moderation_keys = set()
+    for chunk in sse_responses:
+        if chunk.datarobot_moderations:
+            moderation_keys.update(chunk.datarobot_moderations.keys())
+    assert moderation_keys == {"Prompt token count", "Response token count", "alignment"}
