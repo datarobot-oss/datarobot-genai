@@ -117,6 +117,16 @@ class DRAgentAGUISessionManager(SessionManager):
             if preset:
                 user_id = preset
 
+        # Inject A2A request headers AFTER super().session() has completed its own
+        # setup so that NAT's internal set_metadata_from_http_request() (called with
+        # http_connection=None for A2A) cannot overwrite what we set here.
+        token_metadata = None
+        preset_headers = _a2a_headers.get()
+        if preset_headers:
+            attrs = RequestAttributes()
+            attrs._request = NATRequest(headers=preset_headers)
+            token_metadata = self._context_state._metadata.set(attrs)
+
         async with super().session(
             user_id=user_id,
             http_connection=http_connection,
@@ -125,15 +135,6 @@ class DRAgentAGUISessionManager(SessionManager):
             user_input_callback=user_input_callback,
             user_authentication_callback=user_authentication_callback,
         ) as sess:
-            # Inject A2A request headers AFTER super().session() has completed its own
-            # setup so that NAT's internal set_metadata_from_http_request() (called with
-            # http_connection=None for A2A) cannot overwrite what we set here.
-            token_metadata = None
-            preset_headers = _a2a_headers.get()
-            if preset_headers:
-                attrs = RequestAttributes()
-                attrs._request = NATRequest(headers=preset_headers)
-                token_metadata = self._context_state._metadata.set(attrs)
             try:
                 yield sess
             finally:
