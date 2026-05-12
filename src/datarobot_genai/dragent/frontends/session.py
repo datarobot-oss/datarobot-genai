@@ -108,18 +108,18 @@ class DRAgentAGUISessionManager(SessionManager):
 
         Additionally, A2A HTTP request headers stored in the module-level
         ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor` are
-        injected into ``ContextState._metadata`` *after* ``super().session()`` has
-        finished its own setup (which would otherwise overwrite an earlier write when
-        ``http_connection`` is ``None``).
+        injected into ``ContextState._metadata``.
         """
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
 
-        # Inject A2A request headers AFTER super().session() has completed its own
-        # setup so that NAT's internal set_metadata_from_http_request() (called with
-        # http_connection=None for A2A) cannot overwrite what we set here.
+        # Inject A2A request headers BEFORE super().session() so they are
+        # available during per-user builder creation (agent card discovery
+        # reads Context.get().metadata.headers). This is safe because NAT's
+        # session() does NOT call set_metadata_from_http_request() when
+        # http_connection is None (the A2A case).
         token_metadata = None
         preset_headers = _a2a_headers.get()
         if preset_headers:
