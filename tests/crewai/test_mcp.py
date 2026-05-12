@@ -17,8 +17,11 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from pydantic import BaseModel
 
 from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.crewai.mcp import _EmptyArgsSchema
+from datarobot_genai.crewai.mcp import _sanitize_tool_schemas
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 
@@ -42,6 +45,41 @@ def mock_adapter(mock_tools):
 def clear_environment_variables():
     with patch.dict(os.environ, {}, clear=True):
         yield
+
+
+class TestSanitizeToolSchemas:
+    def test_none_args_schema_replaced_with_empty_schema(self):
+        tool = MagicMock()
+        tool.args_schema = None
+        result = _sanitize_tool_schemas([tool])
+        assert result[0].args_schema is _EmptyArgsSchema
+
+    def test_existing_args_schema_untouched(self):
+        class MySchema(BaseModel):
+            value: int
+
+        tool = MagicMock()
+        tool.args_schema = MySchema
+        result = _sanitize_tool_schemas([tool])
+        assert result[0].args_schema is MySchema
+
+    def test_mixed_tools_sanitized_correctly(self):
+        class MySchema(BaseModel):
+            value: int
+
+        tool_with_schema = MagicMock()
+        tool_with_schema.args_schema = MySchema
+        tool_without_schema = MagicMock()
+        tool_without_schema.args_schema = None
+        result = _sanitize_tool_schemas([tool_with_schema, tool_without_schema])
+        assert result[0].args_schema is MySchema
+        assert result[1].args_schema is _EmptyArgsSchema
+
+    def test_empty_args_schema_produces_valid_openai_parameters(self):
+        # Azure OpenAI requires parameters to be type "object"; verify the
+        # fallback schema serializes correctly.
+        schema = _EmptyArgsSchema.model_json_schema()
+        assert schema.get("type") == "object"
 
 
 class TestMCPToolsContext:
@@ -125,6 +163,39 @@ class TestMCPToolsContext:
         with pytest.raises(RuntimeError):
             async with mcp_tools_context(mcp_config):
                 raise RuntimeError("Connection failed")
+
+    async def test_mcp_tools_context_sanitizes_none_args_schema(self, mock_adapter):
+        """Tools with None args_schema get a valid empty schema so Azure OpenAI doesn't reject them."""
+        null_schema_tool = MagicMock()
+        null_schema_tool.args_schema = None
+        with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
+            instance = MagicMock()
+            instance.__enter__.return_value = [null_schema_tool]
+            instance.__exit__.return_value = None
+            mock.return_value = instance
+            test_url = "https://mcp-server.example.com/mcp"
+            mcp_config = MCPConfig(external_mcp_url=test_url)
+            async with mcp_tools_context(mcp_config) as tools:
+                assert len(tools) == 1
+                assert tools[0].args_schema is _EmptyArgsSchema
+
+    async def test_mcp_tools_context_preserves_existing_args_schema(self, mock_adapter):
+        """Tools that already have a valid args_schema are left untouched."""
+
+        class MySchema(BaseModel):
+            query: str
+
+        tool_with_schema = MagicMock()
+        tool_with_schema.args_schema = MySchema
+        with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
+            instance = MagicMock()
+            instance.__enter__.return_value = [tool_with_schema]
+            instance.__exit__.return_value = None
+            mock.return_value = instance
+            test_url = "https://mcp-server.example.com/mcp"
+            mcp_config = MCPConfig(external_mcp_url=test_url)
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools[0].args_schema is MySchema
 
     async def test_mcp_tools_context_connection_error_yields_empty(self):
         """Test graceful fallback when MCP server connection fails."""
