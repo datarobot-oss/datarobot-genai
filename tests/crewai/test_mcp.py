@@ -165,7 +165,8 @@ class TestMCPToolsContext:
                 raise RuntimeError("Connection failed")
 
     async def test_mcp_tools_context_sanitizes_none_args_schema(self, mock_adapter):
-        """Tools with None args_schema get a valid empty schema so Azure OpenAI doesn't reject them."""
+        """Tools with None args_schema get a valid empty schema so 
+        Azure OpenAI doesn't reject them."""
         null_schema_tool = MagicMock()
         null_schema_tool.args_schema = None
         with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
