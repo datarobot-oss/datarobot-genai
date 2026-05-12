@@ -17,8 +17,10 @@ from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 
 from fastapi import Request
+from nat.data_models.api_server import Request as NATRequest
 from nat.data_models.authentication import AuthenticatedContext
 from nat.data_models.authentication import AuthFlowType
 from nat.data_models.authentication import AuthProviderBaseConfig
@@ -28,6 +30,7 @@ from nat.data_models.user_info import UserInfo
 from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
+from nat.runtime.user_metadata import RequestAttributes
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
 
@@ -73,6 +76,23 @@ def _patch_user_manager() -> None:
 
 _patch_user_manager()
 
+# ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
+# request headers into the NAT context so auth providers (e.g. OAuth2CrossApplicationAccess)
+# can read them via Context.get().metadata.headers.  Module-level so the same var is
+# shared across all DRAgentAGUISessionManager instances (ContextVars are per-async-task).
+_a2a_headers: ContextVar[dict[str, str] | None] = ContextVar("_a2a_headers", default=None)
+
+
+def _build_metadata_from_headers(headers: dict[str, str]) -> RequestAttributes:
+    """Build a :class:`RequestAttributes` carrying the given headers.
+
+    Isolates access to NAT internals (``RequestAttributes._request``) in a
+    single place so upstream changes only require one update.
+    """
+    attrs = RequestAttributes()
+    attrs._request = NATRequest(headers=headers)
+    return attrs
+
 
 class DRAgentAGUISessionManager(SessionManager):
     @asynccontextmanager
@@ -96,20 +116,43 @@ class DRAgentAGUISessionManager(SessionManager):
         ``session()`` would overwrite it with ``None``. Copy any preset non-empty
         value into ``user_id`` before delegating so per-user workflows work without
         a Bearer JWT (local dev / message-only A2A).
+
+        Additionally, A2A HTTP request headers stored in the module-level
+        ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor` are
+        injected into ``ContextState._metadata``.
         """
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
-        async with super().session(
-            user_id=user_id,
-            http_connection=http_connection,
-            user_message_id=user_message_id,
-            conversation_id=conversation_id,
-            user_input_callback=user_input_callback,
-            user_authentication_callback=user_authentication_callback,
-        ) as sess:
-            yield sess
+
+        # Inject A2A request headers BEFORE super().session() so they are
+        # available during per-user builder creation (agent card discovery
+        # reads Context.get().metadata.headers). This is safe because NAT's
+        # session() does NOT call set_metadata_from_http_request() when
+        # http_connection is None (the A2A case).
+        token_metadata = None
+        preset_headers = _a2a_headers.get()
+        if preset_headers:
+            attrs = _build_metadata_from_headers(preset_headers)
+            token_metadata = self._context_state._metadata.set(attrs)
+
+        # Wrap the entire super().session() in try/finally so _metadata is
+        # always reset — even if super().session().__aenter__() raises
+        # (e.g. per-user builder creation failure).
+        try:
+            async with super().session(
+                user_id=user_id,
+                http_connection=http_connection,
+                user_message_id=user_message_id,
+                conversation_id=conversation_id,
+                user_input_callback=user_input_callback,
+                user_authentication_callback=user_authentication_callback,
+            ) as sess:
+                yield sess
+        finally:
+            if token_metadata is not None:
+                self._context_state._metadata.reset(token_metadata)
 
     def get_workflow_input_schema(self) -> type[BaseModel]:
         """Get workflow input schema for OpenAPI documentation."""
