@@ -25,9 +25,45 @@ from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSave
 from datarobot_genai.langgraph.dr_fs_checkpointer import _decoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _encoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _normalize_dr_fs_root
+from datarobot_genai.langgraph.dr_fs_checkpointer import _pack_blob_file
+from datarobot_genai.langgraph.dr_fs_checkpointer import _pack_cpt_file
+from datarobot_genai.langgraph.dr_fs_checkpointer import _pack_typed_frame
+from datarobot_genai.langgraph.dr_fs_checkpointer import _pack_writes_map_file
 from datarobot_genai.langgraph.dr_fs_checkpointer import _path_join
 from datarobot_genai.langgraph.dr_fs_checkpointer import _register_checkpoint_root_cleanup
 from datarobot_genai.langgraph.dr_fs_checkpointer import _resolved_checkpoint_root
+from datarobot_genai.langgraph.dr_fs_checkpointer import _unpack_blob_file
+from datarobot_genai.langgraph.dr_fs_checkpointer import _unpack_cpt_file
+from datarobot_genai.langgraph.dr_fs_checkpointer import _unpack_typed_frame
+from datarobot_genai.langgraph.dr_fs_checkpointer import _unpack_writes_map_file
+
+
+def test_pack_unpack_typed_frame_roundtrip() -> None:
+    typed = ("msgpack", b"\x00\xffhello")
+    raw = _pack_typed_frame(typed)
+    out, end = _unpack_typed_frame(raw, 0)
+    assert out == typed
+    assert end == len(raw)
+
+
+def test_writes_map_file_roundtrip() -> None:
+    data: dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]] = {
+        ("tid", 0): ("tid", "__interrupt__", ("json", b"{}"), ""),
+    }
+    raw = _pack_writes_map_file(data)
+    assert _unpack_writes_map_file(raw) == data
+
+
+def test_cpt_file_roundtrip() -> None:
+    saved = (("json", b"cp"), ("json", b"meta"), "parent-1")
+    raw = _pack_cpt_file(saved)
+    assert _unpack_cpt_file(raw) == saved
+
+
+def test_blob_file_roundtrip() -> None:
+    typed = ("empty", b"")
+    raw = _pack_blob_file(typed)
+    assert _unpack_blob_file(raw) == typed
 
 
 def test_normalize_dr_fs_root_preserves_dr_colon_slash_slash() -> None:
@@ -107,7 +143,7 @@ def test_register_checkpoint_root_cleanup_runs_once_and_removes_checkpoints_only
     checkpoints = f"{root}/checkpoints"
     with fs.open(f"{root}/marker.txt", "wb") as f:
         f.write(b"x")
-    with fs.open(f"{checkpoints}/leaf.pkl", "wb") as f:
+    with fs.open(f"{checkpoints}/leaf.bin", "wb") as f:
         f.write(b"y")
 
     _register_checkpoint_root_cleanup(fs, root)

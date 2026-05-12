@@ -4,8 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.46
+## 0.15.47
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).
+- `DataRobotFileSystemSaver` (`dr_fs_checkpointer`): checkpoint files use length-prefixed binary (`struct`, `.bin` suffix) without pickle or per-file magic headers; layout is implied by directory (`blobs/`, `cpts/`, `writes/`).
 
 ## 0.15.45
 - `drtools/predictive/predict.py`: **Submit-and-poll batch workflow** — `predict_by_ai_catalog` and `predict_from_project_data` return immediately after submit (removed `timeout` and server-side `wait_for_completion` plus download-link polling); responses include `job_id`, `batch_job_status`, optional early `url`, and a `note` for follow-up instead of only completed-job metadata. **New tool `get_batch_prediction_job_status`** (`job_id`) returns status, optional download `url`, and progress fields without fetching CSV. **`get_batch_prediction_results`** is documented and used after polling for completion; passes `download_timeout` / `download_read_timeout` through to the SDK download. **`BatchPredictionJob.score` / `get`** use the same configured SDK client as `Dataset.get`.

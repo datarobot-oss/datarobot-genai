@@ -19,9 +19,10 @@ by writing files at nested paths (same pattern as normal DR FS uploads).
 
 from __future__ import annotations
 
+import asyncio
 import atexit
-import pickle
 import random
+import struct
 from base64 import urlsafe_b64decode
 from base64 import urlsafe_b64encode
 from collections.abc import AsyncIterator
@@ -47,6 +48,128 @@ _cleanup_registered_roots: set[str] = set()
 
 # On-disk subtree for all saver paths under ``root`` (not LangGraph ``thread_id``).
 _CHECKPOINT_TREE_DIR = "checkpoints"
+# Length-prefixed binary (``struct``) only — no file-type magic bytes. LangGraph ``serde`` payloads
+# stay raw bytes inside typed frames; no pickle on disk. Files use ``.bin`` (not ``.pkl``).
+_CHECKPOINT_ARTIFACT_EXT = ".bin"
+
+
+def _pack_lenprefixed_utf8(s: str) -> bytes:
+    raw = s.encode("utf-8")
+    return struct.pack("!I", len(raw)) + raw
+
+
+def _unpack_lenprefixed_utf8(data: bytes, offset: int) -> tuple[str, int]:
+    (ln,) = struct.unpack_from("!I", data, offset)
+    offset += 4
+    end = offset + ln
+    return data[offset:end].decode("utf-8"), end
+
+
+def _pack_typed_frame(typed: tuple[str, bytes]) -> bytes:
+    kind_b = typed[0].encode("utf-8")
+    payload = typed[1]
+    return struct.pack("!I", len(kind_b)) + kind_b + struct.pack("!I", len(payload)) + payload
+
+
+def _unpack_typed_frame(data: bytes, offset: int) -> tuple[tuple[str, bytes], int]:
+    (kln,) = struct.unpack_from("!I", data, offset)
+    offset += 4
+    kind = data[offset : offset + kln].decode("utf-8")
+    offset += kln
+    (dln,) = struct.unpack_from("!I", data, offset)
+    offset += 4
+    end = offset + dln
+    return (kind, data[offset:end]), end
+
+
+def _pack_optional_parent(parent: str | None) -> bytes:
+    if parent is None:
+        return b"\x00"
+    raw = parent.encode("utf-8")
+    return b"\x01" + struct.pack("!I", len(raw)) + raw
+
+
+def _unpack_optional_parent(data: bytes, offset: int) -> tuple[str | None, int]:
+    flag = data[offset]
+    offset += 1
+    if flag == 0:
+        return None, offset
+    (ln,) = struct.unpack_from("!I", data, offset)
+    offset += 4
+    end = offset + ln
+    return data[offset:end].decode("utf-8"), end
+
+
+def _pack_blob_file(typed: tuple[str, bytes]) -> bytes:
+    """Pack one ``serde.dumps_typed`` tuple as length-prefixed binary.
+
+    Layout: ``u32 len(kind) | kind utf-8 | u32 len(payload) | payload``.
+    """
+    return _pack_typed_frame(typed)
+
+
+def _unpack_blob_file(data: bytes) -> tuple[str, bytes]:
+    typed, end = _unpack_typed_frame(data, 0)
+    if end != len(data):
+        msg = "blob artifact length mismatch"
+        raise ValueError(msg)
+    return typed
+
+
+def _pack_cpt_file(
+    saved: tuple[tuple[str, bytes], tuple[str, bytes], str | None],
+) -> bytes:
+    """Checkpoint + metadata typed frames, then optional parent id (same encoding as before)."""
+    c, m, parent = saved
+    return _pack_typed_frame(c) + _pack_typed_frame(m) + _pack_optional_parent(parent)
+
+
+def _unpack_cpt_file(data: bytes) -> tuple[tuple[str, bytes], tuple[str, bytes], str | None]:
+    c, off = _unpack_typed_frame(data, 0)
+    m, off = _unpack_typed_frame(data, off)
+    parent, off = _unpack_optional_parent(data, off)
+    if off != len(data):
+        msg = "checkpoint artifact length mismatch"
+        raise ValueError(msg)
+    return (c, m, parent)
+
+
+def _pack_writes_map_file(
+    data: dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]],
+) -> bytes:
+    """``u32`` entry count, then repeated write records (see unpack)."""
+    items = list(data.items())
+    out = bytearray(struct.pack("!I", len(items)))
+    for (task_id, write_idx), (_tid, channel, typed_v, task_path) in items:
+        out += (
+            _pack_lenprefixed_utf8(task_id)
+            + struct.pack("!q", write_idx)
+            + _pack_lenprefixed_utf8(channel)
+            + _pack_typed_frame(typed_v)
+            + _pack_lenprefixed_utf8(task_path)
+        )
+    return bytes(out)
+
+
+def _unpack_writes_map_file(
+    data: bytes,
+) -> dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]]:
+    off = 0
+    (n,) = struct.unpack_from("!I", data, off)
+    off += 4
+    out: dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]] = {}
+    for _ in range(n):
+        task_id, off = _unpack_lenprefixed_utf8(data, off)
+        (write_idx,) = struct.unpack_from("!q", data, off)
+        off += 8
+        channel, off = _unpack_lenprefixed_utf8(data, off)
+        typed_v, off = _unpack_typed_frame(data, off)
+        task_path, off = _unpack_lenprefixed_utf8(data, off)
+        out[(task_id, int(write_idx))] = (task_id, channel, typed_v, task_path)
+    if off != len(data):
+        msg = "writes map artifact length mismatch"
+        raise ValueError(msg)
+    return out
 
 
 def _normalize_dr_fs_root(root: str) -> str:
@@ -127,11 +250,14 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
 
     Layout under ``root``:
 
-    - ``checkpoints/<b64(thread_id)>/ns/<b64(checkpoint_ns)>/cpts/<checkpoint_id>.pkl``
+    - ``checkpoints/<b64(thread_id)>/ns/<b64(checkpoint_ns)>/cpts/<checkpoint_id>.bin``
       (empty ``thread_id`` or ``checkpoint_ns`` uses ``dr_genai_langgraph_empty_segment``
       instead of an empty path segment)
-    - ``checkpoints/.../writes/<checkpoint_id>.pkl`` (pickled writes dict)
-    - ``checkpoints/.../blobs/<sha256(channel,version)>.pkl`` (pickled ``serde.dumps_typed`` result)
+    - ``checkpoints/.../writes/<checkpoint_id>.bin`` (binary framed writes map)
+    - ``checkpoints/.../blobs/<sha256(channel,version)>.bin`` (single ``serde.dumps_typed`` frame)
+
+    On-disk format is concatenated length-prefixed ``struct`` segments (no magic header, no
+    pickle). Layout is implied by path (``blobs/`` vs ``cpts/`` vs ``writes/``).
 
     ``root`` must be a path the filesystem accepts, for example ``dr://`` or
     ``dr://<catalog_id>/langgraph_checkpoints``.
@@ -167,14 +293,22 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         return _path_join(
             self._ns_root(thread_id, checkpoint_ns),
             "blobs",
-            f"{_blob_filename(channel, version)}.pkl",
+            f"{_blob_filename(channel, version)}{_CHECKPOINT_ARTIFACT_EXT}",
         )
 
     def _cpt_path(self, thread_id: str, checkpoint_ns: str, checkpoint_id: str) -> str:
-        return _path_join(self._ns_root(thread_id, checkpoint_ns), "cpts", f"{checkpoint_id}.pkl")
+        return _path_join(
+            self._ns_root(thread_id, checkpoint_ns),
+            "cpts",
+            f"{checkpoint_id}{_CHECKPOINT_ARTIFACT_EXT}",
+        )
 
     def _writes_path(self, thread_id: str, checkpoint_ns: str, checkpoint_id: str) -> str:
-        return _path_join(self._ns_root(thread_id, checkpoint_ns), "writes", f"{checkpoint_id}.pkl")
+        return _path_join(
+            self._ns_root(thread_id, checkpoint_ns),
+            "writes",
+            f"{checkpoint_id}{_CHECKPOINT_ARTIFACT_EXT}",
+        )
 
     def _load_writes_map(
         self, thread_id: str, checkpoint_ns: str, checkpoint_id: str
@@ -183,7 +317,10 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         if not self.fs.exists(path):
             return {}
         with self.fs.open(path, "rb") as f:
-            return pickle.load(f)
+            try:
+                return _unpack_writes_map_file(f.read())
+            except (ValueError, struct.error, OSError):
+                return {}
 
     def _save_writes_map(
         self,
@@ -194,7 +331,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
     ) -> None:
         path = self._writes_path(thread_id, checkpoint_ns, checkpoint_id)
         with self.fs.open(path, "wb") as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.write(_pack_writes_map_file(data))
 
     def _load_blobs(
         self, thread_id: str, checkpoint_ns: str, versions: ChannelVersions
@@ -205,7 +342,10 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             if not self.fs.exists(bp):
                 continue
             with self.fs.open(bp, "rb") as f:
-                typed = pickle.load(f)
+                try:
+                    typed = _unpack_blob_file(f.read())
+                except (ValueError, struct.error, OSError):
+                    continue
             if typed[0] != "empty":
                 channel_values[k] = self.serde.loads_typed(typed)
         return channel_values
@@ -256,7 +396,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             if not self.fs.exists(path):
                 return None
             with self.fs.open(path, "rb") as f:
-                saved = pickle.load(f)
+                saved = _unpack_cpt_file(f.read())
             return self._tuple_from_saved(
                 thread_id=thread_id,
                 checkpoint_ns=checkpoint_ns,
@@ -272,14 +412,14 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         ids: list[str] = []
         for e in entries:
             name = e.rsplit("/", 1)[-1]
-            if name.endswith(".pkl"):
-                ids.append(name[: -len(".pkl")])
+            if name.endswith(_CHECKPOINT_ARTIFACT_EXT):
+                ids.append(name[: -len(_CHECKPOINT_ARTIFACT_EXT)])
         if not ids:
             return None
         checkpoint_id = max(ids)
         path = self._cpt_path(thread_id, checkpoint_ns, checkpoint_id)
         with self.fs.open(path, "rb") as f:
-            saved = pickle.load(f)
+            saved = _unpack_cpt_file(f.read())
         return self._tuple_from_saved(
             thread_id=thread_id,
             checkpoint_ns=checkpoint_ns,
@@ -331,9 +471,9 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
                 checkpoint_entries: list[tuple[str, str]] = []
                 for cp_entry in self.fs.ls(cpts_dir, detail=False):
                     fname = cp_entry.rsplit("/", 1)[-1]
-                    if not fname.endswith(".pkl"):
+                    if not fname.endswith(_CHECKPOINT_ARTIFACT_EXT):
                         continue
-                    cid = fname[: -len(".pkl")]
+                    cid = fname[: -len(_CHECKPOINT_ARTIFACT_EXT)]
                     checkpoint_entries.append((cid, cp_entry))
                 for checkpoint_id, path in sorted(
                     checkpoint_entries,
@@ -349,7 +489,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
                     ):
                         continue
                     with self.fs.open(path, "rb") as f:
-                        saved = pickle.load(f)
+                        saved = _unpack_cpt_file(f.read())
                     metadata = self.serde.loads_typed(saved[1])
                     if filter and not all(
                         query_value == metadata.get(query_key)
@@ -389,7 +529,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             blob = self.serde.dumps_typed(values[k]) if k in values else ("empty", b"")
             bp = self._blob_path(thread_id, checkpoint_ns, k, v)
             with self.fs.open(bp, "wb") as f:
-                pickle.dump(blob, f, protocol=pickle.HIGHEST_PROTOCOL)
+                f.write(_pack_blob_file(blob))
         saved = (
             self.serde.dumps_typed(c),
             self.serde.dumps_typed(get_checkpoint_metadata(config, metadata)),
@@ -397,7 +537,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         )
         cpp = self._cpt_path(thread_id, checkpoint_ns, checkpoint["id"])
         with self.fs.open(cpp, "wb") as f:
-            pickle.dump(saved, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.write(_pack_cpt_file(saved))
         return {
             "configurable": {
                 "thread_id": thread_id,
@@ -436,7 +576,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             self.fs.rm(tdir, recursive=True)
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        return self.get_tuple(config)
+        return await asyncio.to_thread(self.get_tuple, config)
 
     async def alist(
         self,
