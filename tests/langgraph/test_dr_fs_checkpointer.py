@@ -19,6 +19,7 @@ from copy import deepcopy
 import pytest
 from fsspec.implementations.memory import MemoryFileSystem
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import WRITES_IDX_MAP
 from langgraph.checkpoint.base import empty_checkpoint
 
 from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSaver
@@ -123,6 +124,48 @@ def test_data_robot_file_system_saver_roundtrip() -> None:
     tup = saver.get_tuple(out_cfg)
     assert tup is not None
     assert tup.checkpoint["id"] == cp["id"]
+
+
+def test_put_writes_skips_duplicate_inner_key_same_batch_when_writes_map_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: empty on-disk writes map must not disable the WRITES_IDX_MAP duplicate guard."""
+    dup_channel = "__dr_genai_test_dup_write__"
+    monkeypatch.setattr(
+        "datarobot_genai.langgraph.dr_fs_checkpointer.WRITES_IDX_MAP",
+        {**WRITES_IDX_MAP, dup_channel: 0},
+    )
+
+    fs = MemoryFileSystem()
+    root = "/cp-root"
+    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    thread_id = "t-dup"
+    checkpoint_ns = "ns"
+    base_cfg: RunnableConfig = {
+        "configurable": {"thread_id": thread_id, "checkpoint_ns": checkpoint_ns},
+    }
+    cp = empty_checkpoint()
+    meta = {"source": "input", "step": -1}
+    new_versions = deepcopy(cp["channel_versions"])
+    out_cfg = saver.put(base_cfg, cp, meta, new_versions)
+    write_cfg: RunnableConfig = {
+        "configurable": {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+            "checkpoint_id": out_cfg["configurable"]["checkpoint_id"],
+        }
+    }
+    task_id = "task-1"
+    saver.put_writes(
+        write_cfg,
+        [(dup_channel, "first"), (dup_channel, "second")],
+        task_id,
+    )
+    tup = saver.get_tuple(write_cfg)
+    assert tup is not None
+    assert tup.pending_writes is not None
+    assert len(tup.pending_writes) == 1
+    assert tup.pending_writes[0][2] == "first"
 
 
 def test_register_checkpoint_root_cleanup_runs_once_and_removes_checkpoints_only(

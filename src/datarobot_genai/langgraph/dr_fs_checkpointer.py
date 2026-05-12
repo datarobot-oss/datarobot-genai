@@ -19,7 +19,6 @@ by writing files at nested paths (same pattern as normal DR FS uploads).
 
 from __future__ import annotations
 
-import asyncio
 import atexit
 import random
 import struct
@@ -35,6 +34,7 @@ from fsspec import AbstractFileSystem
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import WRITES_IDX_MAP
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.base import ChannelProtocol
 from langgraph.checkpoint.base import ChannelVersions
 from langgraph.checkpoint.base import Checkpoint
 from langgraph.checkpoint.base import CheckpointMetadata
@@ -557,10 +557,9 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = config["configurable"]["checkpoint_id"]
         writes_map = self._load_writes_map(thread_id, checkpoint_ns, checkpoint_id)
-        outer_writes_ = writes_map or None
         for idx, (c, v) in enumerate(writes):
             inner_key = (task_id, WRITES_IDX_MAP.get(c, idx))
-            if inner_key[1] >= 0 and outer_writes_ and inner_key in outer_writes_:
+            if inner_key[1] >= 0 and inner_key in writes_map:
                 continue
             writes_map[inner_key] = (
                 task_id,
@@ -576,7 +575,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             self.fs.rm(tdir, recursive=True)
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        return await asyncio.to_thread(self.get_tuple, config)
+        return self.get_tuple(config)
 
     async def alist(
         self,
@@ -610,13 +609,17 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
     async def adelete_thread(self, thread_id: str) -> None:
         return self.delete_thread(thread_id)
 
-    def get_next_version(self, current: str | None, channel: None) -> str:
+    def get_next_version(
+        self,
+        current: str | int | float | None,
+        channel: ChannelProtocol[Any, Any, Any] | None,
+    ) -> str:
         if current is None:
             current_v = 0
-        elif isinstance(current, int):
-            current_v = current
+        elif isinstance(current, (int, float)):
+            current_v = int(current)
         else:
-            current_v = int(current.split(".")[0])
+            current_v = int(str(current).split(".")[0])
         next_v = current_v + 1
         next_h = random.random()
         return f"{next_v:032}.{next_h:016}"
