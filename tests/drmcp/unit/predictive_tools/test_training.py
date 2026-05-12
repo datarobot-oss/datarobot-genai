@@ -158,6 +158,113 @@ async def test_get_exploratory_insights() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_exploratory_insights_catalog_feature_profile() -> None:
+    mock_dataset = MagicMock()
+    mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
+    mock_dataset.get_as_dataframe.return_value = mock_df
+
+    mock_details = MagicMock()
+    mock_details.data_persisted = True
+    mock_dataset.get_details.return_value = mock_details
+
+    mock_api_feat = MagicMock()
+    mock_api_feat.name = "features"
+    mock_api_feat.feature_type = "Float"
+    mock_api_feat.unique_count = 3
+    mock_api_feat.na_count = 0
+    mock_api_feat.min = 1.0
+    mock_api_feat.max = 3.0
+    mock_api_feat.mean = 2.0
+    mock_api_feat.median = 2.0
+    mock_api_feat.std_dev = 1.0
+    mock_hist = MagicMock()
+    mock_hist.plot = [{"label": "1", "count": 1, "target": None}]
+    mock_api_feat.get_histogram.return_value = mock_hist
+    mock_dataset.iterate_all_features.return_value = iter([mock_api_feat, MagicMock(name="other")])
+
+    mock_insights = {
+        "total_columns": 2,
+        "total_rows": 3,
+        "numerical_columns": ["features", "target"],
+        "categorical_columns": [],
+        "datetime_columns": [],
+        "text_columns": [],
+        "potential_targets": ["target"],
+        "missing_data_summary": {},
+    }
+
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
+        patch(
+            "datarobot_genai.drtools.predictive.training.analyze_dataset",
+            new_callable=AsyncMock,
+            return_value=mock_insights,
+        ),
+    ):
+        mock_client = MagicMock()
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_drc.return_value.get_client.return_value = mock_client
+        result = await training.get_exploratory_insights(
+            dataset_id="test_dataset_id",
+            feature_col="features",
+            include_feature_histogram=True,
+        )
+
+    profile = result["catalog_feature_profile"]
+    assert profile["source"] == "datarobot_catalog_all_features_details"
+    assert profile["data_persisted"] is True
+    assert profile["feature"]["name"] == "features"
+    assert profile["feature"]["mean"] == 2.0
+    assert profile["histogram"]["plot"][0]["label"] == "1"
+    mock_api_feat.get_histogram.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_exploratory_insights_feature_col_unknown_column() -> None:
+    mock_dataset = MagicMock()
+    mock_df = pd.DataFrame({"a": [1]})
+    mock_dataset.get_as_dataframe.return_value = mock_df
+
+    mock_insights = {
+        "total_columns": 1,
+        "total_rows": 1,
+        "numerical_columns": ["a"],
+        "categorical_columns": [],
+        "datetime_columns": [],
+        "text_columns": [],
+        "potential_targets": [],
+        "missing_data_summary": {},
+    }
+
+    with (
+        patch(
+            "datarobot_genai.drtools.predictive.training.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.predictive.training.DataRobotClient") as mock_drc,
+        patch(
+            "datarobot_genai.drtools.predictive.training.analyze_dataset",
+            new_callable=AsyncMock,
+            return_value=mock_insights,
+        ),
+    ):
+        mock_client = MagicMock()
+        mock_client.Dataset.get.return_value = mock_dataset
+        mock_drc.return_value.get_client.return_value = mock_client
+        with pytest.raises(ToolError, match="feature_col"):
+            await training.get_exploratory_insights(
+                dataset_id="test_dataset_id",
+                feature_col="missing",
+            )
+
+
+@pytest.mark.asyncio
 async def test_start_autopilot_new_project() -> None:
     mock_dataset = MagicMock()
     mock_dataset.id = "test_dataset_id"
