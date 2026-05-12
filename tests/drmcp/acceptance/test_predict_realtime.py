@@ -85,6 +85,7 @@ def expectations_for_get_deployment_info_success(deployment_id: str) -> ETETestE
         tool_calls_expected=[
             ToolCallTestExpectations(
                 name="get_deployment_info",
+                acceptable_tool_names=["get_deployment_features"],
                 parameters={"deployment_id": deployment_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),

@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.44
+## 0.15.46
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).
+
+## 0.15.45
+- `drtools/predictive/predict.py`: **Submit-and-poll batch workflow** — `predict_by_ai_catalog` and `predict_from_project_data` return immediately after submit (removed `timeout` and server-side `wait_for_completion` plus download-link polling); responses include `job_id`, `batch_job_status`, optional early `url`, and a `note` for follow-up instead of only completed-job metadata. **New tool `get_batch_prediction_job_status`** (`job_id`) returns status, optional download `url`, and progress fields without fetching CSV. **`get_batch_prediction_results`** is documented and used after polling for completion; passes `download_timeout` / `download_read_timeout` through to the SDK download. **`BatchPredictionJob.score` / `get`** use the same configured SDK client as `Dataset.get`.
+- `drtools/predictive/training.py` (`get_exploratory_insights`): optional `feature_col` plus `include_feature_histogram` add a DataRobot catalog API-backed column profile (allFeaturesDetails statistics and optional feature histogram) alongside existing EDA output; helpers resolve catalog `DatasetFeature` rows by name and serialize them for the tool response.
+- `drtools/predictive/predict_realtime.py`: clarified `predict_by_ai_catalog_rt` tool metadata so async batch scoring is described as submit-and-poll via `predict_by_ai_catalog` and `get_batch_prediction_job_status`.
+
+## 0.15.44
+- Added HTTP request headers forwarding into the NAT `Context` for A2A JSON-RPC routes.
+- Renamed `OktaCrossApplicationAccessAuthProvider` → `OAuth2CrossApplicationAccessOAuth2AuthProvider` and `OktaCrossApplicationAccessAuthProviderConfig` → `OAuth2CrossApplicationAccessAuthProviderConfig` to satisfy the NAT SDK's name-based OAuth2 compatibility check.
 
 ## 0.15.43
 - Fixed dragent A2A + per-user workflows when no Bearer JWT is present: `DRAgentAGUISessionManager.session` now forwards a preset `ContextState.user_id` (set from the A2A `context_id` by the FastAPI executor) into NAT’s explicit `user_id` argument. NAT 1.6+ otherwise replaced the context value with `None`, causing per-user workflows to fail in local dev and message-only A2A scenarios.

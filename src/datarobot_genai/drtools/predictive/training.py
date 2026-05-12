@@ -22,6 +22,9 @@ from typing import Any
 
 import pandas as pd
 from datarobot.errors import ClientError
+from datarobot.utils import from_api
+from datarobot.utils import is_convertable_to_api
+from datarobot.utils import to_api
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
@@ -57,6 +60,66 @@ class DatasetInsight:
     text_columns: list[str]
     potential_targets: list[str]
     missing_data_summary: dict[str, float]
+
+
+# Public catalog-feature attributes for plain-object fallbacks (stubs / MagicMock in tests).
+_CATALOG_DATASET_FEATURE_JSON_KEYS: tuple[str, ...] = (
+    "name",
+    "feature_type",
+    "unique_count",
+    "na_count",
+    "date_format",
+    "min",
+    "max",
+    "mean",
+    "median",
+    "std_dev",
+    "low_information",
+    "time_series_eligible",
+    "time_series_eligibility_reason",
+    "time_step",
+    "time_unit",
+    "target_leakage",
+    "target_leakage_reason",
+)
+
+
+def _serialize_catalog_dataset_feature_plain(feature: Any) -> dict[str, Any]:
+    """Serialize a feature-like object that is not an SDK ``APIObject`` (e.g. test doubles)."""
+    out: dict[str, Any] = {}
+    for key in _CATALOG_DATASET_FEATURE_JSON_KEYS:
+        if hasattr(feature, key):
+            val = getattr(feature, key)
+            if val is not None:
+                out[key] = val
+    return out
+
+
+def _serialize_catalog_dataset_feature(feature: Any) -> dict[str, Any]:
+    """Map a catalog ``DatasetFeature`` (SDK) to a JSON-friendly dict (snake_case).
+
+    Real ``DatasetFeature`` extends ``APIObject``; use ``to_api`` / ``from_api`` so serialization
+    stays aligned with the client library instead of hand-maintaining field lists. Non-APIObject
+    stand-ins (stubs, ``MagicMock``) use a fixed attribute allowlist.
+    """
+    if is_convertable_to_api(feature):
+        payload = to_api(feature)
+        if not isinstance(payload, dict):
+            raise TypeError(f"to_api(feature) must return dict, got {type(payload).__name__}")
+        normalized = from_api(payload, do_recursive=True)
+        if not isinstance(normalized, dict):
+            got = type(normalized).__name__
+            raise TypeError(f"from_api(to_api(feature)) must return dict, got {got}")
+        return normalized
+    return _serialize_catalog_dataset_feature_plain(feature)
+
+
+def _find_catalog_dataset_feature_by_name(dataset: Any, feature_name: str) -> Any | None:
+    """Resolve a column to the SDK DatasetFeature from datasets/.../allFeaturesDetails/."""
+    for feat in dataset.iterate_all_features():
+        if feat.name == feature_name:
+            return feat
+    return None
 
 
 def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFrame]:
@@ -192,8 +255,11 @@ async def suggest_use_cases(
     description=(
         "[Catalog—deep EDA] Use when the user wants richer exploratory stats on one catalog "
         "dataset: memory, per-column missingness, type groupings, optional target distribution "
-        "and numeric correlations. Read-only; does not train or upload data. Heavier than "
-        "analyze_dataset; not time-series eligibility (is_eligible_for_timeseries_training)."
+        "and numeric correlations. For averages/min/max/median/std on a specific column, set "
+        "feature_col to use DataRobot catalog feature metadata (allFeaturesDetails; EDA sample "
+        "per platform), optionally with include_feature_histogram. Read-only; does not train or "
+        "upload data. Heavier than analyze_dataset; not time-series eligibility "
+        "(is_eligible_for_timeseries_training)."
     ),
 )
 async def get_exploratory_insights(
@@ -203,13 +269,24 @@ async def get_exploratory_insights(
         str, "If set, add target-centric stats (must be an existing column name)."
     ]
     | None = None,
+    feature_col: Annotated[
+        str,
+        "If set, include DataRobot API-backed profile for this column (mean/median/min/max/std, "
+        "etc. from catalog EDA). Must match a dataset column name.",
+    ]
+    | None = None,
+    include_feature_histogram: Annotated[
+        bool,
+        "If true and feature_col is set, attach histogram bins from DataRobot "
+        "(datasets/.../featureHistograms).",
+    ] = False,
 ) -> dict[str, Any]:
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
-    _, df = _get_dataset_or_raise(client, dataset_id)
+    dataset, df = _get_dataset_or_raise(client, dataset_id)
 
     # Get dataset insights first
     insights_result = await analyze_dataset(dataset_id=dataset_id)
@@ -231,6 +308,37 @@ async def get_exploratory_insights(
             "text": insights["text_columns"],
         },
     }
+
+    if feature_col:
+        if feature_col not in df.columns:
+            raise ToolError(
+                f"feature_col {feature_col!r} is not a column of this dataset.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+        try:
+            details = dataset.get_details()
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        api_feature = _find_catalog_dataset_feature_by_name(dataset, feature_col)
+        if api_feature is None:
+            raise ToolError(
+                f"No catalog feature metadata found for {feature_col!r}. "
+                "The column may not appear in DataRobot allFeaturesDetails yet.",
+                kind=ToolErrorKind.NOT_FOUND,
+            )
+        profile: dict[str, Any] = {
+            "source": "datarobot_catalog_all_features_details",
+            "statistics_basis": "eda_sample_as_computed_by_datarobot",
+            "data_persisted": getattr(details, "data_persisted", None),
+            "feature": _serialize_catalog_dataset_feature(api_feature),
+        }
+        if include_feature_histogram:
+            try:
+                histogram = api_feature.get_histogram()
+                profile["histogram"] = {"plot": histogram.plot}
+            except ClientError as e:
+                profile["histogram_error"] = str(e)
+        eda_insights["catalog_feature_profile"] = profile
 
     # Target-specific analysis
     if target_col and target_col in df.columns:
