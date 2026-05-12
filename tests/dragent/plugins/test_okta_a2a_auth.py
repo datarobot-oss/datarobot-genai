@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for OktaCrossApplicationAccessAuthProvider and its agent-card parsing helpers."""
+"""Tests for OAuth2CrossApplicationAccessOAuth2AuthProvider and its agent-card parsing helpers."""
 
 import base64
 import json
@@ -30,9 +30,11 @@ from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from nat.data_models.authentication import BearerTokenCred
 
-from datarobot_genai.dragent.plugins.okta_a2a_auth import OktaCrossApplicationAccessAuthProvider
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
-    OktaCrossApplicationAccessAuthProviderConfig,
+    OAuth2CrossApplicationAccessAuthProviderConfig,
+)
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _parse_cross_app_params
 
@@ -116,15 +118,15 @@ def _make_agent_card() -> AgentCard:
 
 
 # ---------------------------------------------------------------------------
-# Tests: OktaCrossApplicationAccessAuthProvider — discovery phase
+# Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — discovery phase
 # ---------------------------------------------------------------------------
 
 
-class TestOktaCrossApplicationAccessAuthProviderDiscovery:
+class TestOAuth2CrossApplicationAccessAuthProviderDiscovery:
     @pytest.fixture
     def provider(self):
-        return OktaCrossApplicationAccessAuthProvider(
-            config=OktaCrossApplicationAccessAuthProviderConfig()
+        return OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
         )
 
     async def test_authenticate_for_discovery_returns_bearer(self, provider):
@@ -146,15 +148,69 @@ class TestOktaCrossApplicationAccessAuthProviderDiscovery:
 
 
 # ---------------------------------------------------------------------------
-# Tests: OktaCrossApplicationAccessAuthProvider — set_agent_card / param parsing
+# Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — fallback token headers
 # ---------------------------------------------------------------------------
 
 
-class TestOktaCrossApplicationAccessAuthProviderSetAgentCard:
+class TestOAuth2CrossApplicationAccessAuthProviderFallbackHeaders:
+    """Tests for the fallback_token_headers local-dev feature."""
+
+    @pytest.fixture
+    def provider(self):
+        return OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
+        )
+
+    async def test_extracts_token_from_authorization_fallback(self, provider):
+        """Falls back to Authorization header when okta_token_header is absent."""
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {
+                "authorization": "Bearer fallback-token-123"
+            }
+            headers = await provider.authenticate_for_discovery()
+
+        assert headers == {"Authorization": "Bearer fallback-token-123"}
+
+    async def test_primary_header_takes_precedence_over_fallback(self, provider):
+        """Primary header wins even if fallback is also present."""
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {
+                "x-datarobot-okta-access-token": "primary-token",
+                "authorization": "Bearer fallback-token",
+            }
+            headers = await provider.authenticate_for_discovery()
+
+        assert headers == {"Authorization": "Bearer primary-token"}
+
+    async def test_strips_bearer_prefix_case_insensitive(self, provider):
+        """Bearer prefix is stripped regardless of casing."""
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {"authorization": "BEARER my-token"}
+            headers = await provider.authenticate_for_discovery()
+
+        assert headers == {"Authorization": "Bearer my-token"}
+
+    async def test_fallback_disabled_when_empty_list(self):
+        """No fallback attempted when fallback_token_headers is empty."""
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig(fallback_token_headers=[])
+        )
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {"authorization": "Bearer token"}
+            with pytest.raises(RuntimeError, match="x-datarobot-okta-access-token"):
+                await provider.authenticate_for_discovery()
+
+
+# ---------------------------------------------------------------------------
+# Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — set_agent_card / param parsing
+# ---------------------------------------------------------------------------
+
+
+class TestOAuth2CrossApplicationAccessAuthProviderSetAgentCard:
     def test_set_agent_card_parses_params(self):
         """set_agent_card() populates _CrossAppFlowParams with all card fields."""
-        provider = OktaCrossApplicationAccessAuthProvider(
-            config=OktaCrossApplicationAccessAuthProviderConfig()
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
         )
 
         provider.set_agent_card(_make_agent_card())
@@ -189,18 +245,18 @@ class TestParseCrossAppParams:
 
 
 # ---------------------------------------------------------------------------
-# Tests: OktaCrossApplicationAccessAuthProvider — authenticate (call phase)
+# Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — authenticate (call phase)
 # ---------------------------------------------------------------------------
 
 
-class TestOktaCrossApplicationAccessAuthProviderAuthenticate:
+class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
     @pytest.fixture
     def provider_with_card(self):
-        config = OktaCrossApplicationAccessAuthProviderConfig(
+        config = OAuth2CrossApplicationAccessAuthProviderConfig(
             principal_id="principal_abc",
             private_jwk=_FAKE_JWK_B64,
         )
-        provider = OktaCrossApplicationAccessAuthProvider(config=config)
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(config=config)
         provider.set_agent_card(_make_agent_card())
         return provider
 
@@ -249,8 +305,8 @@ class TestOktaCrossApplicationAccessAuthProviderAuthenticate:
 
     async def test_authenticate_raises_before_set_agent_card(self):
         """authenticate() raises RuntimeError if called before set_agent_card()."""
-        provider = OktaCrossApplicationAccessAuthProvider(
-            config=OktaCrossApplicationAccessAuthProviderConfig()
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
         )
 
         with patch(f"{_MODULE}.Context") as mock_ctx:
@@ -269,11 +325,11 @@ class TestOktaCrossApplicationAccessAuthProviderAuthenticate:
         self, principal_id, private_jwk_b64, match
     ):
         """authenticate() raises ValueError when a required credential is absent."""
-        config = OktaCrossApplicationAccessAuthProviderConfig(
+        config = OAuth2CrossApplicationAccessAuthProviderConfig(
             principal_id=principal_id,
             private_jwk=private_jwk_b64,
         )
-        provider = OktaCrossApplicationAccessAuthProvider(config=config)
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(config=config)
         provider.set_agent_card(_make_agent_card())
 
         with pytest.raises(ValueError, match=match):
@@ -309,7 +365,7 @@ class TestCrossAppAccessEndToEnd:
 
     @pytest.fixture
     def provider_config(self):
-        return OktaCrossApplicationAccessAuthProviderConfig(
+        return OAuth2CrossApplicationAccessAuthProviderConfig(
             principal_id="0oa_test_principal",
             private_jwk=_FAKE_JWK_B64,
         )
@@ -317,7 +373,7 @@ class TestCrossAppAccessEndToEnd:
     @pytest.fixture
     def provider(self, provider_config, agent_card):
         """Return provider with the agent card already parsed."""
-        p = OktaCrossApplicationAccessAuthProvider(config=provider_config)
+        p = OAuth2CrossApplicationAccessOAuth2AuthProvider(config=provider_config)
         p.set_agent_card(agent_card)
         return p
 
