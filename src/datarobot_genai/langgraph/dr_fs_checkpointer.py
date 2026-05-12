@@ -621,8 +621,10 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         else:
             current_v = int(str(current).split(".")[0])
         next_v = current_v + 1
-        next_h = random.random()
-        return f"{next_v:032}.{next_h:016}"
+        # Fixed-width decimal suffix (not ``random.random()`` + float format, which inserts an
+        # extra dot and breaks zero-padding for some values).
+        suffix = random.randrange(10**16)
+        return f"{next_v:032}.{suffix:016d}"
 
 
 def _normalize_checkpoint_base(checkpoint_base: str | None) -> str | None:

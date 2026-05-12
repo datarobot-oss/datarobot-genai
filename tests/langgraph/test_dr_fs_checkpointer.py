@@ -81,6 +81,23 @@ def test_resolved_checkpoint_root_null_is_dr_scheme_root() -> None:
     assert _resolved_checkpoint_root("   ") == "dr://"
 
 
+def test_get_next_version_single_dot_and_fixed_width_suffix() -> None:
+    fs = MemoryFileSystem()
+    saver = DataRobotFileSystemSaver(fs=fs, root="/v")
+    for current in (
+        None,
+        0,
+        1,
+        2.9,
+        "00000000000000000000000000000005.0000000000000999",
+    ):
+        v = saver.get_next_version(current, None)
+        assert v.count(".") == 1, v
+        left, right = v.split(".", 1)
+        assert len(left) == 32 and left.isdigit(), v
+        assert len(right) == 16 and right.isdigit(), v
+
+
 def test_encoder_empty_string_is_non_empty_path_segment() -> None:
     assert _encoder_segment("") != ""
     assert _decoder_segment(_encoder_segment("")) == ""
