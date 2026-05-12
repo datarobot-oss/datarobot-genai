@@ -86,3 +86,4 @@ prof/
 # IDE state
 .cursor/hooks/state/
 AGENTS.md
+.claude/
