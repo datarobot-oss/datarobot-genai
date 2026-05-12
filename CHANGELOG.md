@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.46
+- `crewai/mcp.py`: Fixed `BadRequestError` from Azure OpenAI when an MCP tool has no input schema. `MCPServerAdapter` would leave `args_schema = None` on such tools; litellm then serialized `"parameters": null`, which Azure rejects. Tools with a `None` args schema now fall back to an empty-object schema (`_EmptyArgsSchema`) so the function-calling payload is always valid.
+
 ## 0.15.45
 - `drtools/predictive/predict.py`: **Submit-and-poll batch workflow** — `predict_by_ai_catalog` and `predict_from_project_data` return immediately after submit (removed `timeout` and server-side `wait_for_completion` plus download-link polling); responses include `job_id`, `batch_job_status`, optional early `url`, and a `note` for follow-up instead of only completed-job metadata. **New tool `get_batch_prediction_job_status`** (`job_id`) returns status, optional download `url`, and progress fields without fetching CSV. **`get_batch_prediction_results`** is documented and used after polling for completion; passes `download_timeout` / `download_read_timeout` through to the SDK download. **`BatchPredictionJob.score` / `get`** use the same configured SDK client as `Dataset.get`.
 - `drtools/predictive/training.py` (`get_exploratory_insights`): optional `feature_col` plus `include_feature_histogram` add a DataRobot catalog API-backed column profile (allFeaturesDetails statistics and optional feature histogram) alongside existing EDA output; helpers resolve catalog `DatasetFeature` rows by name and serialize them for the tool response.
