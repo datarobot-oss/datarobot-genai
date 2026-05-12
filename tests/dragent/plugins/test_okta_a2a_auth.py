@@ -148,6 +148,60 @@ class TestOAuth2CrossApplicationAccessAuthProviderDiscovery:
 
 
 # ---------------------------------------------------------------------------
+# Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — fallback token headers
+# ---------------------------------------------------------------------------
+
+
+class TestOAuth2CrossApplicationAccessAuthProviderFallbackHeaders:
+    """Tests for the fallback_token_headers local-dev feature."""
+
+    @pytest.fixture
+    def provider(self):
+        return OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
+        )
+
+    async def test_extracts_token_from_authorization_fallback(self, provider):
+        """Falls back to Authorization header when okta_token_header is absent."""
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {
+                "authorization": "Bearer fallback-token-123"
+            }
+            headers = await provider.authenticate_for_discovery()
+
+        assert headers == {"Authorization": "Bearer fallback-token-123"}
+
+    async def test_primary_header_takes_precedence_over_fallback(self, provider):
+        """Primary header wins even if fallback is also present."""
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {
+                "x-datarobot-okta-access-token": "primary-token",
+                "authorization": "Bearer fallback-token",
+            }
+            headers = await provider.authenticate_for_discovery()
+
+        assert headers == {"Authorization": "Bearer primary-token"}
+
+    async def test_strips_bearer_prefix_case_insensitive(self, provider):
+        """Bearer prefix is stripped regardless of casing."""
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {"authorization": "BEARER my-token"}
+            headers = await provider.authenticate_for_discovery()
+
+        assert headers == {"Authorization": "Bearer my-token"}
+
+    async def test_fallback_disabled_when_empty_list(self):
+        """No fallback attempted when fallback_token_headers is empty."""
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig(fallback_token_headers=[])
+        )
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {"authorization": "Bearer token"}
+            with pytest.raises(RuntimeError, match="x-datarobot-okta-access-token"):
+                await provider.authenticate_for_discovery()
+
+
+# ---------------------------------------------------------------------------
 # Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — set_agent_card / param parsing
 # ---------------------------------------------------------------------------
 

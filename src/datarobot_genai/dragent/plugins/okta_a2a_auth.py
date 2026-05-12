@@ -190,6 +190,15 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             "Matched case-insensitively."
         ),
     )
+    fallback_token_headers: list[str] = Field(
+        default=["authorization"],
+        description=(
+            "Fallback headers to try (in order) when ``okta_token_header`` is absent. "
+            "Useful for local development without an API gateway that remaps "
+            "``Authorization`` → ``x-datarobot-okta-access-token``. "
+            "If the value starts with 'Bearer ', the prefix is stripped automatically."
+        ),
+    )
     principal_id: str | None = Field(
         default_factory=_get_default_principal_id,
         description=(
@@ -317,15 +326,39 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
     # ------------------------------------------------------------------
 
     def _extract_okta_token(self) -> str:
-        """Extract the Okta access token from NAT request context headers."""
+        """Extract the Okta access token from NAT request context headers.
+
+        Tries ``okta_token_header`` first, then each entry in
+        ``fallback_token_headers`` (stripping ``Bearer `` prefix if present).
+        This supports local development where no API gateway remaps
+        ``Authorization`` into the canonical ``x-datarobot-okta-access-token``.
+        """
         context_headers: dict[str, str] = Context.get().metadata.headers or {}
+
+        # Primary header (already a raw token value, no prefix expected)
         token = context_headers.get(self.config.okta_token_header.lower())
-        if not token:
-            raise RuntimeError(
-                f"Header '{self.config.okta_token_header}' not found in the request context. "
-                "The Okta access token must be forwarded with every agent call."
-            )
-        return token
+        if token:
+            return token
+
+        # Fallback headers (e.g. Authorization: Bearer <token>)
+        for fallback in self.config.fallback_token_headers:
+            value = context_headers.get(fallback.lower())
+            if value:
+                # Strip "Bearer " prefix if present (case-insensitive)
+                if value.lower().startswith("bearer "):
+                    value = value[len("bearer ") :]
+                logger.debug(
+                    "Primary header '%s' absent; using fallback '%s'",
+                    self.config.okta_token_header,
+                    fallback,
+                )
+                return value
+
+        raise RuntimeError(
+            f"Header '{self.config.okta_token_header}' not found in the request context "
+            f"(also tried fallbacks: {self.config.fallback_token_headers}). "
+            "The Okta access token must be forwarded with every agent call."
+        )
 
     def _parse_private_jwk(self) -> dict[str, Any] | None:
         """Decode and parse the private JWK from config (supports base64 and raw JSON)."""

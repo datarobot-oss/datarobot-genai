@@ -83,6 +83,17 @@ _patch_user_manager()
 _a2a_headers: ContextVar[dict[str, str] | None] = ContextVar("_a2a_headers", default=None)
 
 
+def _build_metadata_from_headers(headers: dict[str, str]) -> RequestAttributes:
+    """Build a :class:`RequestAttributes` carrying the given headers.
+
+    Isolates access to NAT internals (``RequestAttributes._request``) in a
+    single place so upstream changes only require one update.
+    """
+    attrs = RequestAttributes()
+    attrs._request = NATRequest(headers=headers)
+    return attrs
+
+
 class DRAgentAGUISessionManager(SessionManager):
     @asynccontextmanager
     async def session(
@@ -123,23 +134,25 @@ class DRAgentAGUISessionManager(SessionManager):
         token_metadata = None
         preset_headers = _a2a_headers.get()
         if preset_headers:
-            attrs = RequestAttributes()
-            attrs._request = NATRequest(headers=preset_headers)
+            attrs = _build_metadata_from_headers(preset_headers)
             token_metadata = self._context_state._metadata.set(attrs)
 
-        async with super().session(
-            user_id=user_id,
-            http_connection=http_connection,
-            user_message_id=user_message_id,
-            conversation_id=conversation_id,
-            user_input_callback=user_input_callback,
-            user_authentication_callback=user_authentication_callback,
-        ) as sess:
-            try:
+        # Wrap the entire super().session() in try/finally so _metadata is
+        # always reset — even if super().session().__aenter__() raises
+        # (e.g. per-user builder creation failure).
+        try:
+            async with super().session(
+                user_id=user_id,
+                http_connection=http_connection,
+                user_message_id=user_message_id,
+                conversation_id=conversation_id,
+                user_input_callback=user_input_callback,
+                user_authentication_callback=user_authentication_callback,
+            ) as sess:
                 yield sess
-            finally:
-                if token_metadata is not None:
-                    self._context_state._metadata.reset(token_metadata)
+        finally:
+            if token_metadata is not None:
+                self._context_state._metadata.reset(token_metadata)
 
     def get_workflow_input_schema(self) -> type[BaseModel]:
         """Get workflow input schema for OpenAPI documentation."""

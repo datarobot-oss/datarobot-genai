@@ -29,6 +29,7 @@ from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
+from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
 
 
 @pytest.fixture
@@ -98,10 +99,12 @@ class TestDRAgentAGUISessionManager:
 
         The test captures headers from *inside* the yielded session block — the point
         in time at which auth providers actually read Context.get().metadata.headers.
+        All forwarded headers (not just x-datarobot-*) should be available.
         """
         incoming = {
             "x-datarobot-custom": "tok-abc",
             "x-untrusted-claim": "claim-val",
+            "authorization": "Bearer some-token",
         }
 
         token = _a2a_headers.set(incoming)
@@ -114,13 +117,54 @@ class TestDRAgentAGUISessionManager:
         try:
             with patch.object(SessionManager, "session", fake_nat_session):
                 async with session_manager.session() as _sess:
-                    # Headers are injected here — after super().session() has yielded.
                     context_state = ContextState.get()
                     captured_metadata["headers"] = dict(context_state._metadata.get().headers or {})
         finally:
             _a2a_headers.reset(token)
 
         assert captured_metadata.get("headers") == incoming
+
+    @pytest.mark.asyncio
+    async def test_session_resets_metadata_when_super_session_raises(self, session_manager):
+        """_metadata ContextVar must be reset even if super().session().__aenter__ raises.
+
+        Without a try/finally wrapping the ``async with super().session()`` block, a
+        failure during per-user builder creation would leak _metadata into the task.
+        """
+        incoming = {"x-datarobot-custom": "tok-abc"}
+        token = _a2a_headers.set(incoming)
+        context_state = ContextState.get()
+
+        @asynccontextmanager
+        async def exploding_nat_session(self, **kwargs: object):
+            raise RuntimeError("builder creation failed")
+            yield  # noqa: unreachable — required for generator syntax
+
+        metadata_before = context_state._metadata.get()
+
+        try:
+            with patch.object(SessionManager, "session", exploding_nat_session):
+                with pytest.raises(RuntimeError, match="builder creation failed"):
+                    async with session_manager.session():
+                        pass  # pragma: no cover
+        finally:
+            _a2a_headers.reset(token)
+
+        # _metadata must have been reset back to the value before the session call
+        assert context_state._metadata.get() is metadata_before
+
+
+class TestBuildMetadataFromHeaders:
+    """Tests for the _build_metadata_from_headers helper."""
+
+    def test_returns_request_attributes_with_headers(self):
+        headers = {"x-datarobot-token": "tok", "authorization": "Bearer jwt"}
+        attrs = _build_metadata_from_headers(headers)
+        assert attrs.headers == headers
+
+    def test_returns_empty_headers(self):
+        attrs = _build_metadata_from_headers({})
+        assert attrs.headers == {}
 
 
 class TestUserManagerPatch:

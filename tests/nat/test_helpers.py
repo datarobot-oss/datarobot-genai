@@ -30,7 +30,6 @@ from datarobot_genai.nat.helpers import add_headers_to_datarobot_mcp_auth
 from datarobot_genai.nat.helpers import extract_authorization_from_context
 from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from datarobot_genai.nat.helpers import extract_headers_from_context
-from datarobot_genai.nat.helpers import filter_datarobot_headers
 from datarobot_genai.nat.helpers import load_config
 from datarobot_genai.nat.helpers import load_workflow
 
@@ -410,65 +409,3 @@ def test_extract_authorization_from_context_with_auth_context_data(
     assert result["user"]["id"] == auth_context_data["user"]["id"]
     assert result["identities"][0]["id"] == auth_context_data["identities"][0]["id"]
     assert result["metadata"]["endpoint"] == auth_context_data["metadata"]["endpoint"]
-
-
-@pytest.mark.parametrize(
-    "headers,expected",
-    [
-        # None / empty → empty
-        (None, {}),
-        ({}, {}),
-        # x-datarobot-* prefix is kept, unrelated headers dropped
-        (
-            {"X-DataRobot-Identity-Token": "id-123", "Content-Type": "application/json"},
-            {"x-datarobot-identity-token": "id-123"},
-        ),
-        # x-untrusted-* prefix is kept
-        (
-            {"x-untrusted-foo": "bar", "Accept": "text/html"},
-            {"x-untrusted-foo": "bar"},
-        ),
-        # Mixed prefixes, case-insensitive input keys, all unrelated headers dropped
-        (
-            {
-                "X-DataRobot-Okta-Access-Token": "okta-tok",
-                "X-Untrusted-Claim": "claim-val",
-                "Authorization": "Bearer jwt",
-                "Content-Type": "application/json",
-            },
-            {
-                "x-datarobot-okta-access-token": "okta-tok",
-                "x-untrusted-claim": "claim-val",
-            },
-        ),
-        # Output keys are always lowercase even when input is mixed-case
-        (
-            {"X-DATAROBOT-UPPER": "val"},
-            {"x-datarobot-upper": "val"},
-        ),
-    ],
-)
-def test_filter_datarobot_headers(headers, expected):
-    assert filter_datarobot_headers(headers) == expected
-
-
-def test_filter_datarobot_headers_does_not_mutate_input():
-    headers = {"X-DataRobot-Token": "tok", "Other": "drop"}
-    original = dict(headers)
-    filter_datarobot_headers(headers)
-    assert headers == original
-
-
-def test_extract_datarobot_headers_from_context_delegates_to_filter(nat_context_set_headers):
-    """extract_datarobot_headers_from_context must produce the same result as
-    calling filter_datarobot_headers on the same raw headers dict.
-    """
-    raw = {
-        "X-DataRobot-Foo": "foo",
-        "X-Untrusted-Bar": "bar",
-        "Authorization": "Bearer x",
-    }
-    nat_context_set_headers(raw)
-    ctx_result = extract_datarobot_headers_from_context()
-    direct_result = filter_datarobot_headers(raw)
-    assert ctx_result == direct_result

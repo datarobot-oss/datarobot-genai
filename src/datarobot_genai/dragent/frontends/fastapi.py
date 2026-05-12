@@ -31,7 +31,6 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
-from datarobot_genai.nat.helpers import filter_datarobot_headers
 
 from .a2a import A2A_MOUNT_PATH
 from .a2a import create_agent_card
@@ -59,8 +58,9 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
        workflow instance without requiring a Bearer JWT.
 
     3. ``execute`` does not forward the incoming A2A HTTP request headers into the NAT
-       context.  We extract DataRobot-relevant headers and store them in order to inject
-       them into ``ContextState._metadata`` so they can be accessible.
+       context.  We forward all headers from the A2A call context so that auth
+       providers can read whichever headers they need (e.g. ``x-datarobot-*``,
+       ``Authorization``) via ``Context.get().metadata.headers``.
     """
 
     def __init__(self, session_manager: SessionManager) -> None:
@@ -80,14 +80,16 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         if context.context_id:
             token = self.session_manager._context_state.user_id.set(context.context_id)
 
-        # Forward incoming A2A HTTP headers so DRAgentAGUISessionManager.session() can
-        # inject them into NAT context metadata. Only DataRobot-relevant headers are
-        # forwarded.
+        # Forward incoming A2A HTTP headers so DRAgentAGUISessionManager.session()
+        # can inject them into NAT context metadata.  Auth providers pick the specific
+        # headers they need (e.g. x-datarobot-okta-access-token, Authorization).
         token_headers = None
         if context.call_context and isinstance(context.call_context.state, dict):
-            filtered = filter_datarobot_headers(context.call_context.state.get("headers"))
-            if filtered:
-                token_headers = _a2a_headers.set(filtered)
+            raw_headers = context.call_context.state.get("headers")
+            if raw_headers and isinstance(raw_headers, dict):
+                # Lowercase keys to match NAT's header normalisation convention.
+                normalised = {k.lower(): v for k, v in raw_headers.items()}
+                token_headers = _a2a_headers.set(normalised)
 
         try:
             await super().execute(context, event_queue)
