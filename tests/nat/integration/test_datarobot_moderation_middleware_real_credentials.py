@@ -52,9 +52,11 @@ from nat.data_models.api_server import Usage as NATChatUsage
 
 pytest.importorskip("datarobot_dome")
 
+from datarobot_dome.constants import AGENT_GOAL_ACCURACY_COLUMN_NAME
 from datarobot_dome.constants import FAITHFULLNESS_COLUMN_NAME
 from datarobot_dome.constants import GUIDELINE_ADHERENCE_COLUMN_NAME
 from datarobot_dome.constants import ROUGE_1_COLUMN_NAME
+from datarobot_dome.constants import TASK_ADHERENCE_SCORE_COLUMN_NAME
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
@@ -161,6 +163,8 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
     assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
     assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
     assert GUIDELINE_ADHERENCE_COLUMN_NAME in mods
+    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in mods
+    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in mods
     assert ROUGE_1_COLUMN_NAME not in mods  # No citations
     assert FAITHFULLNESS_COLUMN_NAME not in mods  # No citations
 
@@ -195,6 +199,8 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
     assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
     assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
     assert GUIDELINE_ADHERENCE_COLUMN_NAME in mods
+    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in mods
+    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in mods
     assert ROUGE_1_COLUMN_NAME not in mods  # No citations
     assert FAITHFULLNESS_COLUMN_NAME not in mods  # No citations
 
@@ -229,5 +235,7 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
     assert final_mods["Responses_token_count"] == 6
     assert final_mods["cost"] == pytest.approx(0.019)
     assert GUIDELINE_ADHERENCE_COLUMN_NAME in all_keys
+    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in all_keys
+    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in all_keys
     assert ROUGE_1_COLUMN_NAME not in all_keys  # No citations
     assert FAITHFULLNESS_COLUMN_NAME not in all_keys  # No citations
