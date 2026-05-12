@@ -38,6 +38,7 @@ Each guide walks you through the **interfaces in the repo**: `workflow.yaml` key
 
 For shared **LLM routing** (gateway vs deployment vs NIM vs external), see [LLM configuration](llm.md).
 For native **primary/fallback failover** changes in an existing component, see [LLM provider fallback (router)](fallback.md).
+For NAT automatic memory with Mem0, see [nat/memory.md](nat/memory.md).
 
 **Note:** With NAT, you edit **`workflow.yaml`** as the contract. Host workflows with DRAgent for the supported path. You can still load the same YAML in process without DRAgent (legacy); target DRAgent for new work.
 

@@ -18,6 +18,7 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
+from datarobot_genai.drmcp.test_utils.tool_base_ete import _canonical_tool_name_for_expectation
 from datarobot_genai.drmcp.test_utils.tool_base_ete import _check_dict_has_keys
 from datarobot_genai.drmcp.test_utils.tool_base_ete import _check_dict_params_match
 
@@ -32,8 +33,18 @@ class TestToolCallTestExpectations:
         )
 
         assert expectations.name == "test_tool"
+        assert expectations.acceptable_tool_names == []
         assert expectations.parameters == {"param": "value"}
         assert expectations.result == "result"
+
+    def test_tool_call_test_expectations_allowed_tool_names(self) -> None:
+        expectations = ToolCallTestExpectations(
+            name="a",
+            acceptable_tool_names=["b", "c"],
+            parameters={},
+            result="x",
+        )
+        assert expectations.allowed_tool_names() == {"a", "b", "c"}
 
     def test_tool_call_test_expectations_with_dict_result(self) -> None:
         """Test ToolCallTestExpectations with dict result."""
@@ -43,6 +54,31 @@ class TestToolCallTestExpectations:
 
         assert isinstance(expectations.result, dict)
         assert expectations.result["status"] == "success"
+
+
+class TestCanonicalToolNameForExpectation:
+    def test_matches_primary_name(self) -> None:
+        call = ToolCallTestExpectations(name="get_deployment_info", parameters={}, result="")
+        assert (
+            _canonical_tool_name_for_expectation("get_deployment_info", call)
+            == "get_deployment_info"
+        )
+
+    def test_matches_acceptable_alternative(self) -> None:
+        call = ToolCallTestExpectations(
+            name="get_deployment_info",
+            acceptable_tool_names=["get_deployment_features"],
+            parameters={},
+            result="",
+        )
+        assert (
+            _canonical_tool_name_for_expectation("get_deployment_features", call)
+            == "get_deployment_features"
+        )
+
+    def test_no_match(self) -> None:
+        call = ToolCallTestExpectations(name="get_deployment_info", parameters={}, result="")
+        assert _canonical_tool_name_for_expectation("other_tool", call) is None
 
 
 class TestETETestExpectations:

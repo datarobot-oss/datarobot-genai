@@ -24,6 +24,12 @@ STUB_PROJECT_ID = "test_project_123"
 # Dataset id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_DATASET_ID = "stub_dataset_id"
 
+# Catalog dataset id from ``classification_predict_dataset`` when using stub token (conftest).
+STUB_PREDICT_CATALOG_DATASET_ID = "stub_predict_dataset_id"
+
+# Batch prediction job id returned by stub ``BatchPredictionJob.score`` / ``get``.
+STUB_BATCH_PREDICTION_JOB_ID = "stub_batch_prediction_job_id"
+
 # Use case id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_USE_CASE_ID = "stub_use_case_id"
 
@@ -138,6 +144,40 @@ class StubDeployment:
         return MagicMock()
 
 
+class StubCatalogDatasetFeature:
+    """Stand-in for SDK ``DatasetFeature`` (catalog / allFeaturesDetails) in stub tests."""
+
+    def __init__(self, name: str, feature_type: str = "Categorical", **kwargs: Any) -> None:
+        self.name = name
+        self.feature_type = feature_type
+        self.unique_count = kwargs.get("unique_count", 5)
+        self.na_count = kwargs.get("na_count", 0)
+        self.date_format = kwargs.get("date_format")
+        self.min = kwargs.get("min")
+        self.max = kwargs.get("max")
+        self.mean = kwargs.get("mean")
+        self.median = kwargs.get("median")
+        self.std_dev = kwargs.get("std_dev")
+        self.low_information = kwargs.get("low_information", False)
+        self.time_series_eligible = kwargs.get("time_series_eligible", False)
+        self.time_series_eligibility_reason = kwargs.get("time_series_eligibility_reason", "")
+        self.time_step = kwargs.get("time_step")
+        self.time_unit = kwargs.get("time_unit")
+        self.target_leakage = kwargs.get("target_leakage", "FALSE")
+        self.target_leakage_reason = kwargs.get("target_leakage_reason")
+
+    def get_histogram(self, bin_limit: int | None = None, key_name: str | None = None) -> Any:
+        return SimpleNamespace(
+            plot=[
+                {
+                    "label": "stub-bin",
+                    "count": max(1, int(self.unique_count or 1)),
+                    "target": None,
+                }
+            ]
+        )
+
+
 class StubDataset:
     """Stub DataRobot dataset object."""
 
@@ -151,6 +191,55 @@ class StubDataset:
         self.name = name
         self.created_at = "2025-01-01T00:00:00Z"
         self.row_count = row_count
+
+    def get_details(self) -> Any:
+        """Stub ``Dataset.get_details`` (catalog extended profile flag)."""
+        return SimpleNamespace(data_persisted=True)
+
+    def _stub_catalog_features(self) -> list[StubCatalogDatasetFeature]:
+        """Feature names align with ``get_as_dataframe`` (date, sales, store_id)."""
+        rc = self.row_count
+        return [
+            StubCatalogDatasetFeature(
+                "date",
+                "Categorical",
+                unique_count=rc,
+                na_count=0,
+                time_series_eligible=True,
+                time_series_eligibility_reason="suitable",
+            ),
+            StubCatalogDatasetFeature(
+                "sales",
+                "Float",
+                unique_count=min(100, max(1, rc)),
+                na_count=0,
+                min=100.0,
+                max=1000.0,
+                mean=550.0,
+                median=520.0,
+                std_dev=100.0,
+            ),
+            StubCatalogDatasetFeature(
+                "store_id",
+                "Categorical",
+                unique_count=min(5, max(1, rc)),
+                na_count=0,
+            ),
+        ]
+
+    def iterate_all_features(
+        self,
+        offset: int | None = None,
+        limit: int | None = None,
+        order_by: str | None = None,
+    ) -> Any:
+        """Stub ``Dataset.iterate_all_features`` for catalog API-backed EDA in tools."""
+        features = self._stub_catalog_features()
+        if offset:
+            features = features[offset:]
+        if limit is not None:
+            features = features[:limit]
+        return iter(features)
 
     def get_as_dataframe(self) -> Any:
         """Return a stub pandas DataFrame suitable for time-series eligibility checks.
@@ -201,6 +290,40 @@ class StubUseCase:
         return [StubProject("test_project_123")]
 
 
+class StubBatchJob:
+    """Stub batch prediction job (submit, status poll, download) for MCP integration tests."""
+
+    def __init__(self, job_id: str = STUB_BATCH_PREDICTION_JOB_ID) -> None:
+        self.id = job_id
+
+    def get_status(self) -> dict[str, Any]:
+        return {
+            "status": "COMPLETED",
+            "links": {"download": "https://stub.app.example/api/v2/batchPredictions/download"},
+            "percentage_completed": 100.0,
+            "elapsed_time_sec": 0,
+            "status_details": "",
+            "job_spec": {"output_settings": {"type": "localFile"}},
+        }
+
+    def download(self, buf: Any, timeout: int = 120, read_timeout: int = 660) -> None:
+        _ = (timeout, read_timeout)
+        buf.write(b"text_review,sentiment_PREDICTION\nstub,positive\n")
+
+
+class StubBatchPredictionJobAPI:
+    """Subset of ``datarobot.BatchPredictionJob`` used by predictive batch tools."""
+
+    @staticmethod
+    def score(*args: Any, **kwargs: Any) -> StubBatchJob:
+        _ = (args, kwargs)
+        return StubBatchJob(STUB_BATCH_PREDICTION_JOB_ID)
+
+    @staticmethod
+    def get(job_id: str) -> StubBatchJob:
+        return StubBatchJob(job_id.strip())
+
+
 class StubDataStore:
     """Stub DataRobot datastore object."""
 
@@ -232,6 +355,7 @@ class StubDRClient:
         self.DataStore = MagicMock()
         self.UseCase = MagicMock()
         self.client = MagicMock()
+        self.BatchPredictionJob = StubBatchPredictionJobAPI()
         self.stub_rest_get: Any = None
         self.stub_rest_post: Any = None
 
@@ -301,7 +425,7 @@ def test_create_dr_client() -> StubDRClient:
     stub_dataset = StubDataset(STUB_DATASET_ID, name="stub_dataset.csv", row_count=200)
 
     def get_dataset(dataset_id: str) -> StubDataset:
-        if dataset_id == STUB_DATASET_ID:
+        if dataset_id in (STUB_DATASET_ID, STUB_PREDICT_CATALOG_DATASET_ID):
             return stub_dataset
         raise Exception(f"404 client error: {{'message': 'Dataset {dataset_id} not found'}}")
 

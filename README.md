@@ -47,6 +47,7 @@ You can also install:
 * `datarobot-genai[dragent]`&mdash;serve and orchestrate your agent with `DRAgent`.
 * `datarobot-genai[drtools]`&mdash;use the standard library of agentic tools DataRobot provides.
 * `datarobot-genai[drmcp]`&mdash;host a custom MCP server in DataRobot.
+* `datarobot-genai[memory]`&mdash;use the Mem0-backed memory client and NAT memory provider.
 
 ## Credentials
 You need a DataRobot account to use DataRobot-backed features. Export these environment variables:

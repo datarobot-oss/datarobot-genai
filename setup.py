@@ -93,6 +93,7 @@ dragent = nat + [
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "fastapi<0.133.0",
     "starlette<1.0.0",
+    "datarobot-moderations>=11.2.24,<12.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
@@ -102,6 +103,7 @@ auth = [
   "datarobot[auth]>=3.10.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
+  "okta-client-python>=0.2.0,<1.0.0",
 ]
 
 # drtools: no subpackages dependencies other than auth.

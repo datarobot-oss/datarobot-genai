@@ -15,6 +15,7 @@
 import datetime
 import logging
 import uuid
+from typing import Any
 
 from ag_ui.core import CustomEvent
 from ag_ui.core import RunAgentInput
@@ -133,7 +134,30 @@ def aggregate_dragent_event_responses(
     responses: list[DRAgentEventResponse],
 ) -> DRAgentEventResponse:
     all_events = [event for response in responses for event in response.events]
-    return DRAgentEventResponse(events=all_events)
+    datarobot_moderations: dict[str, Any] | None = None
+    merged_usage_metrics: dict[str, int] | None = None
+    model: str | None = None
+    original_chunk: ChatResponseChunk | None = None
+    for response in responses:
+        if response.datarobot_moderations is not None:
+            datarobot_moderations = response.datarobot_moderations
+        if response.model is not None:
+            model = response.model
+        if response.original_chunk is not None:
+            original_chunk = response.original_chunk
+        if response.usage_metrics is not None:
+            if merged_usage_metrics is None:
+                merged_usage_metrics = dict(response.usage_metrics)
+            else:
+                for key, value in response.usage_metrics.items():
+                    merged_usage_metrics[key] = merged_usage_metrics.get(key, 0) + value
+    return DRAgentEventResponse(
+        events=all_events,
+        datarobot_moderations=datarobot_moderations,
+        model=model,
+        usage_metrics=merged_usage_metrics,
+        original_chunk=original_chunk,
+    )
 
 
 def convert_dragent_event_response_to_str(response: DRAgentEventResponse) -> str:
