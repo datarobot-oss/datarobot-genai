@@ -23,9 +23,9 @@ from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.predictive.utils import DR_PREDICTIVE_API_PAGINATION_MAX
-from datarobot_genai.drtools.predictive.utils import _clamp_limit
-from datarobot_genai.drtools.predictive.utils import _merge_pagination_metadata
+from datarobot_genai.drtools.pagination import PAGINATION_MAX
+from datarobot_genai.drtools.pagination import clamp_limit
+from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,12 @@ async def list_vector_databases(
     limit: Annotated[
         int,
         ("Max VDBs to return (default 100). Values above 100 are rejected; use offset to page."),
-    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+    ] = PAGINATION_MAX,
 ) -> dict[str, Any]:
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
-    limit, message = _clamp_limit(limit)
+    limit, message = clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -79,7 +79,7 @@ async def list_vector_databases(
         ],
         "count": len(vdbs),
     }
-    return _merge_pagination_metadata(
+    return merge_pagination_metadata(
         final_results=final_results,
         api_response=api_response,
         message=message,
