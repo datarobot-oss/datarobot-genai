@@ -24,10 +24,24 @@ from contextlib import asynccontextmanager
 
 from crewai.tools import BaseTool
 from crewai_tools import MCPServerAdapter
+from pydantic import BaseModel
 
 from datarobot_genai.core.mcp import MCPConfig
 
 logger = logging.getLogger(__name__)
+
+
+class _EmptyArgsSchema(BaseModel):
+    """Fallback schema for MCP tools that declare no input parameters."""
+
+
+def _sanitize_tool_schemas(tools: list[BaseTool]) -> list[BaseTool]:
+    # Azure OpenAI rejects tools whose parameters field is None; replace with
+    # an empty-object schema for any MCP tool that has no input schema.
+    for tool in tools:
+        if tool.args_schema is None:
+            tool.args_schema = _EmptyArgsSchema
+    return tools
 
 
 # here it is async to conform with other MCP adapters
@@ -45,7 +59,7 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
 
     try:
         adapter = MCPServerAdapter(mcp_config.server_config)
-        tools = adapter.__enter__()
+        tools = _sanitize_tool_schemas(adapter.__enter__())
     except Exception as exc:
         logger.warning(
             "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
