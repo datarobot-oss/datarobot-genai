@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 # Max target null rate (30%) for time-series eligibility check
 _MAX_NULL_RATE_FOR_ELIGIBILITY = 0.3
 
+# Below this fraction, `:.0%` rounds to "0%", so render as "<1%" instead.
+_MIN_DISPLAYABLE_GAP_PCT = 0.01
+
 # Cadence / gap inference helpers for is_eligible_for_timeseries_training.
 # Adapted from datarobot-ts-helpers (MIT, Bultema et al.):
 # https://github.com/jarredbultema/ts_helpers_package — specifically
@@ -582,7 +585,9 @@ async def is_eligible_for_timeseries_training(
             )
             gap_pct = cadence["pct_series_with_gaps"]
             if gap_pct > 0:
-                gap_pct_str = "<1%" if gap_pct < 0.01 else f"{gap_pct:.0%}"
+                gap_pct_str = (
+                    "<1%" if gap_pct < _MIN_DISPLAYABLE_GAP_PCT else f"{gap_pct:.0%}"
+                )
                 infos.append(
                     f"{gap_pct_str} of series have at least one gap larger than "
                     f"the median timestep. DataRobot accepts non-regular cadences "
