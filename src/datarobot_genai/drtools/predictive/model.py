@@ -582,8 +582,9 @@ async def is_eligible_for_timeseries_training(
             )
             gap_pct = cadence["pct_series_with_gaps"]
             if gap_pct > 0:
+                gap_pct_str = "<1%" if gap_pct < 0.01 else f"{gap_pct:.0%}"
                 infos.append(
-                    f"{gap_pct:.0%} of series have at least one gap larger than "
+                    f"{gap_pct_str} of series have at least one gap larger than "
                     f"the median timestep. DataRobot accepts non-regular cadences "
                     f"for TS modeling, but consider reindexing/imputing if gaps "
                     f"are large or row-based partitioning if they cluster."
