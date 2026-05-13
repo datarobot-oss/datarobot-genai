@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import logging
 import math
@@ -52,6 +53,7 @@ from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
+from datarobot_dome.constants import AGENTIC_PIPELINE_INTERACTIONS_ATTR
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
@@ -1291,6 +1293,37 @@ _STREAM_INPUT_END = object()
 _WORKER_QUEUE_END = object()
 
 
+@contextlib.contextmanager
+def _agentic_pipeline_interactions_column_for_postscore(input_df: pd.DataFrame) -> Iterator[None]:
+    """Provide ``pipeline_interactions`` for postscore only, matching ``evaluate_response``.
+
+    ``ModerationPipeline.evaluate_response`` adds ``AGENTIC_PIPELINE_INTERACTIONS_ATTR`` to the
+    dataframe passed to the postscore executor. ``ModerationIterator`` copies ``input_df`` for
+    postscore but omits that column, so OOTB guards that require it (for example task adherence)
+    do not populate metrics. The iterator also merges prescore and postscore on
+    ``list(input_df.columns)``, so the column must not remain on ``input_df`` after postscore.
+    """
+    col = AGENTIC_PIPELINE_INTERACTIONS_ATTR
+    if col in input_df.columns:
+        yield
+        return
+    input_df[col] = [None]
+    try:
+        yield
+    finally:
+        input_df.drop(columns=[col], inplace=True)
+
+
+class _ModerationIteratorWithPostscorePipelineInteractions(ModerationIterator):
+    def _run_postscore_guards_on_chunk(self, return_chunk: Any) -> Any:
+        with _agentic_pipeline_interactions_column_for_postscore(self.input_df):
+            return super()._run_postscore_guards_on_chunk(return_chunk)
+
+    def _run_postscore_guards_on_assembled_response(self, citations: Any) -> Any:
+        with _agentic_pipeline_interactions_column_for_postscore(self.input_df):
+            return super()._run_postscore_guards_on_assembled_response(citations)
+
+
 @dataclass
 class _ModerationInvokeState:
     """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
@@ -1637,7 +1670,9 @@ class DataRobotModerationMiddleware(
 
             def moderation_worker() -> None:
                 try:
-                    mit = ModerationIterator(streaming_context, input_chunk_iter())
+                    mit = _ModerationIteratorWithPostscorePipelineInteractions(
+                        streaming_context, input_chunk_iter()
+                    )
                     for moderated_chunk in mit:
                         out_q.put(moderated_chunk)
                 except BaseException as exc:
