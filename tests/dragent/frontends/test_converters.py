@@ -240,12 +240,70 @@ def test_aggregate_dragent_event_responses_combines_events() -> None:
     assert result.events[1].delta == "world"
 
 
+def test_aggregate_dragent_event_responses_keeps_last_datarobot_moderations() -> None:
+    # GIVEN pass-through chunks without moderation metadata and a text chunk with guards output
+    r1 = DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="Hello ")])
+    r2 = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="world")],
+        datarobot_moderations={"score": 0.1},
+    )
+
+    result = aggregate_dragent_event_responses([r1, r2])
+
+    assert result.datarobot_moderations == {"score": 0.1}
+
+
+def test_aggregate_dragent_event_responses_sums_usage_metrics() -> None:
+    # GIVEN multiple batches each reporting token usage (e.g. multi-step invoke yields)
+    r1 = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="a")],
+        usage_metrics={"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+    )
+    r2 = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="b")],
+        usage_metrics={"prompt_tokens": 4, "completion_tokens": 5, "total_tokens": 9},
+    )
+
+    result = aggregate_dragent_event_responses([r1, r2])
+
+    assert result.usage_metrics == {
+        "prompt_tokens": 5,
+        "completion_tokens": 7,
+        "total_tokens": 12,
+    }
+
+
+def test_aggregate_dragent_event_responses_last_model_and_original_chunk() -> None:
+    # GIVEN streaming-style batches with model / NAT chunk metadata on later items
+    chunk_first = _make_chat_response_chunk(content="a", chunk_id="chunk-a")
+    chunk_last = _make_chat_response_chunk(content="b", chunk_id="chunk-b")
+    r1 = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="a")],
+        model="first-model",
+        original_chunk=chunk_first,
+    )
+    r2 = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="b")],
+        model="last-model",
+        original_chunk=chunk_last,
+    )
+
+    result = aggregate_dragent_event_responses([r1, r2])
+
+    assert result.model == "last-model"
+    assert result.original_chunk is chunk_last
+
+
 def test_aggregate_dragent_event_responses_empty() -> None:
     # GIVEN an empty list
     result = aggregate_dragent_event_responses([])
 
     # THEN result has no events
     assert result.events == []
+    assert result.usage_metrics is None
+    assert result.model is None
+    assert result.original_chunk is None
+    assert result.datarobot_moderations is None
 
 
 # --- convert_dragent_event_response_to_str ---

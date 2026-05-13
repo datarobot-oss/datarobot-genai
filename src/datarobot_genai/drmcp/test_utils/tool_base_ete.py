@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from pydantic import BaseModel
+from pydantic import Field
 
 from .clients.base import LLMResponse
 
@@ -25,8 +26,19 @@ class ToolCallTestExpectations(BaseModel):
     """Class to store tool call information."""
 
     name: str
+    acceptable_tool_names: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Logical tool names treated as equivalent for this step (same parameters/result "
+            "checks). Example: get_deployment_features vs get_deployment_info for deployment "
+            "scoring metadata."
+        ),
+    )
     parameters: dict[str, Any]
     result: str | dict[str, Any]
+
+    def allowed_tool_names(self) -> set[str]:
+        return {self.name, *self.acceptable_tool_names}
 
 
 class ETETestExpectations(BaseModel):
@@ -219,15 +231,27 @@ def _check_dict_has_keys(
     return True
 
 
+def _canonical_tool_name_for_expectation(
+    raw_tool_name: str, expected_call: ToolCallTestExpectations
+) -> str | None:
+    """Return which allowed logical name ``raw_tool_name`` matches, or None."""
+    for cand in expected_call.allowed_tool_names():
+        if _normalize_tool_name(raw_tool_name, cand) == cand:
+            return cand
+    return None
+
+
 def _build_failure_diagnostics(
     expected_calls: list[ToolCallTestExpectations],
     response: LLMResponse,
 ) -> str:
     """Build a compact diagnostics section for assertion errors."""
-    expected_lines = [
-        f"#{idx + 1} {call.name} params={call.parameters}"
-        for idx, call in enumerate(expected_calls)
-    ]
+    expected_lines = []
+    for idx, call in enumerate(expected_calls):
+        alt = ""
+        if call.acceptable_tool_names:
+            alt = f" (or {', '.join(call.acceptable_tool_names)})"
+        expected_lines.append(f"#{idx + 1} {call.name}{alt} params={call.parameters}")
     actual_lines = []
     for idx, tool_call in enumerate(response.tool_calls):
         expected_name = expected_calls[idx].name if idx < len(expected_calls) else None
@@ -308,10 +332,10 @@ class ToolBaseE2E:
                     matched_actual_idx = None
                     for actual_idx in range(search_start, len(response.tool_calls)):
                         actual_call = response.tool_calls[actual_idx]
-                        actual_tool_name = _normalize_tool_name(
-                            actual_call.tool_name, expected_call.name
+                        canonical = _canonical_tool_name_for_expectation(
+                            actual_call.tool_name, expected_call
                         )
-                        if actual_tool_name != expected_call.name:
+                        if canonical is None:
                             continue
                         if not _check_dict_params_match(
                             expected_call.parameters, actual_call.parameters
@@ -320,8 +344,9 @@ class ToolBaseE2E:
                         matched_actual_idx = actual_idx
                         break
 
+                    allowed = ", ".join(sorted(expected_call.allowed_tool_names()))
                     assert matched_actual_idx is not None, (
-                        f"Should have called {expected_call.name} tool with the correct "
+                        f"Should have called one of [{allowed}] with the correct "
                         f"parameters. Expected (subset): {expected_call.parameters}\n"
                         f"{diagnostics}"
                     )
@@ -335,27 +360,25 @@ class ToolBaseE2E:
 
             for expected_idx, actual_idx in expected_actual_indices:
                 tool_call = response.tool_calls[actual_idx]
-                expected_tool_name = expected_calls[expected_idx].name
-                actual_tool_name = _normalize_tool_name(tool_call.tool_name, expected_tool_name)
-
-                assert actual_tool_name == expected_tool_name, (
-                    f"Should have called {expected_tool_name} tool, but got: "
-                    f"{tool_call.tool_name}\n"
+                expected_call = expected_calls[expected_idx]
+                canonical = _canonical_tool_name_for_expectation(tool_call.tool_name, expected_call)
+                assert canonical is not None, (
+                    f"Should have called one of {sorted(expected_call.allowed_tool_names())}, "
+                    f"but got: {tool_call.tool_name}\n"
                     f"{diagnostics}"
                 )
-                assert _check_dict_params_match(
-                    expected_calls[expected_idx].parameters, tool_call.parameters
-                ), (
-                    f"Should have called {expected_tool_name} tool with the correct parameters. "
-                    f"Expected (subset): {expected_calls[expected_idx].parameters}, "
+
+                assert _check_dict_params_match(expected_call.parameters, tool_call.parameters), (
+                    f"Should have called {canonical} tool with the correct parameters. "
+                    f"Expected (subset): {expected_call.parameters}, "
                     f"but got: {tool_call.parameters}\n"
                     f"{diagnostics}"
                 )
-                if expected_calls[expected_idx].result != SHOULD_NOT_BE_EMPTY:
-                    expected_result = expected_calls[expected_idx].result
+                if expected_call.result != SHOULD_NOT_BE_EMPTY:
+                    expected_result = expected_call.result
                     if isinstance(expected_result, str):
                         assert expected_result in response.tool_results[actual_idx], (
-                            f"Should have called {expected_tool_name} tool with the correct "
+                            f"Should have called {canonical} tool with the correct "
                             f"result, but got: {response.tool_results[actual_idx]}\n"
                             f"{diagnostics}"
                         )
@@ -382,17 +405,17 @@ class ToolBaseE2E:
                                     except json.JSONDecodeError:
                                         raise AssertionError(
                                             f"Could not parse tool result for "
-                                            f"{expected_tool_name}: "
+                                            f"{canonical}: "
                                             f"{response.tool_results[actual_idx]}"
                                         )
                         assert _check_dict_has_keys(expected_result, actual_result), (
-                            f"Should have called {expected_tool_name} tool with the correct "
+                            f"Should have called {canonical} tool with the correct "
                             f"result structure, but got: {response.tool_results[actual_idx]}\n"
                             f"{diagnostics}"
                         )
                 else:
                     assert len(response.tool_results[actual_idx]) > 0, (
-                        f"Should have called {expected_tool_name} tool with non-empty result, but "
+                        f"Should have called {canonical} tool with non-empty result, but "
                         f"got: {response.tool_results[actual_idx]}\n"
                         f"{diagnostics}"
                     )

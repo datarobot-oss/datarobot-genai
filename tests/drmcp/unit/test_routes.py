@@ -1024,9 +1024,9 @@ class TestMetadataRoute:
         mock_tool_config.enable_tavily_tools = False
         mock_tool_config.enable_dr_docs_tools = True
         mock_tool_config.enable_use_case_tools = False
-        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
+        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.is_atlassian_oauth_configured = False
         mock_tool_config.is_google_oauth_configured = False
         mock_tool_config.is_microsoft_oauth_configured = False
@@ -1135,9 +1135,9 @@ class TestMetadataRoute:
         mock_tool_config.enable_tavily_tools = False
         mock_tool_config.enable_dr_docs_tools = False
         mock_tool_config.enable_use_case_tools = False
-        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
+        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.is_atlassian_oauth_configured = False
         mock_tool_config.is_google_oauth_configured = False
         mock_tool_config.is_microsoft_oauth_configured = False
@@ -1202,9 +1202,9 @@ class TestMetadataRoute:
         mock_tool_config.enable_tavily_tools = False
         mock_tool_config.enable_dr_docs_tools = False
         mock_tool_config.enable_use_case_tools = False
-        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
+        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.is_atlassian_oauth_configured = True
         mock_tool_config.is_google_oauth_configured = True
         mock_tool_config.is_microsoft_oauth_configured = True
@@ -1292,9 +1292,9 @@ class TestMetadataRoute:
         mock_tool_config.enable_tavily_tools = False
         mock_tool_config.enable_dr_docs_tools = False
         mock_tool_config.enable_use_case_tools = False
-        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
+        mock_tool_config.enable_vdb_tools = False
         mock_tool_config.is_atlassian_oauth_configured = False  # OAuth not configured
         mock_tool_config.is_google_oauth_configured = False
         mock_tool_config.is_microsoft_oauth_configured = False

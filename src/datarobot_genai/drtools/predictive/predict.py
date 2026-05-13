@@ -12,14 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import io
 import logging
-import time
 from typing import Annotated
 from typing import Any
 
-import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
@@ -31,11 +28,6 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
-
-# After completion, links.download can lag (busy queues). SDK download() waits up to 120s for the
-# URL; we only poll status until the link appears—~30s balances real deployments vs giving up.
-_DOWNLOAD_LINK_MAX_ATTEMPTS = 60
-_DOWNLOAD_LINK_POLL_SEC = 0.5
 
 _TERMINAL_FAILURE_STATUSES = frozenset({"ERROR", "FAILED", "ABORTED"})
 
@@ -54,42 +46,24 @@ def _tool_error_with_batch_url(message: str, url: str | None) -> ToolError:
     return ToolError(message, kind=ToolErrorKind.UPSTREAM)
 
 
-def _handle_prediction_resource(job: Any, deployment_id: str, input_desc: str) -> dict[str, Any]:
-    """Return batch job metadata and an authenticated download URL for scored CSV."""
-    download_url: str | None = None
-    last_status: dict[str, Any] | None = None
-    for attempt in range(_DOWNLOAD_LINK_MAX_ATTEMPTS):
-        status = job.get_status()
-        last_status = status
-        st = status.get("status")
-        if st in _TERMINAL_FAILURE_STATUSES:
-            details = status.get("status_details", "")
-            logger.error("Batch job %s terminal status=%s details=%s", job.id, st, details)
-            raise ToolError(
-                f"Batch prediction job failed: status={st!r} details={details!r}",
-                kind=ToolErrorKind.UPSTREAM,
-            )
-        download_url = status.get("links", {}).get("download")
-        if download_url:
-            break
-        output_settings = (status.get("job_spec") or {}).get("output_settings") or {}
-        out_type = output_settings.get("type")
-        if out_type and out_type != "localFile":
-            raise ToolError(
-                "Batch job output is not local file streaming; there is no download URL for this "
-                f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead.",
-                kind=ToolErrorKind.UPSTREAM,
-            )
-        if attempt < _DOWNLOAD_LINK_MAX_ATTEMPTS - 1:
-            time.sleep(_DOWNLOAD_LINK_POLL_SEC)
-    if not download_url:
-        st = (last_status or {}).get("status")
-        details = (last_status or {}).get("status_details", "")
+def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) -> dict[str, Any]:
+    """Return right after score(): job id, current status, download URL if already present."""
+    status = job.get_status()
+    st = status.get("status")
+    if st in _TERMINAL_FAILURE_STATUSES:
+        details = status.get("status_details", "")
+        logger.error("Batch job %s terminal status=%s details=%s", job.id, st, details)
         raise ToolError(
-            "Batch prediction finished but no download URL appeared after polling. "
-            f"Last status={st!r} details={details!r}. "
-            "Confirm the job used local file (streaming) output, or retry later with the same "
-            "job_id.",
+            f"Batch prediction job failed: status={st!r} details={details!r}",
+            kind=ToolErrorKind.UPSTREAM,
+        )
+    download_url = status.get("links", {}).get("download")
+    output_settings = (status.get("job_spec") or {}).get("output_settings") or {}
+    out_type = output_settings.get("type")
+    if out_type and out_type != "localFile":
+        raise ToolError(
+            "Batch job output is not local file streaming; there is no download URL for this "
+            f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead.",
             kind=ToolErrorKind.UPSTREAM,
         )
     return {
@@ -97,48 +71,35 @@ def _handle_prediction_resource(job: Any, deployment_id: str, input_desc: str) -
         "deployment_id": deployment_id,
         "input_desc": input_desc,
         "url": download_url,
+        "batch_job_status": st,
         "name": f"Predictions for {deployment_id}",
         "mime_type": "text/csv",
+        "note": (
+            "This tool only submits the batch job. You MUST poll get_batch_prediction_job_status "
+            "with job_id until batch_job_status is COMPLETED and url is present (retry every few "
+            "seconds while RUNNING or INITIALIZING). Then call get_batch_prediction_results for "
+            "inline CSV if small enough, or fetch url with DataRobot API authentication."
+        ),
     }
-
-
-def wait_for_preds_and_cache_results(
-    job: Any, deployment_id: str, input_desc: str, timeout: int
-) -> dict[str, Any]:
-    job.wait_for_completion(timeout)
-    if job.status in _TERMINAL_FAILURE_STATUSES:
-        logger.error("Job failed with status %s", job.status)
-        raise ToolError(f"Job failed with status {job.status}", kind=ToolErrorKind.UPSTREAM)
-    return _handle_prediction_resource(job, deployment_id, input_desc)
-
-
-async def _wait_for_preds_and_cache_results_async(
-    job: Any, deployment_id: str, input_desc: str, timeout: int
-) -> dict[str, Any]:
-    """Run blocking SDK wait in a thread pool so the MCP/async event loop is not stalled."""
-    return await asyncio.to_thread(
-        wait_for_preds_and_cache_results, job, deployment_id, input_desc, timeout
-    )
 
 
 @tool_metadata(
     tags={"predictive", "prediction", "read", "scoring", "batch"},
     description=(
-        "[Predict—deployment + catalog dataset] Use when the user wants batch scoring of one AI "
-        "Catalog tabular dataset through an MLOps deployment (deployment_id + dataset_id). Waits "
-        "until the job finishes. Returns job_id and an authenticated download URL for scored CSV. "
-        "Not the same as scoring with a leaderboard model inside a project "
-        "(score_dataset_with_model), not scoring project holdout/validation partitions "
-        "(predict_from_project_data), and not inline pasted rows (predict_realtime). Use "
-        "get_batch_prediction_results for CSV text when small enough; for synchronous rows from "
-        "catalog data, consider predict_by_ai_catalog_rt."
+        "[Predict—deployment + catalog dataset] Submits batch scoring of one AI Catalog tabular "
+        "dataset through an MLOps deployment (deployment_id + dataset_id). Returns immediately "
+        "with job_id and initial batch_job_status; does NOT wait for completion. Required "
+        "follow-up: poll get_batch_prediction_job_status until COMPLETED and url is set, then "
+        "get_batch_prediction_results or authenticated download of url. Not leaderboard scoring "
+        "(score_dataset_with_model), not project splits (predict_from_project_data), not inline "
+        "rows (predict_realtime). For synchronous small catalog scoring use "
+        "predict_by_ai_catalog_rt."
     ),
 )
 async def predict_by_ai_catalog(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset_id: Annotated[str, "AI Catalog dataset id to score."],
-    timeout: Annotated[int, "Max seconds to wait for batch job completion."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
         raise ToolError(
@@ -155,7 +116,7 @@ async def predict_by_ai_catalog(
     client = DataRobotClient(token).get_client()
     try:
         dataset = client.Dataset.get(dataset_id)
-        job = dr.BatchPredictionJob.score(
+        job = client.BatchPredictionJob.score(
             deployment=deployment_id,
             intake_settings={  # type: ignore[arg-type]
                 "type": "dataset",
@@ -165,22 +126,18 @@ async def predict_by_ai_catalog(
         )
     except ClientError as e:
         raise_tool_error_for_client_error(e)
-    return await _wait_for_preds_and_cache_results_async(
-        job, deployment_id, f"Scoring dataset {dataset_id}.", timeout or 600
-    )
+    return _batch_job_submitted_payload(job, deployment_id, f"Scoring dataset {dataset_id}.")
 
 
 @tool_metadata(
     tags={"predictive", "prediction", "read", "scoring", "batch"},
     description=(
-        "[Predict—deployment + project splits] Use when the user asks for batch predictions from a "
-        "deployment using data that already lives in the modeling project: training, holdout, "
-        "validation, or allBacktest partitions (pass partition, e.g. holdout). Optional catalog "
-        "dataset_id if they linked another dataset to the project. This is the right tool for "
-        "phrases like 'batch score the holdout' or 'predict on the training partition', not for "
-        "only a catalog dataset_id without project context, and not for inline CSV/JSON in the "
-        "message. Returns job_id and scored CSV download URL like predict_by_ai_catalog, not "
-        "inline rows."
+        "[Predict—deployment + project splits] Submits batch predictions from a deployment using "
+        "project data: training, holdout, validation, or allBacktest (partition), optional "
+        "catalog dataset_id. Returns immediately with job_id like predict_by_ai_catalog; does NOT "
+        "wait. Required follow-up: poll get_batch_prediction_job_status until COMPLETED and url, "
+        "then get_batch_prediction_results or download url. Not catalog-only scoring without "
+        "project context, not inline CSV in chat."
     ),
 )
 async def predict_from_project_data(
@@ -197,7 +154,6 @@ async def predict_from_project_data(
         "Project data split: holdout, validation, or allBacktest.",
     ]
     | None = None,
-    timeout: Annotated[int, "Max seconds to wait for batch job completion."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
         raise ToolError(
@@ -220,7 +176,7 @@ async def predict_from_project_data(
         )
 
     token = await get_datarobot_access_token()
-    DataRobotClient(token).get_client()
+    client = DataRobotClient(token).get_client()
     intake_settings: dict[str, Any] = {
         "type": "dss",
         "project_id": project_id,
@@ -230,33 +186,86 @@ async def predict_from_project_data(
     if dataset_id:
         intake_settings["dataset_id"] = dataset_id
     try:
-        job = dr.BatchPredictionJob.score(
+        job = client.BatchPredictionJob.score(
             deployment=deployment_id,
             intake_settings=intake_settings,  # type: ignore[arg-type]
             output_settings=None,
         )
     except ClientError as e:
         raise_tool_error_for_client_error(e)
-    return await _wait_for_preds_and_cache_results_async(
-        job, deployment_id, f"Scoring project {project_id}.", timeout or 600
-    )
+    return _batch_job_submitted_payload(job, deployment_id, f"Scoring project {project_id}.")
 
 
 @tool_metadata(
     tags={"predictive", "prediction", "read", "scoring", "batch"},
     description=(
-        "[Predict—fetch batch CSV] Use after a batch job completed: returns scored CSV text "
-        "inline given job_id from predict_by_ai_catalog or predict_from_project_data. Only when "
-        "the file is under the inline size cap; otherwise use the job download URL from the "
-        "batch tool with authenticated fetch. Does not start scoring and does not apply to "
-        "score_dataset_with_model jobs (different API surface)."
+        "[Predict—batch job status] REQUIRED polling step after predict_by_ai_catalog or "
+        "predict_from_project_data. Pass job_id from the submit response. Returns "
+        "batch_job_status, optional url when the scored file is ready, and progress fields. "
+        "Poll every few seconds until batch_job_status is COMPLETED and url is non-null, then "
+        "get_batch_prediction_results or download url. Lightweight (no CSV body). Raises on "
+        "terminal failure. Not for score_dataset_with_model jobs."
+    ),
+)
+async def get_batch_prediction_job_status(
+    *,
+    job_id: Annotated[
+        str,
+        "Batch prediction job id from predict_by_ai_catalog or predict_from_project_data.",
+    ],
+) -> dict[str, Any]:
+    if not job_id or not job_id.strip():
+        raise ToolError(
+            "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+        )
+
+    token = await get_datarobot_access_token()
+    client = DataRobotClient(token).get_client()
+    try:
+        job = client.BatchPredictionJob.get(job_id.strip())
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
+    status = job.get_status()
+    st = status.get("status")
+    if st in _TERMINAL_FAILURE_STATUSES:
+        details = status.get("status_details", "")
+        raise ToolError(
+            f"Batch prediction job failed: status={st!r} details={details!r}",
+            kind=ToolErrorKind.UPSTREAM,
+        )
+    download_url = status.get("links", {}).get("download")
+    output_settings = (status.get("job_spec") or {}).get("output_settings") or {}
+    out_type = output_settings.get("type")
+    if out_type and out_type != "localFile":
+        raise ToolError(
+            "Batch job output is not local file streaming; there is no download URL for this "
+            f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead.",
+            kind=ToolErrorKind.UPSTREAM,
+        )
+    return {
+        "job_id": job.id,
+        "batch_job_status": st,
+        "url": download_url,
+        "percentage_completed": status.get("percentage_completed"),
+        "elapsed_time_sec": status.get("elapsed_time_sec"),
+        "status_details": status.get("status_details"),
+    }
+
+
+@tool_metadata(
+    tags={"predictive", "prediction", "read", "scoring", "batch"},
+    description=(
+        "[Predict—fetch batch CSV] After get_batch_prediction_job_status shows COMPLETED and "
+        "url, returns scored CSV text inline for job_id when under the inline size cap. If too "
+        "large, the error includes the download url—fetch with API authentication. Does not start "
+        "scoring; not for score_dataset_with_model jobs."
     ),
 )
 async def get_batch_prediction_results(
     *,
     job_id: Annotated[
         str,
-        "job_id returned by predict_by_ai_catalog or predict_from_project_data.",
+        "job_id from predict_by_ai_catalog or predict_from_project_data (same as status polling).",
     ],
     download_timeout: Annotated[int, "Seconds to wait for the download to become ready."] = 120,
     download_read_timeout: Annotated[int, "Seconds allowed for streaming the CSV body."] = 660,
@@ -267,9 +276,9 @@ async def get_batch_prediction_results(
         )
 
     token = await get_datarobot_access_token()
-    DataRobotClient(token).get_client()
+    client = DataRobotClient(token).get_client()
     try:
-        job = dr.BatchPredictionJob.get(job_id.strip())
+        job = client.BatchPredictionJob.get(job_id.strip())
     except ClientError as e:
         raise_tool_error_for_client_error(e)
     download_url = _batch_job_download_url(job)

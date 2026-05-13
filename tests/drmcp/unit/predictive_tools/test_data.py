@@ -28,14 +28,14 @@ from datarobot_genai.drtools.predictive import data
 
 
 def test_merge_pagination_metadata_adds_offset_limit_next_total() -> None:
-    """_merge_pagination_metadata echoes offset/limit and normalizes list API pagination fields."""
+    """merge_pagination_metadata echoes offset/limit and normalizes list API pagination fields."""
     base: dict = {"datastores": []}
     body = {
         "next": "https://example/api?offset=10",
         "previous": None,
         "total": 25,
     }
-    out = data._merge_pagination_metadata(base, body, offset=0, limit=10)
+    out = data.merge_pagination_metadata(base, body, offset=0, limit=10)
     assert out is base
     assert out["offset"] == 0
     assert out["limit"] == 10
@@ -48,7 +48,7 @@ def test_merge_pagination_metadata_total_count_wins_over_total() -> None:
     """If both total_count and total are present, total_count is used (first in iteration)."""
     base: dict = {"x": 1}
     body = {"total_count": 7, "total": 99}
-    out = data._merge_pagination_metadata(base, body)
+    out = data.merge_pagination_metadata(base, body)
     assert out["total_count"] == 7
 
 
@@ -56,7 +56,7 @@ def test_merge_pagination_metadata_list_body_ignored() -> None:
     """Non-dict body does not add next/previous/total (browse/query edge cases)."""
     base: dict = {"k": 1}
     empty_list: list = []
-    out = data._merge_pagination_metadata(base, empty_list, offset=1, limit=2)
+    out = data.merge_pagination_metadata(base, empty_list, offset=1, limit=2)
     assert out["offset"] == 1
     assert out["limit"] == 2
     assert "next" not in out

@@ -233,7 +233,7 @@ remote XAA-protected agent.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `okta_token_header` | `x-datarobot-okta-access-token` | Incoming request header carrying the caller's Okta access token. |
+| `okta_token_header` | `x-datarobot-external-access-token` | Incoming request header carrying the caller's Okta access token. |
 | `principal_id` | `PRINCIPAL_ID` env var | Okta AI agent principal ID. |
 | `private_jwk` | `PRIVATE_JWK` env var | Base64-encoded or raw-JSON private JWK. |
 | `id_jag_scopes` | `["read_data"]` | Scopes for the Step 1 ID-JAG request. |
@@ -269,7 +269,7 @@ in `securitySchemes`, while flow-specific parameters go in
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `RuntimeError: Header 'x-datarobot-okta-access-token' not found` | The incoming request doesn't carry the Okta token. | Ensure the upstream caller forwards the Okta access token in the expected header. |
+| `RuntimeError: Header 'x-datarobot-external-access-token' not found` | The incoming request doesn't carry the Okta token. | Ensure the upstream caller forwards the Okta access token in the expected header. |
 | `ValueError: principal_id is required` | `PRINCIPAL_ID` env var not set. | Set `PRINCIPAL_ID` in your environment or Runtime Parameters. |
 | `ValueError: Could not parse private_jwk` | `PRIVATE_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $PRIVATE_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |

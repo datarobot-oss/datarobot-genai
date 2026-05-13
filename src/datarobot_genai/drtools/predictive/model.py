@@ -28,10 +28,10 @@ from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.pagination import PAGINATION_MAX
+from datarobot_genai.drtools.pagination import clamp_limit
+from datarobot_genai.drtools.pagination import merge_pagination_metadata
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
-from datarobot_genai.drtools.predictive.utils import DR_PREDICTIVE_API_PAGINATION_MAX
-from datarobot_genai.drtools.predictive.utils import _clamp_limit
-from datarobot_genai.drtools.predictive.utils import _merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -309,14 +309,14 @@ async def list_models(
             "Max models to return in this call (default 100). Use with offset to page. "
             "Values above 100 are clamped; use offset to continue."
         ),
-    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+    ] = PAGINATION_MAX,
 ) -> dict[str, Any]:
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
-    limit, message = _clamp_limit(limit)
+    limit, message = clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -333,7 +333,7 @@ async def list_models(
         "count": len(models),
         "may_have_more": len(models) == limit,
     }
-    return _merge_pagination_metadata(
+    return merge_pagination_metadata(
         final_results=final_results,
         api_response={},
         message=message,

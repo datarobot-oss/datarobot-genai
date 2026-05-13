@@ -40,6 +40,16 @@ def expectations_for_predict_by_ai_catalog_success(
                 },
                 result=SHOULD_NOT_BE_EMPTY,
             ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_job_status",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_results",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
         ],
         llm_response_content_contains_expectations=[
             "prediction",
@@ -62,6 +72,16 @@ def expectations_for_predict_from_project_data_success(
                 },
                 result=SHOULD_NOT_BE_EMPTY,
             ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_job_status",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_results",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
         ],
         llm_response_content_contains_expectations=[
             "prediction",
@@ -82,6 +102,11 @@ def expectations_for_batch_predict_then_get_batch_results_success(
                     "deployment_id": deployment_id,
                     "dataset_id": classification_predict_dataset["dataset_id"],
                 },
+                result=SHOULD_NOT_BE_EMPTY,
+            ),
+            ToolCallTestExpectations(
+                name="get_batch_prediction_job_status",
+                parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
@@ -130,7 +155,11 @@ class TestPredictE2E(ToolBaseE2E):
         [
             """
         I have a DataRobot deployment with ID '{deployment_id}'.
-        Please run batch predictions using the AI Catalog dataset with ID '{dataset_id}'.
+        Run batch predictions using the AI Catalog dataset with ID '{dataset_id}'.
+        The batch submit tool returns immediately with a job_id: you must call
+        get_batch_prediction_job_status with that job_id until the job is COMPLETED and a
+        download url exists, then call get_batch_prediction_results with the same job_id to
+        retrieve the scored CSV. Summarize the prediction outcome.
         """
         ],
     )
@@ -167,6 +196,8 @@ class TestPredictE2E(ToolBaseE2E):
         The MCP server has no access to my laptop files. Deployment ID is '{deployment_id}'.
         Run batch scoring using only the AI Catalog dataset id '{dataset_id}' as the input source.
         Do not use local file paths or upload from this machine.
+        After submit, poll get_batch_prediction_job_status until COMPLETED with a url, then
+        get_batch_prediction_results for the CSV and describe the predictions.
         """
         ],
     )
@@ -204,7 +235,9 @@ class TestPredictE2E(ToolBaseE2E):
         [
             """
         I have a DataRobot deployment with ID '{deployment_id}' and project ID '{project_id}'.
-        Please run batch predictions using the training data holdout partition.
+        Run batch predictions on the holdout partition. After submit returns job_id, poll
+        get_batch_prediction_job_status until COMPLETED with url, then get_batch_prediction_results
+        and summarize predictions.
         """
         ],
     )
@@ -235,10 +268,9 @@ class TestPredictE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        First, run batch scoring on DataRobot deployment '{deployment_id}' using AI Catalog
-        dataset '{dataset_id}'. When the first response includes a batch job identifier, use that
-        identifier in a follow-up step to fetch the scored CSV content (still within this
-        conversation). Summarize what you got back from the second step.
+        Run batch scoring on deployment '{deployment_id}' using AI Catalog dataset '{dataset_id}'.
+        Use the job_id from submit: call get_batch_prediction_job_status until COMPLETED and url
+        is set, then get_batch_prediction_results for the CSV. Summarize the prediction results.
         """
         ],
     )

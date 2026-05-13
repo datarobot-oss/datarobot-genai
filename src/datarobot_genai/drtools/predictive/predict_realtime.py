@@ -50,8 +50,8 @@ def _parse_datetime(value: str) -> datetime:
         "[Predict—deployment + catalog, synchronous rows] Use when the user already has an AI "
         "Catalog dataset_id and wants realtime-style scoring through a deployment with rows "
         "returned in one response (moderate size). Not for pasted inline CSV/JSON "
-        "(predict_realtime), not for async batch CSV download (predict_by_ai_catalog), not "
-        "project-partition batch (predict_from_project_data)."
+        "(predict_realtime), not for async batch CSV submit-and-poll (predict_by_ai_catalog plus "
+        "get_batch_prediction_job_status), not project-partition batch (predict_from_project_data)."
     ),
 )
 async def predict_by_ai_catalog_rt(

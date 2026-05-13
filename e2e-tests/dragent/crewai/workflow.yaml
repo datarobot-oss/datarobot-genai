@@ -22,10 +22,17 @@ llms:
   datarobot_llm:
     _type: datarobot-llm-component
 
+middleware:
+  datarobot_guardrails:
+    _type: datarobot_moderation
+    model_dir: ".."
+
 workflow:
   _type: crewai_agent
   llm_name: datarobot_llm
   description: CrewAI planner/writer agent
+  middleware:
+    - datarobot_guardrails
   max_iter: 20
   max_rpm: 30
   max_execution_time: 600
