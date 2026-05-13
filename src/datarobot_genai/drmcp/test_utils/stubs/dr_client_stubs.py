@@ -33,6 +33,9 @@ STUB_BATCH_PREDICTION_JOB_ID = "stub_batch_prediction_job_id"
 # Use case id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_USE_CASE_ID = "stub_use_case_id"
 
+# VDB deployment id used by test_create_dr_client(); use for integration tests with stubs.
+STUB_VDB_DEPLOYMENT_ID = "stub_vdb_deployment_id"
+
 
 class StubRocCurve:
     """Stub DataRobot ROC curve object."""
@@ -487,6 +490,32 @@ def test_create_dr_client() -> StubDRClient:
             )
         if "externalDataDrivers" in url and "tables" in url:
             return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
+        if url.rstrip("/") == "deployments":
+            all_deployments: list[dict[str, Any]] = [
+                {
+                    "id": STUB_VDB_DEPLOYMENT_ID,
+                    "label": "Stub VDB Deployment",
+                    "status": "active",
+                    "capabilities": {"supportsVectorDatabaseQuerying": True},
+                    "model": {"targetType": "VectorDatabase"},
+                },
+                {
+                    "id": "stub_regular_deployment_id",
+                    "label": "Regular Deployment",
+                    "status": "active",
+                    "capabilities": {"supportsVectorDatabaseQuerying": False},
+                    "model": {"targetType": "Binary"},
+                },
+            ]
+            model_target_type = (params or {}).get("modelTargetType")
+            if model_target_type:
+                all_deployments = [
+                    d
+                    for d in all_deployments
+                    if isinstance(d.get("model"), dict)
+                    and d["model"].get("targetType") == model_target_type
+                ]
+            return StubRestResponse({"data": all_deployments, "next": None})
         if "useCases" in url:
             data: list[dict] = [
                 {"id": STUB_USE_CASE_ID, "name": "Stub Use Case"},
@@ -500,6 +529,24 @@ def test_create_dr_client() -> StubDRClient:
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.post() REST calls."""
+        if "deployments" in url and "predictions" in url:
+            # query_vector_database calls POST deployments/{id}/predictions/
+            return StubRestResponse(
+                {
+                    "data": [
+                        {
+                            "page_content": "DataRobot is a leading AI platform.",
+                            "metadata": {"source": "doc1.pdf", "page": 1},
+                            "score": 0.92,
+                        },
+                        {
+                            "page_content": "AutoML makes machine learning accessible.",
+                            "metadata": {"source": "doc2.pdf", "page": 3},
+                            "score": 0.87,
+                        },
+                    ]
+                }
+            )
         if "externalDataDrivers" in url and "execute" in url:
             return StubRestResponse(
                 {

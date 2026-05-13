@@ -4,8 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.47
+## 0.15.50
 - `crewai/mcp.py`: Fixed `BadRequestError` from Azure OpenAI when an MCP tool has no input schema. `MCPServerAdapter` would leave `args_schema = None` on such tools; litellm then serialized `"parameters": null`, which Azure rejects. Tools with a `None` args schema now fall back to an empty-object schema (`_EmptyArgsSchema`) so the function-calling payload is always valid.
+
+## 0.15.49
+- `is_eligible_for_timeseries_training`: Surfaced median timestep, per-series gap percentage, and max-gap-seconds as a `cadence` field so agents can pick between TS and row-based partitioning before calling `start_autopilot`. Treated an entirely-null target as a scoring dataset (downgraded from blocking error to INFO). Detected row-level duplicates per (datetime, series_id) and reported up to three offending keys. Updated error messages to follow what + why + how-to-fix format, listed available columns on column-name mismatches, and showed sample bad values on unparseable datetimes.
+
+## 0.15.48
+- Added vector database tools: list_vector_databases and query_vector_database (MODEL-22811)
+- Fixed `test_list_vector_databases_success` mock to return only deployments matching API `modelTargetType=VectorDatabase` filtering
+- Refactored VDB tools to use `tool_metadata` and plain dict returns (no fastmcp/drmcp imports in drtools)
+- Fixed mypy in `dr_client_stubs` deployment list filter (`model` dict narrowing)
+
+## 0.15.47
+- Fixed default `okta_token_header` value in `OAuth2CrossApplicationAccessAuthProviderConfig`: renamed `x-datarobot-okta-access-token` → `x-datarobot-external-access-token` to match the actual header name used by the DataRobot API gateway when forwarding Okta access tokens.
 
 ## 0.15.46
 - Fixed CrewAI tool calling by enforcing client-side stop-word truncation when upstream APIs ignore the `stop` parameter

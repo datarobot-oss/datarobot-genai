@@ -28,10 +28,10 @@ from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import is_valid_url
+from datarobot_genai.drtools.pagination import PAGINATION_MAX
+from datarobot_genai.drtools.pagination import clamp_limit
+from datarobot_genai.drtools.pagination import merge_pagination_metadata
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
-from datarobot_genai.drtools.predictive.utils import DR_PREDICTIVE_API_PAGINATION_MAX
-from datarobot_genai.drtools.predictive.utils import _clamp_limit
-from datarobot_genai.drtools.predictive.utils import _merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -156,13 +156,13 @@ async def list_ai_catalog_items(
             "Max datasets to return in this call (default 100). Use with offset to page. "
             "Values above 100 are rejected; use offset to continue."
         ),
-    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+    ] = PAGINATION_MAX,
 ) -> dict[str, Any]:
 
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
-    limit, message = _clamp_limit(limit)
+    limit, message = clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     client = DataRobotClient(token).get_client()
@@ -177,7 +177,7 @@ async def list_ai_catalog_items(
     if not datasets:
         logger.info("No AI Catalog items found")
         final_results: dict[str, Any] = {"datasets": {}, "count": 0}
-        return _merge_pagination_metadata(
+        return merge_pagination_metadata(
             final_results=final_results,
             api_response={},
             message=message,
@@ -186,7 +186,7 @@ async def list_ai_catalog_items(
         )
 
     datasets_dict = {ds.id: ds.name for ds in datasets}
-    final_results = _merge_pagination_metadata(
+    final_results = merge_pagination_metadata(
         {
             "datasets": datasets_dict,
             "count": len(datasets),
@@ -265,12 +265,12 @@ async def list_datastores(
             "Max datastores to return (default 100). Values above 100 are rejected; "
             "use offset to page."
         ),
-    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+    ] = PAGINATION_MAX,
 ) -> dict[str, Any]:
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
-    limit, message = _clamp_limit(limit)
+    limit, message = clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -300,7 +300,7 @@ async def list_datastores(
         ],
         "count": len(items),
     }
-    return _merge_pagination_metadata(
+    return merge_pagination_metadata(
         final_results=final_results,
         api_response=api_response,
         message=message,
@@ -329,7 +329,7 @@ async def browse_datastore(
             "Maximum items to return (default 100). Values above 100 are rejected; "
             "use offset to page."
         ),
-    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+    ] = PAGINATION_MAX,
     search: Annotated[str, "Optional filter substring for object names."] | None = None,
 ) -> dict[str, Any]:
     if not datastore_id:
@@ -337,7 +337,7 @@ async def browse_datastore(
     if offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
-    limit, message = _clamp_limit(limit)
+    limit, message = clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -364,7 +364,7 @@ async def browse_datastore(
         "count": len(items),
     }
     api_response = data if isinstance(data, dict) else {}
-    return _merge_pagination_metadata(
+    return merge_pagination_metadata(
         final_results=final_results,
         api_response=api_response,
         message=message,
@@ -393,7 +393,7 @@ async def query_datastore(
             "Maximum rows to return (default 100). Values above 100 are rejected; "
             "use offset to page."
         ),
-    ] = DR_PREDICTIVE_API_PAGINATION_MAX,
+    ] = PAGINATION_MAX,
 ) -> dict[str, Any]:
     if not datastore_id:
         raise ToolError("Datastore ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -402,7 +402,7 @@ async def query_datastore(
     if offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
-    limit, message = _clamp_limit(limit)
+    limit, message = clamp_limit(limit)
 
     token = await get_datarobot_access_token()
     dr_module = DataRobotClient(token).get_client()
@@ -421,7 +421,7 @@ async def query_datastore(
         "row_count": len(row_data) if isinstance(row_data, list) else 0,
         "columns": api_response.get("columns", []),
     }
-    return _merge_pagination_metadata(
+    return merge_pagination_metadata(
         final_results=final_results,
         api_response=api_response,
         message=message,
