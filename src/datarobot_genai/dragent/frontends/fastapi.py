@@ -82,7 +82,7 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
 
         # Forward incoming A2A HTTP headers so DRAgentAGUISessionManager.session()
         # can inject them into NAT context metadata.  Auth providers pick the specific
-        # headers they need (e.g. x-datarobot-okta-access-token, Authorization).
+        # headers they need (e.g. x-datarobot-external-access-token, Authorization).
         token_headers = None
         if context.call_context and isinstance(context.call_context.state, dict):
             raw_headers = context.call_context.state.get("headers")

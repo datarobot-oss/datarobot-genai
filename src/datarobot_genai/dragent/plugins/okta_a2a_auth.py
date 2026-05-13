@@ -16,7 +16,7 @@
 
 Registered as ``_type: okta_cross_app_access`` in workflow YAML.
 
-Discovery phase: forwards the incoming ``x-datarobot-okta-access-token`` header
+Discovery phase: forwards the incoming ``x-datarobot-external-access-token`` header
 directly to the agent card endpoint as a Bearer token.
 
 Call phase: executes a two-step Okta Cross App Access (XAA) token exchange:
@@ -183,7 +183,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
     """
 
     okta_token_header: str = Field(
-        default="x-datarobot-okta-access-token",
+        default="x-datarobot-external-access-token",
         description=(
             "Incoming header carrying the caller's Okta access token. "
             "Forwarded as Bearer for discovery; used as subject token in Step 1. "
@@ -195,7 +195,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         description=(
             "Fallback headers to try (in order) when ``okta_token_header`` is absent. "
             "Useful for local development without an API gateway that remaps "
-            "``Authorization`` → ``x-datarobot-okta-access-token``. "
+            "``Authorization`` → ``x-datarobot-external-access-token``. "
             "If the value starts with 'Bearer ', the prefix is stripped automatically."
         ),
     )
@@ -331,7 +331,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         Tries ``okta_token_header`` first, then each entry in
         ``fallback_token_headers`` (stripping ``Bearer `` prefix if present).
         This supports local development where no API gateway remaps
-        ``Authorization`` into the canonical ``x-datarobot-okta-access-token``.
+        ``Authorization`` into the canonical ``x-datarobot-external-access-token``.
         """
         context_headers: dict[str, str] = Context.get().metadata.headers or {}
 
