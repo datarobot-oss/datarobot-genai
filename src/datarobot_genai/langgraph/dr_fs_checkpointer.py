@@ -19,6 +19,7 @@ by writing files at nested paths (same pattern as normal DR FS uploads).
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import contextlib
 import random
@@ -647,7 +648,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             self.fs.rm(tdir, recursive=True)
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        return self.get_tuple(config)
+        return await asyncio.to_thread(self.get_tuple, config)
 
     async def alist(
         self,
@@ -657,7 +658,11 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> AsyncIterator[CheckpointTuple]:
-        for item in self.list(config, filter=filter, before=before, limit=limit):
+        tuples = await asyncio.to_thread(
+            list,
+            self.list(config, filter=filter, before=before, limit=limit),
+        )
+        for item in tuples:
             yield item
 
     async def aput(
@@ -667,7 +672,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        return self.put(config, checkpoint, metadata, new_versions)
+        return await asyncio.to_thread(self.put, config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -676,10 +681,10 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        return self.put_writes(config, writes, task_id, task_path)
+        await asyncio.to_thread(self.put_writes, config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
-        return self.delete_thread(thread_id)
+        await asyncio.to_thread(self.delete_thread, thread_id)
 
     def get_next_version(
         self,
