@@ -147,6 +147,38 @@ middleware:
           type: ootb
           llm_type: llmGateway
           llm_gateway_model_id: azure/gpt-4o-2024-11-20
+        - additional_guard_config: null
+          aws_model: null
+          aws_region: null
+          description: Adherence to the requested task.
+          google_model: null
+          google_region: null
+          is_agentic: false
+          name: Task Adherence (gateway)
+          ootb_type: task_adherence
+          openai_api_base: null
+          openai_api_key: null
+          openai_deployment_id: null
+          stage: response
+          type: ootb
+          llm_type: llmGateway
+          llm_gateway_model_id: azure/gpt-4o-2024-11-20
+        - additional_guard_config: null
+          aws_model: null
+          aws_region: null
+          description: Goal accuracy
+          google_model: null
+          google_region: null
+          is_agentic: false
+          name: Goal Accuracy (gateway)
+          ootb_type: agent_goal_accuracy
+          openai_api_base: null
+          openai_api_key: null
+          openai_deployment_id: null
+          stage: response
+          type: ootb
+          llm_type: llmGateway
+          llm_gateway_model_id: azure/gpt-4o-2024-11-20
       timeout_action: score
       timeout_sec: 180
 

@@ -19,14 +19,19 @@ import pytest
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import ALL_TEST_CASES
+from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_METRIC_KEYS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
+from dragent_tests.helpers import MODERATION_KEYS_ABSENT_WITHOUT_CITATIONS
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
 if not ALL_TEST_CASES:
-    pytest.skip("Running minimal test set for non-LLM Gateway LLM, skipping streaming tests", allow_module_level=True)
+    pytest.skip(
+        "Running minimal test set for non-LLM Gateway LLM, skipping streaming tests",
+        allow_module_level=True,
+    )
 
 
 def test_generate_streaming(http_client: httpx.Client) -> None:
@@ -60,4 +65,9 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     for chunk in sse_responses:
         if chunk.datarobot_moderations:
             moderation_keys.update(chunk.datarobot_moderations.keys())
-    assert moderation_keys == {"Prompt token count", "Response token count", "alignment"}
+    assert EXPECTED_DATAROBOT_MODERATION_METRIC_KEYS.issubset(moderation_keys), (
+        f"Missing expected moderation keys; got {sorted(moderation_keys)}"
+    )
+    assert not MODERATION_KEYS_ABSENT_WITHOUT_CITATIONS.intersection(moderation_keys), (
+        f"Unexpected citation-only metrics without RAG: {moderation_keys!r}"
+    )
