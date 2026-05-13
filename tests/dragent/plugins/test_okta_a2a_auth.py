@@ -133,7 +133,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderDiscovery:
         """authenticate_for_discovery() returns the Okta token as Authorization: Bearer."""
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-okta-access-token": "my-okta-token"
+                "x-datarobot-external-access-token": "my-okta-token"
             }
             headers = await provider.authenticate_for_discovery()
 
@@ -143,7 +143,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderDiscovery:
         """authenticate_for_discovery() raises RuntimeError when header is absent."""
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {}
-            with pytest.raises(RuntimeError, match="x-datarobot-okta-access-token"):
+            with pytest.raises(RuntimeError, match="x-datarobot-external-access-token"):
                 await provider.authenticate_for_discovery()
 
 
@@ -175,7 +175,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderFallbackHeaders:
         """Primary header wins even if fallback is also present."""
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-okta-access-token": "primary-token",
+                "x-datarobot-external-access-token": "primary-token",
                 "authorization": "Bearer fallback-token",
             }
             headers = await provider.authenticate_for_discovery()
@@ -197,7 +197,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderFallbackHeaders:
         )
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {"authorization": "Bearer token"}
-            with pytest.raises(RuntimeError, match="x-datarobot-okta-access-token"):
+            with pytest.raises(RuntimeError, match="x-datarobot-external-access-token"):
                 await provider.authenticate_for_discovery()
 
 
@@ -272,7 +272,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
             patch.object(provider_with_card, "_build_cross_app_flow", return_value=mock_flow),
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-okta-access-token": "incoming-okta-token"
+                "x-datarobot-external-access-token": "incoming-okta-token"
             }
             result = await provider_with_card.authenticate(user_id="test-user")
 
@@ -298,7 +298,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
             patch.object(provider_with_card, "_build_cross_app_flow", return_value=mock_flow),
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-okta-access-token": "bad-token"
+                "x-datarobot-external-access-token": "bad-token"
             }
             with pytest.raises(RuntimeError, match="token exchange failed"):
                 await provider_with_card.authenticate()
@@ -310,7 +310,9 @@ class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
         )
 
         with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {"x-datarobot-okta-access-token": "token"}
+            mock_ctx.get.return_value.metadata.headers = {
+                "x-datarobot-external-access-token": "token"
+            }
             with pytest.raises(RuntimeError, match="set_agent_card"):
                 await provider.authenticate()
 
@@ -385,7 +387,7 @@ class TestCrossAppAccessEndToEnd:
     def mock_context(self, incoming_token):
         with patch(f"{_MODULE}.Context") as ctx:
             ctx.get.return_value.metadata.headers = {
-                "x-datarobot-okta-access-token": incoming_token,
+                "x-datarobot-external-access-token": incoming_token,
             }
             yield ctx
 

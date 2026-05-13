@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).
 - `DataRobotFileSystemSaver` (`dr_fs_checkpointer`): checkpoint files use length-prefixed binary (`struct`, `.bin` suffix) without pickle or per-file magic headers; layout is implied by directory (`blobs/`, `cpts/`, `writes/`).
 
+## 0.15.47
+- Fixed default `okta_token_header` value in `OAuth2CrossApplicationAccessAuthProviderConfig`: renamed `x-datarobot-okta-access-token` → `x-datarobot-external-access-token` to match the actual header name used by the DataRobot API gateway when forwarding Okta access tokens.
+
 ## 0.15.46
 - Fixed CrewAI tool calling by enforcing client-side stop-word truncation when upstream APIs ignore the `stop` parameter
 
