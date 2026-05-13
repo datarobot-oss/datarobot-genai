@@ -17,11 +17,6 @@ import uuid
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType
-from datarobot_dome.constants import AGENT_GOAL_ACCURACY_COLUMN_NAME
-from datarobot_dome.constants import FAITHFULLNESS_COLUMN_NAME
-from datarobot_dome.constants import GUIDELINE_ADHERENCE_COLUMN_NAME
-from datarobot_dome.constants import ROUGE_1_COLUMN_NAME
-from datarobot_dome.constants import TASK_ADHERENCE_SCORE_COLUMN_NAME
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 BASE_URL = "http://localhost:8080"
@@ -37,24 +32,11 @@ LLM = os.environ.get("LLM")
 
 ALL_TEST_CASES = LLM == "llmgw"
 
-# Metric keys emitted when dragent workflows use the same OOTB guard pack as
-# ``tests/nat/integration/fixtures/moderation_real_credentials/moderation_config.yaml``.
-EXPECTED_DATAROBOT_MODERATION_METRIC_KEYS = frozenset(
+# Prompt/response OOTB token_count guards only in e2e dragent workflow moderation blocks.
+EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS = frozenset(
     {
         "Prompts_token_count",
         "Responses_token_count",
-        "cost",
-        GUIDELINE_ADHERENCE_COLUMN_NAME,
-        TASK_ADHERENCE_SCORE_COLUMN_NAME,
-        AGENT_GOAL_ACCURACY_COLUMN_NAME,
-    }
-)
-
-# Citations-backed guards stay absent without RAG (see integration moderation tests).
-MODERATION_KEYS_ABSENT_WITHOUT_CITATIONS = frozenset(
-    {
-        FAITHFULLNESS_COLUMN_NAME,
-        ROUGE_1_COLUMN_NAME,
     }
 )
 

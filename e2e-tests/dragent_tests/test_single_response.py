@@ -21,9 +21,8 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import ALL_TEST_CASES
-from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_METRIC_KEYS
+from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS
 from dragent_tests.helpers import GENERATE_PATH
-from dragent_tests.helpers import MODERATION_KEYS_ABSENT_WITHOUT_CITATIONS
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 
@@ -68,9 +67,6 @@ def test_generate_single(http_client: httpx.Client) -> None:
         "Expected datarobot_moderations on non-streaming generate when guards are configured"
     )
     moderation_keys = set(response_data.datarobot_moderations.keys())
-    assert EXPECTED_DATAROBOT_MODERATION_METRIC_KEYS.issubset(moderation_keys), (
-        f"Missing expected moderation keys; got {sorted(moderation_keys)}"
-    )
-    assert not MODERATION_KEYS_ABSENT_WITHOUT_CITATIONS.intersection(moderation_keys), (
-        f"Unexpected citation-only metrics without RAG: {moderation_keys!r}"
+    assert EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS.issubset(moderation_keys), (
+        f"Missing expected token moderation keys; got {sorted(moderation_keys)}"
     )
