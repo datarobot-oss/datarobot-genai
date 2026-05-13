@@ -20,8 +20,10 @@ by writing files at nested paths (same pattern as normal DR FS uploads).
 from __future__ import annotations
 
 import atexit
+import contextlib
 import random
 import struct
+import threading
 from base64 import urlsafe_b64decode
 from base64 import urlsafe_b64encode
 from collections.abc import AsyncIterator
@@ -45,6 +47,24 @@ from langgraph.checkpoint.base import get_checkpoint_metadata
 
 _default_process_checkpointers: dict[str, Any] = {}
 _cleanup_registered_roots: set[str] = set()
+# Serialize load→merge→save for a single task shard (same ``task_id``, same checkpoint).
+_task_writes_shard_locks: dict[str, threading.Lock] = {}
+_task_writes_shard_locks_mutex = threading.Lock()
+
+
+@contextlib.contextmanager
+def _locked_task_writes_shard(shard_path: str) -> Iterator[None]:
+    with _task_writes_shard_locks_mutex:
+        lock = _task_writes_shard_locks.get(shard_path)
+        if lock is None:
+            lock = threading.Lock()
+            _task_writes_shard_locks[shard_path] = lock
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+
 
 # On-disk subtree for all saver paths under ``root`` (not LangGraph ``thread_id``).
 _CHECKPOINT_TREE_DIR = "checkpoints"
@@ -253,7 +273,10 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
     - ``checkpoints/<b64(thread_id)>/ns/<b64(checkpoint_ns)>/cpts/<checkpoint_id>.bin``
       (empty ``thread_id`` or ``checkpoint_ns`` uses ``dr_genai_langgraph_empty_segment``
       instead of an empty path segment)
-    - ``checkpoints/.../writes/<checkpoint_id>.bin`` (binary framed writes map)
+    - ``checkpoints/.../writes/<checkpoint_id>/w_<sha256(task_id)>.bin`` (per-task writes
+      shard; avoids lost updates when parallel branches call ``put_writes`` concurrently)
+    - legacy ``checkpoints/.../writes/<checkpoint_id>.bin`` (monolithic map) is still read
+      and merged when present
     - ``checkpoints/.../blobs/<sha256(channel,version)>.bin`` (single ``serde.dumps_typed`` frame)
 
     On-disk format is concatenated length-prefixed ``struct`` segments (no magic header, no
@@ -303,34 +326,76 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
             f"{checkpoint_id}{_CHECKPOINT_ARTIFACT_EXT}",
         )
 
-    def _writes_path(self, thread_id: str, checkpoint_ns: str, checkpoint_id: str) -> str:
+    def _writes_legacy_path(self, thread_id: str, checkpoint_ns: str, checkpoint_id: str) -> str:
+        """Pre-shard monolithic writes map (still merged on read)."""
         return _path_join(
             self._ns_root(thread_id, checkpoint_ns),
             "writes",
             f"{checkpoint_id}{_CHECKPOINT_ARTIFACT_EXT}",
         )
 
+    def _writes_shard_dir(self, thread_id: str, checkpoint_ns: str, checkpoint_id: str) -> str:
+        return _path_join(
+            self._ns_root(thread_id, checkpoint_ns),
+            "writes",
+            checkpoint_id,
+        )
+
+    def _task_writes_shard_path(
+        self, thread_id: str, checkpoint_ns: str, checkpoint_id: str, task_id: str
+    ) -> str:
+        digest = sha256(task_id.encode("utf-8")).hexdigest()
+        return _path_join(
+            self._writes_shard_dir(thread_id, checkpoint_ns, checkpoint_id),
+            f"w_{digest}{_CHECKPOINT_ARTIFACT_EXT}",
+        )
+
     def _load_writes_map(
         self, thread_id: str, checkpoint_ns: str, checkpoint_id: str
     ) -> dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]]:
-        path = self._writes_path(thread_id, checkpoint_ns, checkpoint_id)
-        if not self.fs.exists(path):
+        merged: dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]] = {}
+        legacy = self._writes_legacy_path(thread_id, checkpoint_ns, checkpoint_id)
+        if self.fs.exists(legacy):
+            with self.fs.open(legacy, "rb") as f:
+                try:
+                    merged.update(_unpack_writes_map_file(f.read()))
+                except (ValueError, struct.error, OSError):
+                    pass
+        shard_dir = self._writes_shard_dir(thread_id, checkpoint_ns, checkpoint_id)
+        if self.fs.exists(shard_dir):
+            try:
+                entries = self.fs.ls(shard_dir, detail=False)
+            except OSError:
+                entries = []
+            for entry in entries:
+                name = entry.rsplit("/", 1)[-1]
+                if not name.endswith(_CHECKPOINT_ARTIFACT_EXT) or not name.startswith("w_"):
+                    continue
+                with self.fs.open(entry, "rb") as f:
+                    try:
+                        shard = _unpack_writes_map_file(f.read())
+                    except (ValueError, struct.error, OSError):
+                        continue
+                merged.update(shard)
+        return merged
+
+    def _load_task_writes_shard(
+        self, shard_path: str
+    ) -> dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]]:
+        if not self.fs.exists(shard_path):
             return {}
-        with self.fs.open(path, "rb") as f:
+        with self.fs.open(shard_path, "rb") as f:
             try:
                 return _unpack_writes_map_file(f.read())
             except (ValueError, struct.error, OSError):
                 return {}
 
-    def _save_writes_map(
+    def _save_task_writes_shard(
         self,
-        thread_id: str,
-        checkpoint_ns: str,
-        checkpoint_id: str,
+        shard_path: str,
         data: dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]],
     ) -> None:
-        path = self._writes_path(thread_id, checkpoint_ns, checkpoint_id)
-        with self.fs.open(path, "wb") as f:
+        with self.fs.open(shard_path, "wb") as f:
             f.write(_pack_writes_map_file(data))
 
     def _load_blobs(
@@ -358,11 +423,13 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         checkpoint_id: str,
         saved: tuple[tuple[str, bytes], tuple[str, bytes], str | None],
         response_config: RunnableConfig,
+        metadata: CheckpointMetadata | None = None,
     ) -> CheckpointTuple:
         checkpoint_bytes, metadata_bytes, parent_checkpoint_id = saved
         writes_map = self._load_writes_map(thread_id, checkpoint_ns, checkpoint_id)
         writes = writes_map.values()
         checkpoint_: Checkpoint = self.serde.loads_typed(checkpoint_bytes)
+        metadata_ = metadata if metadata is not None else self.serde.loads_typed(metadata_bytes)
         return CheckpointTuple(
             config=response_config,
             checkpoint={
@@ -371,7 +438,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
                     thread_id, checkpoint_ns, checkpoint_["channel_versions"]
                 ),
             },
-            metadata=self.serde.loads_typed(metadata_bytes),
+            metadata=metadata_,
             pending_writes=[(wid, c, self.serde.loads_typed(v)) for wid, c, v, _ in writes],
             parent_config=(
                 {
@@ -490,12 +557,14 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
                         continue
                     with self.fs.open(path, "rb") as f:
                         saved = _unpack_cpt_file(f.read())
-                    metadata = self.serde.loads_typed(saved[1])
-                    if filter and not all(
-                        query_value == metadata.get(query_key)
-                        for query_key, query_value in filter.items()
-                    ):
-                        continue
+                    parsed_metadata: CheckpointMetadata | None = None
+                    if filter:
+                        parsed_metadata = self.serde.loads_typed(saved[1])
+                        if not all(
+                            query_value == parsed_metadata.get(query_key)
+                            for query_key, query_value in filter.items()
+                        ):
+                            continue
                     if limit is not None and limit <= 0:
                         return
                     elif limit is not None:
@@ -512,6 +581,7 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
                                 "checkpoint_id": checkpoint_id,
                             }
                         },
+                        metadata=parsed_metadata,
                     )
 
     def put(
@@ -556,18 +626,20 @@ class DataRobotFileSystemSaver(BaseCheckpointSaver[str]):
         thread_id = config["configurable"]["thread_id"]
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = config["configurable"]["checkpoint_id"]
-        writes_map = self._load_writes_map(thread_id, checkpoint_ns, checkpoint_id)
-        for idx, (c, v) in enumerate(writes):
-            inner_key = (task_id, WRITES_IDX_MAP.get(c, idx))
-            if inner_key[1] >= 0 and inner_key in writes_map:
-                continue
-            writes_map[inner_key] = (
-                task_id,
-                c,
-                self.serde.dumps_typed(v),
-                task_path,
-            )
-        self._save_writes_map(thread_id, checkpoint_ns, checkpoint_id, writes_map)
+        shard_path = self._task_writes_shard_path(thread_id, checkpoint_ns, checkpoint_id, task_id)
+        with _locked_task_writes_shard(shard_path):
+            writes_map = self._load_task_writes_shard(shard_path)
+            for idx, (c, v) in enumerate(writes):
+                inner_key = (task_id, WRITES_IDX_MAP.get(c, idx))
+                if inner_key[1] >= 0 and inner_key in writes_map:
+                    continue
+                writes_map[inner_key] = (
+                    task_id,
+                    c,
+                    self.serde.dumps_typed(v),
+                    task_path,
+                )
+            self._save_task_writes_shard(shard_path, writes_map)
 
     def delete_thread(self, thread_id: str) -> None:
         tdir = _path_join(self.root, _CHECKPOINT_TREE_DIR, _encoder_segment(thread_id))
@@ -670,3 +742,4 @@ def reset_default_langgraph_checkpointer_for_tests() -> None:
     """Clear process-wide defaults (for test isolation)."""
     _default_process_checkpointers.clear()
     _cleanup_registered_roots.clear()
+    _task_writes_shard_locks.clear()

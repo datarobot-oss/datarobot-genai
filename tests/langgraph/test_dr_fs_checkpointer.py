@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 import atexit
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
 from copy import deepcopy
 
 import pytest
@@ -141,6 +143,44 @@ def test_data_robot_file_system_saver_roundtrip() -> None:
     tup = saver.get_tuple(out_cfg)
     assert tup is not None
     assert tup.checkpoint["id"] == cp["id"]
+
+
+def test_put_writes_concurrent_different_tasks_preserves_all_writes() -> None:
+    """Parallel ``put_writes`` for the same checkpoint used to race on one map file."""
+    fs = MemoryFileSystem()
+    root = "/cp-root"
+    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    thread_id = "t-par"
+    checkpoint_ns = "ns"
+    base_cfg: RunnableConfig = {
+        "configurable": {"thread_id": thread_id, "checkpoint_ns": checkpoint_ns},
+    }
+    cp = empty_checkpoint()
+    meta = {"source": "input", "step": -1}
+    new_versions = deepcopy(cp["channel_versions"])
+    out_cfg = saver.put(base_cfg, cp, meta, new_versions)
+    checkpoint_id = out_cfg["configurable"]["checkpoint_id"]
+    write_cfg: RunnableConfig = {
+        "configurable": {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+            "checkpoint_id": checkpoint_id,
+        }
+    }
+
+    def _put(task_id: str, channel: str, value: str) -> None:
+        saver.put_writes(write_cfg, [(channel, value)], task_id)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(_put, f"task-{i}", f"channel-{i}", f"value-{i}") for i in range(16)]
+        wait(futures)
+        for f in futures:
+            f.result()
+
+    tup = saver.get_tuple(write_cfg)
+    assert tup is not None and tup.pending_writes is not None
+    channels = {pw[1] for pw in tup.pending_writes}
+    assert channels == {f"channel-{i}" for i in range(16)}
 
 
 def test_put_writes_skips_duplicate_inner_key_same_batch_when_writes_map_empty(
