@@ -29,7 +29,7 @@ MCP_CLI_OPTS: list[tuple[str, str | None, str | None]] = [
     ("tavily", None, "enable_tavily_tools"),
     ("dr_docs", None, "enable_dr_docs_tools"),
     ("use_case", None, "enable_use_case_tools"),
-    ("vdb", None, "enable_vdb_tools"),
     ("code_execution", None, "enable_code_execution_tools"),
     ("optimization", None, "enable_optimization_tools"),
+    ("vdb", None, "enable_vdb_tools"),
 ]

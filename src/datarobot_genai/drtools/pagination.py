@@ -14,28 +14,27 @@
 
 from typing import Any
 
-# Max page / batch size for predictive tools
-DR_PREDICTIVE_API_PAGINATION_MAX = 100
+PAGINATION_MAX = 100
 
 
-def _clamp_limit(limit: int) -> tuple[int, str | None]:
-    """Clamp page size to [1, DR_PREDICTIVE_API_PAGINATION_MAX] and an optional user-facing note."""
+def clamp_limit(limit: int) -> tuple[int, str | None]:
+    """Clamp page size to [1, PAGINATION_MAX] and an optional user-facing note."""
     if limit < 1:
         return (
-            DR_PREDICTIVE_API_PAGINATION_MAX,
+            PAGINATION_MAX,
             f"""Limit must be at least 1. The maximum limit of """
-            f"""{DR_PREDICTIVE_API_PAGINATION_MAX} was applied.""",
+            f"""{PAGINATION_MAX} was applied.""",
         )
-    if limit > DR_PREDICTIVE_API_PAGINATION_MAX:
+    if limit > PAGINATION_MAX:
         return (
-            DR_PREDICTIVE_API_PAGINATION_MAX,
-            f"""Limit cannot exceed {DR_PREDICTIVE_API_PAGINATION_MAX}. """
-            f"""The maximum limit of {DR_PREDICTIVE_API_PAGINATION_MAX} was applied.""",
+            PAGINATION_MAX,
+            f"""Limit cannot exceed {PAGINATION_MAX}. """
+            f"""The maximum limit of {PAGINATION_MAX} was applied.""",
         )
     return (limit, None)
 
 
-def _merge_pagination_metadata(
+def merge_pagination_metadata(
     final_results: dict[str, Any],
     api_response: dict[str, Any] | list,
     message: str | None = None,
