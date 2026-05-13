@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.47
+## 0.15.48
 - Added vector database tools: list_vector_databases and query_vector_database (MODEL-22811)
 - Fixed `test_list_vector_databases_success` mock to return only deployments matching API `modelTargetType=VectorDatabase` filtering
 - Refactored VDB tools to use `tool_metadata` and plain dict returns (no fastmcp/drmcp imports in drtools)
 - Fixed mypy in `dr_client_stubs` deployment list filter (`model` dict narrowing)
+
+## 0.15.47
+- Fixed default `okta_token_header` value in `OAuth2CrossApplicationAccessAuthProviderConfig`: renamed `x-datarobot-okta-access-token` → `x-datarobot-external-access-token` to match the actual header name used by the DataRobot API gateway when forwarding Okta access tokens.
 
 ## 0.15.46
 - Fixed CrewAI tool calling by enforcing client-side stop-word truncation when upstream APIs ignore the `stop` parameter
