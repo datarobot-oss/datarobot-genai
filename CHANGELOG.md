@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.52
+- `langgraph/agent.py`: Fixed `ValueError: Invalid message event` crash in `_stream_generator` when an intermediate LangGraph node (e.g. a planner-to-writer relay) emits a `HumanMessage` as a state update. `HumanMessage` events from relay nodes are now silently skipped rather than raising, which also prevents the cascading `RuntimeError: generator didn't stop after athrow()` from the MCP tools context manager failing to clean up.
+
 ## 0.15.51
 - Bump ragas to "ragas>=0.4.3,<0.5.0" to align with execution environments
 
