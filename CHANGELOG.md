@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.51
+- Bump ragas to "ragas>=0.4.3,<0.5.0" to align with execution environments
+
 ## 0.15.50
 - `crewai/mcp.py`: Fixed `BadRequestError` from Azure OpenAI when an MCP tool has no input schema. `MCPServerAdapter` would leave `args_schema = None` on such tools; litellm then serialized `"parameters": null`, which Azure rejects. Tools with a `None` args schema now fall back to an empty-object schema (`_EmptyArgsSchema`) so the function-calling payload is always valid.
 

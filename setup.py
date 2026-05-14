@@ -27,7 +27,7 @@ core = [
     "datarobot-early-access==3.14.0.2026.3.18.162920",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
-    "ragas>=0.3.8,<0.4.0",
+    "ragas>=0.4.3,<0.5.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
     "opentelemetry-instrumentation-requests>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.43b0,<1.0.0",
