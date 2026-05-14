@@ -284,3 +284,15 @@ class TestMCPToolsContext:
         ):
             async with mcp_tools_context(mcp_config) as tools:
                 assert tools == []
+
+    @pytest.mark.usefixtures("setup_session_and_tools")
+    async def test_mcp_tools_context_consumer_connection_error_propagates(self):
+        """A connection-type exception raised by the consumer must propagate, not trigger
+        the setup-phase fallback.  Before the `connected` guard this would hit `yield []`
+        as a second yield and raise RuntimeError: generator didn't stop after athrow()."""
+        external_url = "https://mcp-server.example.com/mcp"
+        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
+
+        with pytest.raises(ConnectionError, match="downstream failure"):
+            async with mcp_tools_context(mcp_config):
+                raise ConnectionError("downstream failure")
