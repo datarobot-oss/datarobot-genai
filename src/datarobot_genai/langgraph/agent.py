@@ -38,6 +38,7 @@ from ag_ui.core import ToolCallStartEvent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import HumanMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import START
@@ -450,6 +451,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                             None,
                             usage_metrics,
                         )
+                elif isinstance(message, HumanMessage):
+                    # Intermediate relay nodes (e.g. planner-to-writer handoffs) may emit
+                    # HumanMessages as state updates. These are not streamed to the caller.
+                    pass
                 else:
                     raise ValueError(f"Invalid message event: {message_event}")
             elif mode == "updates":
