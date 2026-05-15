@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pytest
 from nat.builder.builder import Builder
-from nat.builder.context import Context
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.function_info import FunctionInfo
 from nat.cli.register_workflow import register_function
@@ -29,22 +28,11 @@ from nat.runtime.session import SessionManager
 
 import datarobot_genai.nat.datarobot_mem0_memory  # noqa: F401
 from datarobot_genai.core.memory.mem0client import Mem0Client
+from datarobot_genai.nat import datarobot_mem0_memory
 from datarobot_genai.nat.datarobot_mem0_memory import Config as Mem0Settings
 from datarobot_genai.nat.helpers import load_workflow
 
 WORKFLOW_WITH_MEMORY_PATH = Path(__file__).parent / "workflow_with_memory.yaml"
-
-
-class ContextUserManager:
-    def __init__(self, context: Context) -> None:
-        self._context = context
-
-    def get_id(self) -> str | None:
-        return self._context.user_id
-
-
-def get_context_user_manager(context: Context) -> ContextUserManager:
-    return ContextUserManager(context)
 
 
 class AutoMemoryProbeAgentConfig(  # type: ignore[call-arg]
@@ -84,16 +72,6 @@ def mem0_api_key() -> str:
     return api_key
 
 
-@pytest.fixture(autouse=True)
-def context_user_manager(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        Context,
-        "user_manager",
-        property(get_context_user_manager),
-        raising=False,
-    )
-
-
 @pytest.fixture
 async def workflow_with_memory(mem0_api_key: str) -> AsyncGenerator[SessionManager, None]:
     async with load_workflow(WORKFLOW_WITH_MEMORY_PATH) as workflow:
@@ -103,83 +81,62 @@ async def workflow_with_memory(mem0_api_key: str) -> AsyncGenerator[SessionManag
 async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
     workflow_with_memory: SessionManager,
     mem0_api_key: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GIVEN a workflow.yaml with a real Mem0-backed NAT memory provider and auto-memory wrapper.
+    # GIVEN a workflow.yaml with a real Mem0-backed NAT memory provider and
+    # auto-memory wrapper. The provider's ``_UserManagerShim`` resolves the
+    # per-user id via ``_memory_user_uuid``, which in production reads the DR
+    # auth header. Stub it to a stable per-test UUID so the round-trip proves
+    # memories are scoped per user rather than globally per api key.
     test_id = uuid.uuid4().hex
-    session_user_id = f"nat-auto-memory-{test_id}"
+    dr_memory_user_uuid = f"nat-auto-memory-{test_id}"
+    monkeypatch.setattr(datarobot_mem0_memory, "_memory_user_uuid", lambda: dr_memory_user_uuid)
+
     secret_code = f"DRMEM-{test_id}"
     first_message = f"My NAT auto-memory integration secret code is {secret_code}."
     recall_message = "What is my NAT auto-memory integration secret code?"
 
     async def run_memory_workflow(message: str) -> str:
-        async with workflow_with_memory.session(user_id=session_user_id) as session:
+        async with workflow_with_memory.session() as session:
             async with session.run(message) as runner:
                 return await runner.result(to_type=str)
 
-    # The editor pins every add/search to ``DataRobotMemoryClient.user_id``
-    # (= sha256(api_key)), ignoring the session user_id supplied by NAT's
-    # auto-memory wrapper. Cleanup must target that pinned scope, not the
-    # session user_id — and must be narrowed to this test's memories so we
-    # don't wipe other tests sharing the same api key.
     mem0 = Mem0Client(api_key=mem0_api_key)._memory
-    pinned_user_id = mem0.user_id
-    assert pinned_user_id != session_user_id
+    api_key_user_id = mem0.user_id
+    assert api_key_user_id != dr_memory_user_uuid
 
     try:
         # WHEN the wrapped workflow sees one message to store.
         await run_memory_workflow(first_message)
 
-        # THEN the memory is stored under sha256(api_key), NOT the session user_id.
-        pinned_memory_found = False
-        for _ in range(10):
-            pinned_hits = await mem0.search(
-                query=secret_code,
-                filters={"AND": [{"user_id": pinned_user_id}]},
-            )
-            if any(
-                secret_code in (item.get("memory") or "")
-                for item in pinned_hits.get("results", []) or []
-            ):
-                pinned_memory_found = True
-                break
-            await asyncio.sleep(2)
-        assert pinned_memory_found, (
-            f"Editor did not pin memory to sha256(api_key)={pinned_user_id!r}; "
-            f"secret_code {secret_code!r} not found under the api-key scope."
-        )
-
-        session_hits = await mem0.search(
-            query=secret_code,
-            filters={"AND": [{"user_id": session_user_id}]},
-        )
-        assert not [
-            item
-            for item in session_hits.get("results", []) or []
-            if secret_code in (item.get("memory") or "")
-        ], (
-            f"Memory leaked to session user_id={session_user_id!r}; "
-            f"expected the editor to pin every write to {pinned_user_id!r}."
-        )
-
-        # AND a later turn retrieves the real Mem0 memory and injects it as context.
+        # THEN a later turn retrieves the real Mem0 memory and injects it as context.
+        # New per-user user_ids need a few seconds for Mem0 to index the first
+        # write, so the budget is generous.
         last_response = ""
-        for _ in range(10):
+        for _ in range(20):
             last_response = await run_memory_workflow(recall_message)
             if secret_code in last_response:
                 break
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
         else:
             pytest.fail(
                 f"Mem0 did not return expected memory text. Last response: {last_response!r}"
             )
-    finally:
-        # Narrow cleanup to this test's memories: search the pinned scope for
-        # the unique secret_code and delete each matching memory by id.
-        cleanup_hits = await mem0.search(
-            query=secret_code,
-            filters={"AND": [{"user_id": pinned_user_id}]},
+
+        # AND the memory is scoped to the DR-user UUID, NOT the api-key-derived
+        # fallback. Recall succeeded, so indexing is done — this lookup is immediate.
+        user_hits = await mem0.get_all(
+            filters={"AND": [{"user_id": dr_memory_user_uuid}]},
+            page=1,
+            page_size=50,
         )
-        for item in cleanup_hits.get("results", []) or []:
-            memory_id = item.get("id")
-            if memory_id and secret_code in (item.get("memory") or ""):
-                await mem0.delete(memory_id)
+        assert any(
+            secret_code in (item.get("memory") or "") for item in user_hits.get("results", []) or []
+        ), (
+            f"Memory not found under user_id={dr_memory_user_uuid!r}; the shim "
+            f"should have propagated the stubbed user uuid through the wrapper."
+        )
+    finally:
+        # Scope is per-user, so delete_all by the stubbed uuid is safe — it
+        # only wipes this test's memories.
+        await mem0.delete_all(user_id=dr_memory_user_uuid)
