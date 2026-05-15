@@ -27,6 +27,7 @@ from typing import Any
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
+from nat.builder.context import Context
 from nat.cli.register_workflow import register_memory
 from nat.data_models.memory import MemoryBaseConfig
 from nat.data_models.retry_mixin import RetryMixin
@@ -48,6 +49,28 @@ class Config(DataRobotAppFrameworkBaseSettings):
 
 def _get_default_mem0_api_key() -> str | None:
     return Config().mem0_api_key
+
+
+class _UserManagerShim:
+    """Stub that prevents ``AttributeError`` on NAT 1.6.
+
+    ``nvidia-nat-langchain`` 1.6.0's ``auto_memory_wrapper`` accesses
+    ``Context.user_manager.get_id()`` to resolve a user_id, but
+    ``Context.user_manager`` only exists on newer NAT versions.
+    Returning ``None`` lets the wrapper's fallback chain run without
+    raising; the value it eventually picks is overridden by
+    :class:`DRMem0Editor`, which pins every add and search to
+    ``DataRobotMemoryClient.user_id`` (= ``sha256(MEM0_API_KEY)``).
+    """
+
+    def get_id(self) -> str | None:
+        return None
+
+
+if not hasattr(Context, "user_manager"):
+    Context.user_manager = property(  # type: ignore[attr-defined]
+        lambda self: _UserManagerShim()
+    )
 
 
 class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
@@ -81,12 +104,16 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         configured_metadata = dict(add_kwargs.pop("metadata", None) or {})
         add_kwargs.pop("user_id", None)
 
+        # Pin every write to the API-key owner so add and search share scope.
+        # See ``DataRobotMemoryClient.user_id`` (= ``sha256(api_key)``).
+        user_id = self._mem0.user_id
+
         coroutines = []
         for item in items:
             metadata = configured_metadata | dict(item.metadata or {})
             run_id = metadata.pop("run_id", configured_run_id)
             item_kwargs = add_kwargs | {
-                "user_id": item.user_id,
+                "user_id": user_id,
                 "tags": item.tags or configured_tags or [],
                 "metadata": metadata,
                 "output_format": output_format,
@@ -100,7 +127,9 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
 
     async def search(self, query: str, top_k: int = 5, **kwargs: Any) -> list[MemoryItem]:
         # Mem0's v2 search endpoint expects filters instead of top-level user/run/app ids.
-        user_id = kwargs.pop("user_id")
+        # Pin to the API-key owner; see ``add_items`` for rationale.
+        kwargs.pop("user_id", None)
+        user_id = self._mem0.user_id
         conditions: list[dict[str, Any]] = [{"user_id": user_id}]
         for key in ("run_id", "agent_id", "app_id"):
             value = kwargs.pop(key, None)
