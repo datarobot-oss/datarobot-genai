@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.65
+- `langgraph/agent.py`: handle list-form `AIMessage.content` from reasoning models. Thinking blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s; list content is flattened to text before ragas conversion.
+
 ## 0.15.64
 - `dragent`: agent card XAA extension params now use camelCase (`tokenExchange`, `tokenRequest`, `tokenEndpointAuthMethod`, etc.) for consistency with the rest of the agentCard API response. The parser accepts both camelCase and snake_case for backward compatibility with previously generated cards.
 
@@ -39,6 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.54
 - `langgraph/mcp.py`: Fixed `RuntimeError: generator didn't stop after athrow()` in `mcp_tools_context` when a connection-type exception (`ConnectionError`, `OSError`, `TimeoutError`, `ExceptionGroup`) is raised by the consumer inside the `async with` block. A `connected` flag now distinguishes setup-phase failures (graceful fallback to empty tools) from consumer exceptions (re-raised so the caller sees them). Without this guard the except clause would execute a second `yield []`, violating the `@asynccontextmanager` single-yield contract.
+=======
+## 0.15.54
+- `langgraph/agent.py`: handle list-form `AIMessage.content` from reasoning models. Thinking blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s; list content is flattened to text before ragas conversion.
+>>>>>>> 68057171 ([BUZZOK-30788] Handle list-form AIMessage.content from reasoning models)
 
 ## 0.15.53
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).

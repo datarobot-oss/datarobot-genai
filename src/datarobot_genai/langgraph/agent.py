@@ -19,12 +19,15 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
+from collections.abc import Iterator
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Literal
 from typing import cast
 
 from ag_ui.core import EventType
+from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -62,6 +65,52 @@ logger = logging.getLogger(__name__)
 # Must match the AG-UI client: useAgUiTool({ name: "confirmation" }) registers "ui-confirmation"
 # (e.g. ConfirmationWidget with { message: string }).
 INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME = "ui-confirmation"
+
+
+def _iter_content_blocks(
+    content: str | list[Any] | None,
+) -> Iterator[tuple[Literal["text", "thinking"], str]]:
+    """Yield typed (kind, delta) pairs for any AIMessage/ToolMessage content shape.
+
+    Normalizes the union of shapes LangChain/LiteLLM produce for ``AIMessage.content``:
+    plain string, list of strings, or list of structured blocks. Thinking and
+    reasoning blocks both map to ``("thinking", delta)``. Empty deltas are filtered
+    so callers never need to emit zero-content events. Unknown block shapes are
+    skipped with a debug log to keep the stream resilient.
+    """
+    if not content:
+        return
+    if isinstance(content, str):
+        yield "text", content
+        return
+    for block in content:
+        if isinstance(block, str):
+            if block:
+                yield "text", block
+            continue
+        if not isinstance(block, dict):
+            logger.debug("Skipping unknown content item: %r", block)
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            text = block.get("text", "")
+            if text:
+                yield "text", text
+        elif block_type == "thinking":
+            thinking = block.get("thinking", "")
+            if thinking:
+                yield "thinking", thinking
+        elif block_type == "reasoning":
+            reasoning = block.get("reasoning", "")
+            if reasoning:
+                yield "thinking", reasoning
+        else:
+            logger.debug("Skipping unknown content block type: %r", block_type)
+
+
+def _flatten_to_text(content: str | list[Any] | None) -> str:
+    """Collapse any content shape to its text portion, dropping thinking blocks."""
+    return "".join(delta for kind, delta in _iter_content_blocks(content) if kind == "text")
 
 
 def _confirmation_args_from_interrupt_value(value: Any) -> dict[str, str]:
@@ -440,37 +489,48 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                     usage_metrics,
                                 )
                     elif message.content:
-                        # Its a text message
-                        # Handle the start and end of the text message
-                        if message.id != current_message_id:
-                            if current_message_id:
+                        for kind, delta in _iter_content_blocks(message.content):
+                            if kind == "thinking":
                                 yield (
-                                    TextMessageEndEvent(
-                                        type=EventType.TEXT_MESSAGE_END,
-                                        message_id=current_message_id,
+                                    ReasoningMessageChunkEvent(
+                                        type=EventType.REASONING_MESSAGE_CHUNK,
+                                        message_id=str(message.id or ""),
+                                        delta=delta,
                                     ),
                                     None,
                                     usage_metrics,
                                 )
-                            current_message_id = str(message.id or "")
+                                continue
+                            # kind == "text": existing text lifecycle
+                            if message.id != current_message_id:
+                                if current_message_id:
+                                    yield (
+                                        TextMessageEndEvent(
+                                            type=EventType.TEXT_MESSAGE_END,
+                                            message_id=current_message_id,
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                                current_message_id = str(message.id or "")
+                                yield (
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=current_message_id,
+                                        role="assistant",
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
                             yield (
-                                TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
                                     message_id=current_message_id,
-                                    role="assistant",
+                                    delta=delta,
                                 ),
                                 None,
                                 usage_metrics,
                             )
-                        yield (
-                            TextMessageContentEvent(
-                                type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=current_message_id,
-                                delta=str(message.content),
-                            ),
-                            None,
-                            usage_metrics,
-                        )
                 elif isinstance(message, HumanMessage):
                     # Intermediate relay nodes (e.g. planner-to-writer handoffs) may emit
                     # HumanMessages as state updates. These are not streamed to the caller.
@@ -598,11 +658,21 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 if v is not None:
                     messages.extend(v.get("messages", []))
         messages = [m for m in messages if not isinstance(m, ToolMessage)]
+        # Flatten list-form content (reasoning models emit blocks) so ragas's
+        # string-only validation does not raise. Thinking blocks are dropped
+        # from the evaluation trace; the AG-UI stream still carries them as
+        # structured Thinking* events.
+        flattened: list[Any] = []
+        for m in messages:
+            if isinstance(m.content, list):
+                flattened.append(m.model_copy(update={"content": _flatten_to_text(m.content)}))
+            else:
+                flattened.append(m)
         # Lazy import to reduce memory overhead when ragas is not used
         from ragas import MultiTurnSample
         from ragas.integrations.langgraph import convert_to_ragas_messages
 
-        ragas_trace = convert_to_ragas_messages(messages)
+        ragas_trace = convert_to_ragas_messages(flattened)
         return MultiTurnSample(user_input=ragas_trace)
 
 
