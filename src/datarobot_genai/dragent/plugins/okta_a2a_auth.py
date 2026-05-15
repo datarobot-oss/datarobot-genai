@@ -22,7 +22,7 @@ directly to the agent card endpoint as a Bearer token.
 Call phase: executes a two-step Okta Cross App Access (XAA) token exchange:
 
   Step 1 — exchange the incoming Okta access token for an ID-JAG token via the
-  org authorization server (``{trusted_issuer}/v1/token``).
+  org authorization server (``{trusted_issuer}/oauth2/v1/token``).
 
   Step 2 — exchange the ID-JAG token for a scoped agent token via the custom
   authorization server token endpoint published in the agent card's
@@ -52,12 +52,17 @@ Environment variables consumed (map to the reference ``Config`` field names):
 import base64
 import json
 import logging
+import time
+import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+import jwt
 from a2a.types import AgentCard
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from jwt.algorithms import RSAAlgorithm
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
 from nat.builder.context import Context
@@ -70,23 +75,6 @@ from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
-
-try:
-    from okta_client.authfoundation import LocalKeyProvider
-    from okta_client.authfoundation import OAuth2Client
-    from okta_client.authfoundation import OAuth2ClientConfiguration
-    from okta_client.authfoundation.oauth2.client_authorization import ClientAssertionAuthorization
-    from okta_client.authfoundation.oauth2.jwt_bearer_claims import JWTBearerClaims
-    from okta_client.oauth2auth import CrossAppAccessFlow
-    from okta_client.oauth2auth import CrossAppAccessTarget
-except ImportError:
-    LocalKeyProvider = None  # type: ignore[assignment,misc]
-    OAuth2Client = None  # type: ignore[assignment,misc]
-    OAuth2ClientConfiguration = None  # type: ignore[assignment,misc]
-    ClientAssertionAuthorization = None  # type: ignore[assignment,misc]
-    JWTBearerClaims = None  # type: ignore[assignment,misc]
-    CrossAppAccessFlow = None  # type: ignore[assignment,misc]
-    CrossAppAccessTarget = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +115,49 @@ def _get_default_private_jwk() -> SecretStr | None:
 
 _JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
+_TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
+_JWT_BEARER_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+_CLIENT_ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+_REQUESTED_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id-jag"
+
+_TOKEN_EXCHANGE_TIMEOUT = 30  # seconds per token HTTP request
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _raise_token_error(resp: httpx.Response, step: int, url: str) -> None:
+    """Raise a descriptive ``RuntimeError`` if *resp* is an HTTP error response.
+
+    Extracts Okta-style JSON error fields (``error_description``, ``error``) so
+    operators see the actual Okta rejection reason rather than a bare HTTP status.
+    Falls back to the raw response text when the body is not JSON.
+
+    Parameters
+    ----------
+    resp:
+        The httpx response to check.
+    step:
+        Token exchange step number (1 or 2) for the error message.
+    url:
+        Token endpoint URL included in the error message for quick diagnosis.
+    """
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        try:
+            body = exc.response.json()
+            detail = body.get("error_description") or body.get("error") or exc.response.text
+        except Exception:
+            detail = exc.response.text or str(exc)
+        raise RuntimeError(
+            f"Token exchange Step {step} failed at {url}: "
+            f"HTTP {exc.response.status_code} — {detail}"
+        ) from exc
+
 
 # ---------------------------------------------------------------------------
 # _CrossAppFlowParams — populated from the fetched AgentCard
@@ -143,25 +174,25 @@ class _CrossAppFlowParams:
 
     token_url: str
     """From ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``.
-    Stored for reference; the SDK discovers the endpoint from ``exchange_audience``."""
+    Used as the Step 2 (JWT Bearer grant) token endpoint."""
 
     trusted_issuer: str
     """Org-level AS issuer (``token_exchange.trusted_issuer``); runs Step 1 (RFC 8693).
-    Passed to ``OAuth2ClientConfiguration(issuer=...)``.  JWT assertion ``aud`` is
-    derived as ``trusted_issuer + "/oauth2/v1/token"``."""
+    The Step 1 token endpoint is derived as ``trusted_issuer + "/oauth2/v1/token"``.
+    Also used as the JWT client assertion ``aud`` for Step 1."""
 
     exchange_audience: str
-    """Resource AS issuer (``token_exchange.audience``); dual role in the SDK:
-    ``CrossAppAccessTarget(issuer=...)`` for Step 2 and ``flow.start(audience=...)``
-    so the originating AS embeds the right audience in the ID-JAG."""
+    """Resource AS issuer (``token_exchange.audience``); embedded as ``audience`` in
+    the Step 1 token-exchange request so the originating AS issues an ID-JAG scoped
+    to this audience."""
 
     target_audience: str
-    """Final resource identifier for the agent (``params.target_audience``).
-    A2A metadata; not passed to the Okta SDK."""
+    """Final resource identifier for the agent (``token_request.audience``).
+    Passed as ``resource`` in the Step 1 token-exchange request."""
 
     token_endpoint_auth_method: str
     """Client auth method (``params.token_endpoint_auth_method``).
-    ``"private_key_jwt"`` triggers ``ClientAssertionAuthorization`` with ``LocalKeyProvider``."""
+    ``"private_key_jwt"`` triggers a signed JWT client assertion on both steps."""
 
     id_jag_scopes: list[str]
     """Step 1 scopes; sourced from provider config, not the agent card."""
@@ -235,7 +266,8 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
     """Auth provider for Okta XAA A2A calls.
 
     * **Discovery** — forwards the incoming Okta bearer token as ``Authorization: Bearer``.
-    * **Call** — two-step XAA token exchange (RFC 8693 → RFC 7523) via ``okta-client-python``.
+    * **Call** — two-step XAA token exchange (RFC 8693 → RFC 7523) via direct HTTP
+      calls (``httpx`` + ``PyJWT``).
     """
 
     def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
@@ -285,6 +317,12 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
     async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
         """Obtain a scoped agent token via the two-step Okta XAA token exchange.
 
+        Executes two sequential HTTP token requests:
+
+        * **Step 1** — RFC 8693 token exchange at the org AS to obtain an ID-JAG.
+        * **Step 2** — RFC 7523 JWT Bearer grant at the custom AS to obtain the
+          final scoped agent token.
+
         Requires :meth:`set_agent_card` to have been called first.
         """
         if self._flow_params is None:
@@ -302,25 +340,76 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
             raise ValueError("private_jwk is required for the Okta cross-app access flow")
 
         access_token = self._extract_okta_token()
-        flow = self._build_cross_app_flow(private_jwk=private_jwk)
 
-        logger.info(
-            "Step 1: exchanging access token for ID-JAG (trusted_issuer=%s, "
-            "exchange_audience=%s, user_id=%s)",
-            self._flow_params.trusted_issuer,
-            self._flow_params.exchange_audience,
-            user_id,
-        )
-        await flow.start(token=access_token, audience=self._flow_params.exchange_audience)
+        # Derive Step 1 token URL from trusted_issuer (org AS)
+        org_as_token_url = self._flow_params.trusted_issuer.rstrip("/") + "/oauth2/v1/token"
+        # Step 2 token URL comes directly from the agent card securitySchemes
+        custom_as_token_url = self._flow_params.token_url
 
-        logger.info(
-            "Step 2: exchanging ID-JAG for scoped agent token (target_audience=%s)",
-            self._flow_params.target_audience,
+        # Build both assertions before opening the HTTP client — both are pure
+        # crypto operations that do not depend on each other or on network state.
+        assertion1 = self._make_client_assertion(
+            token_url=org_as_token_url, private_jwk=private_jwk
         )
-        token_result = await flow.resume()
+        assertion2 = self._make_client_assertion(
+            token_url=custom_as_token_url, private_jwk=private_jwk
+        )
+
+        async with httpx.AsyncClient() as http:
+            # ------------------------------------------------------------------
+            # Step 1: RFC 8693 token exchange → ID-JAG
+            # ------------------------------------------------------------------
+            logger.info(
+                "Step 1: exchanging access token for ID-JAG "
+                "(org_as_token_url=%s, exchange_audience=%s, user_id=%s)",
+                org_as_token_url,
+                self._flow_params.exchange_audience,
+                user_id,
+            )
+            resp1 = await http.post(
+                org_as_token_url,
+                data={
+                    "grant_type": _TOKEN_EXCHANGE_GRANT_TYPE,
+                    "subject_token": access_token,
+                    "subject_token_type": _SUBJECT_TOKEN_TYPE,
+                    "requested_token_type": _REQUESTED_TOKEN_TYPE,
+                    "audience": self._flow_params.exchange_audience,
+                    "resource": self._flow_params.target_audience,
+                    "scope": " ".join(self._flow_params.id_jag_scopes),
+                    "client_assertion_type": _CLIENT_ASSERTION_TYPE,
+                    "client_assertion": assertion1,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=_TOKEN_EXCHANGE_TIMEOUT,
+            )
+            _raise_token_error(resp1, step=1, url=org_as_token_url)
+            id_jag = resp1.json()["access_token"]
+
+            # ------------------------------------------------------------------
+            # Step 2: RFC 7523 JWT Bearer grant → scoped agent token
+            # ------------------------------------------------------------------
+            logger.info(
+                "Step 2: exchanging ID-JAG for scoped agent token "
+                "(custom_as_token_url=%s, target_audience=%s)",
+                custom_as_token_url,
+                self._flow_params.target_audience,
+            )
+            resp2 = await http.post(
+                custom_as_token_url,
+                data={
+                    "grant_type": _JWT_BEARER_GRANT_TYPE,
+                    "assertion": id_jag,
+                    "client_assertion_type": _CLIENT_ASSERTION_TYPE,
+                    "client_assertion": assertion2,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=_TOKEN_EXCHANGE_TIMEOUT,
+            )
+            _raise_token_error(resp2, step=2, url=custom_as_token_url)
+            exchanged_token = resp2.json()["access_token"]
 
         logger.info("Cross-app access flow completed successfully")
-        return AuthResult(credentials=[BearerTokenCred(token=token_result.access_token)])
+        return AuthResult(credentials=[BearerTokenCred(token=exchanged_token)])
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -380,44 +469,52 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
             "Could not parse private_jwk: expected base64-encoded JSON or raw JSON string."
         )
 
-    def _build_cross_app_flow(self, private_jwk: dict[str, Any]) -> Any:
-        """Construct a :class:`CrossAppAccessFlow` from the Okta SDK.
+    def _make_client_assertion(self, token_url: str, private_jwk: dict[str, Any]) -> str:
+        """Build and sign a JWT client assertion for use in token requests.
 
-        ``trusted_issuer`` → Step 1 AS (``OAuth2ClientConfiguration(issuer=...)``).
-        ``exchange_audience`` → Step 2 AS (``CrossAppAccessTarget(issuer=...)``) and
-        the ``audience`` arg for ``flow.start()``.
+        The assertion is signed with the RSA private key from ``private_jwk`` using
+        RS256.  ``iss`` / ``sub`` are set to ``principal_id``; ``aud`` is ``token_url``;
+        ``exp`` is 60 seconds from now; ``jti`` is a random UUID.
+
+        Parameters
+        ----------
+        token_url:
+            The token endpoint URL to set as the JWT ``aud`` claim.
+        private_jwk:
+            The parsed RSA private JWK dict (``kty``, ``n``, ``e``, ``d``, …).
+
+        Returns
+        -------
+        str
+            A compact serialized signed JWT string.
         """
-        if CrossAppAccessFlow is None:
-            raise ImportError(
-                "okta-client-python is required for the Okta cross-app access flow. "
-                "Install it with: pip install datarobot-genai[auth]"
+        try:
+            private_key = RSAAlgorithm.from_jwk(json.dumps(private_jwk))
+        except Exception:
+            # Suppress the original exception so the JWK material is not
+            # included in the traceback frame that may surface in logs.
+            raise ValueError(
+                "Failed to load RSA private key from JWK (check PRIVATE_JWK format and key type)"
+            ) from None
+
+        now = int(time.time())
+        try:
+            assertion = jwt.encode(
+                {
+                    "iss": self.config.principal_id,
+                    "sub": self.config.principal_id,
+                    "aud": token_url,
+                    "iat": now,
+                    "exp": now + 60,
+                    "jti": str(uuid.uuid4()),
+                },
+                private_key,
+                algorithm="RS256",
+                headers={"kid": private_jwk.get("kid"), "typ": "JWT"},
             )
-
-        assert self._flow_params is not None  # validated by authenticate() before this call
-
-        client_authorization = None
-        if self._flow_params.token_endpoint_auth_method == "private_key_jwt":
-            key_provider = LocalKeyProvider.from_jwk(private_jwk, algorithm="RS256")
-            token_endpoint = self._flow_params.trusted_issuer.rstrip("/") + "/oauth2/v1/token"
-            client_authorization = ClientAssertionAuthorization(
-                assertion_claims=JWTBearerClaims(
-                    issuer=self.config.principal_id,
-                    subject=self.config.principal_id,
-                    audience=token_endpoint,
-                    expires_in=60,
-                ),
-                key_provider=key_provider,
-            )
-
-        config = OAuth2ClientConfiguration(
-            issuer=self._flow_params.trusted_issuer,
-            scope=self._flow_params.id_jag_scopes,
-            client_authorization=client_authorization,
-        )
-
-        oauth_client = OAuth2Client(configuration=config)
-        target = CrossAppAccessTarget(issuer=self._flow_params.exchange_audience)
-        return CrossAppAccessFlow(client=oauth_client, target=target)
+        except Exception:
+            raise ValueError("Failed to sign client assertion JWT") from None
+        return assertion
 
 
 # ---------------------------------------------------------------------------

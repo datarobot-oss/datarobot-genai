@@ -103,7 +103,8 @@ auth = [
   "datarobot[auth]>=3.10.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
-  "okta-client-python>=0.2.0,<1.0.0",
+  "httpx>=0.28.1,<1.0.0",
+  "pyjwt[crypto]>=2.12.0,<3.0.0",  # [crypto] extra adds cryptography for RSA signing
 ]
 
 # drtools: no subpackages dependencies other than auth.

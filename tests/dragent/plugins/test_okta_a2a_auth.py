@@ -16,11 +16,11 @@
 
 import base64
 import json
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
 import pytest
+import respx
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
@@ -28,6 +28,7 @@ from a2a.types import ClientCredentialsOAuthFlow
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
+from httpx import Response
 from nat.data_models.authentication import BearerTokenCred
 
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
@@ -258,6 +259,40 @@ class TestOAuth2CrossApplicationAccessAuthProviderConfigSerialization:
         assert restored.private_jwk.get_secret_value() == _FAKE_JWK_B64
 
 
+class TestMakeClientAssertion:
+    """Tests for _make_client_assertion error sanitization."""
+
+    @pytest.fixture
+    def provider(self):
+        return OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig(
+                principal_id="principal_abc",
+                private_jwk=_FAKE_JWK_B64,
+            )
+        )
+
+    def test_invalid_jwk_raises_value_error_without_key_material(self, provider):
+        """_make_client_assertion raises ValueError — not the raw crypto exception — on bad JWK."""
+        bad_jwk = {"kty": "RSA", "n": "INVALID"}
+        with pytest.raises(ValueError, match="Failed to load RSA private key"):
+            provider._make_client_assertion(
+                token_url="https://token.example.com", private_jwk=bad_jwk
+            )
+
+    def test_value_error_has_no_chained_cause(self, provider):
+        """The raised ValueError uses 'raise … from None' so the original exception
+        (which may contain JWK material in its args) is not surfaced in any traceback
+        display: __cause__ is None and __suppress_context__ is True.
+        """
+        bad_jwk = {"kty": "RSA", "n": "INVALID"}
+        with pytest.raises(ValueError) as exc_info:
+            provider._make_client_assertion(
+                token_url="https://token.example.com", private_jwk=bad_jwk
+            )
+        assert exc_info.value.__cause__ is None
+        assert exc_info.value.__suppress_context__ is True
+
+
 # ---------------------------------------------------------------------------
 # Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — authenticate (call phase)
 # ---------------------------------------------------------------------------
@@ -274,20 +309,34 @@ class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
         provider.set_agent_card(_make_agent_card())
         return provider
 
-    async def test_authenticate_returns_bearer_cred(self, provider_with_card):
-        """authenticate() calls start()/resume() and returns the final scoped token."""
-        mock_token_result = MagicMock(access_token="final-scoped-token")
-        mock_flow = MagicMock()
-        mock_flow.start = AsyncMock()
-        mock_flow.resume = AsyncMock(return_value=mock_token_result)
+    # Derived Step 1 URL: trusted_issuer + "/oauth2/v1/token"
+    _ORG_AS_TOKEN_URL = _TRUSTED_ISSUER + "/oauth2/v1/token"
+    # Step 2 URL is token_url from agent card securitySchemes
+    _CUSTOM_AS_TOKEN_URL = _AGENT_TOKEN_URL
 
+    async def test_authenticate_returns_bearer_cred(self, provider_with_card):
+        """authenticate() makes two HTTP token requests and returns the final scoped token."""
         with (
             patch(f"{_MODULE}.Context") as mock_ctx,
-            patch.object(provider_with_card, "_build_cross_app_flow", return_value=mock_flow),
+            patch.object(
+                provider_with_card,
+                "_make_client_assertion",
+                side_effect=["assertion-step1", "assertion-step2"],
+            ),
+            respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
                 "x-datarobot-external-access-token": "incoming-okta-token"
             }
+            # Step 1: org AS returns an ID-JAG
+            mock_http.post(self._ORG_AS_TOKEN_URL).mock(
+                return_value=Response(200, json={"access_token": "id-jag-token"})
+            )
+            # Step 2: custom AS returns the final scoped token
+            mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
+                return_value=Response(200, json={"access_token": "final-scoped-token"})
+            )
+
             result = await provider_with_card.authenticate(user_id="test-user")
 
         assert result is not None
@@ -296,25 +345,62 @@ class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
         assert isinstance(cred, BearerTokenCred)
         assert cred.token.get_secret_value() == "final-scoped-token"
 
-        mock_flow.start.assert_awaited_once_with(
-            token="incoming-okta-token",
-            audience=_EXCHANGE_AUDIENCE,
-        )
-        mock_flow.resume.assert_awaited_once()
-
-    async def test_authenticate_raises_on_sdk_error(self, provider_with_card):
-        """authenticate() propagates exceptions from the SDK flow."""
-        mock_flow = MagicMock()
-        mock_flow.start = AsyncMock(side_effect=RuntimeError("token exchange failed"))
-
+    async def test_authenticate_raises_on_http_error(self, provider_with_card):
+        """authenticate() raises RuntimeError with Okta error details on HTTP failures."""
         with (
             patch(f"{_MODULE}.Context") as mock_ctx,
-            patch.object(provider_with_card, "_build_cross_app_flow", return_value=mock_flow),
+            patch.object(
+                provider_with_card,
+                "_make_client_assertion",
+                return_value="assertion-jwt",
+            ),
+            respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
                 "x-datarobot-external-access-token": "bad-token"
             }
-            with pytest.raises(RuntimeError, match="token exchange failed"):
+            # Step 1 returns a structured Okta error response
+            mock_http.post(self._ORG_AS_TOKEN_URL).mock(
+                return_value=Response(
+                    400,
+                    json={
+                        "error": "invalid_grant",
+                        "error_description": "Token exchange failed: subject token expired",
+                    },
+                )
+            )
+
+            with pytest.raises(
+                RuntimeError,
+                match="Step 1.*Token exchange failed: subject token expired",
+            ):
+                await provider_with_card.authenticate()
+
+    async def test_authenticate_raises_on_step2_http_error(self, provider_with_card):
+        """authenticate() includes step number and Okta error in RuntimeError on Step 2 failure."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch.object(
+                provider_with_card,
+                "_make_client_assertion",
+                return_value="assertion-jwt",
+            ),
+            respx.mock as mock_http,
+        ):
+            mock_ctx.get.return_value.metadata.headers = {
+                "x-datarobot-external-access-token": "ok-token"
+            }
+            mock_http.post(self._ORG_AS_TOKEN_URL).mock(
+                return_value=Response(200, json={"access_token": "id-jag"})
+            )
+            mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
+                return_value=Response(
+                    401,
+                    json={"error": "unauthorized_client", "error_description": "Invalid assertion"},
+                )
+            )
+
+            with pytest.raises(RuntimeError, match="Step 2.*Invalid assertion"):
                 await provider_with_card.authenticate()
 
     async def test_authenticate_raises_before_set_agent_card(self):
@@ -360,19 +446,24 @@ class TestOAuth2CrossApplicationAccessAuthProviderAuthenticate:
 class TestCrossAppAccessEndToEnd:
     """Mocked end-to-end happy path from raw AgentCard to final BearerTokenCred.
 
-    Mocks only the Okta SDK boundary (CrossAppAccessFlow, OAuth2Client, etc.)
-    and the NAT Context.  Everything else — card parsing, _CrossAppFlowParams
-    construction, _build_cross_app_flow wiring — runs as production code.
+    Mocks only the HTTP boundary (via ``respx``) and ``_make_client_assertion``
+    to avoid needing real RSA key material.  Everything else — card parsing,
+    _CrossAppFlowParams construction, authenticate() request logic — runs as
+    production code.
 
     GIVEN an agent card with full Cross-Application Access extension,
           a provider configured with principal_id + private_jwk,
           and an incoming Okta access token in the request headers,
     WHEN  set_agent_card() then authenticate() are called,
-    THEN  the Okta SDK is invoked with the correct parameters at every step
-          and a BearerTokenCred with the final scoped token is returned.
+    THEN  the correct token URLs receive the expected form fields and
+          a BearerTokenCred with the final scoped token is returned.
     """
 
-    # -- Fixtures: pure setup, no logic in the test body --
+    # Derived from test constants
+    _ORG_AS_TOKEN_URL = _TRUSTED_ISSUER + "/oauth2/v1/token"
+    _CUSTOM_AS_TOKEN_URL = _AGENT_TOKEN_URL  # from agent card securitySchemes
+
+    # -- Fixtures --
 
     @pytest.fixture
     def agent_card(self):
@@ -405,79 +496,52 @@ class TestCrossAppAccessEndToEnd:
             }
             yield ctx
 
-    @pytest.fixture
-    def mock_sdk(self):
-        """Patch all Okta SDK classes at the module level; yield a namespace."""
-        mock_flow_instance = MagicMock()
-        mock_flow_instance.start = AsyncMock()
-        mock_flow_instance.resume = AsyncMock(
-            return_value=MagicMock(access_token="final-scoped-agent-token")
-        )
-
-        with (
-            patch(f"{_MODULE}.LocalKeyProvider") as mock_key_provider_cls,
-            patch(f"{_MODULE}.OAuth2ClientConfiguration") as mock_config_cls,
-            patch(f"{_MODULE}.OAuth2Client") as mock_client_cls,
-            patch(f"{_MODULE}.ClientAssertionAuthorization") as mock_client_auth_cls,
-            patch(f"{_MODULE}.JWTBearerClaims") as mock_claims_cls,
-            patch(f"{_MODULE}.CrossAppAccessTarget") as mock_target_cls,
-            patch(
-                f"{_MODULE}.CrossAppAccessFlow", return_value=mock_flow_instance
-            ) as mock_flow_cls,
-        ):
-            yield {
-                "LocalKeyProvider": mock_key_provider_cls,
-                "OAuth2ClientConfiguration": mock_config_cls,
-                "OAuth2Client": mock_client_cls,
-                "ClientAssertionAuthorization": mock_client_auth_cls,
-                "JWTBearerClaims": mock_claims_cls,
-                "CrossAppAccessTarget": mock_target_cls,
-                "CrossAppAccessFlow": mock_flow_cls,
-                "flow": mock_flow_instance,
-            }
-
     # -- The test --
 
-    async def test_happy_path_card_to_token(self, provider, incoming_token, mock_context, mock_sdk):
-        result = await provider.authenticate(user_id="test-user")
+    async def test_happy_path_card_to_token(self, provider, incoming_token, mock_context):
+        """Full flow: card parsed → two HTTP token requests → BearerTokenCred returned."""
+        assertion_calls: list[tuple[str, dict]] = []
 
-        # -- Step 0: private_key_jwt → LocalKeyProvider initialized --
-        mock_sdk["LocalKeyProvider"].from_jwk.assert_called_once_with(_FAKE_JWK, algorithm="RS256")
+        def _fake_assertion(token_url: str, private_jwk: dict) -> str:
+            assertion_calls.append((token_url, private_jwk))
+            return f"signed-jwt-for-{token_url}"
 
-        # -- Step 0: JWT client assertion targets the originating AS token endpoint --
-        mock_sdk["JWTBearerClaims"].assert_called_once_with(
-            issuer="0oa_test_principal",
-            subject="0oa_test_principal",
-            audience=_TRUSTED_ISSUER.rstrip("/") + "/oauth2/v1/token",
-            expires_in=60,
-        )
+        with (
+            patch.object(provider, "_make_client_assertion", side_effect=_fake_assertion),
+            respx.mock as mock_http,
+        ):
+            # Step 1: org AS returns an ID-JAG
+            step1_route = mock_http.post(self._ORG_AS_TOKEN_URL).mock(
+                return_value=Response(200, json={"access_token": "id-jag-token"})
+            )
+            # Step 2: custom AS returns the final scoped token
+            step2_route = mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
+                return_value=Response(200, json={"access_token": "final-scoped-agent-token"})
+            )
 
-        # -- Step 0: OAuth2ClientConfiguration uses the originating AS (trusted_issuer) --
-        mock_sdk["OAuth2ClientConfiguration"].assert_called_once_with(
-            issuer=_TRUSTED_ISSUER,
-            scope=["read_data"],
-            client_authorization=mock_sdk["ClientAssertionAuthorization"].return_value,
-        )
+            result = await provider.authenticate(user_id="test-user")
 
-        # -- Step 0: CrossAppAccessTarget uses the resource AS (exchange_audience) --
-        mock_sdk["CrossAppAccessTarget"].assert_called_once_with(
-            issuer=_EXCHANGE_AUDIENCE,
-        )
+        # -- _make_client_assertion called once per step with the correct token URL --
+        assert len(assertion_calls) == 2
+        assert assertion_calls[0][0] == self._ORG_AS_TOKEN_URL  # Step 1 aud
+        assert assertion_calls[1][0] == self._CUSTOM_AS_TOKEN_URL  # Step 2 aud
 
-        # -- Step 0: CrossAppAccessFlow wired with client + target --
-        mock_sdk["CrossAppAccessFlow"].assert_called_once_with(
-            client=mock_sdk["OAuth2Client"].return_value,
-            target=mock_sdk["CrossAppAccessTarget"].return_value,
-        )
+        # -- Step 1 request: correct URL and key form fields (URL-decoded) --
+        assert step1_route.called
+        step1_body = parse_qs(step1_route.calls.last.request.content.decode())
+        assert step1_body["grant_type"] == ["urn:ietf:params:oauth:grant-type:token-exchange"]
+        assert step1_body["subject_token"] == [incoming_token]
+        assert step1_body["audience"] == [_EXCHANGE_AUDIENCE]
+        assert step1_body["resource"] == [_TARGET_AUDIENCE]
+        assert step1_body["scope"] == ["read_data"]
+        assert step1_body["client_assertion"] == [f"signed-jwt-for-{self._ORG_AS_TOKEN_URL}"]
 
-        # -- Step 1: flow.start() exchanges the user token for an ID-JAG --
-        mock_sdk["flow"].start.assert_awaited_once_with(
-            token=incoming_token,
-            audience=_EXCHANGE_AUDIENCE,
-        )
-
-        # -- Step 2: flow.resume() exchanges the ID-JAG for the final token --
-        mock_sdk["flow"].resume.assert_awaited_once()
+        # -- Step 2 request: correct URL and key form fields (URL-decoded) --
+        assert step2_route.called
+        step2_body = parse_qs(step2_route.calls.last.request.content.decode())
+        assert step2_body["grant_type"] == ["urn:ietf:params:oauth:grant-type:jwt-bearer"]
+        assert step2_body["assertion"] == ["id-jag-token"]
+        assert step2_body["client_assertion"] == [f"signed-jwt-for-{self._CUSTOM_AS_TOKEN_URL}"]
 
         # -- Final result: BearerTokenCred with the scoped agent token --
         assert result is not None
