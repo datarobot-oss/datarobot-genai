@@ -10,40 +10,40 @@ tasks:
     desc: "🔨 Waiting for agent to start"
     cmds:
       - echo "🔨 Waiting for agent to start"
-      - until curl -f http://127.0.0.1:{{.AGENT_PORT}}/health; do sleep 3; done
+      - until curl -f http://localhost:{{.AGENT_PORT}}/health; do sleep 3; done
       - echo "🔨 Agent started"
   run-nat:
     desc: "🔨 Running NAT agent"
     dir: ./nat
     cmds:
       - echo "🔨 Running NAT agent"
-      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}} --host 127.0.0.1
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-crewai:
     desc: "🔨 Running CrewAI agent via NAT"
     dir: ./crewai
     cmds:
       - echo "🔨 Running CrewAI agent via NAT"
-      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}} --host 127.0.0.1
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-langgraph:
     desc: "🔨 Running LangGraph agent via NAT"
     dir: ./langgraph
     cmds:
       - echo "🔨 Running LangGraph agent via NAT"
-      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}} --host 127.0.0.1
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-llamaindex:
     desc: "🔨 Running LlamaIndex agent via NAT"
     dir: ./llamaindex
     cmds:
       - echo "🔨 Running LlamaIndex agent via NAT"
-      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}} --host 127.0.0.1
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-base:
     desc: "🔨 Running base agent via NAT"
     dir: ./base
     cmds:
       - echo "🔨 Running base agent via NAT"
-      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}} --host 127.0.0.1
+      - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
   run-router:
     desc: "🔨 Running {{.AGENT}} agent with router LLM backend"
     dir: ./{{.AGENT}}
     cmds:
-      - uv run nat dragent serve --config_file workflow-router-fallback-used.yaml --port {{.AGENT_PORT}} --host 127.0.0.1
+      - uv run nat dragent serve --config_file workflow-router-fallback-used.yaml --port {{.AGENT_PORT}}
