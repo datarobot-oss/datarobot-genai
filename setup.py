@@ -34,6 +34,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
+    "datarobot-moderations[all]>=11.2.29,<12.0.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -93,7 +94,6 @@ dragent = nat + [
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "fastapi<0.133.0",
     "starlette<1.0.0",
-    "datarobot-moderations[all]>=11.2.29,<12.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
