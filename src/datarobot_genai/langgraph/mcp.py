@@ -123,15 +123,24 @@ async def mcp_tools_context(
         raise RuntimeError("Unsupported MCP transport specified.")
 
     # Graceful fallback: if we can't connect to the MCP server, yield empty tools
-    # instead of crashing. The try/except wraps only the connect+load phase (before
-    # yield) to avoid double-yielding -- an asynccontextmanager must yield exactly once.
+    # instead of crashing.
+    #
+    # The `connected` flag distinguishes two cases for the except clause:
+    #   - Exception raised during setup (before yield): log a warning and yield [].
+    #   - Exception thrown back in from the consumer (after yield, via athrow()): re-raise.
+    # Without this guard, a consumer exception of a caught type would hit `yield []` as a
+    # second yield, causing `RuntimeError: generator didn't stop after athrow()`.
+    connected = False
     try:
         async with create_session(connection=connection) as session:
             raw_tools = await load_mcp_tools(session=session)
             tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
             logger.info("Successfully loaded %d MCP tools", len(tools))
+            connected = True
             yield tools
     except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+        if connected:
+            raise
         logger.warning(
             "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
             url,
