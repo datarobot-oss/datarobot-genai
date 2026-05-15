@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""NAT (NeMo Agent Toolkit) middleware: DataRobot LLM guardrails for DRAgent workflows."""
+"""NAT (NeMo Agent Toolkit) middleware: DataRobot LLM guardrails for DRAgent workflows.
+
+Registered under the ``nat.plugins`` distribution entry ``datarobot_moderation_middleware`` so NAT
+loads ``@register_middleware`` without a custom recipe mapping (``_type: datarobot_moderation``).
+"""
 
 from __future__ import annotations
 
