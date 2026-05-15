@@ -2,7 +2,6 @@
 # Postscore-only: block when assistant response token count exceeds the threshold
 # (tiktoken cl100k_base). Used by ``*_response_token_limit_blocks`` in
 # ``tests/nat/test_datarobot_moderation_middleware.py``.
-timeout_action: score
 timeout_sec: 180
 guards:
   - name: Response token cap
@@ -10,7 +9,6 @@ guards:
     type: ootb
     ootb_type: token_count
     stage: response
-    is_agentic: false
     intervention:
       action: block
       message: Response exceeds the configured maximum length (token count).

@@ -304,14 +304,12 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
                         "Track the number of tokens associated with the input to the LLM, and/or "
                         "retrieved text from the vector database."
                     ),
-                    "is_agentic": False,
                     "ootb_type": "token_count",
                     "stage": "prompt",
                     "type": "ootb",
                 }
             ],
             "timeout_sec": 60,
-            "timeout_action": "score",
         }
     )
     cfg = DataRobotModerationConfig(moderation=moderation)
