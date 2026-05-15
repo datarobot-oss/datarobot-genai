@@ -216,18 +216,34 @@ def test_context_user_manager_property_is_patched() -> None:
     assert isinstance(Context.get().user_manager, datarobot_mem0_memory._UserManagerShim)
 
 
-async def test_remove_items_deletes_by_memory_id_or_user_id() -> None:
+async def test_remove_items_deletes_by_memory_id_or_pins_user_id() -> None:
     # GIVEN a Mem0-backed editor.
     mem0 = FakeMem0Api()
     editor = DRMem0Editor(FakeMem0Client(mem0))
 
-    # WHEN deleting a single memory and then all memories for a user.
+    # WHEN deleting a single memory and then "all memories for a user".
     await editor.remove_items(memory_id="memory-123")
     await editor.remove_items(user_id="user-123")
 
-    # THEN the corresponding Mem0 delete APIs are used.
+    # THEN delete-by-id is unchanged, but delete_all targets the editor's
+    # pinned user_id (api-key owner) instead of the caller-supplied one — so
+    # remove_items shares scope with add_items/search.
     assert mem0.delete_calls == ["memory-123"]
-    assert mem0.delete_all_calls == [{"user_id": "user-123"}]
+    assert mem0.delete_all_calls == [{"user_id": FAKE_API_KEY_USER_ID}]
+
+
+async def test_remove_items_without_memory_id_or_user_id_is_a_noop() -> None:
+    # GIVEN a Mem0-backed editor.
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0))
+
+    # WHEN remove_items is called with no targeting args.
+    await editor.remove_items()
+
+    # THEN no Mem0 delete API is invoked — the pinned scope is api-key-wide and
+    # shared across all NAT sessions, so we never wipe it implicitly.
+    assert mem0.delete_calls == []
+    assert mem0.delete_all_calls == []
 
 
 async def test_registered_memory_client_uses_config_api_key_and_retry(monkeypatch: Any) -> None:

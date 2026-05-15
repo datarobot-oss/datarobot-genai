@@ -170,7 +170,8 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         if "memory_id" in kwargs:
             await self._mem0.delete(kwargs.pop("memory_id"))
         elif "user_id" in kwargs:
-            await self._mem0.delete_all(user_id=kwargs.pop("user_id"))
+            kwargs.pop("user_id")
+            await self._mem0.delete_all(user_id=self._mem0.user_id)
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
