@@ -244,6 +244,20 @@ class TestParseCrossAppParams:
         assert params.id_jag_scopes == ["openid", "profile"]
 
 
+class TestOAuth2CrossApplicationAccessAuthProviderConfigSerialization:
+    def test_private_jwk_survives_json_roundtrip(self):
+        """model_dump(mode='json') must emit the real JWK, not SecretStr's redacted placeholder."""
+        cfg = OAuth2CrossApplicationAccessAuthProviderConfig(
+            principal_id="principal_abc",
+            private_jwk=_FAKE_JWK_B64,
+        )
+        payload = cfg.model_dump(mode="json")
+        assert payload["private_jwk"] == _FAKE_JWK_B64
+        restored = OAuth2CrossApplicationAccessAuthProviderConfig.model_validate(payload)
+        assert restored.private_jwk is not None
+        assert restored.private_jwk.get_secret_value() == _FAKE_JWK_B64
+
+
 # ---------------------------------------------------------------------------
 # Tests: OAuth2CrossApplicationAccessOAuth2AuthProvider — authenticate (call phase)
 # ---------------------------------------------------------------------------

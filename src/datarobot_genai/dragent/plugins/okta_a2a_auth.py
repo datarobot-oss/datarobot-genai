@@ -65,6 +65,7 @@ from nat.cli.register_workflow import register_auth_provider
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.common import OptionalSecretStr
 from pydantic import Field
 from pydantic import SecretStr
 
@@ -206,7 +207,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             "Used as ``iss``/``sub`` in the JWT client assertion."
         ),
     )
-    private_jwk: SecretStr | None = Field(
+    private_jwk: OptionalSecretStr = Field(
         default_factory=_get_default_private_jwk,
         description=(
             "Base64-encoded or raw-JSON private JWK (env: ``PRIVATE_JWK``). "
