@@ -488,6 +488,95 @@ async def test_convert_input_message_zero_history_disables_history() -> None:
     assert isinstance(all_messages[1], HumanMessage)
 
 
+class RelayLangGraphAgent(LangGraphAgent):
+    """Agent whose graph includes a planner-to-writer relay node that emits a HumanMessage."""
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        async def mock_stream_generator():
+            # planner node produces an AI response
+            yield (
+                "planner_node",
+                "messages",
+                (AIMessageChunk(content="Here is the plan.", id="plan-1"), {}),
+            )
+            # relay node converts the plan to a HumanMessage for the writer
+            yield (
+                "planner_to_writer_relay",
+                "messages",
+                (HumanMessage(content="Here is the plan.", id="relay-1"), {}),
+            )
+            # writer node produces the final response
+            yield (
+                "writer_node",
+                "messages",
+                (AIMessageChunk(content="Here is the article.", id="write-1"), {}),
+            )
+            yield (
+                "writer_node",
+                "updates",
+                {
+                    "writer_node": {
+                        "usage": {
+                            "total_tokens": 50,
+                            "prompt_tokens": 25,
+                            "completion_tokens": 25,
+                        },
+                        "messages": [
+                            HumanMessage(content="Here is the plan."),
+                            AIMessage(content="Here is the article.", id="write-1"),
+                        ],
+                    }
+                },
+            )
+
+        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream_generator()))
+        return Mock(compile=Mock(return_value=mock_graph_stream))
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant. Tell user about {topic}.",
+                },
+                {"role": "user", "content": "Hi, tell me about {topic}."},
+            ]
+        )
+
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_relay_human_message_is_skipped(run_agent_input):
+    # GIVEN an agent whose graph contains a planner-to-writer relay node that emits a HumanMessage
+    agent = RelayLangGraphAgent()
+
+    # WHEN invoking the agent
+    events = []
+    async for response_event, _, _ in agent.invoke(run_agent_input):
+        if isinstance(response_event, BaseEvent):
+            events.append(response_event)
+
+    # THEN the HumanMessage from the relay node is silently skipped — no ValueError raised —
+    # and only the planner and writer AI text events appear in the output
+    event_types = [e.type for e in events]
+    assert EventType.RUN_STARTED in event_types
+    assert EventType.RUN_FINISHED in event_types
+
+    text_content_events = [e for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
+    assert len(text_content_events) == 2
+    assert text_content_events[0].delta == "Here is the plan."
+    assert text_content_events[1].delta == "Here is the article."
+
+    # No HumanMessage content should appear as a text event
+    all_deltas = {e.delta for e in text_content_events}
+    assert not any("relay" in d.lower() for d in all_deltas)
+
+
 async def test_langgraph_non_streaming(run_agent_input):
     # GIVEN a simple langgraph agent implementation
     agent = SimpleLangGraphAgent()
