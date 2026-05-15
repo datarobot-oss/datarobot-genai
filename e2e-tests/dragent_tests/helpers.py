@@ -19,7 +19,7 @@ from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
-BASE_URL = "http://127.0.0.1:8080"
+BASE_URL = "http://localhost:8080"
 
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
