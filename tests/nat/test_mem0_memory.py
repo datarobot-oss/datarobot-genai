@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from nat.builder.context import Context
 from nat.memory.models import MemoryItem
 
 from datarobot_genai.nat import datarobot_mem0_memory
@@ -24,9 +25,14 @@ from datarobot_genai.nat.datarobot_mem0_memory import Config
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0MemoryClientConfig
 
+# Matches ``DataRobotMemoryClient.user_id`` (= ``sha256(api_key)``); the editor
+# pins every add/search to this so add and search share scope.
+FAKE_API_KEY_USER_ID = "fake-api-key-sha256"
+
 
 class FakeMem0Api:
-    def __init__(self) -> None:
+    def __init__(self, user_id: str = FAKE_API_KEY_USER_ID) -> None:
+        self.user_id = user_id
         self.add_calls: list[dict[str, Any]] = []
         self.search_calls: list[dict[str, Any]] = []
         self.delete_calls: list[str] = []
@@ -52,8 +58,8 @@ class FakeMem0Client:
         self._memory = mem0 or FakeMem0Api()
 
 
-async def test_add_items_forwards_nat_memory_items_to_mem0() -> None:
-    # GIVEN a NAT MemoryItem with runtime user id and metadata.
+async def test_add_items_pins_user_id_to_mem0_client() -> None:
+    # GIVEN a NAT MemoryItem whose user_id differs from the Mem0 client's.
     mem0 = FakeMem0Api()
     editor = DRMem0Editor(FakeMem0Client(mem0))
     item = MemoryItem(
@@ -66,12 +72,14 @@ async def test_add_items_forwards_nat_memory_items_to_mem0() -> None:
     # WHEN the editor stores it.
     await editor.add_items([item], agent_id="agent-abc")
 
-    # THEN the underlying Mem0 client receives NAT's user id and v1.1 payload shape.
+    # THEN the Mem0 call uses ``DataRobotMemoryClient.user_id`` (api-key owner),
+    # ignoring the wrapper-supplied ``MemoryItem.user_id``, while still forwarding
+    # tags, metadata, and v1.1 payload shape.
     assert mem0.add_calls == [
         {
             "conversation": [{"role": "user", "content": "remember Python"}],
             "kwargs": {
-                "user_id": "user-123",
+                "user_id": FAKE_API_KEY_USER_ID,
                 "run_id": "run-456",
                 "tags": ["preference"],
                 "metadata": {"thread_id": "thread-789"},
@@ -82,8 +90,8 @@ async def test_add_items_forwards_nat_memory_items_to_mem0() -> None:
     ]
 
 
-async def test_add_items_resolves_conflicting_add_params() -> None:
-    # GIVEN add_params that overlap with NAT MemoryItem fields.
+async def test_add_items_pins_user_id_even_with_conflicting_add_params() -> None:
+    # GIVEN add_params and a MemoryItem that both set user_id.
     mem0 = FakeMem0Api()
     editor = DRMem0Editor(FakeMem0Client(mem0))
     item = MemoryItem(
@@ -104,12 +112,13 @@ async def test_add_items_resolves_conflicting_add_params() -> None:
         async_mode=False,
     )
 
-    # THEN the Mem0 call has no duplicate kwargs and preserves NAT item identity.
+    # THEN the editor's pinned user_id wins over BOTH the kwarg and the item,
+    # other NAT item fields still take precedence over configured add_params.
     assert mem0.add_calls == [
         {
             "conversation": [{"role": "user", "content": "remember TypeScript"}],
             "kwargs": {
-                "user_id": "item-user",
+                "user_id": FAKE_API_KEY_USER_ID,
                 "run_id": "item-run",
                 "tags": ["item-tag"],
                 "metadata": {"thread_id": "item-thread", "source": "workflow"},
@@ -120,7 +129,7 @@ async def test_add_items_resolves_conflicting_add_params() -> None:
     ]
 
 
-async def test_search_builds_mem0_v2_filters_from_nat_kwargs() -> None:
+async def test_search_builds_mem0_v2_filters_pinned_to_client_user_id() -> None:
     # GIVEN a Mem0 search result and NAT auto-memory user/run/app parameters.
     mem0 = FakeMem0Api()
     mem0.search_result = {
@@ -147,14 +156,16 @@ async def test_search_builds_mem0_v2_filters_from_nat_kwargs() -> None:
         threshold=0.75,
     )
 
-    # THEN the search uses Mem0 v2 filters and returns NAT MemoryItems.
+    # THEN the search filters the v2 endpoint by the editor's pinned user_id
+    # (api-key owner), ignoring the wrapper-supplied ``user_id`` kwarg, and the
+    # returned NAT MemoryItem inherits that same pinned user_id.
     assert mem0.search_calls == [
         {
             "query": "language",
             "kwargs": {
                 "filters": {
                     "AND": [
-                        {"user_id": "user-123"},
+                        {"user_id": FAKE_API_KEY_USER_ID},
                         {"run_id": "run-456"},
                         {"app_id": "app-abc"},
                         {"metadata": {"thread_id": "thread-789"}},
@@ -169,7 +180,7 @@ async def test_search_builds_mem0_v2_filters_from_nat_kwargs() -> None:
     assert memories == [
         MemoryItem(
             conversation=[{"role": "user", "content": "I prefer Python"}],
-            user_id="user-123",
+            user_id=FAKE_API_KEY_USER_ID,
             memory="User prefers Python.",
             tags=["preference"],
             metadata={"thread_id": "thread-789"},
@@ -188,6 +199,21 @@ async def test_search_honors_explicit_filters() -> None:
 
     # THEN those filters are forwarded without rebuilding them.
     assert mem0.search_calls[0]["kwargs"]["filters"] == filters
+
+
+def test_user_manager_shim_get_id_returns_none() -> None:
+    # GIVEN the shim installed by ``datarobot_mem0_memory`` for NAT 1.6.
+    shim = datarobot_mem0_memory._UserManagerShim()
+
+    # THEN ``get_id`` returns None — the editor pins the real user_id, the shim
+    # only exists to keep ``auto_memory_wrapper`` from raising AttributeError.
+    assert shim.get_id() is None
+
+
+def test_context_user_manager_property_is_patched() -> None:
+    # GIVEN ``datarobot_mem0_memory`` is imported (this test module imports it).
+    # THEN every ``Context`` exposes a ``user_manager`` attribute that is a shim.
+    assert isinstance(Context.get().user_manager, datarobot_mem0_memory._UserManagerShim)
 
 
 async def test_remove_items_deletes_by_memory_id_or_user_id() -> None:

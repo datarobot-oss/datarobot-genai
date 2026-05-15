@@ -106,21 +106,62 @@ async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
 ) -> None:
     # GIVEN a workflow.yaml with a real Mem0-backed NAT memory provider and auto-memory wrapper.
     test_id = uuid.uuid4().hex
-    user_id = f"nat-auto-memory-{test_id}"
+    session_user_id = f"nat-auto-memory-{test_id}"
     secret_code = f"DRMEM-{test_id}"
     first_message = f"My NAT auto-memory integration secret code is {secret_code}."
     recall_message = "What is my NAT auto-memory integration secret code?"
 
     async def run_memory_workflow(message: str) -> str:
-        async with workflow_with_memory.session(user_id=user_id) as session:
+        async with workflow_with_memory.session(user_id=session_user_id) as session:
             async with session.run(message) as runner:
                 return await runner.result(to_type=str)
+
+    # The editor pins every add/search to ``DataRobotMemoryClient.user_id``
+    # (= sha256(api_key)), ignoring the session user_id supplied by NAT's
+    # auto-memory wrapper. Cleanup must target that pinned scope, not the
+    # session user_id — and must be narrowed to this test's memories so we
+    # don't wipe other tests sharing the same api key.
+    mem0 = Mem0Client(api_key=mem0_api_key)._memory
+    pinned_user_id = mem0.user_id
+    assert pinned_user_id != session_user_id
 
     try:
         # WHEN the wrapped workflow sees one message to store.
         await run_memory_workflow(first_message)
 
-        # THEN a later turn retrieves the real Mem0 memory and injects it as context.
+        # THEN the memory is stored under sha256(api_key), NOT the session user_id.
+        pinned_memory_found = False
+        for _ in range(10):
+            pinned_hits = await mem0.search(
+                query=secret_code,
+                filters={"AND": [{"user_id": pinned_user_id}]},
+            )
+            if any(
+                secret_code in (item.get("memory") or "")
+                for item in pinned_hits.get("results", []) or []
+            ):
+                pinned_memory_found = True
+                break
+            await asyncio.sleep(2)
+        assert pinned_memory_found, (
+            f"Editor did not pin memory to sha256(api_key)={pinned_user_id!r}; "
+            f"secret_code {secret_code!r} not found under the api-key scope."
+        )
+
+        session_hits = await mem0.search(
+            query=secret_code,
+            filters={"AND": [{"user_id": session_user_id}]},
+        )
+        assert not [
+            item
+            for item in session_hits.get("results", []) or []
+            if secret_code in (item.get("memory") or "")
+        ], (
+            f"Memory leaked to session user_id={session_user_id!r}; "
+            f"expected the editor to pin every write to {pinned_user_id!r}."
+        )
+
+        # AND a later turn retrieves the real Mem0 memory and injects it as context.
         last_response = ""
         for _ in range(10):
             last_response = await run_memory_workflow(recall_message)
@@ -132,4 +173,13 @@ async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
                 f"Mem0 did not return expected memory text. Last response: {last_response!r}"
             )
     finally:
-        await Mem0Client(api_key=mem0_api_key)._memory.delete_all(user_id=user_id)
+        # Narrow cleanup to this test's memories: search the pinned scope for
+        # the unique secret_code and delete each matching memory by id.
+        cleanup_hits = await mem0.search(
+            query=secret_code,
+            filters={"AND": [{"user_id": pinned_user_id}]},
+        )
+        for item in cleanup_hits.get("results", []) or []:
+            memory_id = item.get("id")
+            if memory_id and secret_code in (item.get("memory") or ""):
+                await mem0.delete(memory_id)
