@@ -125,6 +125,9 @@ def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | 
         return None
 
     pipeline = ModerationPipeline.from_yaml(guard_config_file)
+    # LLMPipeline.get_input_column(GuardStage.RESPONSE) falls back to TARGET_NAME when the YAML
+    # does not set a response column. DRUM sets TARGET_NAME; local NAT often does not (see e2e CI env).
+    os.environ.setdefault("TARGET_NAME", "response")
     os.environ["PROMPT_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.PROMPT)
     os.environ["RESPONSE_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.RESPONSE)
     return pipeline

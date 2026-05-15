@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.53
+- LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).
+- `DataRobotFileSystemSaver` (`dr_fs_checkpointer`): checkpoint files use length-prefixed binary (`struct`, `.bin` suffix) without pickle or per-file magic headers; layout is implied by directory (`blobs/`, `cpts/`, `writes/`).
+
 ## 0.15.52
 - `langgraph/agent.py`: Fixed `ValueError: Invalid message event` crash in `_stream_generator` when an intermediate LangGraph node (e.g. a planner-to-writer relay) emits a `HumanMessage` as a state update. `HumanMessage` events from relay nodes are now silently skipped rather than raising, which also prevents the cascading `RuntimeError: generator didn't stop after athrow()` from the MCP tools context manager failing to clean up.
 
