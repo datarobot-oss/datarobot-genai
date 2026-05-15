@@ -22,6 +22,7 @@ without relying on the upstream ``nvidia-nat-mem0ai`` plugin.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -31,10 +32,44 @@ from nat.builder.context import Context
 from nat.cli.register_workflow import register_memory
 from nat.data_models.memory import MemoryBaseConfig
 from nat.data_models.retry_mixin import RetryMixin
+from nat.data_models.user_info import UserInfo
 from nat.memory.interfaces import MemoryEditor
 from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
+
+from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+
+logger = logging.getLogger(__name__)
+
+
+def _memory_user_uuid() -> str | None:
+    """Derive NAT's canonical UUIDv5 from the current request's DR auth header.
+
+    Reads ``X-DataRobot-Authorization-Context`` from the active NAT
+    ``Context``, decodes it with :class:`AuthContextHeaderHandler`, and hashes
+    ``auth_ctx.user.id`` through :meth:`UserInfo._from_session_cookie` so the
+    raw DataRobot identity never leaves the process. Returns ``None`` when
+    the header is missing or undecodable (e.g. ``SESSION_SECRET_KEY`` is
+    unset in local dev) so the caller can fall back to the api-key owner.
+    """
+    metadata = Context.get().metadata
+    headers = getattr(metadata, "headers", None) if metadata else None
+    if headers is None:
+        return None
+    try:
+        header_dict = dict(headers)
+    except Exception:
+        logger.debug("Failed to normalize request headers", exc_info=True)
+        return None
+    try:
+        auth_ctx = AuthContextHeaderHandler().get_context(header_dict)
+    except Exception:
+        logger.debug("Failed to decode DR auth context", exc_info=True)
+        return None
+    if auth_ctx is None or auth_ctx.user is None or not auth_ctx.user.id:
+        return None
+    return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
 
 
 class Config(DataRobotAppFrameworkBaseSettings):
@@ -52,25 +87,27 @@ def _get_default_mem0_api_key() -> str | None:
 
 
 class _UserManagerShim:
-    """Stub that prevents ``AttributeError`` on NAT 1.6.
+    """Bridge ``Context.user_manager`` to the DR-user UUIDv5 on NAT 1.6.
 
     ``nvidia-nat-langchain`` 1.6.0's ``auto_memory_wrapper`` accesses
-    ``Context.user_manager.get_id()`` to resolve a user_id, but
-    ``Context.user_manager`` only exists on newer NAT versions.
-    Returning ``None`` lets the wrapper's fallback chain run without
-    raising; the value it eventually picks is overridden by
-    :class:`DRMem0Editor`, which pins every add and search to
-    ``DataRobotMemoryClient.user_id`` (= ``sha256(MEM0_API_KEY)``).
+    ``Context.user_manager.get_id()`` to resolve the user_id it passes to the
+    memory editor, but ``Context.user_manager`` only exists on newer NAT
+    versions. Return :func:`_memory_user_uuid`, NAT's canonical UUIDv5
+    derived from the request's ``X-DataRobot-Authorization-Context`` header,
+    so the wrapper feeds the editor a stable per-user identity (the raw id
+    never leaves the process). When the header is absent or undecodable,
+    return ``None`` and let the editor fall back to its api-key owner.
     """
 
+    def __init__(self, context: Context) -> None:
+        self._context = context
+
     def get_id(self) -> str | None:
-        return None
+        return _memory_user_uuid()
 
 
 if not hasattr(Context, "user_manager"):
-    Context.user_manager = property(  # type: ignore[attr-defined]
-        lambda self: _UserManagerShim()
-    )
+    Context.user_manager = property(_UserManagerShim)  # type: ignore[attr-defined]
 
 
 class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
@@ -102,16 +139,13 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         configured_run_id = add_kwargs.pop("run_id", None)
         configured_tags = add_kwargs.pop("tags", None)
         configured_metadata = dict(add_kwargs.pop("metadata", None) or {})
-        add_kwargs.pop("user_id", None)
-
-        # Pin every write to the API-key owner so add and search share scope.
-        # See ``DataRobotMemoryClient.user_id`` (= ``sha256(api_key)``).
-        user_id = self._mem0.user_id
+        configured_user_id = add_kwargs.pop("user_id", None)
 
         coroutines = []
         for item in items:
             metadata = configured_metadata | dict(item.metadata or {})
             run_id = metadata.pop("run_id", configured_run_id)
+            user_id = item.user_id or configured_user_id or self._mem0.user_id
             item_kwargs = add_kwargs | {
                 "user_id": user_id,
                 "tags": item.tags or configured_tags or [],
@@ -126,10 +160,7 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             await asyncio.gather(*coroutines)
 
     async def search(self, query: str, top_k: int = 5, **kwargs: Any) -> list[MemoryItem]:
-        # Mem0's v2 search endpoint expects filters instead of top-level user/run/app ids.
-        # Pin to the API-key owner; see ``add_items`` for rationale.
-        kwargs.pop("user_id", None)
-        user_id = self._mem0.user_id
+        user_id = kwargs.pop("user_id", None) or self._mem0.user_id
         conditions: list[dict[str, Any]] = [{"user_id": user_id}]
         for key in ("run_id", "agent_id", "app_id"):
             value = kwargs.pop(key, None)
@@ -169,9 +200,10 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
     async def remove_items(self, **kwargs: Any) -> None:
         if "memory_id" in kwargs:
             await self._mem0.delete(kwargs.pop("memory_id"))
-        elif "user_id" in kwargs:
-            kwargs.pop("user_id")
-            await self._mem0.delete_all(user_id=self._mem0.user_id)
+            return
+        user_id = kwargs.pop("user_id", None)
+        if user_id:
+            await self._mem0.delete_all(user_id=user_id)
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
