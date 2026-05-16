@@ -1093,6 +1093,7 @@ auth = [
     { name = "aiohttp" },
     { name = "datarobot", extra = ["auth"] },
     { name = "httpx" },
+    { name = "okta-client-python" },
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
@@ -1176,6 +1177,7 @@ drmcp = [
     { name = "datarobot-predict" },
     { name = "fastmcp" },
     { name = "httpx" },
+    { name = "okta-client-python" },
     { name = "openai" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
@@ -1203,6 +1205,7 @@ drtools = [
     { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-predict" },
     { name = "httpx" },
+    { name = "okta-client-python" },
     { name = "perplexityai" },
     { name = "polars" },
     { name = "pyarrow" },
@@ -1393,6 +1396,9 @@ requires-dist = [
     { name = "nvidia-nat-mcp", marker = "extra == 'nat'", specifier = "==1.6.0" },
     { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.6.0" },
     { name = "nvidia-nat-opentelemetry", marker = "extra == 'nat'", specifier = "==1.6.0" },
+    { name = "okta-client-python", marker = "extra == 'auth'", specifier = ">=0.2.0,<1.0.0" },
+    { name = "okta-client-python", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
+    { name = "okta-client-python", marker = "extra == 'drtools'", specifier = ">=0.2.0,<1.0.0" },
     { name = "openai", marker = "extra == 'core'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'crewai'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'dragent'", specifier = ">=2.0.0,<3.0.0" },
@@ -4098,6 +4104,18 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/b4/54c29f536b498cfdfe00ebf4a52bdbc78db9af6b84c011c1c6ed4b647352/nvidia_nat_opentelemetry-1.6.0-py3-none-any.whl", hash = "sha256:5ae11e4acfc08e04bf3040a4cd69241f1c2c096b83061be15ee459d7c7c1b73d", size = 67843, upload-time = "2026-04-10T03:01:14.482Z" },
+]
+
+[[package]]
+name = "okta-client-python"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyjwt", extra = ["crypto"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/b3/70389869c4fae298a271db9e746539cea6342ab288347a37ffcf505dac6a/okta_client_python-0.2.0.tar.gz", hash = "sha256:c5b82dac1ab93b366e34a0c57b265ec0c43afb7ef65499f2bed4021412baec5e", size = 111396, upload-time = "2026-03-11T05:17:23.586Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/2a/f5f52239a932ba5093a45e4b978be99ba0c440ced850b0555f7f826b2fcc/okta_client_python-0.2.0-py3-none-any.whl", hash = "sha256:2c8ccf8b8e04d14f35322937e16d48b933da7e180817cc3d4ae248d8025b7984", size = 101640, upload-time = "2026-03-11T05:17:21.098Z" },
 ]
 
 [[package]]

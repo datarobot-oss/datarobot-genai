@@ -5,8 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.57
-- `scopes` are now read from the agent card `securitySchemes.oauth2.flows.clientCredentials.scopes` in the AgentCard.
-- Introduces fallback implementation for XAA token exchange using direct api calls. Set `XAA_TOKEN_EXCHANGE_IMPL=okta_sdk` (default) to use it, or `http` for the direct HTTP implementation. 
+- Implemented `OktaTokenExchange` using the `okta-client-python` SDK (`CrossAppAccessFlow`). Set `XAA_TOKEN_EXCHANGE_IMPL=okta_sdk` (default) or `http` for direct HTTP calls.
+- Added `okta-client-python>=0.2.0` to `auth` extra (guarded by `try/except ImportError`).
+- Refactored `authenticate()` to delegate to `get_token_exchange()` plugin — removed ~100 lines of duplicated HTTP logic and instance methods.
+- Inlined `_CrossAppExtensionFields`; made `get_token_exchange()` synchronous; enriched docstrings with XAA flow context.
 
 ## 0.15.53
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).
