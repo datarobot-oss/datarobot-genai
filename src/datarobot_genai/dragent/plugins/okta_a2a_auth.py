@@ -416,9 +416,11 @@ class OktaTokenExchange(XAATokenExchange):
             audience=org_token_url,
             expires_in=300,
         )
+        additional_parameters = {"resource": params.target_audience}
         client = OAuth2Client(
             configuration=OAuth2ClientConfiguration(
                 issuer=params.trusted_issuer,
+                additional_parameters=additional_parameters,
                 client_authorization=ClientAssertionAuthorization(
                     assertion_claims=claims,
                     key_provider=key_provider,
