@@ -4,11 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.57
-- Implemented `OktaTokenExchange` using the `okta-client-python` SDK (`CrossAppAccessFlow`). Set `XAA_TOKEN_EXCHANGE_IMPL=okta_sdk` (default) or `http` for direct HTTP calls.
-- Added `okta-client-python>=0.2.0` to `auth` extra (guarded by `try/except ImportError`).
-- Refactored `authenticate()` to delegate to `get_token_exchange()` plugin — removed ~100 lines of duplicated HTTP logic and instance methods.
-- Inlined `_CrossAppExtensionFields`; made `get_token_exchange()` synchronous; enriched docstrings with XAA flow context.
+## 0.15.55
+- Fixes related to the agent card parsing and mapping to the xaa (cross-application access) token exchange flow.
+- Added two versions of xaa (cross-application access) token exchange flow: one using the `okta-client-python` SDK. Set `XAA_TOKEN_EXCHANGE_IMPL=okta_sdk` (default) or `http` for implementation making direct HTTP calls.
+
+## 0.15.54
+- `langgraph/mcp.py`: Fixed `RuntimeError: generator didn't stop after athrow()` in `mcp_tools_context` when a connection-type exception (`ConnectionError`, `OSError`, `TimeoutError`, `ExceptionGroup`) is raised by the consumer inside the `async with` block. A `connected` flag now distinguishes setup-phase failures (graceful fallback to empty tools) from consumer exceptions (re-raised so the caller sees them). Without this guard the except clause would execute a second `yield []`, violating the `@asynccontextmanager` single-yield contract.
 
 ## 0.15.53
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).
