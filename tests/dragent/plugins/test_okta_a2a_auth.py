@@ -223,7 +223,7 @@ class TestOAuth2CrossApplicationAccessAuthProviderSetAgentCard:
         assert params.exchange_audience == _EXCHANGE_AUDIENCE
         assert params.target_audience == _TARGET_AUDIENCE
         assert params.token_endpoint_auth_method == _AUTH_METHOD
-        assert params.id_jag_scopes == ["read_data"]
+        assert params.id_jag_scopes == ["read_data"]  # from agent card securitySchemes scopes
 
 
 class TestParseCrossAppParams:
@@ -236,13 +236,57 @@ class TestParseCrossAppParams:
         assert params.exchange_audience == _EXCHANGE_AUDIENCE
         assert params.target_audience == _TARGET_AUDIENCE
         assert params.token_endpoint_auth_method == _AUTH_METHOD
-        assert params.id_jag_scopes == ["read_data"]
+        assert params.id_jag_scopes == ["read_data"]  # from agent card securitySchemes scopes
 
-    def test_parse_cross_app_params_custom_scopes(self):
-        """_parse_cross_app_params uses caller-supplied scopes when provided."""
-        params = _parse_cross_app_params(_make_agent_card(), id_jag_scopes=["openid", "profile"])
+    def test_parse_cross_app_params_scopes_come_from_card(self):
+        """id_jag_scopes are sourced from securitySchemes, not config."""
+        # Build a card with a different scope to confirm it flows through
+        from a2a.types import AgentCapabilities
+        from a2a.types import AgentExtension
+        from a2a.types import ClientCredentialsOAuthFlow
+        from a2a.types import OAuth2SecurityScheme
+        from a2a.types import OAuthFlows
+        from a2a.types import SecurityScheme
 
-        assert params.id_jag_scopes == ["openid", "profile"]
+        cc_flow = ClientCredentialsOAuthFlow(
+            token_url=_AGENT_TOKEN_URL,
+            scopes={"dr.impersonation": "Impersonation scope", "openid": "OpenID scope"},
+        )
+        security_scheme = SecurityScheme(
+            root=OAuth2SecurityScheme(type="oauth2", flows=OAuthFlows(client_credentials=cc_flow))
+        )
+        extension = AgentExtension(
+            uri="urn:ietf:params:oauth:grant-type:jwt-bearer",
+            description="",
+            params={
+                "token_endpoint_auth_method": _AUTH_METHOD,
+                "token_exchange": {
+                    "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                    "requested_token_type": "urn:ietf:params:oauth:token-type:id-jag",
+                    "trusted_issuer": _TRUSTED_ISSUER,
+                    "audience": _EXCHANGE_AUDIENCE,
+                },
+                "token_request": {
+                    "grant_type": _GRANT_TYPE,
+                    "audience": _TARGET_AUDIENCE,
+                },
+            },
+        )
+        card = AgentCard(
+            name="Test Agent",
+            description="Test",
+            url="https://agent.example.com/",
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False, extensions=[extension]),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+            security_schemes={"oauth2": security_scheme},
+            security=[{"oauth2": ["dr.impersonation"]}],
+        )
+        params = _parse_cross_app_params(card)
+
+        assert set(params.id_jag_scopes) == {"dr.impersonation", "openid"}
 
 
 class TestOAuth2CrossApplicationAccessAuthProviderConfigSerialization:
@@ -533,7 +577,7 @@ class TestCrossAppAccessEndToEnd:
         assert step1_body["subject_token"] == [incoming_token]
         assert step1_body["audience"] == [_EXCHANGE_AUDIENCE]
         assert step1_body["resource"] == [_TARGET_AUDIENCE]
-        assert step1_body["scope"] == ["read_data"]
+        assert step1_body["scope"] == ["read_data"]  # from agent card securitySchemes
         assert step1_body["client_assertion"] == [f"signed-jwt-for-{self._ORG_AS_TOKEN_URL}"]
 
         # -- Step 2 request: correct URL and key form fields (URL-decoded) --

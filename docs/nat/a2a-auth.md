@@ -178,7 +178,6 @@ authentication:
   okta_auth:
     _type: okta_cross_app_access
     # okta_token_header: "x-custom-header"  # Optional: override default header name
-    # id_jag_scopes: ["openid", "profile"]  # Optional: override Step 1 scopes
 ```
 
 ### How it works
@@ -236,7 +235,6 @@ remote XAA-protected agent.
 | `okta_token_header` | `x-datarobot-external-access-token` | Incoming request header carrying the caller's Okta access token. |
 | `principal_id` | `PRINCIPAL_ID` env var | Okta AI agent principal ID. |
 | `private_jwk` | `PRIVATE_JWK` env var | Base64-encoded or raw-JSON private JWK. |
-| `id_jag_scopes` | `["read_data"]` | Scopes for the Step 1 ID-JAG request. |
 
 ### Agent card mapping
 

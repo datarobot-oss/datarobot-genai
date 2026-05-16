@@ -4,7 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.54
+## 0.15.56
+- `scopes` are now read from the agent card `securitySchemes.oauth2.flows.clientCredentials.scopes` in the AgentCard.
 - Replaced XAA token exchange with direct api calls in `OAuth2CrossApplicationAccessOAuth2AuthProvider`
 
 ## 0.15.53

@@ -195,7 +195,8 @@ class _CrossAppFlowParams:
     ``"private_key_jwt"`` triggers a signed JWT client assertion on both steps."""
 
     id_jag_scopes: list[str]
-    """Step 1 scopes; sourced from provider config, not the agent card."""
+    """Scopes; sourced from ``securitySchemes.oauth2.flows.clientCredentials.scopes``
+    in the agent card."""
 
 
 # ---------------------------------------------------------------------------
@@ -243,13 +244,6 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         description=(
             "Base64-encoded or raw-JSON private JWK (env: ``PRIVATE_JWK``). "
             "Signs JWT client assertions."
-        ),
-    )
-    id_jag_scopes: list[str] = Field(
-        default=["read_data"],
-        description=(
-            "Scopes for the Step 1 ID-JAG request. ``['read_data']`` matches "
-            "Okta XAA reference implementations."
         ),
     )
 
@@ -300,14 +294,15 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         Called before ``authenticate()``.  Raises ``ValueError`` if security
         schemes or the JWT Bearer capability extension are missing.
         """
-        self._flow_params = _parse_cross_app_params(card, id_jag_scopes=self.config.id_jag_scopes)
+        self._flow_params = _parse_cross_app_params(card)
         logger.info(
             "Agent card parsed: trusted_issuer=%s, exchange_audience=%s, "
-            "target_audience=%s, token_endpoint_auth_method=%s",
+            "target_audience=%s, token_endpoint_auth_method=%s, id_jag_scopes=%s",
             self._flow_params.trusted_issuer,
             self._flow_params.exchange_audience,
             self._flow_params.target_audience,
             self._flow_params.token_endpoint_auth_method,
+            self._flow_params.id_jag_scopes,
         )
 
     # ------------------------------------------------------------------
@@ -522,16 +517,14 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
 # ---------------------------------------------------------------------------
 
 
-def _parse_cross_app_params(
-    card: AgentCard,
-    id_jag_scopes: list[str] | None = None,
-) -> _CrossAppFlowParams:
+def _parse_cross_app_params(card: AgentCard) -> _CrossAppFlowParams:
     """Extract :class:`_CrossAppFlowParams` from a fetched :class:`AgentCard`.
 
-    Combines ``securitySchemes.oauth2.flows.clientCredentials`` (``tokenUrl``) and
-    ``capabilities.extensions`` (JWT Bearer entry) into a single params object.
+    Combines ``securitySchemes.oauth2.flows.clientCredentials`` (``tokenUrl``,
+    ``scopes``) and ``capabilities.extensions`` (JWT Bearer entry) into a single
+    params object.
     """
-    token_url, _ = _parse_security_schemes(card)
+    token_url, scopes = _parse_security_schemes(card)
     ext = _parse_cross_app_extension(card)
 
     return _CrossAppFlowParams(
@@ -540,7 +533,7 @@ def _parse_cross_app_params(
         exchange_audience=ext.exchange_audience,
         target_audience=ext.target_audience,
         token_endpoint_auth_method=ext.token_endpoint_auth_method,
-        id_jag_scopes=id_jag_scopes if id_jag_scopes is not None else ["read_data"],
+        id_jag_scopes=scopes,
     )
 
 
