@@ -105,6 +105,7 @@ auth = [
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
   "pyjwt[crypto]>=2.12.0,<3.0.0",  # [crypto] extra adds cryptography for RSA signing
+  "okta-client-python>=0.2.0,<1.0.0",  # optional at runtime; guarded by try/except ImportError
 ]
 
 # drtools: no subpackages dependencies other than auth.

@@ -79,6 +79,19 @@ from pydantic import SecretStr
 
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 
+try:
+    from okta_client.authfoundation import LocalKeyProvider
+    from okta_client.authfoundation import OAuth2Client
+    from okta_client.authfoundation import OAuth2ClientConfiguration
+    from okta_client.authfoundation.oauth2.client_authorization import ClientAssertionAuthorization
+    from okta_client.authfoundation.oauth2.jwt_bearer_claims import JWTBearerClaims
+    from okta_client.oauth2auth import CrossAppAccessFlow
+    from okta_client.oauth2auth import CrossAppAccessTarget
+
+    _HAS_OKTA_SDK = True
+except ImportError:
+    _HAS_OKTA_SDK = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -355,19 +368,71 @@ class XAATokenExchange(Protocol):
 class OktaTokenExchange(XAATokenExchange):
     """Token exchange via the ``okta-client-python`` SDK.
 
-    .. note::
-        Not yet implemented.  Set ``XAA_TOKEN_EXCHANGE_IMPL=http`` to use the
-        :class:`ApiTokenExchange` HTTP implementation instead.
+    Delegates both XAA steps to :class:`CrossAppAccessFlow` which handles
+    the RFC 8693 token exchange and RFC 7523 JWT Bearer grant internally.
+
+    Requires the ``okta-client-python`` package (``pip install okta-client-python``).
     """
 
     def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
         self.config = config
 
     async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
-        raise NotImplementedError(
-            "OktaTokenExchange is not yet implemented. "
-            "Set XAA_TOKEN_EXCHANGE_IMPL=http to use the HTTP implementation."
+        if not _HAS_OKTA_SDK:
+            raise RuntimeError(
+                "okta-client-python is not installed. "
+                "Install it (`pip install okta-client-python`) or "
+                "set XAA_TOKEN_EXCHANGE_IMPL=http to use the HTTP implementation."
+            )
+
+        if not self.config.principal_id:
+            raise ValueError("principal_id is required for the Okta cross-app access flow")
+        if not self.config.private_jwk:
+            raise ValueError("private_jwk is required for the Okta cross-app access flow")
+
+        private_jwk = _parse_private_jwk(self.config.private_jwk.get_secret_value())
+        org_token_url = params.trusted_issuer.rstrip("/") + "/oauth2/v1/token"
+
+        key_provider = LocalKeyProvider(
+            key=private_jwk,
+            algorithm=private_jwk.get("alg", "RS256"),
+            key_id=private_jwk.get("kid"),
         )
+        claims = JWTBearerClaims(
+            issuer=self.config.principal_id,
+            subject=self.config.principal_id,
+            audience=org_token_url,
+            expires_in=300,
+        )
+        client_config = OAuth2ClientConfiguration(
+            issuer=params.trusted_issuer,
+            client_authorization=ClientAssertionAuthorization(
+                assertion_claims=claims,
+                key_provider=key_provider,
+            ),
+        )
+        client = OAuth2Client(configuration=client_config)
+        target = CrossAppAccessTarget(issuer=params.exchange_audience)
+        flow = CrossAppAccessFlow(client=client, target=target)
+
+        logger.info(
+            "OktaTokenExchange: starting SDK cross-app access flow "
+            "(trusted_issuer=%s, exchange_audience=%s)",
+            params.trusted_issuer,
+            params.exchange_audience,
+        )
+
+        result = await flow.start(
+            token=subject_token,
+            audience=params.exchange_audience,
+            scope=params.id_jag_scopes,
+        )
+        if result.resume_assertion_claims is not None:
+            logger.info("OktaTokenExchange: SDK requires resume step")
+        token = await flow.resume()
+
+        logger.info("OktaTokenExchange: cross-app access flow completed successfully")
+        return token.access_token
 
 
 class ApiTokenExchange(XAATokenExchange):
