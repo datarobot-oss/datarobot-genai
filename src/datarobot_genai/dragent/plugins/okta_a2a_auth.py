@@ -436,6 +436,7 @@ class OktaTokenExchange(XAATokenExchange):
 
         result = await flow.start(
             token=subject_token,
+            token_type="access_token",
             audience=params.exchange_audience,
             scope=params.id_jag_scopes,
         )
