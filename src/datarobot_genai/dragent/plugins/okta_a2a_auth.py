@@ -758,7 +758,6 @@ def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
     )
 
 
-
 # ---------------------------------------------------------------------------
 # NAT registration
 # ---------------------------------------------------------------------------
@@ -770,11 +769,3 @@ async def okta_cross_app_access_auth_provider(
 ) -> AsyncGenerator[OAuth2CrossApplicationAccessOAuth2AuthProvider, None]:
     """NAT auth provider factory for Cross-Application Access."""
     yield OAuth2CrossApplicationAccessOAuth2AuthProvider(config=config)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases (deprecated)
-# ---------------------------------------------------------------------------
-
-OktaCrossApplicationAccessAuthProviderConfig = OAuth2CrossApplicationAccessAuthProviderConfig
-OktaCrossApplicationAccessAuthProvider = OAuth2CrossApplicationAccessOAuth2AuthProvider
