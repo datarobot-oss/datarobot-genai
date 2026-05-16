@@ -52,11 +52,14 @@ Environment variables consumed (map to the reference ``Config`` field names):
 import base64
 import json
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
+from typing import Protocol
 
 import httpx
 import jwt
@@ -246,6 +249,74 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             "Signs JWT client assertions."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Token exchange implementations
+# ---------------------------------------------------------------------------
+
+
+class XAATokenExchangeImpl(StrEnum):
+    """Allowed values for ``XAA_TOKEN_EXCHANGE_IMPL``.
+
+    Set the ``XAA_TOKEN_EXCHANGE_IMPL`` environment variable to select the
+    token exchange implementation used by :func:`get_token_exchange`.
+    """
+
+    HTTP = "http"
+    OKTA_SDK = "okta_sdk"
+
+
+_IMPL_ENV_VAR = "XAA_TOKEN_EXCHANGE_IMPL"
+_IMPL_DEFAULT = XAATokenExchangeImpl.OKTA_SDK
+
+
+class XAATokenExchange(Protocol):
+    """Protocol for XAA token exchange implementations."""
+
+    def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
+        self.config = config
+
+    async def exchange_token(self, params: _CrossAppFlowParams) -> str:
+        """Execute the full two-step XAA flow and return the final access token."""
+        ...
+
+
+class OktaTokenExchange(XAATokenExchange):
+    """Token exchange via the ``okta-client-python`` SDK."""
+
+    async def exchange_token(self, params: _CrossAppFlowParams) -> str:
+        raise NotImplementedError
+
+
+class ApiTokenExchange(XAATokenExchange):
+    """Token exchange via direct HTTP calls (``httpx`` + ``PyJWT``)."""
+
+    async def exchange_token(self, params: _CrossAppFlowParams) -> str:
+        raise NotImplementedError
+
+
+def _get_token_exchange_impl() -> XAATokenExchangeImpl:
+    """Read and validate ``XAA_TOKEN_EXCHANGE_IMPL`` from the environment.
+
+    Returns the default (``okta_sdk``) when the variable is unset.
+    Raises ``ValueError`` with the list of allowed values on an invalid input.
+    """
+    raw = (os.getenv(_IMPL_ENV_VAR) or _IMPL_DEFAULT).strip().lower()
+    try:
+        return XAATokenExchangeImpl(raw)
+    except ValueError as exc:
+        allowed = ", ".join(m.value for m in XAATokenExchangeImpl)
+        raise ValueError(f"Invalid {_IMPL_ENV_VAR}='{raw}'. Allowed values: {allowed}") from exc
+
+
+async def get_token_exchange(
+    config: OAuth2CrossApplicationAccessAuthProviderConfig,
+) -> XAATokenExchange:
+    """Return the configured :class:`XAATokenExchange` implementation."""
+    if _get_token_exchange_impl() is XAATokenExchangeImpl.HTTP:
+        return ApiTokenExchange(config)
+    return OktaTokenExchange(config)
 
 
 # ---------------------------------------------------------------------------

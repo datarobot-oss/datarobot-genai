@@ -31,13 +31,18 @@ from a2a.types import SecurityScheme
 from httpx import Response
 from nat.data_models.authentication import BearerTokenCred
 
+from datarobot_genai.dragent.plugins.okta_a2a_auth import ApiTokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessAuthProviderConfig,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
+from datarobot_genai.dragent.plugins.okta_a2a_auth import OktaTokenExchange
+from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchangeImpl
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _get_token_exchange_impl
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _parse_cross_app_params
+from datarobot_genai.dragent.plugins.okta_a2a_auth import get_token_exchange
 
 _MODULE = "datarobot_genai.dragent.plugins.okta_a2a_auth"
 
@@ -301,6 +306,31 @@ class TestOAuth2CrossApplicationAccessAuthProviderConfigSerialization:
         restored = OAuth2CrossApplicationAccessAuthProviderConfig.model_validate(payload)
         assert restored.private_jwk is not None
         assert restored.private_jwk.get_secret_value() == _FAKE_JWK_B64
+
+
+class TestTokenExchangeImplSelection:
+    def test_default_impl_is_okta_sdk_when_env_absent(self, monkeypatch):
+        monkeypatch.delenv("XAA_TOKEN_EXCHANGE_IMPL", raising=False)
+        assert _get_token_exchange_impl() is XAATokenExchangeImpl.OKTA_SDK
+
+    def test_http_impl_from_env(self, monkeypatch):
+        monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "http")
+        assert _get_token_exchange_impl() is XAATokenExchangeImpl.HTTP
+
+    def test_invalid_impl_raises_value_error(self, monkeypatch):
+        monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "banana")
+        with pytest.raises(ValueError, match="XAA_TOKEN_EXCHANGE_IMPL"):
+            _get_token_exchange_impl()
+
+    async def test_get_token_exchange_dispatches_http(self, monkeypatch):
+        monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "http")
+        exchange = await get_token_exchange(OAuth2CrossApplicationAccessAuthProviderConfig())
+        assert isinstance(exchange, ApiTokenExchange)
+
+    async def test_get_token_exchange_dispatches_okta_sdk(self, monkeypatch):
+        monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "okta_sdk")
+        exchange = await get_token_exchange(OAuth2CrossApplicationAccessAuthProviderConfig())
+        assert isinstance(exchange, OktaTokenExchange)
 
 
 class TestMakeClientAssertion:
