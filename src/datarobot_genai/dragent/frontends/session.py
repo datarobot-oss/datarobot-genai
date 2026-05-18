@@ -26,10 +26,8 @@ from nat.data_models.authentication import AuthFlowType
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.interactive import HumanResponse
 from nat.data_models.interactive import InteractionPrompt
-from nat.data_models.user_info import UserInfo
 from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
-from nat.runtime.user_manager import UserManager
 from nat.runtime.user_metadata import RequestAttributes
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
@@ -42,39 +40,35 @@ from .response import DRAgentEventResponse
 logger = logging.getLogger(__name__)
 
 
-def _patch_user_manager() -> None:
-    """Extend ``UserManager.extract_user_from_connection`` with DataRobot auth.
+_auth_handler = AuthContextHeaderHandler()
 
-    NAT 1.6 replaced the extensible context-based user_id resolution with
-    ``UserManager.extract_user_from_connection()`` (#1775) which only supports
-    standard auth (Bearer JWT, cookies, API key).  DataRobot passes user identity
-    via ``X-DataRobot-Authorization-Context``, which UserManager doesn't know about.
 
-    This monkey-patches ``extract_user_from_connection`` to try the DataRobot header
-    first, falling back to the original implementation for standard auth.
+def _resolve_dr_user_id(headers: dict[str, str]) -> str | None:
+    """Resolve ``user_id`` from DataRobot-specific request headers.
+
+    Tries ``X-DataRobot-Authorization-Context`` (signed app-context JWT
+    carrying the full identity) first, then ``X-DataRobot-User-Id``
+    (populated by predictions-gateway for any authenticated deployment
+    request, including direct API-token calls).
+
+    Returns ``None`` if neither header yields a value; callers should fall
+    through to NAT's standard extractor (Bearer/JWT/cookie/API-key) in
+    that case.
     """
-    if getattr(UserManager.extract_user_from_connection, "_dr_patched", False):
-        return
+    auth_ctx = _auth_handler.get_context(headers)
+    if auth_ctx is not None:
+        logger.debug(
+            "Resolved user_id from X-DataRobot-Authorization-Context: %s", auth_ctx.user.id
+        )
+        return auth_ctx.user.id
 
-    auth_handler = AuthContextHeaderHandler()
-    original_extract = UserManager.extract_user_from_connection
+    user_id = headers.get("x-datarobot-user-id") or headers.get("X-DataRobot-User-Id")
+    if user_id:
+        logger.debug("Resolved user_id from X-DataRobot-User-Id header: %s", user_id)
+        return user_id
 
-    def _extract_with_dr_auth(cls: type, connection: HTTPConnection) -> UserInfo | None:
-        if isinstance(connection, Request):
-            auth_ctx = auth_handler.get_context(dict(connection.headers))
-            if auth_ctx is not None:
-                user_info = UserInfo._from_session_cookie(auth_ctx.user.id)
-                logger.debug(
-                    "Resolved user_id from DataRobot auth context: %s", user_info.get_user_id()
-                )
-                return user_info
-        return original_extract.__func__(cls, connection)
+    return None
 
-    _extract_with_dr_auth._dr_patched = True  # type: ignore[attr-defined]
-    UserManager.extract_user_from_connection = classmethod(_extract_with_dr_auth)  # type: ignore[assignment]
-
-
-_patch_user_manager()
 
 # ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
 # request headers into the NAT context so auth providers (e.g. OAuth2CrossApplicationAccess)
@@ -108,23 +102,35 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Bridge A2A and other callers that preset ``ContextState.user_id``.
+        """Bridge A2A and HTTP callers that need DataRobot-specific ``user_id`` resolution.
 
-        NAT 1.6+ assigns ``self._context_state.user_id`` from the explicit ``user_id``
-        argument only. The A2A adapter calls ``session()`` with no arguments; our
-        executor sets ``context_id`` on the context var first, but the parent
-        ``session()`` would overwrite it with ``None``. Copy any preset non-empty
-        value into ``user_id`` before delegating so per-user workflows work without
-        a Bearer JWT (local dev / message-only A2A).
+        NAT 1.6+ assigns ``self._context_state.user_id`` from the explicit
+        ``user_id`` argument only. Two resolution paths run before delegating:
+
+        1. A2A preset: :class:`_PerUserCompatibleAgentExecutor` writes the A2A
+           ``context_id`` into ``ContextState.user_id``. NAT would overwrite
+           that with ``None``, so we copy any non-empty preset back into the
+           explicit ``user_id`` kwarg.
+        2. DataRobot HTTP headers: when called via FastAPI with no explicit
+           ``user_id``, :func:`_resolve_dr_user_id` reads
+           ``X-DataRobot-Authorization-Context`` (signed app-context JWT) or
+           ``X-DataRobot-User-Id`` (set by predictions-gateway for any
+           authenticated deployment request).
+
+        If both leave ``user_id`` as ``None``, NAT's standard extractor
+        (Bearer/JWT/cookie/API-key) runs inside ``super().session()``.
 
         Additionally, A2A HTTP request headers stored in the module-level
-        ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor` are
-        injected into ``ContextState._metadata``.
+        ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor`
+        are injected into ``ContextState._metadata``.
         """
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
+
+        if user_id is None and isinstance(http_connection, Request):
+            user_id = _resolve_dr_user_id(dict(http_connection.headers))
 
         # Inject A2A request headers BEFORE super().session() so they are
         # available during per-user builder creation (agent card discovery

@@ -21,15 +21,14 @@ from fastapi import Request
 from nat.builder.context import ContextState
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
-from nat.data_models.user_info import UserInfo
 from nat.runtime.session import SessionManager
-from nat.runtime.user_manager import UserManager
 
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
+from datarobot_genai.dragent.frontends.session import _resolve_dr_user_id
 
 
 @pytest.fixture
@@ -167,39 +166,85 @@ class TestBuildMetadataFromHeaders:
         assert attrs.headers == {}
 
 
-class TestUserManagerPatch:
-    """Verify that the UserManager monkey-patch resolves DR auth context.
+class TestResolveDrUserId:
+    """Verify DataRobot header resolution used by DRAgentAGUISessionManager.session()."""
 
-    The patch is applied at module import time by session.py's ``_patch_user_manager()``.
-    These tests verify the already-applied patch.
-    """
-
-    def test_dr_auth_context_resolves_to_user_info(self):
-        """UserManager returns UserInfo when DR auth context header is present."""
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"x-datarobot-authorization-context": "fake-jwt"}
-        mock_request.cookies = {}
+    def test_authorization_context_takes_precedence(self):
+        """Signed auth-context header wins over the gateway User-Id fallback."""
         mock_auth_ctx = MagicMock()
-        mock_auth_ctx.user.id = "user-abc-123"
+        mock_auth_ctx.user.id = "user-from-ctx"
 
-        # Patch the handler instance captured by _patch_user_manager at import time
         with patch(
-            "datarobot_genai.dragent.frontends.session.AuthContextHeaderHandler.get_context",
+            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
             return_value=mock_auth_ctx,
         ):
-            result = UserManager.extract_user_from_connection(mock_request)
+            result = _resolve_dr_user_id(
+                {
+                    "x-datarobot-authorization-context": "fake-jwt",
+                    "x-datarobot-user-id": "user-from-gateway",
+                }
+            )
 
-        assert result is not None
-        assert isinstance(result, UserInfo)
-        expected = UserInfo._from_session_cookie("user-abc-123")
-        assert result.get_user_id() == expected.get_user_id()
+        assert result == "user-from-ctx"
 
-    def test_falls_back_to_original_when_no_dr_header(self):
-        """UserManager falls back to standard auth when no DR header is present."""
-        mock_request = MagicMock(spec=Request)
-        mock_request.cookies = {}
-        mock_request.headers = {}
+    def test_falls_back_to_user_id_header(self):
+        """``X-DataRobot-User-Id`` is used when no auth-context header is present."""
+        with patch(
+            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
+            return_value=None,
+        ):
+            result = _resolve_dr_user_id({"x-datarobot-user-id": "user-from-gateway"})
 
-        result = UserManager.extract_user_from_connection(mock_request)
+        assert result == "user-from-gateway"
+
+    def test_returns_none_when_no_dr_headers(self):
+        """No DR headers → fall through so NAT's standard extractor runs."""
+        with patch(
+            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
+            return_value=None,
+        ):
+            result = _resolve_dr_user_id({})
 
         assert result is None
+
+
+class TestSessionResolvesDrHeaders:
+    """Verify session() wires _resolve_dr_user_id into the NAT user_id kwarg."""
+
+    @pytest.mark.asyncio
+    async def test_session_resolves_user_id_from_dr_headers(self, session_manager):
+        """When http_connection is a Request, DR headers drive user_id without monkey-patching."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"x-datarobot-user-id": "user-from-gateway"}
+
+        captured: dict[str, object] = {}
+
+        @asynccontextmanager
+        async def fake_nat_session(self, **kwargs: object):
+            captured.update(kwargs)
+            yield MagicMock()
+
+        with patch.object(SessionManager, "session", fake_nat_session):
+            async with session_manager.session(http_connection=mock_request):
+                pass
+
+        assert captured.get("user_id") == "user-from-gateway"
+
+    @pytest.mark.asyncio
+    async def test_session_leaves_user_id_none_when_no_dr_headers(self, session_manager):
+        """Without DR headers, user_id is forwarded as None so NAT's extractor runs."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {}
+
+        captured: dict[str, object] = {}
+
+        @asynccontextmanager
+        async def fake_nat_session(self, **kwargs: object):
+            captured.update(kwargs)
+            yield MagicMock()
+
+        with patch.object(SessionManager, "session", fake_nat_session):
+            async with session_manager.session(http_connection=mock_request):
+                pass
+
+        assert captured.get("user_id") is None
