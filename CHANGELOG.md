@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.56
+- `AgentKernel.custom_model`: HTTP 4xx/5xx now raise `requests.HTTPError` (via `response.raise_for_status()`) instead of plain `Exception`, so callers can classify failures by status code.
+
 ## 0.15.55
 - Fixes related to the agent card parsing and mapping to the xaa (cross-application access) token exchange flow.
 - Added two versions of xaa (cross-application access) token exchange flow: one using the `okta-client-python` SDK. Set `XAA_TOKEN_EXCHANGE_IMPL=okta_sdk` (default) or `http` for implementation making direct HTTP calls.
