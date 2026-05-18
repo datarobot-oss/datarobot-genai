@@ -138,9 +138,12 @@ class AgentKernel:
             headers=headers,
             json=data,
         )
-
-        if not response.ok or not response.headers.get("Location"):
-            raise Exception(response.text)
+        response.raise_for_status()
+        if not response.headers.get("Location"):
+            raise Exception(
+                f"POST {chat_api_url} returned {response.status_code} without Location header: "
+                f"{response.text!r}"
+            )
         # Wait for the agent to complete
         status_location = response.headers["Location"]
         while response.ok:
@@ -148,16 +151,15 @@ class AgentKernel:
             response = requests.get(
                 status_location, headers=headers, allow_redirects=False, timeout=timeout
             )
+            response.raise_for_status()
             if response.status_code == 303:
-                agent_response = requests.get(response.headers["Location"], headers=headers).json()
-                # Show the agent response
+                result_resp = requests.get(response.headers["Location"], headers=headers)
+                result_resp.raise_for_status()
+                agent_response = result_resp.json()
                 break
-            else:
-                status_response = response.json()
-                if status_response["status"] in ["ERROR", "ABORTED"]:
-                    raise Exception(status_response)
-        else:
-            raise Exception(response.content)
+            status_response = response.json()
+            if status_response["status"] in ["ERROR", "ABORTED"]:
+                raise Exception(str(status_response))
 
         if "errorMessage" in agent_response and agent_response["errorMessage"]:
             return (
