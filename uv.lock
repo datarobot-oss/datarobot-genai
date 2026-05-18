@@ -1085,15 +1085,17 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.54"
+version = "0.15.55"
 source = { editable = "." }
 
 [package.optional-dependencies]
 auth = [
     { name = "aiohttp" },
     { name = "datarobot", extra = ["auth"] },
+    { name = "httpx" },
     { name = "okta-client-python" },
     { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
 ]
 core = [
     { name = "ag-ui-protocol" },
@@ -1189,7 +1191,7 @@ drmcp = [
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pyjwt" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pypdf" },
     { name = "python-dateutil" },
     { name = "python-dotenv" },
@@ -1208,6 +1210,7 @@ drtools = [
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pypdf" },
     { name = "python-dateutil" },
     { name = "tavily-python" },
@@ -1362,6 +1365,7 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
     { name = "fastapi", marker = "extra == 'dragent'", specifier = "<0.133.0" },
     { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.2.0,<4.0.0" },
+    { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
@@ -1466,6 +1470,9 @@ requires-dist = [
     { name = "pyjwt", marker = "extra == 'langgraph'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'llamaindex'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'nat'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'auth'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcp'", specifier = ">=2.12.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drtools'", specifier = ">=2.12.0,<3.0.0" },
     { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.10.1,<7.0.0" },
     { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.10.1,<7.0.0" },
     { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.10.1,<7.0.0" },

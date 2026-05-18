@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.55
+- Fixes related to the agent card parsing and mapping to the xaa (cross-application access) token exchange flow.
+- Added two versions of xaa (cross-application access) token exchange flow: one using the `okta-client-python` SDK. Set `XAA_TOKEN_EXCHANGE_IMPL=okta_sdk` (default) or `http` for implementation making direct HTTP calls.
+- Renamed XAA environment variables: `PRINCIPAL_ID` → `IDP_AGENT_ID` and `PRIVATE_JWK` → `IDP_AGENT_PRIVATE_KEY_JWK`. The old names are still accepted for backward compatibility but are deprecated.
+
 ## 0.15.54
 - `langgraph/mcp.py`: Fixed `RuntimeError: generator didn't stop after athrow()` in `mcp_tools_context` when a connection-type exception (`ConnectionError`, `OSError`, `TimeoutError`, `ExceptionGroup`) is raised by the consumer inside the `async with` block. A `connected` flag now distinguishes setup-phase failures (graceful fallback to empty tools) from consumer exceptions (re-raised so the caller sees them). Without this guard the except clause would execute a second `yield []`, violating the `@asynccontextmanager` single-yield contract.
 
