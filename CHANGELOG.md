@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.58
+- [MODEL-23506] `drmcp` dynamic tools: route chat-capable deployments to `/chat/completions` instead of `/predictions`. `DrumMetadataAdapter` now honors a `supports_chat_api` flag in metadata (sourced from the deployment's `/capabilities/` API by `get_mcp_tool_metadata`). When the flag is true the adapter returns endpoint `/chat/completions`, drops the `text/csv` Content-Type header, and uses the agentic (messages) fallback input schema. Defaults to `False` so legacy TextGeneration custom models served on `/predictions` retain their current routing. Fixes the 503 "Inference server is starting" reported when registering Guarded RAG / LLM-blueprint / NIM-served TextGeneration deployments as dynamic MCP tools.
+
 ## 0.15.57
 - Registered DataRobot moderation middleware on the `nat.plugins` entry point `datarobot_moderation_middleware` so `_type: datarobot_moderation` is available when NAT loads plugins.
 - NAT / dragent moderation: `DataRobotModerationConfig` no longer uses `model_dir` to locate guard YAML. Configure guards with the optional `moderation` field (`ModerationConfig` from `datarobot_dome`). In `workflow.yaml`, nest guard definitions under `middleware.datarobot_guardrails.moderation` instead of setting `model_dir` to a directory that contained `moderation_config.yaml`.

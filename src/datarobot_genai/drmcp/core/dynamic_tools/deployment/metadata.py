@@ -121,6 +121,40 @@ def _fetch_deployment_metadata(deployment: dr.Deployment) -> dict[str, Any]:
         raise RuntimeError(f"Could not retrieve metadata for deployment {deployment.id}") from exc
 
 
+def _fetch_supports_chat_api(deployment: dr.Deployment) -> bool:
+    """Return whether the deployment advertises chat completions support.
+
+    Reads the ``supports_chat_api`` flag from the deployment's
+    ``/capabilities/`` endpoint. Defaults to ``False`` on any failure or when
+    the flag is absent so that endpoint routing for legacy deployments without
+    this capability stays on ``/predictions``.
+
+    Args:
+        deployment: The DataRobot deployment object.
+
+    Returns
+    -------
+        True only when the capability is present and explicitly true.
+    """
+    api_client = get_api_client()
+
+    try:
+        response = api_client.get(url=f"deployments/{deployment.id}/capabilities/")
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        logger.warning(
+            f"Could not fetch capabilities for deployment {deployment.id}; "
+            f"assuming chat API not supported: {exc}"
+        )
+        return False
+
+    for capability in payload.get("data", []) or []:
+        if capability.get("name") == "supports_chat_api":
+            return bool(capability.get("supported", False))
+    return False
+
+
 def get_mcp_tool_metadata(deployment: dr.Deployment) -> MetadataBase:
     """Fetch and validate metadata for a given deployment.
 
@@ -147,13 +181,20 @@ def get_mcp_tool_metadata(deployment: dr.Deployment) -> MetadataBase:
         metadata properties for tool registration in a standard way.
     """
     # Check if this is a DataRobot native structured prediction model
-    # These don't support metadata API, so we create minimal metadata
+    # These don't support metadata API, so we create minimal metadata.
+    # Native DR predictive models are never chat-capable, so we skip the
+    # capabilities lookup for them.
     target_type = _is_datarobot_structured_prediction(deployment)
     if target_type:
         return DrumMetadataAdapter.from_target_type(target_type)
 
     # Fetch metadata from the deployment's info endpoint
     metadata = _fetch_deployment_metadata(deployment)
+
+    # Inject the chat-API capability flag so adapters can route chat-style
+    # deployments (e.g. Guarded RAG, LLM blueprints) to /chat/completions
+    # instead of /predictions. Defaults to False when absent.
+    metadata["supports_chat_api"] = _fetch_supports_chat_api(deployment)
 
     # Return appropriate adapter based on metadata type
     if is_drum(metadata):

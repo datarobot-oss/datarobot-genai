@@ -19,6 +19,7 @@ import pytest
 
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import is_drum
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import _fetch_deployment_metadata
+from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import _fetch_supports_chat_api
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import _get_model_attribute
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import (
     _is_datarobot_structured_prediction,
@@ -282,14 +283,19 @@ class TestGetMcpToolMetadata:
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_deployment_metadata"
     )
+    @patch(
+        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api"
+    )
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.is_drum")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.DrumMetadataAdapter")
     def test_drum_metadata_returns_drum_adapter(
-        self, mock_drum_adapter, mock_is_drum, mock_fetch, mock_is_structured
+        self, mock_drum_adapter, mock_is_drum, mock_fetch_chat, mock_fetch, mock_is_structured
     ):
-        """Test that DRUM metadata returns DrumMetadataAdapter."""
+        """Test that DRUM metadata returns DrumMetadataAdapter and that the
+        chat-API capability flag is injected into the metadata dict."""
         mock_is_structured.return_value = None
         mock_fetch.return_value = {"server": "drum"}
+        mock_fetch_chat.return_value = False
         mock_is_drum.return_value = True
         mock_adapter = Mock()
         mock_drum_adapter.from_deployment_metadata.return_value = mock_adapter
@@ -299,8 +305,13 @@ class TestGetMcpToolMetadata:
 
         assert result == mock_adapter
         mock_fetch.assert_called_once_with(deployment)
-        mock_is_drum.assert_called_once_with({"server": "drum"})
-        mock_drum_adapter.from_deployment_metadata.assert_called_once_with({"server": "drum"})
+        mock_fetch_chat.assert_called_once_with(deployment)
+        mock_is_drum.assert_called_once_with(
+            {"server": "drum", "supports_chat_api": False}
+        )
+        mock_drum_adapter.from_deployment_metadata.assert_called_once_with(
+            {"server": "drum", "supports_chat_api": False}
+        )
 
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._is_datarobot_structured_prediction"
@@ -308,14 +319,18 @@ class TestGetMcpToolMetadata:
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_deployment_metadata"
     )
+    @patch(
+        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api"
+    )
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.is_drum")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.Metadata")
     def test_default_metadata_returns_metadata_adapter(
-        self, mock_metadata, mock_is_drum, mock_fetch, mock_is_structured
+        self, mock_metadata, mock_is_drum, mock_fetch_chat, mock_fetch, mock_is_structured
     ):
         """Test that default metadata returns Metadata adapter."""
         mock_is_structured.return_value = None
         mock_fetch.return_value = {"server": "other"}
+        mock_fetch_chat.return_value = True
         mock_is_drum.return_value = False
         mock_adapter = Mock()
         mock_metadata.return_value = mock_adapter
@@ -325,5 +340,98 @@ class TestGetMcpToolMetadata:
 
         assert result == mock_adapter
         mock_fetch.assert_called_once_with(deployment)
-        mock_is_drum.assert_called_once_with({"server": "other"})
-        mock_metadata.assert_called_once_with({"server": "other"})
+        mock_is_drum.assert_called_once_with(
+            {"server": "other", "supports_chat_api": True}
+        )
+        mock_metadata.assert_called_once_with(
+            {"server": "other", "supports_chat_api": True}
+        )
+
+    @patch(
+        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._is_datarobot_structured_prediction"
+    )
+    @patch(
+        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_deployment_metadata"
+    )
+    @patch(
+        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api"
+    )
+    def test_structured_prediction_short_circuit_skips_chat_capability_fetch(
+        self, mock_fetch_chat, mock_fetch, mock_is_structured
+    ):
+        """Native DR predictive models skip both the info fetch and the
+        capabilities fetch — they are guaranteed non-chat structured models."""
+        mock_is_structured.return_value = "binary"
+
+        deployment = Mock()
+        get_mcp_tool_metadata(deployment)
+
+        mock_fetch.assert_not_called()
+        mock_fetch_chat.assert_not_called()
+
+
+class TestFetchSupportsChatApi:
+    """Test cases for _fetch_supports_chat_api."""
+
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    def test_returns_true_when_capability_present_and_supported(self, mock_get_client):
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {"name": "supports_target_drift_tracking", "supported": False},
+                {"name": "supports_chat_api", "supported": True},
+            ]
+        }
+        mock_client.get.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        deployment = Mock()
+        deployment.id = "dep-123"
+
+        assert _fetch_supports_chat_api(deployment) is True
+        mock_client.get.assert_called_once_with(url="deployments/dep-123/capabilities/")
+
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    def test_returns_false_when_capability_present_and_unsupported(self, mock_get_client):
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [{"name": "supports_chat_api", "supported": False}]
+        }
+        mock_client.get.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        deployment = Mock()
+        deployment.id = "dep-123"
+
+        assert _fetch_supports_chat_api(deployment) is False
+
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    def test_returns_false_when_capability_absent(self, mock_get_client):
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": []}
+        mock_client.get.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        deployment = Mock()
+        deployment.id = "dep-123"
+
+        assert _fetch_supports_chat_api(deployment) is False
+
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    def test_returns_false_on_api_error(self, mock_get_client):
+        """Older clusters without /capabilities/ should not break tool
+        registration — fail closed to /predictions routing."""
+        mock_client = Mock()
+        mock_client.get.side_effect = Exception("404 capabilities not found")
+        mock_get_client.return_value = mock_client
+
+        deployment = Mock()
+        deployment.id = "dep-123"
+
+        assert _fetch_supports_chat_api(deployment) is False

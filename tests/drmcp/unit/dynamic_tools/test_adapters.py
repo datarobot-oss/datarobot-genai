@@ -211,6 +211,53 @@ class TestDrumMetadataAdapter:
         ):
             DrumMetadataAdapter.from_deployment_metadata(drum_metadata_unstructured)
 
+    @pytest.mark.parametrize(
+        "target_type",
+        [
+            pytest.param("textgeneration", id="text_generation"),
+            pytest.param("binary", id="binary"),
+            pytest.param("vectordatabase", id="vector_database"),
+        ],
+    )
+    def test_supports_chat_api_routes_to_chat_completions(
+        self, drum_metadata_unstructured, target_type
+    ):
+        """When supports_chat_api is true the endpoint must be /chat/completions
+        regardless of target type, with no CSV Content-Type header."""
+        drum_metadata_unstructured["target_type"] = target_type
+        drum_metadata_unstructured["supports_chat_api"] = True
+
+        adapter = DrumMetadataAdapter.from_deployment_metadata(drum_metadata_unstructured)
+
+        assert adapter.supports_chat_api is True
+        assert adapter.endpoint == "/chat/completions"
+        assert adapter.headers == {}
+
+    def test_supports_chat_api_defaults_to_false_when_absent(self, drum_metadata_unstructured):
+        """Absent supports_chat_api preserves legacy /predictions routing."""
+        drum_metadata_unstructured["target_type"] = "textgeneration"
+
+        adapter = DrumMetadataAdapter.from_deployment_metadata(drum_metadata_unstructured)
+
+        assert adapter.supports_chat_api is False
+        assert adapter.endpoint == "/predictions"
+        assert adapter.headers == {"Content-Type": "text/csv"}
+
+    def test_supports_chat_api_uses_agentic_fallback_schema_when_no_model_schema(
+        self, drum_metadata_unstructured
+    ):
+        """Chat-capable deployments without an explicit input schema fall back
+        to the agentic (messages) schema rather than the CSV prediction schema."""
+        drum_metadata_unstructured["target_type"] = "textgeneration"
+        drum_metadata_unstructured["supports_chat_api"] = True
+        del drum_metadata_unstructured["model_metadata"]["input_schema"]
+
+        adapter = DrumMetadataAdapter.from_deployment_metadata(drum_metadata_unstructured)
+        schema = adapter.input_schema
+
+        assert schema["required"] == ["json"]
+        assert "messages" in schema["properties"]["json"]["properties"]
+
 
 class TestDefaultMetadataAdapter:
     """Tests for default metadata adapter - happy path."""
