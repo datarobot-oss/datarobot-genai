@@ -48,8 +48,8 @@ Executes a two-step XAA token exchange:
   (AI agent workload principal), and requested scopes.
 
 Both steps authenticate the client using ``private_key_jwt`` — a signed JWT
-client assertion built from the agent's RSA private key (``PRIVATE_JWK``)
-and principal ID (``PRINCIPAL_ID``).
+client assertion built from the agent's RSA private key (``IDP_AGENT_PRIVATE_KEY_JWK``)
+and principal ID (``IDP_AGENT_ID``).
 
 Two implementations are available, selected via ``XAA_TOKEN_EXCHANGE_IMPL``:
 
@@ -75,8 +75,8 @@ environment variables / Runtime Parameters / ``.env`` / ``file_secrets`` via
 
 Environment variables
 ~~~~~~~~~~~~~~~~~~~~~
-* ``PRINCIPAL_ID``              — Okta AI agent workload principal ID
-* ``PRIVATE_JWK``               — base64-encoded or raw-JSON RSA private JWK
+* ``IDP_AGENT_ID``              — Okta AI agent workload principal ID
+* ``IDP_AGENT_PRIVATE_KEY_JWK`` — base64-encoded or raw-JSON RSA private JWK
 * ``XAA_TOKEN_EXCHANGE_IMPL``   — ``okta_sdk`` (default) or ``http``
 """
 
@@ -105,6 +105,7 @@ from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.common import OptionalSecretStr
+from pydantic import AliasChoices
 from pydantic import Field
 from pydantic import SecretStr
 
@@ -139,11 +140,27 @@ class _OktaSettings(DataRobotAppFrameworkBaseSettings):
     DataRobot agent template.
     """
 
-    principal_id: str | None = None
-    """Okta AI agent principal ID (``PRINCIPAL_ID``)."""
+    principal_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("IDP_AGENT_ID", "PRINCIPAL_ID"),
+    )
+    """Okta AI agent principal ID (``IDP_AGENT_ID``).
 
-    private_jwk: str | None = None
-    """Base64-encoded or raw-JSON private JWK (``PRIVATE_JWK``)."""
+    .. deprecated::
+        ``PRINCIPAL_ID`` is accepted for backward compatibility but
+        ``IDP_AGENT_ID`` is preferred going forward.
+    """
+
+    private_jwk: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("IDP_AGENT_PRIVATE_KEY_JWK", "PRIVATE_JWK"),
+    )
+    """Base64-encoded or raw-JSON private JWK (``IDP_AGENT_PRIVATE_KEY_JWK``).
+
+    .. deprecated::
+        ``PRIVATE_JWK`` is accepted for backward compatibility but
+        ``IDP_AGENT_PRIVATE_KEY_JWK`` is preferred going forward.
+    """
 
 
 def _get_default_principal_id() -> str | None:
@@ -210,7 +227,8 @@ def _make_client_assertion(principal_id: str, token_url: str, private_jwk: dict[
         private_key = RSAAlgorithm.from_jwk(json.dumps(private_jwk))
     except Exception:
         raise ValueError(
-            "Failed to load RSA private key from JWK (check PRIVATE_JWK format and key type)"
+            "Failed to load RSA private key from JWK "
+            "(check IDP_AGENT_PRIVATE_KEY_JWK format and key type)"
         ) from None
 
     now = int(time.time())
@@ -328,13 +346,16 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
     principal_id: str | None = Field(
         default_factory=_get_default_principal_id,
         description=(
-            "Okta AI agent principal ID (env: ``PRINCIPAL_ID``). "
+            "Okta AI agent principal ID (env: ``IDP_AGENT_ID``). "
             "Used as ``iss``/``sub`` in the JWT client assertion."
         ),
     )
     private_jwk: OptionalSecretStr = Field(
         default_factory=_get_default_private_jwk,
-        description="Base64-encoded or raw-JSON RSA private JWK (env: ``PRIVATE_JWK``).",
+        description=(
+            "Base64-encoded or raw-JSON RSA private JWK "
+            "(env: ``IDP_AGENT_PRIVATE_KEY_JWK``)."
+        ),
     )
 
 

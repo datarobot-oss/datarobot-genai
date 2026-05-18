@@ -109,8 +109,8 @@ The flow obtains a scoped access token through a two-step exchange.
 
 | Variable | Description |
 |----------|-------------|
-| `PRINCIPAL_ID` | Okta AI agent principal ID (used as `iss`/`sub` in JWT client assertions). |
-| `PRIVATE_JWK` | Base64-encoded or raw-JSON private JWK (signs JWT client assertions). |
+| `IDP_AGENT_ID` | Okta AI agent principal ID (used as `iss`/`sub` in JWT client assertions). |
+| `IDP_AGENT_PRIVATE_KEY_JWK` | Base64-encoded or raw-JSON private JWK (signs JWT client assertions). |
 
 Both are loaded automatically from env vars, `.env`, DataRobot Runtime
 Parameters, or `file_secrets`.
@@ -195,7 +195,7 @@ The XAA flow operates in two steps:
 
 Both steps authenticate the client using the same method
 (private key jwt), signing JWT client assertions
-with the private key from `PRIVATE_JWK`.
+with the private key from `IDP_AGENT_PRIVATE_KEY_JWK`.
 
 ### Server-side configuration reference: `cross_application_access`
 
@@ -233,8 +233,8 @@ remote XAA-protected agent.
 | Field | Default | Purpose |
 |-------|---------|---------|
 | `okta_token_header` | `x-datarobot-external-access-token` | Incoming request header carrying the caller's Okta access token. |
-| `principal_id` | `PRINCIPAL_ID` env var | Okta AI agent principal ID. |
-| `private_jwk` | `PRIVATE_JWK` env var | Base64-encoded or raw-JSON private JWK. |
+| `principal_id` | `IDP_AGENT_ID` env var | Okta AI agent principal ID. |
+| `private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` env var | Base64-encoded or raw-JSON private JWK. |
 
 ### Agent card mapping
 
@@ -268,7 +268,7 @@ in `securitySchemes`, while flow-specific parameters go in
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `RuntimeError: Header 'x-datarobot-external-access-token' not found` | The incoming request doesn't carry the Okta token. | Ensure the upstream caller forwards the Okta access token in the expected header. |
-| `ValueError: principal_id is required` | `PRINCIPAL_ID` env var not set. | Set `PRINCIPAL_ID` in your environment or Runtime Parameters. |
-| `ValueError: Could not parse private_jwk` | `PRIVATE_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $PRIVATE_JWK | base64 -d | python -m json.tool`. |
+| `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
+| `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |
 | `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in your `function_groups` config and network connectivity. |
