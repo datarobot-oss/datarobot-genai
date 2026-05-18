@@ -102,28 +102,7 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Bridge A2A and HTTP callers that need DataRobot-specific ``user_id`` resolution.
-
-        NAT 1.6+ assigns ``self._context_state.user_id`` from the explicit
-        ``user_id`` argument only. Two resolution paths run before delegating:
-
-        1. A2A preset: :class:`_PerUserCompatibleAgentExecutor` writes the A2A
-           ``context_id`` into ``ContextState.user_id``. NAT would overwrite
-           that with ``None``, so we copy any non-empty preset back into the
-           explicit ``user_id`` kwarg.
-        2. DataRobot HTTP headers: when called via FastAPI with no explicit
-           ``user_id``, :func:`_resolve_dr_user_id` reads
-           ``X-DataRobot-Authorization-Context`` (signed app-context JWT) or
-           ``X-DataRobot-User-Id`` (set by predictions-gateway for any
-           authenticated deployment request).
-
-        If both leave ``user_id`` as ``None``, NAT's standard extractor
-        (Bearer/JWT/cookie/API-key) runs inside ``super().session()``.
-
-        Additionally, A2A HTTP request headers stored in the module-level
-        ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor`
-        are injected into ``ContextState._metadata``.
-        """
+        """Resolve user_id from A2A preset or DataRobot headers before delegating to NAT."""
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
