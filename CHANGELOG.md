@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.57
+- Registered DataRobot moderation middleware on the `nat.plugins` entry point `datarobot_moderation_middleware` so `_type: datarobot_moderation` is available when NAT loads plugins.
+- NAT / dragent moderation: `DataRobotModerationConfig` no longer uses `model_dir` to locate guard YAML. Configure guards with the optional `moderation` field (`ModerationConfig` from `datarobot_dome`). In `workflow.yaml`, nest guard definitions under `middleware.datarobot_guardrails.moderation` instead of setting `model_dir` to a directory that contained `moderation_config.yaml`.
+- The `core` extra declares `datarobot-moderations[all]>=11.2.29,<12.0.0` (full moderation extras). Stack extras built on core (`nat`, `langgraph`, `crewai`, `llamaindex`, `dragent`, and `[core]` itself) install it; it is no longer listed only on the `dragent` extra. Standalone extras `auth`, `drtools`, and `drmcp` are unchanged.
+- The `llamaindex` extra now pins `llama-index-llms-langchain` to `>=0.8.0,<1.0.0` (previously `>=0.6.1,<0.8.0`); 0.6.x and 0.7.x are no longer in range.
+
 ## 0.15.56
 - `AgentKernel.custom_model`: HTTP 4xx/5xx now raise `requests.HTTPError` (via `response.raise_for_status()`) instead of plain `Exception`, so callers can classify failures by status code.
 

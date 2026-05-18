@@ -11,11 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""NAT (NeMo Agent Toolkit) middleware: DataRobot LLM guardrails for DRAgent workflows."""
+"""NAT (NeMo Agent Toolkit) middleware: DataRobot LLM guardrails for DRAgent workflows.
+
+Registered under the ``nat.plugins`` distribution entry ``datarobot_moderation_middleware`` so NAT
+loads ``@register_middleware`` without a custom recipe mapping (``_type: datarobot_moderation``).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import logging
 import math
@@ -52,13 +57,14 @@ from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
+from datarobot_dome.constants import AGENTIC_PIPELINE_INTERACTIONS_ATTR
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
-from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
+from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_dome.streaming import ModerationIterator
 from datarobot_dome.streaming import StreamingContextBuilder
 from nat.builder.builder import Builder
@@ -106,8 +112,20 @@ from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_c
 _logger = logging.getLogger(__name__)
 
 
-def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | None:
-    """Load YAML LLM moderation for NAT via ``ModerationPipeline.from_yaml`` (not DRUM ``init``)."""
+class DataRobotModerationConfig(
+    FunctionMiddlewareBaseConfig,  # type: ignore[misc]
+    name="datarobot_moderation",  # type: ignore[call-arg]
+):
+    """NAT middleware: DataRobot prescore / postscore guards."""
+
+    moderation: ModerationConfig | None = Field(
+        default=None,
+        description="Guard configuration (validated as ``ModerationConfig`` from datarobot_dome).",
+    )
+
+
+def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
+    """Build an LLM moderation pipeline via ``ModerationPipeline.from_config``."""
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
@@ -115,16 +133,13 @@ def load_llm_moderation_pipeline(model_dir: str | None) -> ModerationPipeline | 
     os.environ["RAGAS_DO_NOT_TRACK"] = "true"
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
 
-    base = model_dir if model_dir is not None else os.getcwd()
-    guard_config_file = os.path.join(base, MODERATION_CONFIG_FILE_NAME)
-    if not os.path.exists(guard_config_file):
-        _logger.warning(
-            "Guard config file: %s not found; moderations will not be enforced",
-            guard_config_file,
-        )
+    if config.moderation is None:
+        _logger.warning("Middleware has no ``moderation`` block; moderations will not be enforced")
         return None
 
-    pipeline = ModerationPipeline.from_yaml(guard_config_file)
+    model_dir = os.path.abspath(os.getcwd())
+    pipeline = ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
+
     # LLMPipeline.get_input_column(GuardStage.RESPONSE) falls back to TARGET_NAME when the YAML
     # does not set a response column. DRUM sets TARGET_NAME; local NAT often does not (see e2e CI env).
     os.environ.setdefault("TARGET_NAME", "response")
@@ -1282,6 +1297,37 @@ _STREAM_INPUT_END = object()
 _WORKER_QUEUE_END = object()
 
 
+@contextlib.contextmanager
+def _agentic_pipeline_interactions_column_for_postscore(input_df: pd.DataFrame) -> Iterator[None]:
+    """Provide ``pipeline_interactions`` for postscore only, matching ``evaluate_response``.
+
+    ``ModerationPipeline.evaluate_response`` adds ``AGENTIC_PIPELINE_INTERACTIONS_ATTR`` to the
+    dataframe passed to the postscore executor. ``ModerationIterator`` copies ``input_df`` for
+    postscore but omits that column, so OOTB guards that require it (for example task adherence)
+    do not populate metrics. The iterator also merges prescore and postscore on
+    ``list(input_df.columns)``, so the column must not remain on ``input_df`` after postscore.
+    """
+    col = AGENTIC_PIPELINE_INTERACTIONS_ATTR
+    if col in input_df.columns:
+        yield
+        return
+    input_df[col] = [None]
+    try:
+        yield
+    finally:
+        input_df.drop(columns=[col], inplace=True)
+
+
+class _ModerationIteratorWithPostscorePipelineInteractions(ModerationIterator):
+    def _run_postscore_guards_on_chunk(self, return_chunk: Any) -> Any:
+        with _agentic_pipeline_interactions_column_for_postscore(self.input_df):
+            return super()._run_postscore_guards_on_chunk(return_chunk)
+
+    def _run_postscore_guards_on_assembled_response(self, citations: Any) -> Any:
+        with _agentic_pipeline_interactions_column_for_postscore(self.input_df):
+            return super()._run_postscore_guards_on_assembled_response(citations)
+
+
 @dataclass
 class _ModerationInvokeState:
     """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
@@ -1319,24 +1365,12 @@ def _clear_moderation_invoke_state_if_set() -> None:
     _moderation_invoke_state_ctx.reset(state.ctx_token)
 
 
-class DataRobotModerationConfig(
-    FunctionMiddlewareBaseConfig,  # type: ignore[misc]
-    name="datarobot_moderation",  # type: ignore[call-arg]
-):
-    """NAT middleware: DataRobot prescore / postscore guard pipeline (moderation_config.yaml)."""
-
-    model_dir: str | None = Field(
-        default=None,
-        description="Directory that contains moderation_config.yaml (defaults to process CWD).",
-    )
-
-
 class DataRobotModerationMiddleware(
     FunctionMiddleware,  # type: ignore[misc]
 ):
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
         super().__init__()
-        self._moderation = load_llm_moderation_pipeline(config.model_dir)
+        self._moderation = load_llm_moderation_pipeline(config)
 
     @property
     def enabled(self) -> bool:
@@ -1640,7 +1674,9 @@ class DataRobotModerationMiddleware(
 
             def moderation_worker() -> None:
                 try:
-                    mit = ModerationIterator(streaming_context, input_chunk_iter())
+                    mit = _ModerationIteratorWithPostscorePipelineInteractions(
+                        streaming_context, input_chunk_iter()
+                    )
                     for moderated_chunk in mit:
                         out_q.put(moderated_chunk)
                 except BaseException as exc:

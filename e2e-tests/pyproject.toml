@@ -55,7 +55,7 @@ override-dependencies = [
     "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
     "ag-ui-protocol==0.1.15",
-    # Align OTEL with datarobot-moderations (pulled in via datarobot-genai[dragent]) so
+    # Align OTEL with datarobot-moderations (datarobot-genai core) so
     # dragent+crewai resolves despite crewai's opentelemetry-api pin.
     "opentelemetry-api>=1.39.0,<2.0.0",
     "opentelemetry-sdk>=1.39.0,<2.0.0",

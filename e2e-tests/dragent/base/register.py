@@ -15,7 +15,6 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-import datarobot_genai.nat.datarobot_moderation_middleware  # noqa: F401
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_function

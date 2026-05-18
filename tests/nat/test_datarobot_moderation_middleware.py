@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Iterator
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 pytest.importorskip("datarobot_dome")
 
@@ -45,6 +47,7 @@ from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
+from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
@@ -76,10 +79,19 @@ from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     chat_completion_to_dragent_event_response,
 )
+from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
+
+
+@pytest.fixture(autouse=True)
+def _noop_datarobot_moderation_credential_check() -> Iterator[None]:
+    """11.2.28+ validates DR credentials when loading pipelines; unit tests use stub endpoints."""
+    with patch("datarobot_dome.api._verify_datarobot_credentials"):
+        yield
+
 
 PROMPT_COL = "prompt_col"
 RESPONSE_COL = "response_col"
@@ -96,6 +108,12 @@ INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR = (
 INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR = (
     Path(__file__).parent / "fixtures" / "moderation_model_response_replace"
 )
+
+
+def _moderation_config_from_fixture_dir(model_dir: Path) -> ModerationConfig:
+    path = model_dir / "moderation_config.yaml"
+    return ModerationConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+
 
 # ``moderation_prompt_length_block/moderation_config.yaml`` blocks when prompt token count
 # is greater than 32 (81 tokens for this string).
@@ -276,6 +294,38 @@ def test_moderation_prompt_from_workflow_input_parity_with_completion_dict() -> 
     assert direct == via_ccp
 
 
+def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
+    moderation = ModerationConfig.model_validate(
+        {
+            "guards": [
+                {
+                    "name": "Prompt Tokens",
+                    "description": (
+                        "Track the number of tokens associated with the input to the LLM, and/or "
+                        "retrieved text from the vector database."
+                    ),
+                    "ootb_type": "token_count",
+                    "stage": "prompt",
+                    "type": "ootb",
+                }
+            ],
+            "timeout_sec": 60,
+        }
+    )
+    cfg = DataRobotModerationConfig(moderation=moderation)
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+            "TARGET_NAME": '"response"',
+        },
+    ):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
+
+
 @pytest.fixture
 def builder_mock() -> MagicMock:
     return MagicMock()
@@ -289,7 +339,7 @@ def test_enabled_false_when_pipeline_not_loaded(builder_mock: MagicMock) -> None
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=None,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
     assert mw.enabled is False
 
 
@@ -312,7 +362,7 @@ async def test_pre_invoke_no_prescore_guards_prescore_df_has_blocked_and_replace
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
@@ -347,7 +397,7 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
         finally:
@@ -383,7 +433,7 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
         finally:
@@ -412,7 +462,7 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
@@ -454,7 +504,7 @@ async def test_pre_invoke_replaces_chat_request_or_message_input_message(
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
@@ -494,7 +544,7 @@ async def test_pre_invoke_replacement_apply_failure_clears_prescore_replaced_fla
             return_value=False,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
@@ -530,7 +580,7 @@ async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
 
     out = await mw.post_invoke(ctx)
     assert out is None
@@ -586,7 +636,7 @@ async def test_post_invoke_skips_dr_agent_when_joined_text_blank(
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
             input_df=prescore,
@@ -639,7 +689,7 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
             input_df=prescore,
@@ -678,7 +728,7 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
             input_df=prescore,
@@ -717,7 +767,7 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
             input_df=prescore,
@@ -751,7 +801,7 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
             input_df=prescore,
@@ -786,7 +836,7 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
             input_df=prescore,
@@ -824,7 +874,7 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         result = await mw.function_middleware_invoke(
             _make_run_input(),
             call_next=call_next,
@@ -875,7 +925,7 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
         "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
 
         async def run_one(prompt: str) -> None:
             await mw.function_middleware_invoke(
@@ -909,7 +959,7 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -957,7 +1007,7 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1003,7 +1053,7 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1046,7 +1096,7 @@ async def test_function_middleware_invoke_prompt_token_limit_blocks(
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1087,7 +1137,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_to
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1126,7 +1176,7 @@ async def test_function_middleware_stream_prompt_token_limit_blocks(
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1166,7 +1216,7 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1211,7 +1261,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1252,7 +1302,7 @@ async def test_function_middleware_stream_response_token_limit_blocks(
         },
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1304,7 +1354,7 @@ async def test_function_middleware_invoke_prompt_replace(
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1349,7 +1399,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1396,7 +1446,7 @@ async def test_function_middleware_stream_prompt_replace(
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1441,7 +1491,7 @@ async def test_function_middleware_invoke_response_replace(
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1486,7 +1536,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1533,7 +1583,7 @@ async def test_function_middleware_stream_response_replace(
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
         assert mw.enabled is True
@@ -1571,7 +1621,7 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
             return_value=moderation,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1611,7 +1661,7 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
             side_effect=lambda _sc, src: src,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1651,7 +1701,7 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
             side_effect=AssertionError("ModerationIterator should not run without prescore"),
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1711,7 +1761,7 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
             side_effect=lambda _sc, src: src,
         ),
     ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(model_dir=None), builder_mock)
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         chunks = [
             item
             async for item in mw.function_middleware_stream(

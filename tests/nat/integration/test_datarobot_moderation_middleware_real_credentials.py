@@ -33,9 +33,6 @@ when a real DataRobot endpoint and token are available. Catalog:
 
 Edit ``llm_gateway_model_id`` on each LLM guard in that YAML if your tenant uses a different
 gateway model slug (defaults follow ``LLM_DEFAULT_MODEL`` in ``tests/nat/integration/.env.sample``).
-
-You will need to add llm-eval extra to datarobot moderations and relax the override on ragas
-to run these tests locally.
 """
 
 from __future__ import annotations
@@ -55,7 +52,11 @@ from nat.data_models.api_server import Usage as NATChatUsage
 
 pytest.importorskip("datarobot_dome")
 
+from datarobot_dome.constants import AGENT_GOAL_ACCURACY_COLUMN_NAME
+from datarobot_dome.constants import FAITHFULLNESS_COLUMN_NAME
 from datarobot_dome.constants import GUIDELINE_ADHERENCE_COLUMN_NAME
+from datarobot_dome.constants import ROUGE_1_COLUMN_NAME
+from datarobot_dome.constants import TASK_ADHERENCE_SCORE_COLUMN_NAME
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
@@ -63,6 +64,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerat
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 from tests.nat.test_datarobot_moderation_middleware import _fn_context
 from tests.nat.test_datarobot_moderation_middleware import _make_run_input
+from tests.nat.test_datarobot_moderation_middleware import _moderation_config_from_fixture_dir
 from tests.nat.test_datarobot_moderation_middleware import _nat_chat_response_assistant_text
 from tests.nat.test_datarobot_moderation_middleware import _text_response
 
@@ -80,10 +82,6 @@ REAL_CREDENTIALS_MODERATION_MODEL_DIR = (
 )
 
 
-def _assert_llm_gateway_ootb_metrics(mods: dict[str, Any]) -> None:
-    assert GUIDELINE_ADHERENCE_COLUMN_NAME in mods
-
-
 def _build_moderation_middleware_for_model_dir(
     *,
     model_dir: Path,
@@ -93,7 +91,7 @@ def _build_moderation_middleware_for_model_dir(
     monkeypatch.setenv("TARGET_NAME", '"response"')
     try:
         mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(model_dir=str(model_dir)),
+            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
             builder_mock,
         )
     except RuntimeError as exc:
@@ -164,7 +162,11 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
     assert mods["cost"] == pytest.approx(0.019)
     assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
     assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
-    _assert_llm_gateway_ootb_metrics(mods)
+    assert GUIDELINE_ADHERENCE_COLUMN_NAME in mods
+    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in mods
+    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in mods
+    assert ROUGE_1_COLUMN_NAME not in mods  # No citations
+    assert FAITHFULLNESS_COLUMN_NAME not in mods  # No citations
 
 
 async def test_function_middleware_invoke_integration_nat_chat_input_chat_response_real_moderations(
@@ -196,7 +198,11 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
     assert mods["cost"] == pytest.approx(0.019)
     assert mods["prompt_token_count_from_usage"] == mods["Prompts_token_count"]
     assert mods["response_token_count_from_usage"] == mods["Responses_token_count"]
-    _assert_llm_gateway_ootb_metrics(mods)
+    assert GUIDELINE_ADHERENCE_COLUMN_NAME in mods
+    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in mods
+    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in mods
+    assert ROUGE_1_COLUMN_NAME not in mods  # No citations
+    assert FAITHFULLNESS_COLUMN_NAME not in mods  # No citations
 
 
 async def test_function_middleware_stream_integration_executes_real_moderations(
@@ -229,4 +235,7 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
     assert final_mods["Responses_token_count"] == 6
     assert final_mods["cost"] == pytest.approx(0.019)
     assert GUIDELINE_ADHERENCE_COLUMN_NAME in all_keys
-    _assert_llm_gateway_ootb_metrics(final_mods)
+    assert TASK_ADHERENCE_SCORE_COLUMN_NAME in all_keys
+    assert AGENT_GOAL_ACCURACY_COLUMN_NAME in all_keys
+    assert ROUGE_1_COLUMN_NAME not in all_keys  # No citations
+    assert FAITHFULLNESS_COLUMN_NAME not in all_keys  # No citations

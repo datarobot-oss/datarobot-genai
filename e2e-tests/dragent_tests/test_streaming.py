@@ -19,6 +19,7 @@ import pytest
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import ALL_TEST_CASES
+from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
@@ -26,7 +27,10 @@ from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
 if not ALL_TEST_CASES:
-    pytest.skip("Running minimal test set for non-LLM Gateway LLM, skipping streaming tests", allow_module_level=True)
+    pytest.skip(
+        "Running minimal test set for non-LLM Gateway LLM, skipping streaming tests",
+        allow_module_level=True,
+    )
 
 
 def test_generate_streaming(http_client: httpx.Client) -> None:
@@ -56,3 +60,10 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     assert any(
         chunk.datarobot_moderations for chunk in sse_responses
     ), "Expected streamed chunks to include datarobot_moderations when guards are configured"
+    moderation_keys = set()
+    for chunk in sse_responses:
+        if chunk.datarobot_moderations:
+            moderation_keys.update(chunk.datarobot_moderations.keys())
+    assert EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS.issubset(moderation_keys), (
+        f"Missing expected token moderation keys; got {sorted(moderation_keys)}"
+    )

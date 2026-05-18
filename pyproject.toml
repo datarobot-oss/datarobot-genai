@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.15.56"
+version = "0.15.57"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -26,6 +26,7 @@ datarobot_llm_clients = "datarobot_genai.nat.datarobot_llm_clients"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 datarobot_mem0_memory = "datarobot_genai.nat.datarobot_mem0_memory"
+datarobot_moderation_middleware = "datarobot_genai.nat.datarobot_moderation_middleware"
 
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.frontends.register"
@@ -48,7 +49,7 @@ override-dependencies = [
   "crewai[litellm]>=1.11.0",
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.4.3,<0.5.0",
-  # crewai pins OpenTelemetry <1.35; datarobot-moderations (via `[dragent]`)
+  # crewai pins OpenTelemetry <1.35; datarobot-moderations (core) pulls
   # requires opentelemetry-instrumentation 0.60b1, which pulls otel-api 1.39.x. Align the
   # stack so `--all-extras` / `[crewai,dragent]` resolves (same approach as the agent app recipe).
   "opentelemetry-api>=1.39.0,<2.0.0",

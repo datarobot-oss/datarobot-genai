@@ -25,7 +25,22 @@ llms:
 middleware:
   datarobot_guardrails:
     _type: datarobot_moderation
-    model_dir: ".."
+    moderation:
+      guards:
+        - name: Prompt Tokens
+          description: Track the number of tokens associated with the input to the LLM, and/or
+            retrieved text from the vector database.
+          ootb_type: token_count
+          stage: prompt
+          type: ootb
+        - name: Response Tokens
+          description: Track the number of tokens associated with the output from the LLM,
+            and/or retrieved text from the vector database.
+          ootb_type: token_count
+          stage: response
+          type: ootb
+      timeout_sec: 60
+
 
 workflow:
   _type: base_agent

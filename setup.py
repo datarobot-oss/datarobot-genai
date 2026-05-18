@@ -34,6 +34,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
+    "datarobot-moderations[all]>=11.2.29,<12.0.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -68,7 +69,7 @@ langgraph = core + [
 llamaindex = core + [
     "llama-index>=0.14.0,<0.15.0",
     "llama-index-core>=0.14.0,<0.15.0",
-    "llama-index-llms-langchain>=0.6.1,<0.8.0",
+    "llama-index-llms-langchain>=0.8.0,<1.0.0",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
     "litellm>=1.83.0,<2.0.0",
     "llama-index-llms-openai>=0.6.0,<0.7.0",
@@ -93,7 +94,6 @@ dragent = nat + [
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "fastapi<0.133.0",
     "starlette<1.0.0",
-    "datarobot-moderations>=11.2.24,<12.0.0",
 ]
 
 # Eventually NAT will be merged into dragent

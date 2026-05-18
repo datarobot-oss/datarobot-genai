@@ -1,68 +1,32 @@
 ---
 guards:
-  - additional_guard_config: null
-    aws_model: null
-    aws_region: null
+  - name: Prompt Tokens
     description: Track the number of tokens associated with the input to the LLM, and/or
       retrieved text from the vector database.
-    google_model: null
-    google_region: null
-    is_agentic: false
-    name: Prompt Tokens
     ootb_type: token_count
-    openai_api_base: null
-    openai_api_key: null
-    openai_deployment_id: null
     stage: prompt
     type: ootb
-  - additional_guard_config: null
-    aws_model: null
-    aws_region: null
+  - name: Response Tokens
     description: Track the number of tokens associated with the output from the LLM,
       and/or retrieved text from the vector database.
-    google_model: null
-    google_region: null
-    is_agentic: false
-    name: Response Tokens
     ootb_type: token_count
-    openai_api_base: null
-    openai_api_key: null
-    openai_deployment_id: null
     stage: response
     type: ootb
-  - additional_guard_config: null
-    aws_model: null
-    aws_region: null
+  - name: Response ROUGE-1
     description: Compare response text overlap with retrieved context using ROUGE-1.
-    google_model: null
-    google_region: null
-    is_agentic: false
-    name: Response ROUGE-1
     ootb_type: rouge_1
-    openai_api_base: null
-    openai_api_key: null
-    openai_deployment_id: null
     stage: response
     type: ootb
-  - additional_guard_config:
+  - name: Response Cost
+    description: Compute response-stage token cost from usage metrics.
+    ootb_type: cost
+    stage: response
+    type: ootb
+    additional_guard_config:
       cost:
         currency: USD
         input_price: 1.0
         input_unit: 1000
         output_price: 2.0
         output_unit: 1000
-    aws_model: null
-    aws_region: null
-    description: Compute response-stage token cost from usage metrics.
-    google_model: null
-    google_region: null
-    is_agentic: false
-    name: Response Cost
-    ootb_type: cost
-    openai_api_base: null
-    openai_api_key: null
-    openai_deployment_id: null
-    stage: response
-    type: ootb
-timeout_action: score
 timeout_sec: 60
