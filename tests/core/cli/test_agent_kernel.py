@@ -15,7 +15,13 @@
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import httpx
 import pytest
+import requests
+from openai import APIConnectionError
+from openai import APIStatusError
+from openai import APITimeoutError
+from openai import RateLimitError
 from openai.types.chat import ChatCompletion
 
 from datarobot_genai.core.cli.agent_kernel import AgentKernel
@@ -466,9 +472,14 @@ class TestAgentKernel:
         custom_model_id = "test-custom-model-id"
         user_prompt = "Hello, assistant!"
 
-        # Mock the initial POST response to fail
+        # Mock the initial POST response to fail. `custom_model` now calls
+        # `response.raise_for_status()`, so configure it to raise.
         mock_post_response = Mock()
         mock_post_response.ok = False
+        mock_post_response.status_code = 500
+        mock_post_response.raise_for_status.side_effect = requests.HTTPError(
+            "500 server error", response=mock_post_response
+        )
         mock_post_response.content = b"API request failed with status 500"
         mock_requests_post.return_value = mock_post_response
 
@@ -623,3 +634,201 @@ class TestAgentKernel:
         assert "Failed to process request" in result
         assert "Error details:" in result
         assert "Invalid input format" in result
+
+    # ------------------------------------------------------------------
+    # Failure-mode coverage
+    #
+    # `custom_model()` / `deployment()` propagate the underlying library
+    # exception types verbatim -- callers decide which are transient based on
+    # the status code carried on the exception. HTTP errors surface as
+    # `requests.HTTPError` (custom_model) or `openai.APIStatusError`
+    # (deployment); network/timeout failures surface as their natural
+    # `requests.*` / `openai.*` types.
+    # ------------------------------------------------------------------
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_connection_error_propagates(self, mock_post):
+        """A `requests.ConnectionError` propagates as-is; we do not wrap it."""
+        mock_post.side_effect = requests.ConnectionError("connection reset by peer")
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(requests.ConnectionError, match="connection reset"):
+            kernel.custom_model("cm-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_post_502_raises_http_error(self, mock_post):
+        """HTTP 502 on the initial POST surfaces as `requests.HTTPError(status_code=502)`."""
+        resp = Mock()
+        resp.ok = False
+        resp.status_code = 502
+        resp.text = "<html>bad gateway</html>"
+        resp.raise_for_status.side_effect = requests.HTTPError("502", response=resp)
+        mock_post.return_value = resp
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(requests.HTTPError) as exc_info:
+            kernel.custom_model("cm-1", "hi")
+        assert exc_info.value.response is resp
+        assert exc_info.value.response.status_code == 502
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_post_400_raises_http_error(self, mock_post):
+        """4xx and 5xx both surface as HTTPError; the caller inspects status_code."""
+        resp = Mock()
+        resp.ok = False
+        resp.status_code = 400
+        resp.text = "bad request"
+        resp.raise_for_status.side_effect = requests.HTTPError("400", response=resp)
+        mock_post.return_value = resp
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(requests.HTTPError) as exc_info:
+            kernel.custom_model("cm-1", "hi")
+        assert exc_info.value.response.status_code == 400
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.core.cli.agent_kernel.time.sleep")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_status_error_raises_on_agent_failure(
+        self, mock_sleep, mock_post, mock_get
+    ):
+        """A `status=ERROR` polling response raises so callers can refuse to retry."""
+        post_resp = Mock()
+        post_resp.ok = True
+        post_resp.status_code = 202
+        post_resp.headers = {"Location": "https://test.example.com/status/1"}
+        mock_post.return_value = post_resp
+
+        status_resp = Mock()
+        status_resp.ok = True
+        status_resp.status_code = 200
+        status_resp.json.return_value = {
+            "status": "ERROR",
+            "errorMessage": "agent run failed",
+        }
+        mock_get.return_value = status_resp
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(Exception, match="ERROR"):
+            kernel.custom_model("cm-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.core.cli.agent_kernel.time.sleep")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_poll_503_raises_http_error(self, mock_sleep, mock_post, mock_get):
+        """A 503 returned during status polling surfaces as `requests.HTTPError`."""
+        post_resp = Mock()
+        post_resp.ok = True
+        post_resp.headers = {"Location": "https://test.example.com/status/1"}
+        mock_post.return_value = post_resp
+
+        poll_resp = Mock()
+        poll_resp.ok = False
+        poll_resp.status_code = 503
+        poll_resp.raise_for_status.side_effect = requests.HTTPError("503", response=poll_resp)
+        mock_get.return_value = poll_resp
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(requests.HTTPError) as exc_info:
+            kernel.custom_model("cm-1", "hi")
+        assert exc_info.value.response.status_code == 503
+
+    @patch("datarobot_genai.core.cli.agent_kernel.OpenAI")
+    def test_deployment_openai_timeout_propagates(self, mock_openai):
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = APITimeoutError(
+            request=httpx.Request("POST", "https://test.example.com")
+        )
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(APITimeoutError):
+            kernel.deployment("dep-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.OpenAI")
+    def test_deployment_openai_connection_error_propagates(self, mock_openai):
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = APIConnectionError(
+            request=httpx.Request("POST", "https://test.example.com")
+        )
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(APIConnectionError):
+            kernel.deployment("dep-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.OpenAI")
+    def test_deployment_rate_limit_propagates(self, mock_openai):
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+        response = httpx.Response(
+            status_code=429,
+            request=httpx.Request("POST", "https://test.example.com"),
+        )
+        mock_client.chat.completions.create.side_effect = RateLimitError(
+            message="rate limited",
+            response=response,
+            body=None,
+        )
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(RateLimitError):
+            kernel.deployment("dep-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.OpenAI")
+    def test_deployment_502_propagates_as_api_status_error(self, mock_openai):
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+        response = httpx.Response(
+            status_code=502,
+            request=httpx.Request("POST", "https://test.example.com"),
+        )
+        mock_client.chat.completions.create.side_effect = APIStatusError(
+            message="bad gateway",
+            response=response,
+            body=None,
+        )
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(APIStatusError) as exc_info:
+            kernel.deployment("dep-1", "hi")
+        assert exc_info.value.status_code == 502
+
+    @patch("datarobot_genai.core.cli.agent_kernel.OpenAI")
+    def test_deployment_400_propagates_as_api_status_error(self, mock_openai):
+        mock_client = Mock()
+        mock_openai.return_value = mock_client
+        response = httpx.Response(
+            status_code=400,
+            request=httpx.Request("POST", "https://test.example.com"),
+        )
+        mock_client.chat.completions.create.side_effect = APIStatusError(
+            message="bad request",
+            response=response,
+            body=None,
+        )
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(APIStatusError) as exc_info:
+            kernel.deployment("dep-1", "hi")
+        assert exc_info.value.status_code == 400
