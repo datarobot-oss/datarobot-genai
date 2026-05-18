@@ -283,16 +283,15 @@ class TestGetMcpToolMetadata:
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_deployment_metadata"
     )
-    @patch(
-        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api"
-    )
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.is_drum")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.DrumMetadataAdapter")
     def test_drum_metadata_returns_drum_adapter(
         self, mock_drum_adapter, mock_is_drum, mock_fetch_chat, mock_fetch, mock_is_structured
     ):
         """Test that DRUM metadata returns DrumMetadataAdapter and that the
-        chat-API capability flag is injected into the metadata dict."""
+        chat-API capability flag is injected into the metadata dict.
+        """
         mock_is_structured.return_value = None
         mock_fetch.return_value = {"server": "drum"}
         mock_fetch_chat.return_value = False
@@ -306,9 +305,7 @@ class TestGetMcpToolMetadata:
         assert result == mock_adapter
         mock_fetch.assert_called_once_with(deployment)
         mock_fetch_chat.assert_called_once_with(deployment)
-        mock_is_drum.assert_called_once_with(
-            {"server": "drum", "supports_chat_api": False}
-        )
+        mock_is_drum.assert_called_once_with({"server": "drum", "supports_chat_api": False})
         mock_drum_adapter.from_deployment_metadata.assert_called_once_with(
             {"server": "drum", "supports_chat_api": False}
         )
@@ -319,9 +316,7 @@ class TestGetMcpToolMetadata:
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_deployment_metadata"
     )
-    @patch(
-        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api"
-    )
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.is_drum")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.Metadata")
     def test_default_metadata_returns_metadata_adapter(
@@ -340,12 +335,8 @@ class TestGetMcpToolMetadata:
 
         assert result == mock_adapter
         mock_fetch.assert_called_once_with(deployment)
-        mock_is_drum.assert_called_once_with(
-            {"server": "other", "supports_chat_api": True}
-        )
-        mock_metadata.assert_called_once_with(
-            {"server": "other", "supports_chat_api": True}
-        )
+        mock_is_drum.assert_called_once_with({"server": "other", "supports_chat_api": True})
+        mock_metadata.assert_called_once_with({"server": "other", "supports_chat_api": True})
 
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._is_datarobot_structured_prediction"
@@ -353,14 +344,13 @@ class TestGetMcpToolMetadata:
     @patch(
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_deployment_metadata"
     )
-    @patch(
-        "datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api"
-    )
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._fetch_supports_chat_api")
     def test_structured_prediction_short_circuit_skips_chat_capability_fetch(
         self, mock_fetch_chat, mock_fetch, mock_is_structured
     ):
         """Native DR predictive models skip both the info fetch and the
-        capabilities fetch — they are guaranteed non-chat structured models."""
+        capabilities fetch — they are guaranteed non-chat structured models.
+        """
         mock_is_structured.return_value = "binary"
 
         deployment = Mock()
@@ -426,7 +416,8 @@ class TestFetchSupportsChatApi:
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
     def test_returns_false_on_api_error(self, mock_get_client):
         """Older clusters without /capabilities/ should not break tool
-        registration — fail closed to /predictions routing."""
+        registration — fail closed to /predictions routing.
+        """
         mock_client = Mock()
         mock_client.get.side_effect = Exception("404 capabilities not found")
         mock_get_client.return_value = mock_client

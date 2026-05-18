@@ -142,17 +142,19 @@ def _fetch_supports_chat_api(deployment: dr.Deployment) -> bool:
         response = api_client.get(url=f"deployments/{deployment.id}/capabilities/")
         response.raise_for_status()
         payload = response.json()
+        capabilities = (payload or {}).get("data") or []
+        for capability in capabilities:
+            if not isinstance(capability, dict):
+                continue
+            if capability.get("name") == "supports_chat_api":
+                return bool(capability.get("supported", False))
+        return False
     except Exception as exc:
         logger.warning(
             f"Could not fetch capabilities for deployment {deployment.id}; "
             f"assuming chat API not supported: {exc}"
         )
         return False
-
-    for capability in payload.get("data", []) or []:
-        if capability.get("name") == "supports_chat_api":
-            return bool(capability.get("supported", False))
-    return False
 
 
 def get_mcp_tool_metadata(deployment: dr.Deployment) -> MetadataBase:

@@ -223,7 +223,8 @@ class TestDrumMetadataAdapter:
         self, drum_metadata_unstructured, target_type
     ):
         """When supports_chat_api is true the endpoint must be /chat/completions
-        regardless of target type, with no CSV Content-Type header."""
+        regardless of target type, with no CSV Content-Type header.
+        """
         drum_metadata_unstructured["target_type"] = target_type
         drum_metadata_unstructured["supports_chat_api"] = True
 
@@ -247,7 +248,8 @@ class TestDrumMetadataAdapter:
         self, drum_metadata_unstructured
     ):
         """Chat-capable deployments without an explicit input schema fall back
-        to the agentic (messages) schema rather than the CSV prediction schema."""
+        to the agentic (messages) schema rather than the CSV prediction schema.
+        """
         drum_metadata_unstructured["target_type"] = "textgeneration"
         drum_metadata_unstructured["supports_chat_api"] = True
         del drum_metadata_unstructured["model_metadata"]["input_schema"]
