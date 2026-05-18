@@ -353,8 +353,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
     private_jwk: OptionalSecretStr = Field(
         default_factory=_get_default_private_jwk,
         description=(
-            "Base64-encoded or raw-JSON RSA private JWK "
-            "(env: ``IDP_AGENT_PRIVATE_KEY_JWK``)."
+            "Base64-encoded or raw-JSON RSA private JWK (env: ``IDP_AGENT_PRIVATE_KEY_JWK``)."
         ),
     )
 
