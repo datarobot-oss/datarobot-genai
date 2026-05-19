@@ -53,7 +53,16 @@ DEFAULT_DR_AGENT_USER_ID = "default-user"
 
 
 class DRAgentUserManager(UserManager):
-    """Add DataRobot signed auth-context resolution to NAT's standard identity extractors."""
+    """Add DataRobot signed auth-context resolution to NAT's standard identity extractors.
+
+    NAT 1.6 replaced the extensible context-based user_id resolution with
+    ``UserManager.extract_user_from_connection()`` (#1775), which only supports
+    standard auth (Bearer JWT, cookies, API key). DataRobot passes user identity
+    via ``X-DataRobot-Authorization-Context`` (signed app-context JWT), which the
+    vanilla extractor does not understand. This subclass handles that header
+    first, then delegates to ``super().extract_user_from_connection()`` so
+    standard auth still works.
+    """
 
     @classmethod
     def extract_user_from_connection(cls, connection: Request | WebSocket) -> UserInfo | None:
@@ -99,7 +108,19 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Resolve user_id (A2A preset, DR headers, per-user default) and inject A2A headers."""
+        """Bridge A2A preset, resolve DR headers, default for per-user, and inject A2A headers.
+
+        NAT 1.6+ assigns ``self._context_state.user_id`` from the explicit ``user_id``
+        argument only. The A2A adapter calls ``session()`` with no arguments; our
+        executor sets ``context_id`` on the context var first, but the parent
+        ``session()`` would overwrite it with ``None``. Copy any preset non-empty
+        value into ``user_id`` before delegating so per-user workflows work without
+        a Bearer JWT (local dev / message-only A2A).
+
+        Additionally, A2A HTTP request headers stored in the module-level
+        ``_a2a_headers`` ContextVar by :class:`_PerUserCompatibleAgentExecutor` are
+        injected into ``ContextState._metadata``.
+        """
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:

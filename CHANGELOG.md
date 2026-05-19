@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.59
+## 0.15.60
 - `dragent`: replace the `UserManager` monkey-patch with a `DRAgentUserManager` subclass that resolves `user_id` from the signed `X-DataRobot-Authorization-Context` header (then NAT's standard extractors). `DRAgentAGUISessionManager.session()` invokes it explicitly and, for per-user workflows only, falls back to a constant `default-user` key when no identity is present so the workflow does not crash (e.g. direct API-token calls to a deployed agent). The identity resolver and the per-user workflow fallback are kept separate so callers that need real identity are not silently handed a default.
 
 ## 0.15.58
