@@ -22,6 +22,7 @@ from nat.builder.context import ContextState
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 from nat.data_models.user_info import UserInfo
+from nat.runtime import session as nat_runtime_session
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
 
@@ -32,6 +33,7 @@ from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.frontends.session import DRAgentUserManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
+from datarobot_genai.dragent.frontends.session import _per_user_workflow
 
 
 @pytest.fixture
@@ -170,7 +172,7 @@ class TestBuildMetadataFromHeaders:
 
 
 class TestDRAgentUserManager:
-    """Verify DRAgentUserManager is a pure identity resolver (no workflow-keying fallback)."""
+    """DR signed auth-context → NAT extractors → (per-user only) default-user."""
 
     def test_resolves_signed_auth_context(self):
         """X-DataRobot-Authorization-Context (signed) returns the user it carries."""
@@ -190,8 +192,8 @@ class TestDRAgentUserManager:
         expected = UserInfo._from_session_cookie("user-from-ctx")
         assert result.get_user_id() == expected.get_user_id()
 
-    def test_returns_none_when_no_identity(self):
-        """No auth-context and no standard auth → None (default-user is a session() concern)."""
+    def test_returns_none_when_no_identity_and_not_per_user(self):
+        """No identity, _per_user_workflow=False → None."""
         mock_request = MagicMock(spec=Request)
         mock_request.headers = {}
         mock_request.cookies = {}
@@ -200,77 +202,104 @@ class TestDRAgentUserManager:
 
         assert result is None
 
-    def test_subclasses_user_manager(self):
-        assert issubclass(DRAgentUserManager, UserManager)
-
-
-class TestSessionPerUserWorkflowFallback:
-    """Verify session() defaults user_id to DEFAULT_DR_AGENT_USER_ID for per-user workflows only."""
-
-    @pytest.mark.asyncio
-    async def test_per_user_workflow_with_no_identity_uses_default(self, session_manager):
-        """Per-user workflow + no identity → default-user key passes through to NAT."""
-        session_manager._is_workflow_per_user = True
+    def test_falls_back_to_default_when_per_user_workflow_active(self):
+        """No identity, _per_user_workflow=True → default-user."""
         mock_request = MagicMock(spec=Request)
         mock_request.headers = {}
         mock_request.cookies = {}
 
-        captured: dict[str, object] = {}
+        token = _per_user_workflow.set(True)
+        try:
+            result = DRAgentUserManager.extract_user_from_connection(mock_request)
+        finally:
+            _per_user_workflow.reset(token)
 
-        @asynccontextmanager
-        async def fake_nat_session(self, **kwargs: object):
-            captured.update(kwargs)
-            yield MagicMock()
+        assert result is not None
+        expected = UserInfo._from_session_cookie(DEFAULT_DR_AGENT_USER_ID)
+        assert result.get_user_id() == expected.get_user_id()
 
-        with patch.object(SessionManager, "session", fake_nat_session):
-            async with session_manager.session(http_connection=mock_request):
-                pass
-
-        assert captured.get("user_id") == DEFAULT_DR_AGENT_USER_ID
-
-    @pytest.mark.asyncio
-    async def test_non_per_user_workflow_leaves_user_id_none(self, session_manager):
-        """Non-per-user workflow → no default applied; NAT decides what to do with None."""
-        session_manager._is_workflow_per_user = False
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {}
-        mock_request.cookies = {}
-
-        captured: dict[str, object] = {}
-
-        @asynccontextmanager
-        async def fake_nat_session(self, **kwargs: object):
-            captured.update(kwargs)
-            yield MagicMock()
-
-        with patch.object(SessionManager, "session", fake_nat_session):
-            async with session_manager.session(http_connection=mock_request):
-                pass
-
-        assert captured.get("user_id") is None
-
-    @pytest.mark.asyncio
-    async def test_dr_signed_context_resolved_in_session(self, session_manager):
-        """When DR auth-context is present, the real user_id reaches NAT."""
-        session_manager._is_workflow_per_user = True
+    def test_signed_auth_context_wins_over_per_user_default(self):
+        """Real signed auth-context resolves even when per-user fallback is active."""
         mock_request = MagicMock(spec=Request)
         mock_request.headers = {"x-datarobot-authorization-context": "fake-jwt"}
         mock_auth_ctx = MagicMock()
-        mock_auth_ctx.user.id = "real-user-1"
+        mock_auth_ctx.user.id = "real-user"
 
-        captured: dict[str, object] = {}
+        token = _per_user_workflow.set(True)
+        try:
+            with patch(
+                "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
+                return_value=mock_auth_ctx,
+            ):
+                result = DRAgentUserManager.extract_user_from_connection(mock_request)
+        finally:
+            _per_user_workflow.reset(token)
+
+        assert result is not None
+        expected = UserInfo._from_session_cookie("real-user")
+        assert result.get_user_id() == expected.get_user_id()
+
+    def test_subclasses_user_manager(self):
+        assert issubclass(DRAgentUserManager, UserManager)
+
+    def test_nat_session_uses_dragent_user_manager(self):
+        """Verify the module-level rebind so NAT's session() picks up our subclass."""
+        assert nat_runtime_session.UserManager is DRAgentUserManager
+
+
+class TestSessionPerUserWorkflowContextVar:
+    """Verify session() sets _per_user_workflow during super().session() and resets after."""
+
+    @pytest.mark.asyncio
+    async def test_per_user_workflow_sets_context_var_true(self, session_manager):
+        """Per-user workflow → _per_user_workflow=True while NAT's session() runs."""
+        session_manager._is_workflow_per_user = True
+        captured: dict[str, bool] = {}
 
         @asynccontextmanager
         async def fake_nat_session(self, **kwargs: object):
-            captured.update(kwargs)
+            captured["per_user"] = _per_user_workflow.get()
             yield MagicMock()
 
-        with patch(
-            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
-            return_value=mock_auth_ctx,
-        ):
-            with patch.object(SessionManager, "session", fake_nat_session):
-                async with session_manager.session(http_connection=mock_request):
-                    pass
+        with patch.object(SessionManager, "session", fake_nat_session):
+            async with session_manager.session():
+                pass
 
-        assert captured.get("user_id") == UserInfo._from_session_cookie("real-user-1").get_user_id()
+        assert captured["per_user"] is True
+        # Resets after the session exits
+        assert _per_user_workflow.get() is False
+
+    @pytest.mark.asyncio
+    async def test_non_per_user_workflow_sets_context_var_false(self, session_manager):
+        """Non-per-user workflow → _per_user_workflow stays False."""
+        session_manager._is_workflow_per_user = False
+        captured: dict[str, bool] = {}
+
+        @asynccontextmanager
+        async def fake_nat_session(self, **kwargs: object):
+            captured["per_user"] = _per_user_workflow.get()
+            yield MagicMock()
+
+        with patch.object(SessionManager, "session", fake_nat_session):
+            async with session_manager.session():
+                pass
+
+        assert captured["per_user"] is False
+        assert _per_user_workflow.get() is False
+
+    @pytest.mark.asyncio
+    async def test_context_var_reset_when_super_session_raises(self, session_manager):
+        """_per_user_workflow must be reset even if super().session() raises."""
+        session_manager._is_workflow_per_user = True
+
+        @asynccontextmanager
+        async def exploding_nat_session(self, **kwargs: object):
+            raise RuntimeError("builder creation failed")
+            yield  # noqa: unreachable — required for generator syntax
+
+        with patch.object(SessionManager, "session", exploding_nat_session):
+            with pytest.raises(RuntimeError, match="builder creation failed"):
+                async with session_manager.session():
+                    pass  # pragma: no cover
+
+        assert _per_user_workflow.get() is False

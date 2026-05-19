@@ -46,15 +46,22 @@ logger = logging.getLogger(__name__)
 
 _auth_handler = AuthContextHeaderHandler()
 
-# Constant key used by DRAgentAGUISessionManager.session() to satisfy NAT's
-# per-user workflow requirement when no caller identity is present. Purely a
+# Constant key used by DRAgentUserManager when no caller identity resolves but
+# the surrounding workflow needs *some* user_id (per-user workflows). Purely a
 # workflow-keying fallback — not an identity claim. Must not be used by any
 # code that depends on the result being a real user.
 DEFAULT_DR_AGENT_USER_ID = "default-user"
 
+# Set by DRAgentAGUISessionManager.session() before delegating to NAT, so
+# DRAgentUserManager.extract_user_from_connection (called inside NAT's session()
+# via the module rebind) knows whether to fall back to default-user. Keeps
+# workflow-keying concerns out of the public extract signature while letting
+# the rebound class still satisfy NAT's per-user requirement.
+_per_user_workflow: ContextVar[bool] = ContextVar("_per_user_workflow", default=False)
+
 
 class DRAgentUserManager(UserManager):
-    """Add DataRobot signed auth-context resolution to NAT's standard identity extractors."""
+    """DataRobot signed auth-context → NAT extractors → (per-user only) default-user."""
 
     @classmethod
     def extract_user_from_connection(cls, connection: Request | WebSocket) -> UserInfo | None:
@@ -65,7 +72,18 @@ class DRAgentUserManager(UserManager):
                     "Resolved user_id from X-DataRobot-Authorization-Context: %s", auth_ctx.user.id
                 )
                 return UserInfo._from_session_cookie(auth_ctx.user.id)
-        return super().extract_user_from_connection(connection)
+
+        resolved = super().extract_user_from_connection(connection)
+        if resolved is not None:
+            return resolved
+
+        if _per_user_workflow.get():
+            logger.debug(
+                "No identity resolved for per-user workflow — using %s as key",
+                DEFAULT_DR_AGENT_USER_ID,
+            )
+            return UserInfo._from_session_cookie(DEFAULT_DR_AGENT_USER_ID)
+        return None
 
 
 # NAT 1.6 calls ``UserManager.extract_user_from_connection(...)`` directly on the
@@ -106,23 +124,11 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Resolve user_id (A2A preset, DR headers, per-user default) and inject A2A headers."""
+        """Forward A2A preset, signal per-user workflow context, inject A2A headers."""
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
-
-        # Per-user workflows need *a* key in the per-user-builder dict.
-        # Fall back to a constant so they do not crash when no identity is
-        # available (e.g. locust against a deployed agent). This is a
-        # workflow-keying concern, not an identity claim — all such requests
-        # share one builder/state.
-        if user_id is None and self.is_workflow_per_user:
-            logger.debug(
-                "No identity resolved for per-user workflow — using %s as key",
-                DEFAULT_DR_AGENT_USER_ID,
-            )
-            user_id = DEFAULT_DR_AGENT_USER_ID
 
         # Inject A2A request headers BEFORE super().session() so they are
         # available during per-user builder creation (agent card discovery
@@ -135,8 +141,14 @@ class DRAgentAGUISessionManager(SessionManager):
             attrs = _build_metadata_from_headers(preset_headers)
             token_metadata = self._context_state._metadata.set(attrs)
 
-        # Wrap the entire super().session() in try/finally so _metadata is
-        # always reset — even if super().session().__aenter__() raises
+        # Signal per-user-workflow context to DRAgentUserManager (called inside
+        # NAT's session() via the rebind). Lets the resolver fall back to
+        # default-user when no identity is present, without coupling workflow
+        # state to the extract signature.
+        token_per_user = _per_user_workflow.set(self.is_workflow_per_user)
+
+        # Wrap the entire super().session() in try/finally so the ContextVars
+        # are always reset — even if super().session().__aenter__() raises
         # (e.g. per-user builder creation failure).
         try:
             async with super().session(
@@ -149,6 +161,7 @@ class DRAgentAGUISessionManager(SessionManager):
             ) as sess:
                 yield sess
         finally:
+            _per_user_workflow.reset(token_per_user)
             if token_metadata is not None:
                 self._context_state._metadata.reset(token_metadata)
 
