@@ -18,8 +18,21 @@ The central registry provides a tenant-scoped list of agent cards that requires
 only standard DataRobot API-token authentication (``DATAROBOT_API_TOKEN``).
 This avoids the chicken-and-egg problem where an individual agent's card
 endpoint is behind per-agent AuthN/AuthZ.
+
+The :class:`AgentCardRegistry` supports **batch fetching** so that many
+function groups sharing the same workflow can resolve all their cards in a
+minimum number of HTTP round-trips instead of N+1 individual requests.
+
+.. note::
+    The registry API uses AND semantics when both ``deploymentIds`` and
+    ``externalIds`` parameters are provided in a single request, which would
+    return empty results.  Therefore :meth:`AgentCardRegistry.prefetch` issues
+    **separate** HTTP calls for deployment IDs and external IDs.
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 from typing import Any
 
@@ -49,54 +62,11 @@ class AgentCardRegistryError(RuntimeError):
     """Raised when the central agent card registry lookup fails."""
 
 
-async def fetch_agent_card_from_registry(
-    *,
-    deployment_id: str | None = None,
-    external_id: str | None = None,
+def _resolve_settings(
     api_token: str | None = None,
     endpoint: str | None = None,
-    timeout: float = 30.0,
-) -> AgentCard:
-    """Fetch an :class:`~a2a.types.AgentCard` from the central DataRobot registry.
-
-    Exactly one of ``deployment_id`` or ``external_id`` must be provided.
-
-    Parameters
-    ----------
-    deployment_id:
-        The DataRobot deployment ID to look up.
-    external_id:
-        The external agent identifier to look up.
-    api_token:
-        DataRobot API token.  Falls back to ``DATAROBOT_API_TOKEN`` resolved
-        via :class:`DataRobotRegistrySettings` when *None*.
-    endpoint:
-        DataRobot API endpoint.  Falls back to ``DATAROBOT_ENDPOINT`` resolved
-        via :class:`DataRobotRegistrySettings` when *None*.
-    timeout:
-        HTTP request timeout in seconds.
-
-    Returns
-    -------
-    AgentCard
-        The deserialized agent card from the registry.
-
-    Raises
-    ------
-    AgentCardRegistryError
-        If the lookup fails (missing credentials, HTTP error, or no matching
-        card in the registry).
-    """
-    if not deployment_id and not external_id:
-        raise AgentCardRegistryError(
-            "Either 'deployment_id' or 'external_id' must be provided for registry lookup."
-        )
-    if deployment_id and external_id:
-        raise AgentCardRegistryError(
-            "Specify exactly one of 'deployment_id' or 'external_id', not both."
-        )
-
-    # Resolve credentials via DataRobotAppFrameworkBaseSettings
+) -> tuple[str, str]:
+    """Return validated ``(api_token, endpoint)`` from explicit values or settings."""
     settings = DataRobotRegistrySettings()
     resolved_token = api_token or settings.datarobot_api_token
     if not resolved_token:
@@ -104,72 +74,231 @@ async def fetch_agent_card_from_registry(
             "DataRobot API token is required for agent card registry lookup. "
             "Set the DATAROBOT_API_TOKEN environment variable or provide it explicitly."
         )
-
     resolved_endpoint = endpoint or settings.datarobot_endpoint
     if not resolved_endpoint:
         raise AgentCardRegistryError(
             "DataRobot API endpoint is required for agent card registry lookup. "
             "Set the DATAROBOT_ENDPOINT environment variable or provide it explicitly."
         )
+    return resolved_token, resolved_endpoint
 
-    registry_url = build_agent_cards_registry_url(resolved_endpoint)
 
-    # Build query parameters
-    params: dict[str, str] = {}
-    if deployment_id:
-        params["deploymentIds"] = deployment_id
-    else:
-        params["externalIds"] = external_id  # type: ignore[assignment]
+def _parse_registry_response(body: dict[str, Any]) -> dict[str, AgentCard]:
+    """Parse a paginated registry response into ``{id: AgentCard}``.
 
-    headers = {"Authorization": f"Bearer {resolved_token}"}
+    Each record is indexed by *both* ``deploymentId`` and ``externalId``
+    (when present) so callers can look up by either key type.
+    """
+    cards: dict[str, AgentCard] = {}
+    for entry in body.get("data", []):
+        raw_card = entry.get("agentCard")
+        if not raw_card:
+            logger.warning(
+                "Registry entry %s has no 'agentCard' payload — skipping.",
+                entry.get("id", "?"),
+            )
+            continue
+        try:
+            card = AgentCard.model_validate(raw_card)
+        except Exception:
+            logger.warning(
+                "Failed to parse agent card for registry entry %s — skipping.",
+                entry.get("id", "?"),
+                exc_info=True,
+            )
+            continue
 
-    lookup_key = f"deployment_id={deployment_id}" if deployment_id else f"external_id={external_id}"
-    logger.info("Fetching agent card from central registry (%s): %s", lookup_key, registry_url)
+        if dep_id := entry.get("deploymentId"):
+            cards[dep_id] = card
+        if ext_id := entry.get("externalId"):
+            cards[ext_id] = card
+    return cards
 
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
-            response = await client.get(registry_url, params=params, headers=headers)
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise AgentCardRegistryError(
-            f"Agent card registry request failed with HTTP {exc.response.status_code} "
-            f"for {lookup_key}. Verify your API token and that the agent is registered."
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise AgentCardRegistryError(
-            f"Agent card registry request failed for {lookup_key}: {exc}"
-        ) from exc
 
-    body: dict[str, Any] = response.json()
-    data: list[dict[str, Any]] = body.get("data", [])
+class AgentCardRegistry:
+    """Async-safe, batch-capable cache for agent cards from the central registry.
 
-    if not data:
-        raise AgentCardRegistryError(
-            f"No agent card found in the central registry for {lookup_key}. "
-            "Verify that the deployment exists and is registered in your organisation."
+    Designed to solve the **N+1 problem**: when a workflow defines many
+    function groups that all need registry lookup, callers can
+    :meth:`prefetch` all IDs in a minimum number of HTTP calls, then
+    :meth:`get` each card from the local cache.
+
+    .. important::
+        The registry API uses AND semantics when both ``deploymentIds`` and
+        ``externalIds`` are sent in a single request.  This class always
+        issues **separate** requests for each ID type.
+
+    Usage::
+
+        registry = AgentCardRegistry()
+
+        # Batch-prefetch — issues at most 2 HTTP calls (one per ID type)
+        await registry.prefetch(
+            deployment_ids=["dep-1", "dep-2"],
+            external_ids=["ext-3"],
         )
 
-    agent_card_json = data[0].get("agentCard")
-    if not agent_card_json:
-        raise AgentCardRegistryError(
-            f"Registry entry for {lookup_key} exists but contains no 'agentCard' payload."
+        # Individual lookups hit the local cache (no HTTP)
+        card = await registry.get(deployment_id="dep-1")
+
+    The :meth:`get` method also works standalone — if the card is not cached
+    it fetches it individually.
+    """
+
+    def __init__(
+        self,
+        api_token: str | None = None,
+        endpoint: str | None = None,
+        timeout: float = 30.0,
+    ) -> None:
+        self._api_token = api_token
+        self._endpoint = endpoint
+        self._timeout = timeout
+        self._cache: dict[str, AgentCard] = {}
+        self._lock = asyncio.Lock()
+
+    async def _fetch(self, params: dict[str, str]) -> dict[str, AgentCard]:
+        """Execute a single registry HTTP GET and return parsed cards."""
+        token, endpoint = _resolve_settings(self._api_token, self._endpoint)
+        registry_url = build_agent_cards_registry_url(endpoint)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        logger.info(
+            "Fetching agent cards from registry: %s (params=%s)", registry_url, params,
         )
 
-    try:
-        card = AgentCard.model_validate(agent_card_json)
-    except Exception as exc:
-        raise AgentCardRegistryError(
-            f"Failed to parse agent card from registry for {lookup_key}: {exc}"
-        ) from exc
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
+                response = await client.get(registry_url, params=params, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise AgentCardRegistryError(
+                f"Agent card registry request failed with HTTP "
+                f"{exc.response.status_code}. Verify your API token and that "
+                f"the agents are registered."
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise AgentCardRegistryError(
+                f"Agent card registry request failed: {exc}"
+            ) from exc
 
-    logger.info(
-        "Successfully fetched agent card from registry (%s): name=%s, url=%s",
-        lookup_key,
-        card.name,
-        card.url,
-    )
-    return card
+        cards = _parse_registry_response(response.json())
+        logger.info("Fetched %d agent card(s) from registry.", len(cards))
+        return cards
+
+    async def prefetch(
+        self,
+        *,
+        deployment_ids: list[str] | None = None,
+        external_ids: list[str] | None = None,
+    ) -> None:
+        """Batch-fetch and cache agent cards in a minimum number of HTTP calls.
+
+        Issues **separate** requests for ``deployment_ids`` and
+        ``external_ids`` because the API uses AND semantics when both
+        parameters are present in a single request.
+
+        Already-cached IDs are skipped.  This method is concurrency-safe.
+
+        Parameters
+        ----------
+        deployment_ids:
+            Deployment IDs to prefetch.
+        external_ids:
+            External IDs to prefetch.
+        """
+        async with self._lock:
+            missing_dep = [d for d in (deployment_ids or []) if d not in self._cache]
+            missing_ext = [e for e in (external_ids or []) if e not in self._cache]
+
+            if not missing_dep and not missing_ext:
+                logger.debug("All requested agent cards already cached — skipping prefetch.")
+                return
+
+            if missing_dep:
+                cards = await self._fetch({"deploymentIds": ",".join(missing_dep)})
+                self._cache.update(cards)
+
+            if missing_ext:
+                cards = await self._fetch({"externalIds": ",".join(missing_ext)})
+                self._cache.update(cards)
+
+    async def get(
+        self,
+        *,
+        deployment_id: str | None = None,
+        external_id: str | None = None,
+    ) -> AgentCard:
+        """Return a single agent card, using the cache or fetching on demand.
+
+        Exactly one of ``deployment_id`` or ``external_id`` must be provided.
+
+        Raises
+        ------
+        AgentCardRegistryError
+            If the card cannot be found or the request fails.
+        """
+        if bool(deployment_id) == bool(external_id):
+            raise AgentCardRegistryError(
+                "Specify exactly one of 'deployment_id' or 'external_id'."
+            )
+
+        lookup_key: str = deployment_id or external_id  # type: ignore[assignment]
+
+        # Fast path — already cached
+        if lookup_key in self._cache:
+            return self._cache[lookup_key]
+
+        # Slow path — fetch individually (double-check under lock)
+        async with self._lock:
+            if lookup_key in self._cache:
+                return self._cache[lookup_key]
+
+            params: dict[str, str] = (
+                {"deploymentIds": deployment_id}
+                if deployment_id
+                else {"externalIds": external_id}  # type: ignore[dict-item]
+            )
+            cards = await self._fetch(params)
+            self._cache.update(cards)
+
+        if lookup_key not in self._cache:
+            id_label = (
+                f"deployment_id='{deployment_id}'"
+                if deployment_id
+                else f"external_id='{external_id}'"
+            )
+            raise AgentCardRegistryError(
+                f"No agent card found in the central registry for {id_label}. "
+                "Verify that the deployment exists and is registered in your organisation."
+            )
+
+        return self._cache[lookup_key]
 
 
+# ---------------------------------------------------------------------------
+# Module-level singleton
+# ---------------------------------------------------------------------------
+
+_default_registry: AgentCardRegistry | None = None
+_registry_lock = asyncio.Lock()
 
 
+async def get_default_registry() -> AgentCardRegistry:
+    """Return the module-level :class:`AgentCardRegistry` singleton.
+
+    Created lazily on first access.  Credentials are resolved from
+    :class:`DataRobotRegistrySettings` at instantiation time.
+    """
+    global _default_registry
+    if _default_registry is None:
+        async with _registry_lock:
+            if _default_registry is None:
+                _default_registry = AgentCardRegistry()
+    return _default_registry
+
+
+def reset_default_registry() -> None:
+    """Reset the module-level singleton (for testing)."""
+    global _default_registry
+    _default_registry = None

@@ -39,7 +39,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 
-from datarobot_genai.dragent.agent_card_registry import fetch_agent_card_from_registry
+from datarobot_genai.dragent.agent_card_registry import get_default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +309,8 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
 
         if config.registry:
             # Fetch the card from the central DataRobot agent card registry
-            pre_resolved_card = await fetch_agent_card_from_registry(
+            registry = await get_default_registry()
+            pre_resolved_card = await registry.get(
                 deployment_id=config.registry.deployment_id,
                 external_id=config.registry.external_id,
             )

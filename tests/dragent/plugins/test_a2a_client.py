@@ -371,12 +371,14 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_card = MagicMock()
         mock_card.url = "https://agent.example.com/a2a/"
 
-        with patch(f"{_MODULE}.fetch_agent_card_from_registry", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = mock_card
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
+        with patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry):
             fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
             await fg.__aenter__()
 
-            mock_fetch.assert_awaited_once_with(
+            mock_registry.get.assert_awaited_once_with(
                 deployment_id="dep-001",
                 external_id=None,
             )
@@ -389,14 +391,16 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_card = MagicMock()
         mock_card.url = "https://agent.example.com/a2a/"
 
-        with patch(f"{_MODULE}.fetch_agent_card_from_registry", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = mock_card
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
+        with patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry):
             fg = AuthenticatedA2AClientFunctionGroup(
                 config=registry_config_external, builder=mock_builder
             )
             await fg.__aenter__()
 
-            mock_fetch.assert_awaited_once_with(
+            mock_registry.get.assert_awaited_once_with(
                 deployment_id=None,
                 external_id="ext-001",
             )
@@ -412,14 +416,16 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_card.url = "https://agent.example.com/a2a/"
         mock_card.security_schemes = None
 
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
         with (
-            patch(f"{_MODULE}.fetch_agent_card_from_registry", new_callable=AsyncMock) as mock_fetch,
+            patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry),
             patch(f"{_MODULE}.Context") as mock_ctx,
             patch(f"{_MODULE}.httpx") as mock_httpx,
             patch(f"{_MODULE}.ClientFactory") as mock_factory,
             patch.object(AuthenticatedA2AClientFunctionGroup, "_register_functions"),
         ):
-            mock_fetch.return_value = mock_card
             mock_ctx.get.return_value.user_id = "test-user"
             mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
             mock_httpx.Timeout = MagicMock()
