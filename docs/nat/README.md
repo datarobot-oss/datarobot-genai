@@ -19,7 +19,6 @@ pip install "datarobot-genai[dragent]"
 | [mcp.md](mcp.md) | **`function_groups`**, **`authentication`**, MCP tools in **`tool_names`** |
 | [a2a-client.md](a2a-client.md) | A2A client: calling remote agents, agent card resolution (`url` / `registry`) |
 | [a2a-auth.md](a2a-auth.md) | A2A authentication: DataRobot API key and Okta XAA |
-| [memory.md](memory.md) | Optional long-term memory with Mem0 |
 | [caveats.md](caveats.md) | Interface caveats |
 
 Shared env vars: [LLM configuration (shared)](../llm.md). Streaming behavior (NAT ≥ 1.6): [NAT 1.6 streaming in DRAgent](../design/nat-1.6-streaming.md).
