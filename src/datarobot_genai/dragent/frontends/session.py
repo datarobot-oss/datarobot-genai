@@ -33,6 +33,7 @@ from nat.runtime.user_manager import UserManager
 from nat.runtime.user_metadata import RequestAttributes
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
+from starlette.websockets import WebSocket
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
@@ -42,39 +43,38 @@ from .response import DRAgentEventResponse
 logger = logging.getLogger(__name__)
 
 
-def _patch_user_manager() -> None:
-    """Extend ``UserManager.extract_user_from_connection`` with DataRobot auth.
+_auth_handler = AuthContextHeaderHandler()
+
+# Constant key used by DRAgentAGUISessionManager.session() to satisfy NAT's
+# per-user workflow requirement when no caller identity is present. Purely a
+# workflow-keying fallback — not an identity claim. Must not be used by any
+# code that depends on the result being a real user.
+DEFAULT_DR_AGENT_USER_ID = "default-user"
+
+
+class DRAgentUserManager(UserManager):
+    """Add DataRobot signed auth-context resolution to NAT's standard identity extractors.
 
     NAT 1.6 replaced the extensible context-based user_id resolution with
-    ``UserManager.extract_user_from_connection()`` (#1775) which only supports
-    standard auth (Bearer JWT, cookies, API key).  DataRobot passes user identity
-    via ``X-DataRobot-Authorization-Context``, which UserManager doesn't know about.
-
-    This monkey-patches ``extract_user_from_connection`` to try the DataRobot header
-    first, falling back to the original implementation for standard auth.
+    ``UserManager.extract_user_from_connection()`` (#1775), which only supports
+    standard auth (Bearer JWT, cookies, API key). DataRobot passes user identity
+    via ``X-DataRobot-Authorization-Context`` (signed app-context JWT), which the
+    vanilla extractor does not understand. This subclass handles that header
+    first, then delegates to ``super().extract_user_from_connection()`` so
+    standard auth still works.
     """
-    if getattr(UserManager.extract_user_from_connection, "_dr_patched", False):
-        return
 
-    auth_handler = AuthContextHeaderHandler()
-    original_extract = UserManager.extract_user_from_connection
-
-    def _extract_with_dr_auth(cls: type, connection: HTTPConnection) -> UserInfo | None:
+    @classmethod
+    def extract_user_from_connection(cls, connection: Request | WebSocket) -> UserInfo | None:
         if isinstance(connection, Request):
-            auth_ctx = auth_handler.get_context(dict(connection.headers))
+            auth_ctx = _auth_handler.get_context(dict(connection.headers))
             if auth_ctx is not None:
-                user_info = UserInfo._from_session_cookie(auth_ctx.user.id)
                 logger.debug(
-                    "Resolved user_id from DataRobot auth context: %s", user_info.get_user_id()
+                    "Resolved user_id from X-DataRobot-Authorization-Context: %s", auth_ctx.user.id
                 )
-                return user_info
-        return original_extract.__func__(cls, connection)
+                return UserInfo._from_session_cookie(auth_ctx.user.id)
+        return super().extract_user_from_connection(connection)
 
-    _extract_with_dr_auth._dr_patched = True  # type: ignore[attr-defined]
-    UserManager.extract_user_from_connection = classmethod(_extract_with_dr_auth)  # type: ignore[assignment]
-
-
-_patch_user_manager()
 
 # ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
 # request headers into the NAT context so auth providers (e.g. OAuth2CrossApplicationAccess)
@@ -108,7 +108,7 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Bridge A2A and other callers that preset ``ContextState.user_id``.
+        """Bridge A2A preset, resolve DR headers, default for per-user, and inject A2A headers.
 
         NAT 1.6+ assigns ``self._context_state.user_id`` from the explicit ``user_id``
         argument only. The A2A adapter calls ``session()`` with no arguments; our
@@ -125,6 +125,28 @@ class DRAgentAGUISessionManager(SessionManager):
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
+
+        # Resolve identity via our UserManager (knows DR signed auth-context in
+        # addition to NAT's standard extractors). Done explicitly rather than
+        # via a module rebind so the default-user fallback below stays scoped
+        # to this session() — DRAgentUserManager remains a pure identity
+        # resolver that other callers can safely use.
+        if user_id is None and isinstance(http_connection, (Request, WebSocket)):
+            user_info = DRAgentUserManager.extract_user_from_connection(http_connection)
+            if user_info is not None:
+                user_id = user_info.get_user_id()
+
+        # Per-user workflows need *a* key in the per-user-builder dict.
+        # Fall back to a constant so they do not crash when no identity is
+        # available (e.g. locust against a deployed agent). This is a
+        # workflow-keying concern, not an identity claim — all such requests
+        # share one builder/state.
+        if user_id is None and self.is_workflow_per_user:
+            logger.debug(
+                "No identity resolved for per-user workflow — using %s as key",
+                DEFAULT_DR_AGENT_USER_ID,
+            )
+            user_id = DEFAULT_DR_AGENT_USER_ID
 
         # Inject A2A request headers BEFORE super().session() so they are
         # available during per-user builder creation (agent card discovery
