@@ -37,7 +37,7 @@ from openai.types.chat import ChatCompletionChunk
 from dragent_tests.helpers import AGENT
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
-RUNNER_SCRIPT = Path(__file__).resolve().parent / "_run_agent_inline.py"
+RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 AGENT_DIR = E2E_ROOT / "dragent" / AGENT
 WORKFLOW_CONFIG = AGENT_DIR / "workflow.yaml"
 
