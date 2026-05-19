@@ -220,24 +220,6 @@ class NatAgent(BaseAgent[None]):
         text_started = False
 
         async with load_workflow(self.workflow_path, headers=self.forwarded_headers) as workflow:
-            # Bridge ``self.forwarded_headers`` (the DataRobot-namespaced headers
-            # extracted by ``custom.py``) into ``ContextState._metadata`` so
-            # downstream consumers (e.g. the auto-memory wrapper resolving a
-            # per-user identity from ``X-DataRobot-Authorization-Context``) can
-            # read them via ``Context.get().metadata.headers``. Mirrors the A2A
-            # side-channel: ``_PerUserCompatibleAgentExecutor.execute`` sets
-            # ``_a2a_headers`` → ``DRAgentAGUISessionManager.session`` injects it
-            # into ``_metadata``. We're outside that flow (DRUM ``/chat/completions``)
-            # so we wire it directly here. ContextVars are task-scoped, so the
-            # value set on this task does not leak to subsequent requests.
-            if self.forwarded_headers:
-                from nat.data_models.api_server import Request as NATRequest
-                from nat.runtime.user_metadata import RequestAttributes
-
-                attrs = RequestAttributes()
-                attrs._request = NATRequest(headers=dict(self.forwarded_headers))
-                workflow._context_state._metadata.set(attrs)
-
             async with workflow.session(user_id=thread_id) as session:
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
