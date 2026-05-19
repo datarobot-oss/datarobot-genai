@@ -210,6 +210,39 @@ def test_get_llm_forwards_model_name_and_parameters() -> None:
     assert llm.temperature == 0.5
 
 
+def test_gateway_llm_forwards_extra_body_via_model_kwargs() -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm(
+        parameters={"extra_body": {"mock_response": "hello"}}
+    )
+    assert llm.model_kwargs.get("extra_body") == {"mock_response": "hello"}
+
+
+def test_deployment_llm_forwards_extra_body_via_model_kwargs() -> None:
+    llm = langgraph_llm.get_datarobot_deployment_llm(
+        "dep-1", parameters={"extra_body": {"mock_response": "hello"}}
+    )
+    assert llm.model_kwargs.get("extra_body") == {"mock_response": "hello"}
+
+
+def test_external_llm_forwards_extra_body_via_model_kwargs() -> None:
+    llm = langgraph_llm.get_external_llm(
+        parameters={"extra_body": {"mock_response": "hello"}}
+    )
+    assert llm.model_kwargs.get("extra_body") == {"mock_response": "hello"}
+
+
+def test_factory_preserves_existing_model_kwargs_when_adding_extra_body() -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm(
+        parameters={"extra_body": {"mock_response": "hello"}, "model_kwargs": {"top_k": 5}}
+    )
+    assert llm.model_kwargs == {"top_k": 5, "extra_body": {"mock_response": "hello"}}
+
+
+def test_factory_omits_model_kwargs_when_no_extra_body() -> None:
+    llm = langgraph_llm.get_datarobot_gateway_llm()
+    assert llm.model_kwargs == {}
+
+
 def test_get_llm_forwards_streaming_flag() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY

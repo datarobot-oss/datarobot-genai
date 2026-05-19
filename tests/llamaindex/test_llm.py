@@ -155,6 +155,43 @@ def test_get_external_llm_merges_parameters() -> None:
     assert llm.temperature == 0.7
 
 
+def test_gateway_llm_forwards_extra_body_via_additional_kwargs() -> None:
+    llm = llama_index_llm.get_datarobot_gateway_llm(
+        parameters={"extra_body": {"mock_response": "hello"}}
+    )
+    assert llm.additional_kwargs.get("extra_body") == {"mock_response": "hello"}
+
+
+def test_deployment_llm_forwards_extra_body_via_additional_kwargs() -> None:
+    llm = llama_index_llm.get_datarobot_deployment_llm(
+        "dep-1", parameters={"extra_body": {"mock_response": "hello"}}
+    )
+    assert llm.additional_kwargs.get("extra_body") == {"mock_response": "hello"}
+
+
+def test_external_llm_forwards_extra_body_via_additional_kwargs() -> None:
+    llm = llama_index_llm.get_external_llm(
+        parameters={"extra_body": {"mock_response": "hello"}}
+    )
+    assert llm.additional_kwargs.get("extra_body") == {"mock_response": "hello"}
+
+
+def test_factory_preserves_existing_additional_kwargs_when_adding_extra_body() -> None:
+    llm = llama_index_llm.get_datarobot_gateway_llm(
+        parameters={
+            "extra_body": {"mock_response": "hello"},
+            "additional_kwargs": {"extra_headers": {"X-Custom": "val"}},
+        }
+    )
+    assert llm.additional_kwargs.get("extra_body") == {"mock_response": "hello"}
+    assert llm.additional_kwargs.get("extra_headers") == {"X-Custom": "val"}
+
+
+def test_factory_does_not_add_extra_body_when_absent() -> None:
+    llm = llama_index_llm.get_datarobot_gateway_llm()
+    assert "extra_body" not in (llm.additional_kwargs or {})
+
+
 def test_get_llm_routes_to_gateway() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
