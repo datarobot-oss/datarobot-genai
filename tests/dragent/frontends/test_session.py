@@ -28,11 +28,11 @@ from nat.runtime.user_manager import UserManager
 
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.session import DEFAULT_DR_AGENT_USER_ID
 from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.frontends.session import DRAgentUserManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
-from datarobot_genai.dragent.frontends.session import _resolve_dr_user_id
 
 
 @pytest.fixture
@@ -170,11 +170,13 @@ class TestBuildMetadataFromHeaders:
         assert attrs.headers == {}
 
 
-class TestResolveDrUserId:
-    """Verify DataRobot header resolution used by DRAgentAGUISessionManager.session()."""
+class TestDRAgentUserManager:
+    """Verify DRAgentUserManager: signed auth-context → NAT extractor → default-user."""
 
-    def test_authorization_context_takes_precedence(self):
-        """Signed auth-context header wins over the gateway User-Id fallback."""
+    def test_resolves_signed_auth_context(self):
+        """X-DataRobot-Authorization-Context (signed) returns the user it carries."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"x-datarobot-authorization-context": "fake-jwt"}
         mock_auth_ctx = MagicMock()
         mock_auth_ctx.user.id = "user-from-ctx"
 
@@ -182,60 +184,25 @@ class TestResolveDrUserId:
             "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
             return_value=mock_auth_ctx,
         ):
-            result = _resolve_dr_user_id(
-                {
-                    "x-datarobot-authorization-context": "fake-jwt",
-                    "x-datarobot-user-id": "user-from-gateway",
-                }
-            )
-
-        assert result == "user-from-ctx"
-
-    def test_falls_back_to_user_id_header(self):
-        """``X-DataRobot-User-Id`` is used when no auth-context header is present."""
-        with patch(
-            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
-            return_value=None,
-        ):
-            result = _resolve_dr_user_id({"x-datarobot-user-id": "user-from-gateway"})
-
-        assert result == "user-from-gateway"
-
-    def test_returns_none_when_no_dr_headers(self):
-        """No DR headers → fall through so NAT's standard extractor runs."""
-        with patch(
-            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
-            return_value=None,
-        ):
-            result = _resolve_dr_user_id({})
-
-        assert result is None
-
-
-class TestDRAgentUserManager:
-    """Verify DRAgentUserManager extends NAT's UserManager with DataRobot header resolution."""
-
-    def test_returns_user_info_when_dr_header_present(self):
-        """DR-header resolution returns a UserInfo wrapping the resolved user_id."""
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"x-datarobot-user-id": "user-from-gateway"}
-
-        result = DRAgentUserManager.extract_user_from_connection(mock_request)
+            result = DRAgentUserManager.extract_user_from_connection(mock_request)
 
         assert result is not None
         assert isinstance(result, UserInfo)
-        expected = UserInfo._from_session_cookie("user-from-gateway")
+        expected = UserInfo._from_session_cookie("user-from-ctx")
         assert result.get_user_id() == expected.get_user_id()
 
-    def test_falls_back_to_parent_when_no_dr_header(self):
-        """No DR header → defer to NAT's standard extractor (Bearer/JWT/cookie/API-key)."""
+    def test_falls_back_to_default_when_no_identity(self):
+        """No auth-context and no standard auth → constant default-user."""
         mock_request = MagicMock(spec=Request)
         mock_request.headers = {}
         mock_request.cookies = {}
 
         result = DRAgentUserManager.extract_user_from_connection(mock_request)
 
-        assert result is None
+        assert result is not None
+        assert isinstance(result, UserInfo)
+        expected = UserInfo._from_session_cookie(DEFAULT_DR_AGENT_USER_ID)
+        assert result.get_user_id() == expected.get_user_id()
 
     def test_nat_session_uses_dragent_user_manager(self):
         """Verify the module-level rebind so NAT's session() picks up our subclass."""

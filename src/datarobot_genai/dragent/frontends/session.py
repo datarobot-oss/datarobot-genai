@@ -46,35 +46,33 @@ logger = logging.getLogger(__name__)
 
 _auth_handler = AuthContextHeaderHandler()
 
-
-def _resolve_dr_user_id(headers: dict[str, str]) -> str | None:
-    """Try signed X-DataRobot-Authorization-Context, then unsigned X-DataRobot-User-Id."""
-    auth_ctx = _auth_handler.get_context(headers)
-    if auth_ctx is not None:
-        logger.debug(
-            "Resolved user_id from X-DataRobot-Authorization-Context: %s", auth_ctx.user.id
-        )
-        return auth_ctx.user.id
-
-    user_id = headers.get("x-datarobot-user-id") or headers.get("X-DataRobot-User-Id")
-    if user_id:
-        # Unsigned — trusted because predictions-gateway rebuilds it from the authenticated user.
-        logger.debug("Resolved user_id from X-DataRobot-User-Id header: %s", user_id)
-        return user_id
-
-    return None
+# Used when neither a signed DataRobot auth-context nor NAT's standard extractors
+# can resolve an identity. Keeps per-user workflows from crashing for callers
+# that lack proper auth context (e.g. locust against a deployed agent); all such
+# requests share the same per-user builder/state, so do not rely on this for
+# any kind of authorization decision.
+DEFAULT_DR_AGENT_USER_ID = "default-user"
 
 
 class DRAgentUserManager(UserManager):
-    """UserManager that adds DataRobot header resolution before falling back to standard auth."""
+    """Resolve DataRobot signed auth-context, then NAT's extractors, then fall back to a default."""
 
     @classmethod
     def extract_user_from_connection(cls, connection: Request | WebSocket) -> UserInfo | None:
         if isinstance(connection, Request):
-            user_id = _resolve_dr_user_id(dict(connection.headers))
-            if user_id is not None:
-                return UserInfo._from_session_cookie(user_id)
-        return super().extract_user_from_connection(connection)
+            auth_ctx = _auth_handler.get_context(dict(connection.headers))
+            if auth_ctx is not None:
+                logger.debug(
+                    "Resolved user_id from X-DataRobot-Authorization-Context: %s", auth_ctx.user.id
+                )
+                return UserInfo._from_session_cookie(auth_ctx.user.id)
+
+        resolved = super().extract_user_from_connection(connection)
+        if resolved is not None:
+            return resolved
+
+        logger.debug("No identity resolved — falling back to %s", DEFAULT_DR_AGENT_USER_ID)
+        return UserInfo._from_session_cookie(DEFAULT_DR_AGENT_USER_ID)
 
 
 # NAT 1.6 calls ``UserManager.extract_user_from_connection(...)`` directly on the
