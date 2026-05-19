@@ -26,11 +26,15 @@ from nat.data_models.authentication import AuthFlowType
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.interactive import HumanResponse
 from nat.data_models.interactive import InteractionPrompt
+from nat.data_models.user_info import UserInfo
+from nat.runtime import session as nat_runtime_session
 from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
+from nat.runtime.user_manager import UserManager
 from nat.runtime.user_metadata import RequestAttributes
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
+from starlette.websockets import WebSocket
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
@@ -44,17 +48,7 @@ _auth_handler = AuthContextHeaderHandler()
 
 
 def _resolve_dr_user_id(headers: dict[str, str]) -> str | None:
-    """Resolve ``user_id`` from DataRobot-specific request headers.
-
-    Tries ``X-DataRobot-Authorization-Context`` (signed app-context JWT
-    carrying the full identity) first, then ``X-DataRobot-User-Id``
-    (populated by predictions-gateway for any authenticated deployment
-    request, including direct API-token calls).
-
-    Returns ``None`` if neither header yields a value; callers should fall
-    through to NAT's standard extractor (Bearer/JWT/cookie/API-key) in
-    that case.
-    """
+    """Try signed X-DataRobot-Authorization-Context, then unsigned X-DataRobot-User-Id."""
     auth_ctx = _auth_handler.get_context(headers)
     if auth_ctx is not None:
         logger.debug(
@@ -64,10 +58,29 @@ def _resolve_dr_user_id(headers: dict[str, str]) -> str | None:
 
     user_id = headers.get("x-datarobot-user-id") or headers.get("X-DataRobot-User-Id")
     if user_id:
+        # Unsigned — trusted because predictions-gateway rebuilds it from the authenticated user.
         logger.debug("Resolved user_id from X-DataRobot-User-Id header: %s", user_id)
         return user_id
 
     return None
+
+
+class DRAgentUserManager(UserManager):
+    """UserManager that adds DataRobot header resolution before falling back to standard auth."""
+
+    @classmethod
+    def extract_user_from_connection(cls, connection: Request | WebSocket) -> UserInfo | None:
+        if isinstance(connection, Request):
+            user_id = _resolve_dr_user_id(dict(connection.headers))
+            if user_id is not None:
+                return UserInfo._from_session_cookie(user_id)
+        return super().extract_user_from_connection(connection)
+
+
+# NAT 1.6 calls ``UserManager.extract_user_from_connection(...)`` directly on the
+# imported class in ``nat/runtime/session.py`` — no DI / registry — so rebind the
+# reference there to pick up our subclass.
+nat_runtime_session.UserManager = DRAgentUserManager  # type: ignore[misc]
 
 
 # ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
@@ -102,14 +115,11 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Resolve user_id from A2A preset or DataRobot headers before delegating to NAT."""
+        """Forward A2A preset user_id and inject A2A request headers before delegating to NAT."""
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
-
-        if user_id is None and isinstance(http_connection, Request):
-            user_id = _resolve_dr_user_id(dict(http_connection.headers))
 
         # Inject A2A request headers BEFORE super().session() so they are
         # available during per-user builder creation (agent card discovery

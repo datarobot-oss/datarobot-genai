@@ -21,11 +21,15 @@ from fastapi import Request
 from nat.builder.context import ContextState
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
+from nat.data_models.user_info import UserInfo
+from nat.runtime import session as nat_runtime_session
 from nat.runtime.session import SessionManager
+from nat.runtime.user_manager import UserManager
 
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
+from datarobot_genai.dragent.frontends.session import DRAgentUserManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
 from datarobot_genai.dragent.frontends.session import _resolve_dr_user_id
@@ -208,43 +212,32 @@ class TestResolveDrUserId:
         assert result is None
 
 
-class TestSessionResolvesDrHeaders:
-    """Verify session() wires _resolve_dr_user_id into the NAT user_id kwarg."""
+class TestDRAgentUserManager:
+    """Verify DRAgentUserManager extends NAT's UserManager with DataRobot header resolution."""
 
-    @pytest.mark.asyncio
-    async def test_session_resolves_user_id_from_dr_headers(self, session_manager):
-        """When http_connection is a Request, DR headers drive user_id without monkey-patching."""
+    def test_returns_user_info_when_dr_header_present(self):
+        """DR-header resolution returns a UserInfo wrapping the resolved user_id."""
         mock_request = MagicMock(spec=Request)
         mock_request.headers = {"x-datarobot-user-id": "user-from-gateway"}
 
-        captured: dict[str, object] = {}
+        result = DRAgentUserManager.extract_user_from_connection(mock_request)
 
-        @asynccontextmanager
-        async def fake_nat_session(self, **kwargs: object):
-            captured.update(kwargs)
-            yield MagicMock()
+        assert result is not None
+        assert isinstance(result, UserInfo)
+        expected = UserInfo._from_session_cookie("user-from-gateway")
+        assert result.get_user_id() == expected.get_user_id()
 
-        with patch.object(SessionManager, "session", fake_nat_session):
-            async with session_manager.session(http_connection=mock_request):
-                pass
-
-        assert captured.get("user_id") == "user-from-gateway"
-
-    @pytest.mark.asyncio
-    async def test_session_leaves_user_id_none_when_no_dr_headers(self, session_manager):
-        """Without DR headers, user_id is forwarded as None so NAT's extractor runs."""
+    def test_falls_back_to_parent_when_no_dr_header(self):
+        """No DR header → defer to NAT's standard extractor (Bearer/JWT/cookie/API-key)."""
         mock_request = MagicMock(spec=Request)
         mock_request.headers = {}
+        mock_request.cookies = {}
 
-        captured: dict[str, object] = {}
+        result = DRAgentUserManager.extract_user_from_connection(mock_request)
 
-        @asynccontextmanager
-        async def fake_nat_session(self, **kwargs: object):
-            captured.update(kwargs)
-            yield MagicMock()
+        assert result is None
 
-        with patch.object(SessionManager, "session", fake_nat_session):
-            async with session_manager.session(http_connection=mock_request):
-                pass
-
-        assert captured.get("user_id") is None
+    def test_nat_session_uses_dragent_user_manager(self):
+        """Verify the module-level rebind so NAT's session() picks up our subclass."""
+        assert nat_runtime_session.UserManager is DRAgentUserManager
+        assert issubclass(DRAgentUserManager, UserManager)
