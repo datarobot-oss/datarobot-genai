@@ -27,7 +27,6 @@ from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.interactive import HumanResponse
 from nat.data_models.interactive import InteractionPrompt
 from nat.data_models.user_info import UserInfo
-from nat.runtime import session as nat_runtime_session
 from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
@@ -68,12 +67,6 @@ class DRAgentUserManager(UserManager):
         return super().extract_user_from_connection(connection)
 
 
-# NAT 1.6 calls ``UserManager.extract_user_from_connection(...)`` directly on the
-# imported class in ``nat/runtime/session.py`` — no DI / registry — so rebind the
-# reference there to pick up our subclass.
-nat_runtime_session.UserManager = DRAgentUserManager  # type: ignore[misc]
-
-
 # ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
 # request headers into the NAT context so auth providers (e.g. OAuth2CrossApplicationAccess)
 # can read them via Context.get().metadata.headers.  Module-level so the same var is
@@ -111,6 +104,16 @@ class DRAgentAGUISessionManager(SessionManager):
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
+
+        # Resolve identity via our UserManager (knows DR signed auth-context in
+        # addition to NAT's standard extractors). Done explicitly rather than
+        # via a module rebind so the default-user fallback below stays scoped
+        # to this session() — DRAgentUserManager remains a pure identity
+        # resolver that other callers can safely use.
+        if user_id is None and isinstance(http_connection, (Request, WebSocket)):
+            user_info = DRAgentUserManager.extract_user_from_connection(http_connection)
+            if user_info is not None:
+                user_id = user_info.get_user_id()
 
         # Per-user workflows need *a* key in the per-user-builder dict.
         # Fall back to a constant so they do not crash when no identity is
