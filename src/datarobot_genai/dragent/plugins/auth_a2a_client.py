@@ -40,6 +40,7 @@ from pydantic import Field
 from pydantic import model_validator
 
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
+from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 
 logger = logging.getLogger(__name__)
 
@@ -252,8 +253,7 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
 
     registry: AgentCardRegistryLookup | None = Field(
         default=None,
-        description="Central DataRobot agent card registry lookup. "
-        "Mutually exclusive with 'url'.",
+        description="Central DataRobot agent card registry lookup. Mutually exclusive with 'url'.",
     )
 
     @model_validator(mode="after")
@@ -272,6 +272,17 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
                 "Either 'url' or 'registry' must be provided. "
                 "Use 'url' to fetch the agent card directly from the agent, "
                 "or 'registry' to look it up in the central DataRobot agent card registry."
+            )
+        # Eager registration for batch prefetch (N+1 optimisation).
+        # register() here is sync, no I/O — just queues the ID.
+        # First async get() in __aenter__ flushes all pending IDs
+        # in ≤2 HTTP calls; subsequent gets hit the warm cache.
+        # See AgentCardRegistry docstring for full details.
+        if has_registry:
+            registry = get_default_registry_sync()
+            registry.register(
+                deployment_id=self.registry.deployment_id,  # type: ignore[union-attr]
+                external_id=self.registry.external_id,  # type: ignore[union-attr]
             )
         return self
 

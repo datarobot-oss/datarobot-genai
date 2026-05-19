@@ -128,4 +128,3 @@ def build_agent_cards_registry_url(endpoint: str) -> str:
     """
     base = endpoint.rstrip("/")
     return f"{base}/agentCards/"
-

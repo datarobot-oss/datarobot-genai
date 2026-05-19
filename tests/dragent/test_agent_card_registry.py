@@ -20,11 +20,14 @@ import httpx
 import pytest
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
+from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import DataRobotRegistrySettings
+from datarobot_genai.dragent.agent_card_registry import _CacheEntry
 from datarobot_genai.dragent.agent_card_registry import _parse_registry_response
 from datarobot_genai.dragent.agent_card_registry import _resolve_settings
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
+from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 
 _MODULE = "datarobot_genai.dragent.agent_card_registry"
@@ -64,6 +67,46 @@ def _entry(dep_id=None, ext_id=None, card=_SAMPLE_AGENT_CARD):
         "externalId": ext_id,
         "agentCard": card,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tests: AgentCardRegistryConfig
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCardRegistryConfig:
+    def test_default_ttl(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_cache_ttl == 24 * 3600
+
+    def test_ttl_zero_allowed(self):
+        config = AgentCardRegistryConfig(agent_card_registry_cache_ttl=0)
+        assert config.agent_card_registry_cache_ttl == 0
+
+    def test_ttl_from_env(self):
+        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_CACHE_TTL": "120"}):
+            config = AgentCardRegistryConfig()
+            assert config.agent_card_registry_cache_ttl == 120
+
+
+# ---------------------------------------------------------------------------
+# Tests: _CacheEntry
+# ---------------------------------------------------------------------------
+
+
+class TestCacheEntry:
+    def test_not_expired_within_ttl(self):
+        entry = _CacheEntry(MagicMock())
+        assert not entry.is_expired(3600)
+
+    def test_expired_with_zero_ttl(self):
+        entry = _CacheEntry(MagicMock())
+        assert entry.is_expired(0)
+
+    def test_expired_after_ttl(self):
+        entry = _CacheEntry(MagicMock())
+        entry.fetched_at -= 100  # Simulate 100s ago
+        assert entry.is_expired(50)
 
 
 # ---------------------------------------------------------------------------
@@ -113,13 +156,12 @@ class TestParseRegistryResponse:
 
     def test_skips_entries_with_invalid_card(self):
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": {"bad": True}})
-        # Should not raise; just skips
         cards = _parse_registry_response(body)
         assert cards == {}
 
 
 # ---------------------------------------------------------------------------
-# Tests: AgentCardRegistry
+# Tests: AgentCardRegistry — core get/cache
 # ---------------------------------------------------------------------------
 
 
@@ -132,74 +174,157 @@ class TestAgentCardRegistry:
 
     async def test_get_single_deployment_id(self, mock_fetch):
         mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         card = await registry.get(deployment_id="dep-1")
         assert card is mock_fetch.return_value["dep-1"]
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
 
     async def test_get_single_external_id(self, mock_fetch):
         mock_fetch.return_value = {"ext-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         card = await registry.get(external_id="ext-1")
         assert card is mock_fetch.return_value["ext-1"]
         mock_fetch.assert_awaited_once_with({"externalIds": "ext-1"})
 
     async def test_get_raises_when_both_ids(self):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get(deployment_id="d", external_id="e")
 
     async def test_get_raises_when_neither_id(self):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get()
 
     async def test_get_raises_when_not_found(self, mock_fetch):
-        mock_fetch.return_value = {}  # Empty result
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        mock_fetch.return_value = {}
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="missing")
 
     async def test_get_uses_cache(self, mock_fetch):
         mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
 
         card1 = await registry.get(deployment_id="dep-1")
         card2 = await registry.get(deployment_id="dep-1")
 
         assert card1 is card2
-        # Only one HTTP call — second get() used cache
         mock_fetch.assert_awaited_once()
+
+    async def test_cache_ttl_zero_always_refetches(self, mock_fetch):
+        """cache_ttl=0 means every get() triggers a fresh fetch."""
+        card_mock = MagicMock(name="card1")
+        mock_fetch.return_value = {"dep-1": card_mock}
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=0)
+
+        await registry.get(deployment_id="dep-1")
+        await registry.get(deployment_id="dep-1")
+
+        assert mock_fetch.await_count == 2
+
+    async def test_expired_cache_triggers_refetch(self, mock_fetch):
+        mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+
+        await registry.get(deployment_id="dep-1")
+        # Simulate expiry
+        registry._cache["dep-1"].fetched_at -= 120
+
+        mock_fetch.return_value = {"dep-1": MagicMock(name="card1-refreshed")}
+        await registry.get(deployment_id="dep-1")
+        assert mock_fetch.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests: AgentCardRegistry — register + batch flush
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCardRegistryRegisterFlush:
+    @pytest.fixture
+    def mock_fetch(self):
+        with patch.object(AgentCardRegistry, "_fetch", new_callable=AsyncMock) as m:
+            yield m
+
+    async def test_register_then_get_flushes_batch(self, mock_fetch):
+        """Registered IDs are batch-fetched on first get()."""
+        mock_fetch.side_effect = [
+            {"dep-1": MagicMock(name="c1"), "dep-2": MagicMock(name="c2")},
+            {"ext-1": MagicMock(name="c3")},
+        ]
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry.register(deployment_id="dep-1")
+        registry.register(deployment_id="dep-2")
+        registry.register(external_id="ext-1")
+
+        # First get triggers batch flush
+        await registry.get(deployment_id="dep-1")
+
+        assert mock_fetch.await_count == 2
+        calls = mock_fetch.call_args_list
+        assert calls[0].args[0] == {"deploymentIds": "dep-1,dep-2"} or calls[0].args[0] == {
+            "deploymentIds": "dep-2,dep-1"
+        }
+        assert calls[1].args[0] == {"externalIds": "ext-1"}
+
+        # Subsequent gets are cache hits
+        mock_fetch.reset_mock()
+        await registry.get(deployment_id="dep-2")
+        await registry.get(external_id="ext-1")
+        mock_fetch.assert_not_awaited()
+
+    async def test_register_deduplicates(self, mock_fetch):
+        mock_fetch.return_value = {"dep-1": MagicMock(name="c1")}
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry.register(deployment_id="dep-1")
+        registry.register(deployment_id="dep-1")
+        registry.register(deployment_id="dep-1")
+
+        await registry.get(deployment_id="dep-1")
+        mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
+
+    async def test_pending_cleared_after_flush(self, mock_fetch):
+        mock_fetch.return_value = {"dep-1": MagicMock(name="c1")}
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry.register(deployment_id="dep-1")
+
+        await registry.get(deployment_id="dep-1")
+        assert len(registry._pending_deployment_ids) == 0
+        assert len(registry._pending_external_ids) == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: AgentCardRegistry — prefetch
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCardRegistryPrefetch:
+    @pytest.fixture
+    def mock_fetch(self):
+        with patch.object(AgentCardRegistry, "_fetch", new_callable=AsyncMock) as m:
+            yield m
 
     async def test_prefetch_deployment_ids(self, mock_fetch):
         mock_fetch.return_value = {
             "dep-1": MagicMock(name="card1"),
             "dep-2": MagicMock(name="card2"),
         }
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1", "dep-2"])
 
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1,dep-2"})
-        # Subsequent gets should not trigger fetch
         mock_fetch.reset_mock()
         await registry.get(deployment_id="dep-1")
         await registry.get(deployment_id="dep-2")
         mock_fetch.assert_not_awaited()
 
-    async def test_prefetch_external_ids(self, mock_fetch):
-        mock_fetch.return_value = {"ext-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
-        await registry.prefetch(external_ids=["ext-1"])
-
-        mock_fetch.assert_awaited_once_with({"externalIds": "ext-1"})
-
     async def test_prefetch_mixed_issues_separate_calls(self, mock_fetch):
-        """deployment_ids and external_ids must be separate HTTP calls."""
         mock_fetch.side_effect = [
             {"dep-1": MagicMock(name="card1")},
             {"ext-1": MagicMock(name="card2")},
         ]
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1"], external_ids=["ext-1"])
 
         assert mock_fetch.await_count == 2
@@ -209,12 +334,11 @@ class TestAgentCardRegistry:
 
     async def test_prefetch_skips_already_cached(self, mock_fetch):
         mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
 
         await registry.prefetch(deployment_ids=["dep-1"])
         mock_fetch.reset_mock()
 
-        # dep-1 already cached, only dep-2 should be fetched
         mock_fetch.return_value = {"dep-2": MagicMock(name="card2")}
         await registry.prefetch(deployment_ids=["dep-1", "dep-2"])
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-2"})
@@ -231,7 +355,8 @@ class TestAgentCardRegistryFetch:
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = _registry_response(
-            _entry(dep_id="dep-1"), _entry(dep_id="dep-2", card=_SAMPLE_AGENT_CARD_2),
+            _entry(dep_id="dep-1"),
+            _entry(dep_id="dep-2", card=_SAMPLE_AGENT_CARD_2),
         )
         mock_response.raise_for_status = MagicMock()
 
@@ -243,7 +368,9 @@ class TestAgentCardRegistryFetch:
 
     async def test_fetch_passes_params_and_auth(self, mock_httpx_client):
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_httpx_client):
-            registry = AgentCardRegistry(api_token="my-tok", endpoint="https://app.dr.com/api/v2")
+            registry = AgentCardRegistry(
+                api_token="my-tok", endpoint="https://app.dr.com/api/v2", cache_ttl=3600
+            )
             cards = await registry._fetch({"deploymentIds": "dep-1,dep-2"})
 
         assert "dep-1" in cards
@@ -265,13 +392,13 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep")
+            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
             with pytest.raises(AgentCardRegistryError, match="HTTP 403"):
                 await registry._fetch({"deploymentIds": "dep-1"})
 
 
 # ---------------------------------------------------------------------------
-# Tests: get_default_registry singleton
+# Tests: get_default_registry / get_default_registry_sync singleton
 # ---------------------------------------------------------------------------
 
 
@@ -292,3 +419,13 @@ class TestGetDefaultRegistry:
         reset_default_registry()
         r2 = await get_default_registry()
         assert r1 is not r2
+
+    def test_sync_returns_singleton(self):
+        r1 = get_default_registry_sync()
+        r2 = get_default_registry_sync()
+        assert r1 is r2
+
+    async def test_sync_and_async_share_singleton(self):
+        r1 = get_default_registry_sync()
+        r2 = await get_default_registry()
+        assert r1 is r2

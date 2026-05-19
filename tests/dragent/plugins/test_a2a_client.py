@@ -23,6 +23,7 @@ from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
@@ -119,6 +120,14 @@ def patched_fg_env():
         yield mock_cls
 
 
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    """Reset the agent card registry singleton between tests."""
+    reset_default_registry()
+    yield
+    reset_default_registry()
+
+
 # ---------------------------------------------------------------------------
 # Tests: _extract_auth_headers
 # ---------------------------------------------------------------------------
@@ -194,9 +203,7 @@ class TestAuthenticatedA2AClientConfig:
         assert cfg.url is None
 
     def test_registry_with_external_id(self):
-        cfg = AuthenticatedA2AClientConfig(
-            registry=AgentCardRegistryLookup(external_id="ext-456")
-        )
+        cfg = AuthenticatedA2AClientConfig(registry=AgentCardRegistryLookup(external_id="ext-456"))
         assert cfg.registry is not None
         assert cfg.registry.external_id == "ext-456"
 
@@ -374,7 +381,9 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(return_value=mock_card)
 
-        with patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry):
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry
+        ):
             fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
             await fg.__aenter__()
 
@@ -394,7 +403,9 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(return_value=mock_card)
 
-        with patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry):
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry
+        ):
             fg = AuthenticatedA2AClientFunctionGroup(
                 config=registry_config_external, builder=mock_builder
             )
@@ -405,9 +416,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
                 external_id="ext-001",
             )
 
-    async def test_registry_pre_resolved_card_skips_discovery(
-        self, registry_config, mock_builder
-    ):
+    async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):
         """When registry provides a card, _AuthenticatedA2ABaseClient skips _resolve_agent_card."""
         mock_auth_provider = MagicMock()
         mock_builder.get_auth_provider.return_value = mock_auth_provider
@@ -420,7 +429,11 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_registry.get = AsyncMock(return_value=mock_card)
 
         with (
-            patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry),
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
             patch(f"{_MODULE}.Context") as mock_ctx,
             patch(f"{_MODULE}.httpx") as mock_httpx,
             patch(f"{_MODULE}.ClientFactory") as mock_factory,
@@ -436,4 +449,3 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
             # The client should have the pre-resolved card, not call _resolve_agent_card
             assert fg._client._agent_card is mock_card
-

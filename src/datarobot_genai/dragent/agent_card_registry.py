@@ -23,26 +23,38 @@ The :class:`AgentCardRegistry` supports **batch fetching** so that many
 function groups sharing the same workflow can resolve all their cards in a
 minimum number of HTTP round-trips instead of N+1 individual requests.
 
+Lookups can be **registered** before the first fetch so that ``get()``
+automatically triggers a single batch prefetch for all pending IDs on its
+first invocation — no explicit ``prefetch()`` call required.
+
 .. note::
     The registry API uses AND semantics when both ``deploymentIds`` and
     ``externalIds`` parameters are provided in a single request, which would
-    return empty results.  Therefore :meth:`AgentCardRegistry.prefetch` issues
-    **separate** HTTP calls for deployment IDs and external IDs.
+    return empty results.  Therefore the registry issues **separate** HTTP
+    calls for deployment IDs and external IDs.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
 from a2a.types import AgentCard
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from pydantic import Field
 
 from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
 
 logger = logging.getLogger(__name__)
+
+# Default cache TTL: 24 hours (in seconds).
+_DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
+
+# Default HTTP timeout for registry requests (in seconds).
+_DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
 class DataRobotRegistrySettings(DataRobotAppFrameworkBaseSettings):
@@ -56,6 +68,33 @@ class DataRobotRegistrySettings(DataRobotAppFrameworkBaseSettings):
 
     datarobot_api_token: str | None = None
     datarobot_endpoint: str | None = None
+
+
+class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
+    """Configuration for the agent card registry cache.
+
+    Controllable via environment variables (prefix-free, following the
+    standard :class:`DataRobotAppFrameworkBaseSettings` resolution chain).
+
+    Set ``AGENT_CARD_REGISTRY_CACHE_TTL=0`` to disable caching entirely
+    (every ``get()`` triggers a fresh HTTP fetch).
+    """
+
+    agent_card_registry_cache_ttl: int = Field(
+        default=_DEFAULT_CACHE_TTL_SECONDS,
+        ge=0,
+        description=(
+            "Time-to-live for cached agent cards in seconds. "
+            "Set to 0 to disable caching (every get() triggers a fresh fetch). "
+            "Default: 86400 (24 hours)."
+        ),
+    )
+
+    agent_card_registry_timeout: float = Field(
+        default=_DEFAULT_TIMEOUT_SECONDS,
+        gt=0,
+        description=("HTTP timeout in seconds for registry API requests. Default: 30."),
+    )
 
 
 class AgentCardRegistryError(RuntimeError):
@@ -115,47 +154,85 @@ def _parse_registry_response(body: dict[str, Any]) -> dict[str, AgentCard]:
     return cards
 
 
+class _CacheEntry:
+    """A cached agent card with its fetch timestamp."""
+
+    __slots__ = ("card", "fetched_at")
+
+    def __init__(self, card: AgentCard) -> None:
+        self.card = card
+        self.fetched_at = time.monotonic()
+
+    def is_expired(self, ttl: int) -> bool:
+        """Return *True* if this entry is older than *ttl* seconds.
+
+        A TTL of 0 means "always expired" (no caching).
+        """
+        if ttl == 0:
+            return True
+        return (time.monotonic() - self.fetched_at) >= ttl
+
+
 class AgentCardRegistry:
-    """Async-safe, batch-capable cache for agent cards from the central registry.
+    """Batch-capable, TTL-cached client for the central agent card registry.
 
-    Designed to solve the **N+1 problem**: when a workflow defines many
-    function groups that all need registry lookup, callers can
-    :meth:`prefetch` all IDs in a minimum number of HTTP calls, then
-    :meth:`get` each card from the local cache.
-
-    .. important::
-        The registry API uses AND semantics when both ``deploymentIds`` and
-        ``externalIds`` are sent in a single request.  This class always
-        issues **separate** requests for each ID type.
-
-    Usage::
-
-        registry = AgentCardRegistry()
-
-        # Batch-prefetch — issues at most 2 HTTP calls (one per ID type)
-        await registry.prefetch(
-            deployment_ids=["dep-1", "dep-2"],
-            external_ids=["ext-3"],
-        )
-
-        # Individual lookups hit the local cache (no HTTP)
-        card = await registry.get(deployment_id="dep-1")
-
-    The :meth:`get` method also works standalone — if the card is not cached
-    it fetches it individually.
+    IDs are ``register()``-ed synchronously at config-parse time (no I/O).
+    The first ``get()`` flushes all pending IDs in ≤2 HTTP calls
+    (one per ID type — API uses AND when both are mixed).
+    Subsequent ``get()`` calls hit the in-memory cache until TTL expires.
+    Cache TTL is controlled via ``AGENT_CARD_REGISTRY_CACHE_TTL`` env var
+    (default 86400s / 24h, set to 0 to disable caching).
     """
 
     def __init__(
         self,
         api_token: str | None = None,
         endpoint: str | None = None,
-        timeout: float = 30.0,
+        timeout: float | None = None,
+        cache_ttl: int | None = None,
     ) -> None:
         self._api_token = api_token
         self._endpoint = endpoint
-        self._timeout = timeout
-        self._cache: dict[str, AgentCard] = {}
+        self._cache: dict[str, _CacheEntry] = {}
         self._lock = asyncio.Lock()
+
+        # Pending registrations (filled synchronously, flushed on first get)
+        self._pending_deployment_ids: set[str] = set()
+        self._pending_external_ids: set[str] = set()
+
+        config = AgentCardRegistryConfig()
+        self._timeout = timeout if timeout is not None else config.agent_card_registry_timeout
+        self._cache_ttl = (
+            cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
+        )
+
+        logger.debug("AgentCardRegistry created (cache_ttl=%ds)", self._cache_ttl)
+
+    # ------------------------------------------------------------------
+    # Registration (synchronous — called at config-parse time)
+    # ------------------------------------------------------------------
+
+    def register(
+        self,
+        *,
+        deployment_id: str | None = None,
+        external_id: str | None = None,
+    ) -> None:
+        """Declare intent to look up an agent card.
+
+        Call this at config-parse/validation time so that the first
+        :meth:`get` can batch all pending IDs into a single prefetch.
+
+        Exactly one of ``deployment_id`` or ``external_id`` must be given.
+        """
+        if deployment_id:
+            self._pending_deployment_ids.add(deployment_id)
+        elif external_id:
+            self._pending_external_ids.add(external_id)
+
+    # ------------------------------------------------------------------
+    # Internal HTTP
+    # ------------------------------------------------------------------
 
     async def _fetch(self, params: dict[str, str]) -> dict[str, AgentCard]:
         """Execute a single registry HTTP GET and return parsed cards."""
@@ -164,7 +241,9 @@ class AgentCardRegistry:
         headers = {"Authorization": f"Bearer {token}"}
 
         logger.info(
-            "Fetching agent cards from registry: %s (params=%s)", registry_url, params,
+            "Fetching agent cards from registry: %s (params=%s)",
+            registry_url,
+            params,
         )
 
         try:
@@ -178,13 +257,42 @@ class AgentCardRegistry:
                 f"the agents are registered."
             ) from exc
         except httpx.HTTPError as exc:
-            raise AgentCardRegistryError(
-                f"Agent card registry request failed: {exc}"
-            ) from exc
+            raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
         cards = _parse_registry_response(response.json())
         logger.info("Fetched %d agent card(s) from registry.", len(cards))
         return cards
+
+    def _is_cached(self, key: str) -> bool:
+        """Return True if *key* is cached and not expired."""
+        entry = self._cache.get(key)
+        return entry is not None and not entry.is_expired(self._cache_ttl)
+
+    async def _flush_pending(self) -> None:
+        """Batch-fetch all registered-but-uncached IDs.  Must be called under ``_lock``."""
+        missing_dep = [d for d in self._pending_deployment_ids if not self._is_cached(d)]
+        missing_ext = [e for e in self._pending_external_ids if not self._is_cached(e)]
+
+        # Clear pending sets regardless — they've been processed
+        self._pending_deployment_ids.clear()
+        self._pending_external_ids.clear()
+
+        if not missing_dep and not missing_ext:
+            return
+
+        if missing_dep:
+            cards = await self._fetch({"deploymentIds": ",".join(missing_dep)})
+            for k, card in cards.items():
+                self._cache[k] = _CacheEntry(card)
+
+        if missing_ext:
+            cards = await self._fetch({"externalIds": ",".join(missing_ext)})
+            for k, card in cards.items():
+                self._cache[k] = _CacheEntry(card)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     async def prefetch(
         self,
@@ -198,7 +306,7 @@ class AgentCardRegistry:
         ``external_ids`` because the API uses AND semantics when both
         parameters are present in a single request.
 
-        Already-cached IDs are skipped.  This method is concurrency-safe.
+        Already-cached (non-expired) IDs are skipped.
 
         Parameters
         ----------
@@ -208,8 +316,8 @@ class AgentCardRegistry:
             External IDs to prefetch.
         """
         async with self._lock:
-            missing_dep = [d for d in (deployment_ids or []) if d not in self._cache]
-            missing_ext = [e for e in (external_ids or []) if e not in self._cache]
+            missing_dep = [d for d in (deployment_ids or []) if not self._is_cached(d)]
+            missing_ext = [e for e in (external_ids or []) if not self._is_cached(e)]
 
             if not missing_dep and not missing_ext:
                 logger.debug("All requested agent cards already cached — skipping prefetch.")
@@ -217,11 +325,13 @@ class AgentCardRegistry:
 
             if missing_dep:
                 cards = await self._fetch({"deploymentIds": ",".join(missing_dep)})
-                self._cache.update(cards)
+                for k, card in cards.items():
+                    self._cache[k] = _CacheEntry(card)
 
             if missing_ext:
                 cards = await self._fetch({"externalIds": ",".join(missing_ext)})
-                self._cache.update(cards)
+                for k, card in cards.items():
+                    self._cache[k] = _CacheEntry(card)
 
     async def get(
         self,
@@ -231,6 +341,10 @@ class AgentCardRegistry:
     ) -> AgentCard:
         """Return a single agent card, using the cache or fetching on demand.
 
+        On the first call, all IDs previously passed to :meth:`register`
+        are batch-fetched in a single prefetch (at most 2 HTTP calls).
+        Subsequent calls for already-cached, non-expired cards are instant.
+
         Exactly one of ``deployment_id`` or ``external_id`` must be provided.
 
         Raises
@@ -239,49 +353,56 @@ class AgentCardRegistry:
             If the card cannot be found or the request fails.
         """
         if bool(deployment_id) == bool(external_id):
-            raise AgentCardRegistryError(
-                "Specify exactly one of 'deployment_id' or 'external_id'."
-            )
+            raise AgentCardRegistryError("Specify exactly one of 'deployment_id' or 'external_id'.")
 
         lookup_key: str = deployment_id or external_id  # type: ignore[assignment]
 
-        # Fast path — already cached
-        if lookup_key in self._cache:
-            return self._cache[lookup_key]
+        # Fast path — cached and not expired
+        if self._is_cached(lookup_key):
+            return self._cache[lookup_key].card
 
-        # Slow path — fetch individually (double-check under lock)
         async with self._lock:
-            if lookup_key in self._cache:
-                return self._cache[lookup_key]
+            # Double-check after acquiring lock
+            if self._is_cached(lookup_key):
+                return self._cache[lookup_key].card
 
+            # Flush all pending registrations in a batch
+            if self._pending_deployment_ids or self._pending_external_ids:
+                await self._flush_pending()
+                if self._is_cached(lookup_key):
+                    return self._cache[lookup_key].card
+
+            # Still not found — fetch individually
             params: dict[str, str] = (
-                {"deploymentIds": deployment_id}
-                if deployment_id
-                else {"externalIds": external_id}  # type: ignore[dict-item]
+                {"deploymentIds": deployment_id} if deployment_id else {"externalIds": external_id}  # type: ignore[dict-item]
             )
             cards = await self._fetch(params)
-            self._cache.update(cards)
+            for k, card in cards.items():
+                self._cache[k] = _CacheEntry(card)
 
-        if lookup_key not in self._cache:
-            id_label = (
-                f"deployment_id='{deployment_id}'"
-                if deployment_id
-                else f"external_id='{external_id}'"
-            )
-            raise AgentCardRegistryError(
-                f"No agent card found in the central registry for {id_label}. "
-                "Verify that the deployment exists and is registered in your organisation."
-            )
+            if lookup_key in self._cache:
+                return self._cache[lookup_key].card
 
-        return self._cache[lookup_key]
+        # If we got here, the key was not found despite fetching
+        id_label = (
+            f"deployment_id='{deployment_id}'" if deployment_id else f"external_id='{external_id}'"
+        )
+        raise AgentCardRegistryError(
+            f"No agent card found in the central registry for {id_label}. "
+            "Verify that the deployment exists and is registered in your organisation."
+        )
 
 
 # ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
 
-_default_registry: AgentCardRegistry | None = None
-_registry_lock = asyncio.Lock()
+
+class _RegistryHolder:
+    """Mutable container for the singleton."""
+
+    instance: AgentCardRegistry | None = None
+    lock = asyncio.Lock()
 
 
 async def get_default_registry() -> AgentCardRegistry:
@@ -290,15 +411,25 @@ async def get_default_registry() -> AgentCardRegistry:
     Created lazily on first access.  Credentials are resolved from
     :class:`DataRobotRegistrySettings` at instantiation time.
     """
-    global _default_registry
-    if _default_registry is None:
-        async with _registry_lock:
-            if _default_registry is None:
-                _default_registry = AgentCardRegistry()
-    return _default_registry
+    if _RegistryHolder.instance is None:
+        async with _RegistryHolder.lock:
+            if _RegistryHolder.instance is None:
+                _RegistryHolder.instance = AgentCardRegistry()
+    return _RegistryHolder.instance
+
+
+def get_default_registry_sync() -> AgentCardRegistry:
+    """Return the singleton, creating it if needed (synchronous).
+
+    Safe to call from pydantic validators and other sync contexts
+    (e.g. config-parse time) because :class:`AgentCardRegistry.__init__`
+    does no I/O.
+    """
+    if _RegistryHolder.instance is None:
+        _RegistryHolder.instance = AgentCardRegistry()
+    return _RegistryHolder.instance
 
 
 def reset_default_registry() -> None:
     """Reset the module-level singleton (for testing)."""
-    global _default_registry
-    _default_registry = None
+    _RegistryHolder.instance = None
