@@ -27,7 +27,6 @@ from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.interactive import HumanResponse
 from nat.data_models.interactive import InteractionPrompt
 from nat.data_models.user_info import UserInfo
-from nat.runtime import session as nat_runtime_session
 from nat.runtime.session import Session
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
@@ -46,16 +45,15 @@ logger = logging.getLogger(__name__)
 
 _auth_handler = AuthContextHeaderHandler()
 
-# Used when neither a signed DataRobot auth-context nor NAT's standard extractors
-# can resolve an identity. Keeps per-user workflows from crashing for callers
-# that lack proper auth context (e.g. locust against a deployed agent); all such
-# requests share the same per-user builder/state, so do not rely on this for
-# any kind of authorization decision.
+# Constant key used by DRAgentAGUISessionManager.session() to satisfy NAT's
+# per-user workflow requirement when no caller identity is present. Purely a
+# workflow-keying fallback — not an identity claim. Must not be used by any
+# code that depends on the result being a real user.
 DEFAULT_DR_AGENT_USER_ID = "default-user"
 
 
 class DRAgentUserManager(UserManager):
-    """Resolve DataRobot signed auth-context, then NAT's extractors, then fall back to a default."""
+    """Add DataRobot signed auth-context resolution to NAT's standard identity extractors."""
 
     @classmethod
     def extract_user_from_connection(cls, connection: Request | WebSocket) -> UserInfo | None:
@@ -66,19 +64,7 @@ class DRAgentUserManager(UserManager):
                     "Resolved user_id from X-DataRobot-Authorization-Context: %s", auth_ctx.user.id
                 )
                 return UserInfo._from_session_cookie(auth_ctx.user.id)
-
-        resolved = super().extract_user_from_connection(connection)
-        if resolved is not None:
-            return resolved
-
-        logger.debug("No identity resolved — falling back to %s", DEFAULT_DR_AGENT_USER_ID)
-        return UserInfo._from_session_cookie(DEFAULT_DR_AGENT_USER_ID)
-
-
-# NAT 1.6 calls ``UserManager.extract_user_from_connection(...)`` directly on the
-# imported class in ``nat/runtime/session.py`` — no DI / registry — so rebind the
-# reference there to pick up our subclass.
-nat_runtime_session.UserManager = DRAgentUserManager  # type: ignore[misc]
+        return super().extract_user_from_connection(connection)
 
 
 # ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
@@ -113,11 +99,33 @@ class DRAgentAGUISessionManager(SessionManager):
         ]
         | None = None,
     ) -> AsyncIterator[Session]:
-        """Forward A2A preset user_id and inject A2A request headers before delegating to NAT."""
+        """Resolve user_id (A2A preset, DR headers, per-user default) and inject A2A headers."""
         if user_id is None:
             preset = self._context_state.user_id.get()
             if preset:
                 user_id = preset
+
+        # Resolve identity via our UserManager (knows DR signed auth-context in
+        # addition to NAT's standard extractors). Done explicitly rather than
+        # via a module rebind so the default-user fallback below stays scoped
+        # to this session() — DRAgentUserManager remains a pure identity
+        # resolver that other callers can safely use.
+        if user_id is None and isinstance(http_connection, (Request, WebSocket)):
+            user_info = DRAgentUserManager.extract_user_from_connection(http_connection)
+            if user_info is not None:
+                user_id = user_info.get_user_id()
+
+        # Per-user workflows need *a* key in the per-user-builder dict.
+        # Fall back to a constant so they do not crash when no identity is
+        # available (e.g. locust against a deployed agent). This is a
+        # workflow-keying concern, not an identity claim — all such requests
+        # share one builder/state.
+        if user_id is None and self.is_workflow_per_user:
+            logger.debug(
+                "No identity resolved for per-user workflow — using %s as key",
+                DEFAULT_DR_AGENT_USER_ID,
+            )
+            user_id = DEFAULT_DR_AGENT_USER_ID
 
         # Inject A2A request headers BEFORE super().session() so they are
         # available during per-user builder creation (agent card discovery

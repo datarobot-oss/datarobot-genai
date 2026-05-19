@@ -4,8 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.58
-- `dragent`: replace the `UserManager` monkey-patch with a `DRAgentUserManager` subclass that resolves `user_id` from the signed `X-DataRobot-Authorization-Context` header, falls back to NAT's standard extractors (Bearer/JWT/cookie/API-key), and finally a constant `default-user` so per-user workflows do not fail for callers without an identity (e.g. direct API-token calls to a deployed agent). The subclass is wired in by rebinding `nat.runtime.session.UserManager`.
+## 0.15.59
+- `dragent`: replace the `UserManager` monkey-patch with a `DRAgentUserManager` subclass that resolves `user_id` from the signed `X-DataRobot-Authorization-Context` header (then NAT's standard extractors). `DRAgentAGUISessionManager.session()` invokes it explicitly and, for per-user workflows only, falls back to a constant `default-user` key when no identity is present so the workflow does not crash (e.g. direct API-token calls to a deployed agent). The identity resolver and the per-user workflow fallback are kept separate so callers that need real identity are not silently handed a default.
 
 ## 0.15.57
 - Registered DataRobot moderation middleware on the `nat.plugins` entry point `datarobot_moderation_middleware` so `_type: datarobot_moderation` is available when NAT loads plugins.
