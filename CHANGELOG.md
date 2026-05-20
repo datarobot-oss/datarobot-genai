@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.66
+- `langgraph/agent.py`: also harvest reasoning from `additional_kwargs["reasoning_content"]` (OpenAI-compatible flat shape produced by the DataRobot LLM gateway and other OpenAI-style proxies). New `_iter_message_blocks(message)` helper yields reasoning from `additional_kwargs` first, then delegates to `_iter_content_blocks(message.content)` for the native list-form shape. Streaming emitter now enters the branch for pure-reasoning chunks (empty content with `reasoning_content` delta). `_iter_content_blocks` and `_flatten_to_text` are unchanged — ragas evaluation traces still drop thinking.
+
 ## 0.15.65
 - `langgraph/agent.py`: handle list-form `AIMessage.content` from reasoning models. Thinking blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s; list content is flattened to text before ragas conversion.
 
@@ -42,10 +45,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.54
 - `langgraph/mcp.py`: Fixed `RuntimeError: generator didn't stop after athrow()` in `mcp_tools_context` when a connection-type exception (`ConnectionError`, `OSError`, `TimeoutError`, `ExceptionGroup`) is raised by the consumer inside the `async with` block. A `connected` flag now distinguishes setup-phase failures (graceful fallback to empty tools) from consumer exceptions (re-raised so the caller sees them). Without this guard the except clause would execute a second `yield []`, violating the `@asynccontextmanager` single-yield contract.
-=======
-## 0.15.54
-- `langgraph/agent.py`: handle list-form `AIMessage.content` from reasoning models. Thinking blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s; list content is flattened to text before ragas conversion.
->>>>>>> 68057171 ([BUZZOK-30788] Handle list-form AIMessage.content from reasoning models)
 
 ## 0.15.53
 - LangGraph `LangGraphAgent`: DR FS checkpointing is opt-in via `use_datarobot_fs_checkpointer=True` when `checkpointer` is omitted (no longer automatic). Optional `langgraph_checkpoint_base` sets the `dr://` prefix for the default saver (typically from application settings); when omitted, the default root is `dr://`. Process exit cleanup removes only `<prefix>/checkpoints`, not the entire prefix (so other DR FS objects under the same root are preserved).

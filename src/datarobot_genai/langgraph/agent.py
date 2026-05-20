@@ -113,6 +113,31 @@ def _flatten_to_text(content: str | list[Any] | None) -> str:
     return "".join(delta for kind, delta in _iter_content_blocks(content) if kind == "text")
 
 
+def _iter_message_blocks(
+    message: Any,
+) -> Iterator[tuple[Literal["text", "thinking"], str]]:
+    """Yield typed (kind, delta) pairs for any AIMessage/AIMessageChunk shape.
+
+    Combines two surfaces LangChain/LiteLLM produce for reasoning models:
+
+    - **Native list-form content**: e.g. Anthropic/Bedrock blocks
+      ``[{"type": "thinking", ...}, {"type": "text", ...}]`` — delegated to
+      ``_iter_content_blocks(message.content)``.
+    - **OpenAI-compatible flat shape**: text in ``message.content`` (string) and
+      reasoning hoisted to ``message.additional_kwargs["reasoning_content"]``
+      (string). This is what the DataRobot LLM gateway returns over its
+      OpenAI-style HTTP API, even when the underlying model is Anthropic.
+
+    Reasoning is yielded before content so consumers can route REASONING_*
+    events ahead of the matching text in the AG-UI stream.
+    """
+    ak = getattr(message, "additional_kwargs", None) or {}
+    reasoning_text = ak.get("reasoning_content")
+    if reasoning_text:
+        yield "thinking", reasoning_text
+    yield from _iter_content_blocks(getattr(message, "content", None))
+
+
 def _confirmation_args_from_interrupt_value(value: Any) -> dict[str, str]:
     """Map a LangGraph interrupt value to the confirmation tool args."""
     if isinstance(value, dict):
@@ -488,8 +513,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                     None,
                                     usage_metrics,
                                 )
-                    elif message.content:
-                        for kind, delta in _iter_content_blocks(message.content):
+                    elif message.content or message.additional_kwargs.get("reasoning_content"):
+                        for kind, delta in _iter_message_blocks(message):
                             if kind == "thinking":
                                 yield (
                                     ReasoningMessageChunkEvent(

@@ -39,6 +39,7 @@ from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
 from datarobot_genai.langgraph.agent import _flatten_to_text
 from datarobot_genai.langgraph.agent import _iter_content_blocks
+from datarobot_genai.langgraph.agent import _iter_message_blocks
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 
 
@@ -917,6 +918,52 @@ def test_iter_content_blocks(content, expected):
 )
 def test_flatten_to_text(content, expected):
     assert _flatten_to_text(content) == expected
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        # Plain text content, no reasoning.
+        (AIMessage(content="hi"), [("text", "hi")]),
+        # OpenAI-compatible flat shape: text in content, reasoning in additional_kwargs.
+        # Reasoning is yielded BEFORE text so AG-UI emits REASONING_* before TEXT_*.
+        (
+            AIMessage(
+                content="say",
+                additional_kwargs={"reasoning_content": "think"},
+            ),
+            [("thinking", "think"), ("text", "say")],
+        ),
+        # Native list-form content (Anthropic/Bedrock blocks). Reasoning may also
+        # appear in additional_kwargs from some providers; emit both, ordered.
+        (
+            AIMessage(
+                content=[
+                    {"type": "thinking", "thinking": "t"},
+                    {"type": "text", "text": "say"},
+                ]
+            ),
+            [("thinking", "t"), ("text", "say")],
+        ),
+        # Pure-reasoning chunk: empty content, only reasoning_content delta.
+        (
+            AIMessageChunk(
+                content="",
+                additional_kwargs={"reasoning_content": "delta"},
+            ),
+            [("thinking", "delta")],
+        ),
+        # Empty additional_kwargs reasoning_content is ignored.
+        (
+            AIMessage(content="hi", additional_kwargs={"reasoning_content": ""}),
+            [("text", "hi")],
+        ),
+        # Message without additional_kwargs attribute (e.g. plain object): no crash.
+        (AIMessage(content="hi"), [("text", "hi")]),
+    ],
+)
+def test_iter_message_blocks(message, expected):
+    assert list(_iter_message_blocks(message)) == expected
 
 
 def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:
