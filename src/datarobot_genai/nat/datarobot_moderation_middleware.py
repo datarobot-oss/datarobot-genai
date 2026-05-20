@@ -1301,58 +1301,82 @@ def _drain_pending_after_moderated_chunk(
     return ordered
 
 
-def _buffer_dragent_passthrough(
-    response: DRAgentEventResponse,
-    *,
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
-) -> None:
-    if response.events and _defer_until_after_moderated_chunk(response.events[0]):
-        pending_deferred.append(response)
-    else:
-        pending_pass_through.append(response)
-
-
-async def _next_text_dragent_response(
+async def _moderated_dragent_stream(
     upstream: AsyncIterator[DRAgentEventResponse],
     *,
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
-) -> DRAgentEventResponse | None:
-    """Advance upstream, buffering pass-through until the next text chunk or exhaustion."""
-    async for response in upstream:
-        if not response.events or skip_event_type(response.events[0]):
-            _buffer_dragent_passthrough(
-                response,
-                pending_deferred=pending_deferred,
-                pending_pass_through=pending_pass_through,
+    moderation: ModerationPipeline,
+    prompt_for_stream: str,
+    stream_state: _ModerationInvokeState,
+    stream_tool_index_map: dict[int, str],
+) -> AsyncIterator[tuple[bool, DRAgentEventResponse]]:
+    """Yield ``(is_moderated_text, response)`` with AG-UI-safe ordering around moderated deltas.
+
+    Non-text upstream events pass through immediately until the first text delta. Text deltas are
+    moderated via ``stream_response_async``; ``TEXT_MESSAGE_START`` / ``END`` and other events read
+    during peek-ahead are buffered and emitted after each moderated chunk.
+    """
+    pending_deferred: list[DRAgentEventResponse] = []
+    pending_pass_through: list[DRAgentEventResponse] = []
+    moderation_source_responses: list[DRAgentEventResponse] = []
+
+    def buffer_passthrough(response: DRAgentEventResponse) -> None:
+        if response.events and _defer_until_after_moderated_chunk(response.events[0]):
+            pending_deferred.append(response)
+        else:
+            pending_pass_through.append(response)
+
+    async def next_text_response() -> DRAgentEventResponse | None:
+        async for response in upstream:
+            if not response.events or skip_event_type(response.events[0]):
+                buffer_passthrough(response)
+                continue
+            return response
+        return None
+
+    async def completion_chunks(
+        first_text: DRAgentEventResponse,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        current: DRAgentEventResponse | None = first_text
+        while current is not None:
+            moderation_source_responses.append(current)
+            yield cast(
+                ChatCompletionChunk,
+                dragent_event_response_to_chat_completion(current, as_streaming_chunk=True),
             )
-            continue
-        return response
-    return None
+            current = await next_text_response()
 
+    first_text: DRAgentEventResponse | None = None
+    async for response in upstream:
+        if response.events and not skip_event_type(response.events[0]):
+            first_text = response
+            break
+        yield False, response
+    if first_text is None:
+        return
 
-async def _completion_chunks_from_dragent_upstream(
-    upstream: AsyncIterator[DRAgentEventResponse],
-    first_text: DRAgentEventResponse,
-    *,
-    moderation_source_responses: list[DRAgentEventResponse],
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
-) -> AsyncIterator[ChatCompletionChunk]:
-    """Feed ``stream_response_async``; align sources with peek-ahead inside the pipeline."""
-    current: DRAgentEventResponse | None = first_text
-    while current is not None:
-        moderation_source_responses.append(current)
-        yield cast(
-            ChatCompletionChunk,
-            dragent_event_response_to_chat_completion(current, as_streaming_chunk=True),
+    async for moderated in moderation.stream_response_async(
+        completion_chunks(first_text),
+        prompt=prompt_for_stream,
+        prescore_df=stream_state.prescore_df,
+        prescore_latency=stream_state.latency_so_far,
+    ):
+        source_response = moderation_source_responses.pop(0)
+        yield (
+            True,
+            chat_completion_to_dragent_event_response(
+                moderated,
+                source_ag_ui_events=source_response.events,
+                stream_tool_index_map=stream_tool_index_map,
+            ),
         )
-        current = await _next_text_dragent_response(
-            upstream,
-            pending_deferred=pending_deferred,
-            pending_pass_through=pending_pass_through,
-        )
+        for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
+            yield False, item
+        finish = moderated.choices[0].finish_reason if moderated.choices else None
+        if finish == "content_filter":
+            return
+
+    for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
+        yield False, item
 
 
 @dataclass
@@ -1657,65 +1681,26 @@ class DataRobotModerationMiddleware(
             moderation = self._moderation
             assert moderation is not None
 
-            stream_tool_index_map: dict[int, str] = {}
-
             prompt_column_name = moderation._pipeline.get_input_column(GuardStage.PROMPT)
             prompt_for_stream = _text_for_moderation_eval(
                 stream_state.input_df.loc[0, prompt_column_name]
             )
-
             upstream = cast(
                 AsyncIterator[DRAgentEventResponse],
                 call_next(*ctx.modified_args, **ctx.modified_kwargs),
             )
+            stream_tool_index_map: dict[int, str] = {}
 
-            # Leading pass-through (non–text-message) events before the first moderated chunk.
-            first_text: DRAgentEventResponse | None = None
-            async for response in upstream:
-                if response.events and not skip_event_type(response.events[0]):
-                    first_text = response
-                    break
+            async for is_moderated, response in _moderated_dragent_stream(
+                upstream,
+                moderation=moderation,
+                prompt_for_stream=prompt_for_stream,
+                stream_state=stream_state,
+                stream_tool_index_map=stream_tool_index_map,
+            ):
+                if is_moderated:
+                    ctx.output = response
                 yield response
-            if first_text is None:
-                return
-
-            pending_deferred_pass_through: list[DRAgentEventResponse] = []
-            pending_pass_through: list[DRAgentEventResponse] = []
-            moderation_source_responses: list[DRAgentEventResponse] = []
-
-            async for moderated in moderation.stream_response_async(
-                _completion_chunks_from_dragent_upstream(
-                    upstream,
-                    first_text,
-                    moderation_source_responses=moderation_source_responses,
-                    pending_deferred=pending_deferred_pass_through,
-                    pending_pass_through=pending_pass_through,
-                ),
-                prompt=prompt_for_stream,
-                prescore_df=stream_state.prescore_df,
-                prescore_latency=stream_state.latency_so_far,
-            ):
-                source_response = moderation_source_responses.pop(0)
-                ctx.output = chat_completion_to_dragent_event_response(
-                    moderated,
-                    source_ag_ui_events=source_response.events,
-                    stream_tool_index_map=stream_tool_index_map,
-                )
-                yield ctx.output
-                for item in _drain_pending_after_moderated_chunk(
-                    pending_deferred_pass_through,
-                    pending_pass_through,
-                ):
-                    yield item
-                finish = moderated.choices[0].finish_reason if moderated.choices else None
-                if finish == "content_filter":
-                    return
-
-            for item in _drain_pending_after_moderated_chunk(
-                pending_deferred_pass_through,
-                pending_pass_through,
-            ):
-                yield item
         finally:
             _clear_moderation_invoke_state_if_set()
 
