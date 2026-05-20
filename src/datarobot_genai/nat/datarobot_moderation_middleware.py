@@ -52,7 +52,6 @@ from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
-from datarobot_dome.constants import AGENTIC_PIPELINE_INTERACTIONS_ATTR
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
@@ -1276,13 +1275,6 @@ def _pending_deferred_in_emit_order(
     return ends_first + [item for item in pending if item not in ends_first]
 
 
-def _ensure_agentic_pipeline_interactions_on_input_df(input_df: pd.DataFrame) -> None:
-    """Ensure streaming postscore sees ``pipeline_interactions`` (see ``evaluate_response_async``)."""
-    col = AGENTIC_PIPELINE_INTERACTIONS_ATTR
-    if col not in input_df.columns:
-        input_df[col] = [None]
-
-
 @dataclass
 class _ModerationInvokeState:
     """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
@@ -1586,7 +1578,6 @@ class DataRobotModerationMiddleware(
             assert moderation is not None
 
             stream_tool_index_map: dict[int, str] = {}
-            _ensure_agentic_pipeline_interactions_on_input_df(stream_state.input_df)
 
             prompt_column_name = moderation._pipeline.get_input_column(GuardStage.PROMPT)
             prompt_for_stream = _text_for_moderation_eval(
