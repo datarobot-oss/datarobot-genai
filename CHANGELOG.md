@@ -4,8 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.59
+## 0.15.61
 - Added `datarobot_genai.dragent.execute_dragent_inline` (plus an async variant) — an in-process runner so `datarobot-user-models`'s `run_agent.py` can route between DRUM and dragent with a single env-var-gated branch. Workflow YAML is taken from the `config_file` argument when supplied, otherwise from `<custom_model_dir>/workflow.yaml`. Always returns a single aggregated OpenAI `ChatCompletion`; the `stream` flag on the request is ignored because the agentic playground only renders the final assistant message.
+
+## 0.15.60
+- `dragent`: replace the `UserManager` monkey-patch with a `DRAgentUserManager` subclass that resolves `user_id` from the signed `X-DataRobot-Authorization-Context` header (then NAT's standard extractors). `DRAgentAGUISessionManager.session()` invokes it explicitly and, for per-user workflows only, falls back to a constant `default-user` key when no identity is present so the workflow does not crash (e.g. direct API-token calls to a deployed agent). The identity resolver and the per-user workflow fallback are kept separate so callers that need real identity are not silently handed a default.
+
+## 0.15.59
+- [MODEL-23506] `drmcp` dynamic tools: route chat-capable deployments to `/chat/completions` instead of `/predictions`. `DrumMetadataAdapter` now honors a `supports_chat_api` flag in metadata (sourced from the deployment's `/capabilities/` API by `get_mcp_tool_metadata`). When the flag is true the adapter returns endpoint `/chat/completions`, drops the `text/csv` Content-Type header, and uses the agentic (messages) fallback input schema. Defaults to `False` so legacy TextGeneration custom models served on `/predictions` retain their current routing. Fixes the 503 "Inference server is starting" reported when registering Guarded RAG / LLM-blueprint / NIM-served TextGeneration deployments as dynamic MCP tools.
 
 ## 0.15.58
 - Update User ID for mem0 client to be per user

@@ -188,8 +188,28 @@ class DrumMetadataAdapter(MetadataBase):
         return str(self.model_metadata.get("description", ""))
 
     @property
+    def supports_chat_api(self) -> bool:
+        """Whether the deployment advertises chat completions support.
+
+        Sourced from the deployment ``/capabilities/`` API
+        (``supports_chat_api``). Defaults to ``False`` when absent so legacy
+        deployments without this flag retain their existing endpoint mapping.
+        """
+        return bool(self.metadata.get("supports_chat_api", False))
+
+    @property
     def endpoint(self) -> str:
-        """Return the appropriate endpoint for the DRUM target type."""
+        """Return the appropriate endpoint for the DRUM target type.
+
+        When the deployment advertises ``supports_chat_api=True``, route to
+        ``/chat/completions`` regardless of target type. This is required for
+        chat-style ``TextGeneration`` deployments (Guarded RAG, LLM blueprints,
+        NIM-served models) which implement only the DRUM ``chat()`` hook and
+        return 503 on ``/predictions``.
+        """
+        if self.supports_chat_api:
+            return "/chat/completions"
+
         predictions_endpoint = "/predictions"
 
         endpoint_map: dict[str, str] = {
@@ -214,7 +234,15 @@ class DrumMetadataAdapter(MetadataBase):
 
     @property
     def input_schema(self) -> dict[str, Any]:
-        input_schema = self.model_metadata.get("input_schema", get_default_schema(self.target_type))
+        # Chat-capable deployments take an OpenAI-style messages body regardless
+        # of the underlying target type; use the agentic fallback when no
+        # explicit schema is provided.
+        default_schema = (
+            _get_agentic_fallback_schema()
+            if self.supports_chat_api
+            else get_default_schema(self.target_type)
+        )
+        input_schema = self.model_metadata.get("input_schema", default_schema)
 
         if not input_schema or not isinstance(input_schema, dict):
             raise ValueError(
@@ -232,6 +260,11 @@ class DrumMetadataAdapter(MetadataBase):
     @property
     def headers(self) -> dict[str, str]:
         """Return HTTP headers required for this deployment type."""
+        # Chat-capable deployments send JSON; let aiohttp set the header
+        # automatically based on the json= request kwarg.
+        if self.supports_chat_api:
+            return {}
+
         if self.target_type in DrumTargetType.prediction_types():
             # structured predictions send data as CSV bytes, which
             # requires an explicit Content-Type header since aiohttp
