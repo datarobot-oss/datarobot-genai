@@ -1263,16 +1263,42 @@ def _defer_until_after_moderated_chunk(event: Event) -> bool:
     )
 
 
-def _pending_deferred_in_emit_order(
-    pending: list[DRAgentEventResponse],
+def _pending_after_moderated_chunk(
+    pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
 ) -> list[DRAgentEventResponse]:
-    """TEXT_MESSAGE_END before other deferred items so END always precedes a following START."""
-    ends_first = [
+    """Order buffered events after a moderated text chunk.
+
+    Deferred ``TEXT_MESSAGE_END`` closes the prior segment first. Pass-through events (for example
+    ``STEP_FINISHED`` / ``STEP_STARTED``) keep upstream order. Deferred ``TEXT_MESSAGE_START`` for
+    the next segment follows so step boundaries stay valid for AG-UI verification.
+    """
+    deferred_ends = [
         item
-        for item in pending
+        for item in pending_deferred
         if item.events and item.events[0].type == EventType.TEXT_MESSAGE_END
     ]
-    return ends_first + [item for item in pending if item not in ends_first]
+    deferred_starts = [
+        item
+        for item in pending_deferred
+        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_START
+    ]
+    deferred_other = [
+        item
+        for item in pending_deferred
+        if item not in deferred_ends and item not in deferred_starts
+    ]
+    return deferred_ends + list(pending_pass_through) + deferred_starts + deferred_other
+
+
+def _drain_pending_after_moderated_chunk(
+    pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
+) -> list[DRAgentEventResponse]:
+    ordered = _pending_after_moderated_chunk(pending_deferred, pending_pass_through)
+    pending_deferred.clear()
+    pending_pass_through.clear()
+    return ordered
 
 
 def _buffer_dragent_passthrough(
@@ -1677,14 +1703,20 @@ class DataRobotModerationMiddleware(
                     stream_tool_index_map=stream_tool_index_map,
                 )
                 yield ctx.output
-                for item in _pending_deferred_in_emit_order(pending_deferred_pass_through):
-                    yield item
-                pending_deferred_pass_through.clear()
-                for item in pending_pass_through:
+                for item in _drain_pending_after_moderated_chunk(
+                    pending_deferred_pass_through,
+                    pending_pass_through,
+                ):
                     yield item
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     return
+
+            for item in _drain_pending_after_moderated_chunk(
+                pending_deferred_pass_through,
+                pending_pass_through,
+            ):
+                yield item
         finally:
             _clear_moderation_invoke_state_if_set()
 

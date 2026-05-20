@@ -35,6 +35,8 @@ pytest.importorskip("datarobot_dome")
 from ag_ui.core import EventType
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
@@ -1838,6 +1840,104 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
     end_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_END)
     finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
     assert end_idx < finished_idx
+
+
+async def test_function_middleware_stream_preserves_step_order_at_agent_transition(
+    builder_mock: MagicMock,
+) -> None:
+    """CrewAI emits END, STEP_FINISHED, STEP_STARTED, START between agent text segments."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("topic")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    planner_mid = "msg-planner"
+    writer_mid = "msg-writer"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepStartedEvent(step_name="Content Planner")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                TextMessageStartEvent(message_id=planner_mid, role="assistant"),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=planner_mid, delta="plan")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=planner_mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepFinishedEvent(step_name="Content Planner")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepStartedEvent(step_name="Content Writer")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                TextMessageStartEvent(message_id=writer_mid, role="assistant"),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=writer_mid, delta="write")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=writer_mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepFinishedEvent(step_name="Content Writer")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("topic"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    writer_start_idx = next(
+        i
+        for i, e in enumerate(flat)
+        if e.type == EventType.STEP_STARTED and e.step_name == "Content Writer"
+    )
+    writer_finish_idx = next(
+        i
+        for i, e in enumerate(flat)
+        if e.type == EventType.STEP_FINISHED and e.step_name == "Content Writer"
+    )
+    assert writer_start_idx < writer_finish_idx
 
 
 def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
