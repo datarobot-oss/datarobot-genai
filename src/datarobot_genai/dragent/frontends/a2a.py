@@ -181,14 +181,15 @@ def build_cross_app_capability_extension(
             "scheme": CROSS_APP_SECURITY_SCHEME_REF,
             "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
         },
-        "token_endpoint_auth_method": config.token_endpoint_auth_method,
-        "token_exchange": {
-            "grant_type": TOKEN_EXCHANGE_GRANT_TYPE_URI,
-            "requested_token_type": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
-            **config.token_exchange.model_dump(),
+        "tokenEndpointAuthMethod": config.token_endpoint_auth_method,
+        "tokenExchange": {
+            "grantType": TOKEN_EXCHANGE_GRANT_TYPE_URI,
+            "requestedTokenType": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
+            "trustedIssuer": config.token_exchange.trusted_issuer,
+            "audience": config.token_exchange.audience,
         },
-        "token_request": {
-            "grant_type": JWT_BEARER_GRANT_TYPE_URI,
+        "tokenRequest": {
+            "grantType": JWT_BEARER_GRANT_TYPE_URI,
             "audience": config.token_request.audience,
         },
     }
