@@ -15,14 +15,26 @@
 """NAT memory provider backed by DataRobot's Mem0 client.
 
 This provider wires ``datarobot-genai[memory]`` into NAT's ``MemoryEditor``
-interface so ``auto_memory_agent`` can store and retrieve long-term memory
-without relying on the upstream ``nvidia-nat-mem0ai`` plugin.
+interface so ``auto_memory_agent`` can store and retrieve long-term memory.
+
+Backend selection is driven by config:
+
+* ``memory_space_id`` → the DataRobot Memory Service's mem0-compatible API,
+  reached at ``{DATAROBOT_ENDPOINT}/memory/{memory_space_id}/`` and
+  authenticated with the DataRobot API token. See PBMP-7431 ("Agentic Memory
+  Service"), section "Connect to DataRobot memory" / "API Layout".
+* ``api_key`` (or ``MEM0_API_KEY``) → Mem0's hosted SaaS at
+  ``https://api.mem0.ai``. Used when no ``memory_space_id`` is configured.
+
+Both routes share the same ``MemoryEditor`` adapter because the DR endpoint
+is API-compatible with mem0 — only the host and auth token differ.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -115,15 +127,53 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
     RetryMixin,  # type: ignore[misc]
     name="dr_mem0_memory",
 ):
-    """A NAT memory backend backed by ``datarobot-genai``'s Mem0 client."""
+    """A NAT memory backend backed by ``datarobot-genai``'s Mem0 client.
+
+    Backend selection:
+
+    * If ``memory_space_id`` is set, requests go to the DataRobot Memory
+      Service's mem0-compatible endpoint at
+      ``{datarobot_endpoint}/memory/{memory_space_id}/`` authenticated with
+      ``datarobot_api_token`` (or ``DATAROBOT_API_TOKEN``).
+    * Otherwise, ``api_key`` (or ``MEM0_API_KEY``) is used against Mem0's
+      hosted SaaS (``host`` defaults to ``https://api.mem0.ai``).
+    """
 
     api_key: str | None = Field(
         default_factory=_get_default_mem0_api_key,
-        description="Mem0 API key used by the memory backend.",
+        description="Mem0 API key used when targeting Mem0's hosted SaaS.",
     )
-    host: str | None = None
+    host: str | None = Field(
+        default=None,
+        description=(
+            "Mem0 base URL for the SaaS backend. Ignored when ``memory_space_id`` is set."
+        ),
+    )
     org_id: str | None = None
     project_id: str | None = None
+    memory_space_id: str | None = Field(
+        default=None,
+        description=(
+            "DataRobot MemorySpace ID. When set, the editor uses the DataRobot "
+            "Memory Service's mem0-compatible endpoint instead of Mem0 SaaS. "
+            "The endpoint is built as ``{datarobot_endpoint}/memory/{id}/``."
+        ),
+    )
+    datarobot_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "DataRobot API base URL used to build the mem0 endpoint when "
+            "``memory_space_id`` is set (e.g. ``https://app.datarobot.com/api/v2``). "
+            "Defaults to the ``DATAROBOT_ENDPOINT`` env var."
+        ),
+    )
+    datarobot_api_token: str | None = Field(
+        default=None,
+        description=(
+            "DataRobot API token used when ``memory_space_id`` is set. "
+            "Defaults to the ``DATAROBOT_API_TOKEN`` env var."
+        ),
+    )
 
 
 class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
@@ -206,6 +256,26 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             await self._mem0.delete_all(user_id=user_id)
 
 
+def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
+    """Build the DataRobot Memory Service mem0 endpoint for a memory space.
+
+    Per PBMP-7431 ("API Layout"), the DR memory service exposes a
+    mem0-compatible API at ``{DATAROBOT_ENDPOINT}/memory/{memory_space_id}``.
+
+    No trailing slash: mem0's ``AsyncMemoryClient._validate_api_key`` builds
+    its ping URL as ``f"{host}/v1/ping/"`` via raw string concat (it does not
+    use httpx's base-url joining for that call). A trailing slash on the
+    host would produce a double slash there.
+    """
+    base = config.datarobot_endpoint or os.getenv("DATAROBOT_ENDPOINT")
+    if not base:
+        raise RuntimeError(
+            "DataRobot endpoint is not set. Configure memory.datarobot_endpoint "
+            "or DATAROBOT_ENDPOINT when using memory_space_id."
+        )
+    return f"{base.rstrip('/')}/memory/{config.memory_space_id}"
+
+
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
     try:
         from datarobot_genai.core.memory.mem0client import Mem0Client
@@ -215,9 +285,10 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
             'Install it with `pip install "datarobot-genai[nat,memory]"`.'
         ) from exc
 
+    host = _dr_mem0_endpoint(config) if config.memory_space_id else config.host
     return Mem0Client(
         api_key=api_key,
-        host=config.host,
+        host=host,
         org_id=config.org_id,
         project_id=config.project_id,
     )
@@ -227,12 +298,22 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
 async def dr_mem0_memory_client(
     config: DRMem0MemoryClientConfig, builder: Builder
 ) -> AsyncGenerator[MemoryEditor]:
-    if not config.api_key:
+    if config.memory_space_id:
+        api_key = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
+        if not api_key:
+            raise RuntimeError(
+                "DataRobot API token is not set. Configure memory.datarobot_api_token "
+                "or DATAROBOT_API_TOKEN when using memory_space_id."
+            )
+    elif config.api_key:
+        api_key = config.api_key
+    else:
         raise RuntimeError(
-            "Mem0 API key is not set. Please configure memory.api_key or MEM0_API_KEY."
+            "Mem0 API key is not set. Please configure memory.api_key or MEM0_API_KEY, "
+            "or set memory_space_id to target the DataRobot mem0 endpoint."
         )
 
-    editor: MemoryEditor = DRMem0Editor(_create_mem0_client(config, config.api_key))
+    editor: MemoryEditor = DRMem0Editor(_create_mem0_client(config, api_key))
     if isinstance(config, RetryMixin):
         editor = patch_with_retry(
             editor,
