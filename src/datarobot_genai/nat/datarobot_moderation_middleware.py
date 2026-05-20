@@ -133,9 +133,6 @@ def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> Moderatio
     model_dir = os.path.abspath(os.getcwd())
     pipeline = ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
 
-    # LLMPipeline.get_input_column(GuardStage.RESPONSE) falls back to TARGET_NAME when the YAML
-    # does not set a response column. DRUM sets TARGET_NAME; local NAT often does not (see e2e CI env).
-    os.environ.setdefault("TARGET_NAME", "response")
     os.environ["PROMPT_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.PROMPT)
     os.environ["RESPONSE_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.RESPONSE)
     return pipeline

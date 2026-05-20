@@ -46,6 +46,7 @@ from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import _from_dataframe
 from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
+from datarobot_dome.constants import DEFAULT_RESPONSE_COLUMN_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.schema.moderation_config import ModerationConfig
@@ -352,7 +353,6 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         pipeline = load_llm_moderation_pipeline(cfg)
@@ -992,7 +992,6 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1040,7 +1039,6 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1086,7 +1084,6 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1129,7 +1126,6 @@ async def test_function_middleware_invoke_prompt_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1170,7 +1166,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_to
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1209,7 +1204,6 @@ async def test_function_middleware_stream_prompt_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1249,7 +1243,6 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1272,8 +1265,9 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
     assert mods["Responses_token_count"] == 80
-    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
-        f"expected a blocked_response flag in {mods!r}"
+    blocked_suffix = f"_blocked_{DEFAULT_RESPONSE_COLUMN_NAME}"
+    assert any(k.endswith(blocked_suffix) and mods[k] is True for k in mods), (
+        f"expected a {blocked_suffix!r} flag in {mods!r}"
     )
 
 
@@ -1294,7 +1288,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1316,8 +1309,9 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
     assert mods["Responses_token_count"] == 80
-    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
-        f"expected a blocked_response flag in {mods!r}"
+    blocked_suffix = f"_blocked_{DEFAULT_RESPONSE_COLUMN_NAME}"
+    assert any(k.endswith(blocked_suffix) and mods[k] is True for k in mods), (
+        f"expected a {blocked_suffix!r} flag in {mods!r}"
     )
 
 
@@ -1335,7 +1329,6 @@ async def test_function_middleware_stream_response_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1360,8 +1353,9 @@ async def test_function_middleware_stream_response_token_limit_blocks(
     assert chunk.datarobot_moderations is not None
     mods = chunk.datarobot_moderations
     assert mods["Responses_token_count"] == 80
-    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
-        f"expected a blocked_response flag in {mods!r}"
+    blocked_suffix = f"_blocked_{DEFAULT_RESPONSE_COLUMN_NAME}"
+    assert any(k.endswith(blocked_suffix) and mods[k] is True for k in mods), (
+        f"expected a {blocked_suffix!r} flag in {mods!r}"
     )
 
 
@@ -1384,7 +1378,6 @@ async def test_function_middleware_invoke_prompt_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1429,7 +1422,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1476,7 +1468,6 @@ async def test_function_middleware_stream_prompt_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1521,7 +1512,6 @@ async def test_function_middleware_invoke_response_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1566,7 +1556,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1613,7 +1602,6 @@ async def test_function_middleware_stream_response_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),

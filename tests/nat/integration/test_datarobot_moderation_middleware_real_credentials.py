@@ -88,7 +88,6 @@ def _build_moderation_middleware_for_model_dir(
     builder_mock: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> DataRobotModerationMiddleware:
-    monkeypatch.setenv("TARGET_NAME", '"response"')
     try:
         mw = DataRobotModerationMiddleware(
             DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
