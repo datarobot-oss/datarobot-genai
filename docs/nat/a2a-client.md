@@ -18,7 +18,7 @@
 
 A NAT workflow can call other agents over the [A2A protocol](https://google.github.io/A2A/) by
 adding an `authenticated_a2a_client` entry under **`function_groups`**. The remote agent appears as
-a tool the orchestrator can invoke — just like MCP tools or local functions.
+a tool the orchestrator can invoke, just like MCP tools or local functions.
 
 ```yaml
 function_groups:
@@ -39,20 +39,20 @@ authentication:
 ```
 
 The function group handles agent card discovery, authentication for both the discovery and RPC
-phases, and SSE streaming — all driven by `workflow.yaml`.
+phases, and SSE streaming, all driven by `workflow.yaml`.
 
-For details on **which auth providers are available** and how to configure them (DataRobot API key,
+For details on which auth providers are available and how to configure them (DataRobot API key,
 Okta XAA), see [a2a-auth.md](a2a-auth.md).
 
 ## Agent card resolution
 
 Before the first RPC call, the client must obtain the remote agent's **agent card** — a JSON
 document describing the agent's capabilities and authentication requirements. There are two
-mutually exclusive ways to resolve it.
+mutually exclusive ways to obtain it.
 
 ### Direct fetch (`url`)
 
-The client fetches the card from `{url}/.well-known/agent-card.json`. The `auth_provider` is used
+In a direct fetch, the client fetches the card from `{url}/.well-known/agent-card.json`. The `auth_provider` is used
 for both the card fetch and subsequent RPC calls.
 
 ```yaml
@@ -68,7 +68,7 @@ credentials used for RPC calls.
 
 ### Central registry (`registry`)
 
-In DataRobot deployments the agent card endpoint is protected by per-agent AuthN/AuthZ — but the
+In DataRobot deployments, the agent card endpoint is protected by per-agent AuthN/Auth. However, the
 card itself describes *how* to authenticate, creating a chicken-and-egg problem. The **central
 agent card registry** solves this by exposing all agent cards in the tenant at a single endpoint
 that requires only a standard `DATAROBOT_API_TOKEN`.
@@ -95,13 +95,12 @@ function_groups:
     auth_provider: okta_auth
 ```
 
-When using the registry the RPC base URL is derived from the card's advertised `url` — you do not
-need to specify it.
+> [!NOTE]
+> When using the registry the RPC base URL is derived from the card's advertised `url` — you do not need to specify it.
 
 #### Batch fetching
 
-When a workflow has many registry-backed function groups, all cards are resolved in **at most
-2 HTTP calls** (one for deployment IDs, one for external IDs). Results are cached in-memory and
+When a workflow has many registry-backed function groups, all cards are resolved in a maximum of two HTTP calls: one for deployment IDs, one for external IDs. Results are cached in-memory and
 reused until the TTL expires.
 
 #### Registry environment variables
