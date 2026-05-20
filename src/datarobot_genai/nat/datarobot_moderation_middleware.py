@@ -1343,7 +1343,6 @@ async def _completion_chunks_from_dragent_upstream(
     """Feed ``stream_response_async``; align sources with peek-ahead inside the pipeline."""
     current: DRAgentEventResponse | None = first_text
     while current is not None:
-        pending_pass_through.clear()
         moderation_source_responses.append(current)
         yield cast(
             ChatCompletionChunk,
