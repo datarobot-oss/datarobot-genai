@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.63
+- `nat/datarobot_mem0_memory`: the `dr_mem0_memory` provider now routes on config. When `memory_space_id` is set, requests go to the DataRobot Memory Service's mem0-compatible endpoint at `{datarobot_endpoint}/memory/{memory_space_id}` (authenticated with `datarobot_api_token` / `DATAROBOT_API_TOKEN`); otherwise `api_key` / `MEM0_API_KEY` is used against Mem0 SaaS. Both routes share the same `DRMem0Editor` because the DR endpoint is API-compatible with mem0 (PBMP-7431). New config fields: `memory_space_id`, `datarobot_endpoint`, `datarobot_api_token`.
+- `nat/datarobot_mem0_memory`: providing both `memory_space_id` and `api_key` now raises `RuntimeError("...mutually exclusive...")` at factory time. The fields target different services with different tokens, so silently picking one would mask misconfiguration (e.g. a stray `MEM0_API_KEY` in env hydrating `api_key` via its default factory). The error message documents the `api_key=None` escape hatch for the env-contamination case.
+
 ## 0.15.61
 - Added central agent card registry support to `authenticated_a2a_client`. Set `registry.deployment_id` or `registry.external_id` instead of `url` to resolve agent cards from the tenant-wide DataRobot registry.
 
