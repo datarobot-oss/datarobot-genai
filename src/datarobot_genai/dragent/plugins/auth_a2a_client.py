@@ -35,6 +35,12 @@ from nat.plugins.a2a.auth.credential_service import A2ACredentialService
 from nat.plugins.a2a.client.client_base import A2ABaseClient
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
+from pydantic import BaseModel
+from pydantic import Field
+from pydantic import model_validator
+
+from datarobot_genai.dragent.agent_card_registry import get_default_registry
+from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +145,10 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
             timeout=httpx.Timeout(self._task_timeout.total_seconds()),
         )
 
-        await self._resolve_agent_card()
+        if not self._agent_card:
+            await self._resolve_agent_card()
+        else:
+            logger.info("Using pre-resolved agent card (registry lookup).")
         if not self._agent_card:
             raise RuntimeError("Agent card not resolved")
 
@@ -169,12 +178,113 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
         return self
 
 
+class AgentCardRegistryLookup(BaseModel):
+    """Identifies an agent card in the central DataRobot agent card registry.
+
+    Exactly one of ``deployment_id`` or ``external_id`` must be specified.
+    The registry is queried using standard DataRobot API-token authentication
+    (``DATAROBOT_API_TOKEN``), which avoids the chicken-and-egg problem where the
+    agent's own card endpoint requires per-agent AuthN/AuthZ.
+
+    Example YAML::
+
+        registry:
+          deployment_id: "64a1b2c3d4e5f6a7b8c9d0e1"
+    """
+
+    deployment_id: str | None = Field(
+        default=None,
+        description="DataRobot deployment ID to look up in the central agent card registry.",
+    )
+    external_id: str | None = Field(
+        default=None,
+        description="External agent identifier to look up in the central agent card registry.",
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one_identifier(self) -> "AgentCardRegistryLookup":
+        if self.deployment_id and self.external_id:
+            raise ValueError(
+                "Specify exactly one of 'deployment_id' or 'external_id' inside 'registry', "
+                "not both. Each identifies the agent card differently in the central registry."
+            )
+        if not self.deployment_id and not self.external_id:
+            raise ValueError(
+                "The 'registry' block requires exactly one of 'deployment_id' or 'external_id' "
+                "to identify the agent card in the central registry."
+            )
+        return self
+
+
 class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_client"):  # type: ignore[call-arg]
     """A2A client config with separate discovery and call-phase auth.
 
-    If ``auth_provider`` implements :class:`A2ADiscoveryAuthMixin`, it supplies
-    different credentials for discovery vs RPC calls.
+    Supports two modes for agent card resolution:
+
+    **Direct fetch** (existing behaviour) — set ``url`` to the agent's base URL
+    and the card is fetched from ``{url}/.well-known/agent-card.json``::
+
+        function_groups:
+          my_agent:
+            _type: authenticated_a2a_client
+            url: "http://agent.example.com:8080"
+            auth_provider: my_auth
+
+    **Central registry lookup** — set ``registry`` with either ``deployment_id``
+    or ``external_id``.  The card is fetched from the DataRobot central agent card
+    registry using ``DATAROBOT_API_TOKEN``, and the agent's RPC URL is derived
+    from the card's advertised ``url``::
+
+        function_groups:
+          my_agent:
+            _type: authenticated_a2a_client
+            registry:
+              deployment_id: "64a1b2c3d4e5f6a7b8c9d0e1"
+            auth_provider: okta_auth
+
+    The two modes are mutually exclusive.
     """
+
+    url: Any = Field(  # type: ignore[assignment]
+        default=None,
+        description="Base URL of the A2A agent for direct agent card fetch. "
+        "Mutually exclusive with 'registry'.",
+    )
+
+    registry: AgentCardRegistryLookup | None = Field(
+        default=None,
+        description="Central DataRobot agent card registry lookup. Mutually exclusive with 'url'.",
+    )
+
+    @model_validator(mode="after")
+    def _url_xor_registry(self) -> "AuthenticatedA2AClientConfig":
+        has_url = self.url is not None
+        has_registry = self.registry is not None
+        if has_url and has_registry:
+            raise ValueError(
+                "Provide either 'url' for direct agent card fetch or 'registry' for "
+                "central registry lookup, not both. "
+                "When 'registry' is set, the agent's RPC URL is derived from the "
+                "agent card's advertised URL."
+            )
+        if not has_url and not has_registry:
+            raise ValueError(
+                "Either 'url' or 'registry' must be provided. "
+                "Use 'url' to fetch the agent card directly from the agent, "
+                "or 'registry' to look it up in the central DataRobot agent card registry."
+            )
+        # Eager registration for batch prefetch (N+1 optimisation).
+        # register() here is sync, no I/O — just queues the ID.
+        # First async get() in __aenter__ flushes all pending IDs
+        # in ≤2 HTTP calls; subsequent gets hit the warm cache.
+        # See AgentCardRegistry docstring for full details.
+        if has_registry:
+            registry = get_default_registry_sync()
+            registry.register(
+                deployment_id=self.registry.deployment_id,  # type: ignore[union-attr]
+                external_id=self.registry.external_id,  # type: ignore[union-attr]
+            )
+        return self
 
 
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
@@ -203,7 +313,29 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
                 )
                 raise RuntimeError(f"Failed to resolve auth provider: {e}") from e
 
-        base_url = str(config.url)
+        # -------------------------------------------------------------------
+        # Resolve agent card: registry lookup vs. direct fetch
+        # -------------------------------------------------------------------
+        pre_resolved_card: AgentCard | None = None
+
+        if config.registry:
+            # Fetch the card from the central DataRobot agent card registry
+            registry = await get_default_registry()
+            pre_resolved_card = await registry.get(
+                deployment_id=config.registry.deployment_id,
+                external_id=config.registry.external_id,
+            )
+            base_url = str(pre_resolved_card.url)
+            logger.info(
+                "Agent card resolved via central registry (deployment_id=%s, external_id=%s), "
+                "RPC base URL derived from card: %s",
+                config.registry.deployment_id,
+                config.registry.external_id,
+                base_url,
+            )
+        else:
+            base_url = str(config.url)
+
         self._client = _AuthenticatedA2ABaseClient(
             base_url=base_url,
             agent_card_path=config.agent_card_path,
@@ -211,13 +343,19 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
             streaming=config.streaming,
             auth_provider=auth_provider,
         )
+
+        # Inject pre-resolved card so _AuthenticatedA2ABaseClient skips discovery
+        if pre_resolved_card:
+            self._client._agent_card = pre_resolved_card
+
         await self._client.__aenter__()
 
         logger.info(
-            "Connected to A2A agent at %s (auth_provider: %s, user_id: %s)",
+            "Connected to A2A agent at %s (auth_provider: %s, user_id: %s, registry: %s)",
             base_url,
             config.auth_provider or "none",
             user_id,
+            bool(config.registry),
         )
 
         self._register_functions()
