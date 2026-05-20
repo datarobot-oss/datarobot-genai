@@ -1624,10 +1624,14 @@ class DataRobotModerationMiddleware(
             current_response = response
             pending_deferred_pass_through: list[DRAgentEventResponse] = []
             pending_pass_through: list[DRAgentEventResponse] = []
+            # ``stream_response_async`` peeks one chunk ahead on the completion iterator.
+            # Queue each upstream response when its chunk is yielded so the outer loop can
+            # pop the matching source after moderation (not the peeked-next response).
+            moderation_source_responses: list[DRAgentEventResponse] = []
 
             async def upstream_completion_chunks() -> AsyncIterator[ChatCompletionChunk]:
                 """Feed ``stream_response_async``; collect pass-through while peeking ahead."""
-                nonlocal current_response
+                moderation_source_responses.append(current_response)
                 yield cast(
                     ChatCompletionChunk,
                     dragent_event_response_to_chat_completion(
@@ -1645,7 +1649,7 @@ class DataRobotModerationMiddleware(
                         peek = await read_upstream()
                     if peek is None:
                         return
-                    current_response = peek
+                    moderation_source_responses.append(peek)
                     yield cast(
                         ChatCompletionChunk,
                         dragent_event_response_to_chat_completion(peek, as_streaming_chunk=True),
@@ -1657,9 +1661,10 @@ class DataRobotModerationMiddleware(
                 prescore_df=stream_state.prescore_df,
                 prescore_latency=stream_state.latency_so_far,
             ):
+                source_response = moderation_source_responses.pop(0)
                 ctx.output = chat_completion_to_dragent_event_response(
                     moderated,
-                    source_ag_ui_events=current_response.events,
+                    source_ag_ui_events=source_response.events,
                     stream_tool_index_map=stream_tool_index_map,
                 )
                 yield ctx.output

@@ -1744,6 +1744,55 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
     assert chunks[0].events == _text_response("passthrough").events
 
 
+async def test_function_middleware_stream_preserves_message_id_per_text_chunk(
+    builder_mock: MagicMock,
+) -> None:
+    """Each moderated chunk must use the source response for that chunk, not the peeked next one."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    mid_a = "msg-chunk-a"
+    mid_b = "msg-chunk-b"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="a")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_b, delta="b")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    content_events = [
+        ev for resp in chunks for ev in resp.events if isinstance(ev, TextMessageContentEvent)
+    ]
+    assert len(content_events) == 2
+    assert content_events[0].message_id == mid_a
+    assert content_events[0].delta == "a"
+    assert content_events[1].message_id == mid_b
+    assert content_events[1].delta == "b"
+
+
 async def test_function_middleware_stream_defers_text_message_end_before_run_finished(
     builder_mock: MagicMock,
 ) -> None:
