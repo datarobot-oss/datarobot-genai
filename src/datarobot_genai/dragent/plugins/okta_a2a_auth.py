@@ -731,9 +731,7 @@ class _TokenExchangeParams(BaseModel):
     requested_token_type: str | None = Field(
         default=None, validation_alias=AliasChoices("requestedTokenType", "requested_token_type")
     )
-    trusted_issuer: str = Field(
-        validation_alias=AliasChoices("trustedIssuer", "trusted_issuer")
-    )
+    trusted_issuer: str = Field(validation_alias=AliasChoices("trustedIssuer", "trusted_issuer"))
     audience: str
 
 
