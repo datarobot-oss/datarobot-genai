@@ -123,19 +123,12 @@ def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> Moderatio
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
-    os.environ["RAGAS_DO_NOT_TRACK"] = "true"
-    os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
-
     if config.moderation is None:
         _logger.warning("Middleware has no ``moderation`` block; moderations will not be enforced")
         return None
 
     model_dir = os.path.abspath(os.getcwd())
-    pipeline = ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
-
-    os.environ["PROMPT_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.PROMPT)
-    os.environ["RESPONSE_COLUMN_NAME"] = pipeline._pipeline.get_input_column(GuardStage.RESPONSE)
-    return pipeline
+    return ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
 
 
 def _text_for_moderation_eval(value: Any) -> str:
