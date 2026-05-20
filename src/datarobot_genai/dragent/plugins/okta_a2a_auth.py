@@ -106,6 +106,8 @@ from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.common import OptionalSecretStr
 from pydantic import AliasChoices
+from pydantic import BaseModel
+from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import SecretStr
 
@@ -687,9 +689,9 @@ def _parse_cross_app_params(card: AgentCard) -> _CrossAppFlowParams:
 
     return _CrossAppFlowParams(
         token_url=token_url,
-        trusted_issuer=ext.trusted_issuer,
-        exchange_audience=ext.exchange_audience,
-        target_audience=ext.target_audience,
+        trusted_issuer=ext.token_exchange.trusted_issuer,
+        exchange_audience=ext.token_exchange.audience,
+        target_audience=ext.token_request.audience,
         token_endpoint_auth_method=ext.token_endpoint_auth_method,
         id_jag_scopes=scopes,
     )
@@ -718,21 +720,58 @@ def _parse_security_schemes(card: AgentCard) -> tuple[str, list[str]]:
     return token_url, scopes
 
 
-@dataclass
-class _CrossAppExtensionFields:
-    """Raw fields extracted from the JWT Bearer capability extension."""
+class _TokenExchangeParams(BaseModel):
+    """Nested ``tokenExchange`` / ``token_exchange`` block inside the extension."""
 
-    trusted_issuer: str
-    exchange_audience: str
-    target_audience: str
-    token_endpoint_auth_method: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    grant_type: str | None = Field(
+        default=None, validation_alias=AliasChoices("grantType", "grant_type")
+    )
+    requested_token_type: str | None = Field(
+        default=None, validation_alias=AliasChoices("requestedTokenType", "requested_token_type")
+    )
+    trusted_issuer: str = Field(
+        validation_alias=AliasChoices("trustedIssuer", "trusted_issuer")
+    )
+    audience: str
+
+
+class _TokenRequestParams(BaseModel):
+    """Nested ``tokenRequest`` / ``token_request`` block inside the extension."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    grant_type: str = Field(validation_alias=AliasChoices("grantType", "grant_type"))
+    audience: str
+
+
+class _CrossAppExtensionFields(BaseModel):
+    """Fields extracted from the JWT Bearer capability extension.
+
+    Accepts both camelCase (as returned by the agent card registry API) and
+    snake_case keys via ``AliasChoices``.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    token_endpoint_auth_method: str = Field(
+        validation_alias=AliasChoices("tokenEndpointAuthMethod", "token_endpoint_auth_method")
+    )
+    token_exchange: _TokenExchangeParams = Field(
+        validation_alias=AliasChoices("tokenExchange", "token_exchange")
+    )
+    token_request: _TokenRequestParams = Field(
+        validation_alias=AliasChoices("tokenRequest", "token_request")
+    )
 
 
 def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
     """Extract Cross-Application Access fields from the JWT Bearer capability extension.
 
     Finds the extension with ``uri == _JWT_BEARER_GRANT_TYPE_URI`` and validates
-    required fields.  ``token_request.grant_type`` is validated but not returned.
+    required fields using pydantic.  Both camelCase and snake_case keys are
+    accepted via ``AliasChoices``.
 
     Raises ``ValueError`` if the extension is missing or any required field is absent.
     """
@@ -742,38 +781,13 @@ def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
     for ext in extensions:
         if ext.uri == _JWT_BEARER_GRANT_TYPE_URI:
             params = ext.params or {}
-            token_exchange = params.get("token_exchange") or {}
-            token_request = params.get("token_request") or {}
-
-            token_endpoint_auth_method = params.get("token_endpoint_auth_method")
-            trusted_issuer = token_exchange.get("trusted_issuer")
-            exchange_audience = token_exchange.get("audience")
-            grant_type = token_request.get("grant_type")
-            target_audience = token_request.get("audience")
-
-            missing = [
-                name
-                for name, val in [
-                    ("token_endpoint_auth_method", token_endpoint_auth_method),
-                    ("token_exchange.trusted_issuer", trusted_issuer),
-                    ("token_exchange.audience", exchange_audience),
-                    ("token_request.grant_type", grant_type),
-                    ("token_request.audience", target_audience),
-                ]
-                if not val
-            ]
-            if missing:
+            try:
+                return _CrossAppExtensionFields.model_validate(params)
+            except Exception as exc:
                 raise ValueError(
-                    f"Agent card Cross-Application Access extension is missing required "
-                    f"fields: {missing}"
-                )
-
-            return _CrossAppExtensionFields(
-                trusted_issuer=trusted_issuer,  # type: ignore[arg-type]
-                exchange_audience=exchange_audience,  # type: ignore[arg-type]
-                target_audience=target_audience,  # type: ignore[arg-type]
-                token_endpoint_auth_method=token_endpoint_auth_method,  # type: ignore[arg-type]
-            )
+                    f"Agent card Cross-Application Access extension has invalid or missing "
+                    f"fields: {exc}"
+                ) from exc
 
     raise ValueError(
         f"Agent card capabilities.extensions has no entry with uri='{_JWT_BEARER_GRANT_TYPE_URI}'. "
