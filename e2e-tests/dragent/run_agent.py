@@ -70,15 +70,19 @@ def main() -> int:
         custom_model_dir=custom_model_dir,
     )
 
-    if isinstance(result, list):
-        payload = [chunk.model_dump(mode="json") for chunk in result]
-    else:
-        payload = result.model_dump(mode="json")
-
-    output_path.write_text(json.dumps(payload))
+    output_path.write_text(json.dumps(result.model_dump(mode="json"), indent=2))
     logger.info("Wrote result to %s", output_path)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        exit_code = main()
+    finally:
+        # Flush log handlers and stdio buffers before the subprocess exits so
+        # the parent test runner sees the full stdout/stderr captured output
+        # (including any tracebacks emitted from inside ``main()``).
+        logging.shutdown()
+        sys.stdout.flush()
+        sys.stderr.flush()
+    sys.exit(exit_code)

@@ -21,12 +21,17 @@ from ag_ui.core import CustomEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallChunkEvent
+from ag_ui.core import ToolCallStartEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
+from nat.data_models.api_server import ChoiceDeltaToolCall
+from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 from nat.data_models.api_server import Message
 
 from datarobot_genai.core.agents import default_usage_metrics
@@ -83,18 +88,80 @@ def convert_dragent_run_agent_input_to_chat_request_or_message(
 def convert_dragent_event_response_to_chat_response_chunk(
     response: DRAgentEventResponse,
 ) -> ChatResponseChunk:
-    if response.original_chunk is None:
-        content = ""
-        for event in response.events:
-            if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
-                content += event.delta
-        return ChatResponseChunk(
-            id=uuid.uuid4().hex,
-            choices=[ChatResponseChunkChoice(index=0, delta=ChoiceDelta(content=content))],
-            created=datetime.datetime.now(datetime.UTC),
-        )
-    else:
+    if response.original_chunk is not None:
         return response.original_chunk
+
+    content_parts: list[str] = []
+    tool_calls: list[ChoiceDeltaToolCall] = []
+
+    for event in response.events:
+        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+            content_parts.append(event.delta)
+            continue
+
+        # AG-UI tool-call events -> OpenAI streaming tool_calls deltas.
+        # OpenAI's streaming format expects the *first* chunk of a tool call
+        # to carry ``id``, ``type`` and ``function.name``; subsequent
+        # argument chunks carry only ``function.arguments`` (with ``id``
+        # null). NAT's tool-call stream emits a single tool call at a time,
+        # so ``index=0`` is sufficient to correlate the shards downstream.
+        if isinstance(event, ToolCallStartEvent):
+            tool_calls.append(
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id=event.tool_call_id,
+                    type="function",
+                    function=ChoiceDeltaToolCallFunction(name=event.tool_call_name),
+                )
+            )
+        elif isinstance(event, ToolCallArgsEvent):
+            tool_calls.append(
+                ChoiceDeltaToolCall(
+                    index=0,
+                    function=ChoiceDeltaToolCallFunction(arguments=event.delta),
+                )
+            )
+        elif isinstance(event, ToolCallChunkEvent):
+            function_kwargs: dict[str, str] = {}
+            if event.tool_call_name:
+                function_kwargs["name"] = event.tool_call_name
+            if event.delta:
+                function_kwargs["arguments"] = event.delta
+            tool_calls.append(
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id=event.tool_call_id,
+                    type="function" if event.tool_call_id else None,
+                    function=ChoiceDeltaToolCallFunction(**function_kwargs)
+                    if function_kwargs
+                    else None,
+                )
+            )
+        # ToolCallEndEvent / ToolCallResultEvent are intentionally skipped:
+        # tool-call completion is signalled by ``finish_reason`` at the
+        # outer choice level, and tool results are sent as separate
+        # ``role="tool"`` messages rather than streaming deltas.
+
+    # Preserve the existing empty-string semantics for the "no events"
+    # case while matching OpenAI's streaming convention of ``null`` content
+    # whenever a chunk carries only tool_calls.
+    if content_parts:
+        content: str | None = "".join(content_parts)
+    elif tool_calls:
+        content = None
+    else:
+        content = ""
+
+    return ChatResponseChunk(
+        id=uuid.uuid4().hex,
+        choices=[
+            ChatResponseChunkChoice(
+                index=0,
+                delta=ChoiceDelta(content=content, tool_calls=tool_calls or None),
+            )
+        ],
+        created=datetime.datetime.now(datetime.UTC),
+    )
 
 
 ## --- dragent Chat Completions -> AG-UI ---

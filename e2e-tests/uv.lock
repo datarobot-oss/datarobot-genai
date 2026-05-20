@@ -980,7 +980,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.59"
+version = "0.15.61"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1306,6 +1306,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
+    { name = "ipdb" },
     { name = "nbmake" },
     { name = "openai" },
     { name = "pytest" },
@@ -1313,6 +1314,7 @@ dependencies = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "python-dotenv" },
+    { name = "rpdb" },
 ]
 
 [package.dev-dependencies]
@@ -1344,6 +1346,7 @@ example-quickstart = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
+    { name = "ipdb", specifier = ">=0.13.13" },
     { name = "nbmake", specifier = ">=1.5.5" },
     { name = "openai", specifier = ">=2.0.0,<3.0.0" },
     { name = "pytest" },
@@ -1351,6 +1354,7 @@ requires-dist = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "python-dotenv" },
+    { name = "rpdb", specifier = ">=0.2.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -6067,6 +6071,15 @@ dependencies = [
     { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e2/c5/9136736c37022a6ad27fea38f3111eb8f02fe75d067f9a985cc358653102/rouge_score-0.1.2.tar.gz", hash = "sha256:c7d4da2683e68c9abf0135ef915d63a46643666f848e558a1b9f7ead17ff0f04", size = 17400, upload-time = "2022-07-22T22:46:22.909Z" }
+
+[[package]]
+name = "rpdb"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/87/2dc67e3d5a005173b2e4165bdfdeb302ef38393b16312afe70f7a252f3ae/rpdb-0.2.0.tar.gz", hash = "sha256:8346f0dd498a1c30768af3d3528cdfe8086d8c057c9fccb5430b5aec32ae16ab", size = 5560, upload-time = "2024-12-26T18:13:17.809Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/dd/39ee98f8fc0163f4df6264525fff2b87eef4b3d1a48db5936261e029ba15/rpdb-0.2.0-py3-none-any.whl", hash = "sha256:20e59ed87bbc0ec6a89ea883d8620f26c6e0877b851a49e19c239ad2c6bd4f49", size = 5985, upload-time = "2024-12-26T18:13:16.812Z" },
+]
 
 [[package]]
 name = "rpds-py"

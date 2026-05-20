@@ -14,30 +14,27 @@
 
 """In-process dragent execution for use as a DRUM alternative in run_agent.py.
 
-Mirrors the contract of ``datarobot_drum``'s ``execute_drum_inline`` so callers
-can route between DRUM and dragent with a single env-var-gated branch.
+Mirrors the entry shape of ``datarobot_drum``'s ``execute_drum_inline`` so the
+host script can route between DRUM and dragent with a single env-var-gated
+branch. The function always returns a single aggregated OpenAI
+``ChatCompletion``; the request's ``stream`` flag is ignored because the
+agentic playground only renders the final assistant message.
 """
 
 from __future__ import annotations
 
 import asyncio
-import datetime
 import logging
-import uuid
 from pathlib import Path
-from typing import Any
 
 from openai.types.chat import ChatCompletion
-from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.completion_create_params import CompletionCreateParamsBase
 
 logger = logging.getLogger(__name__)
 
 # Sentinel user_id passed to ``SessionManager.session(...)`` so that per-user
 # dragent workflows (which raise when ``user_id`` is ``None``) succeed in the
-# single-shot inline path. Shared workflows ignore it. Surfacing a real
-# per-user identity from ``chat_completion["authorization_context"]`` is a
-# follow-up; see open follow-ups in the implementation plan.
+# single-shot inline path. Shared workflows ignore it.
 INLINE_USER_ID = "dragent-inline"
 WORKFLOW_FILENAME = "workflow.yaml"
 
@@ -67,72 +64,75 @@ async def execute_dragent_inline_async(
     *,
     config_file: Path | None = None,
     default_headers: dict[str, str] | None = None,
-) -> ChatCompletion | list[ChatCompletionChunk]:
-    """Execute a dragent workflow in-process for one chat completion request.
+) -> ChatCompletion:
+    """Execute a dragent workflow in-process and return the final OpenAI ``ChatCompletion``.
+
+    The function delegates aggregation to NAT: ``runner.result(to_type=ChatResponse)``
+    is the same call the dragent FastAPI route uses for non-streaming
+    ``/v1/chat/completions`` requests. NAT workflows already declare how to
+    produce a single response — ``per_user_tool_calling_agent`` registers
+    ``single_output_type=ChatResponse`` natively, and dragent-native agents
+    (``base``, ``langgraph``, ``crewai``, ``llamaindex``) declare
+    ``Streaming(convert=aggregate_dragent_event_responses)`` so NAT collapses
+    their stream and then chains the registered global converter
+    ``DRAgentEventResponse → ChatResponseChunk`` through to ``ChatResponse``.
+    The OpenAI ``ChatCompletion`` is then a structural re-validation of NAT's
+    OpenAI-compatible ``ChatResponse``.
 
     Parameters
     ----------
     chat_completion
-        OpenAI Chat Completions create-params dict. ``stream`` controls the return
-        shape but the workflow is always invoked in streaming mode internally and
-        the result reshaped accordingly.
+        OpenAI Chat Completions create-params dict (``stream`` is ignored).
     custom_model_dir
-        Directory containing the agent code. ``workflow.yaml`` is loaded from here
-        when ``config_file`` is not supplied.
+        Directory containing the agent code. ``workflow.yaml`` is loaded from
+        here when ``config_file`` is not supplied.
     config_file
         Optional explicit override of the workflow YAML path.
     default_headers
         Optional HTTP headers to inject into the workflow's auth/LLM components
         (forwarded to ``load_workflow``).
-
-    Returns
-    -------
-    ChatCompletion
-        When ``chat_completion["stream"]`` is falsy.
-    list[ChatCompletionChunk]
-        When ``chat_completion["stream"]`` is truthy.
     """
     # Local imports keep the optional NAT dependency out of any path that just
     # imports the symbol but never calls it (e.g. when DRUM is selected).
-    from nat.data_models.api_server import ChatResponseChunk
+    # The dragent front-end's global type converters are registered by NAT
+    # plugin discovery via the ``nat.front_ends`` entry point ``dragent`` when
+    # ``load_workflow`` runs.
+    from nat.data_models.api_server import ChatResponse
 
     from datarobot_genai.core.chat.completions import (
         convert_chat_completion_params_to_run_agent_input,
     )
-
-    # Side-effect import: registers global type converters
-    # (DRAgentEventResponse -> ChatResponseChunk and related). Required for
-    # ``runner.result_stream(to_type=ChatResponseChunk)`` to find a converter.
-    from datarobot_genai.dragent.frontends import register as _register  # noqa: F401
+    from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
     from datarobot_genai.nat.helpers import load_workflow
 
     workflow_path = _resolve_config_path(Path(custom_model_dir), config_file)
     logger.info("Running dragent workflow from %s", workflow_path)
 
-    # Convert OpenAI Chat Completion params directly to AG-UI RunAgentInput.
-    # Going through NAT's ChatRequest would reject role="tool" messages; the
-    # AG-UI converter handles those correctly.
-    run_agent_input = convert_chat_completion_params_to_run_agent_input(chat_completion)
+    # Build the workflow input as ``DRAgentRunAgentInput`` (a ``RunAgentInput``
+    # subclass) so NAT's registered converters (e.g.
+    # ``DRAgentRunAgentInput -> ChatRequest`` /
+    # ``DRAgentRunAgentInput -> ChatRequestOrMessage``) match by exact type
+    # for workflows whose input type isn't ``RunAgentInput``.
+    base_input = convert_chat_completion_params_to_run_agent_input(chat_completion)
+    run_agent_input = DRAgentRunAgentInput.model_validate(base_input.model_dump())
 
-    chunks: list[ChatResponseChunk] = []
     async with load_workflow(workflow_path, headers=default_headers) as session_manager:
         async with session_manager.session(user_id=INLINE_USER_ID) as session:
             async with session.run(run_agent_input) as runner:
-                async for chunk in runner.result_stream(to_type=ChatResponseChunk):
-                    chunks.append(chunk)
+                response: ChatResponse = await runner.result(to_type=ChatResponse)
 
-    # NAT's ChatResponseChunk is OpenAI-compatible; ``mode="json"`` serialises
-    # ``created`` as an int (via the field serializer) so the resulting dict
-    # passes OpenAI's stricter typing.
-    openai_chunks = [ChatCompletionChunk.model_validate(c.model_dump(mode="json")) for c in chunks]
-
-    if chat_completion.get("stream"):
-        return openai_chunks
-
-    return _aggregate_chunks_into_completion(
-        openai_chunks,
-        requested_model=chat_completion.get("model"),
-    )
+    # NAT's ``ChatResponse`` is documented as OpenAI Chat Completions API
+    # compatible (same field layout); ``mode="json"`` serialises ``created`` as
+    # an int via the field serializer so the resulting dict satisfies OpenAI's
+    # stricter typing. Preserve the caller's ``model`` value when the workflow
+    # didn't propagate one (NAT defaults to ``"unknown-model"``).
+    payload = response.model_dump(mode="json")
+    if (requested_model := chat_completion.get("model")) and payload.get("model") in (
+        None,
+        "unknown-model",
+    ):
+        payload["model"] = requested_model
+    return ChatCompletion.model_validate(payload)
 
 
 def execute_dragent_inline(
@@ -141,7 +141,7 @@ def execute_dragent_inline(
     *,
     config_file: Path | None = None,
     default_headers: dict[str, str] | None = None,
-) -> ChatCompletion | list[ChatCompletionChunk]:
+) -> ChatCompletion:
     """Run :func:`execute_dragent_inline_async` synchronously via ``asyncio.run``.
 
     Convenient for use from sync entry points such as
@@ -155,131 +155,3 @@ def execute_dragent_inline(
             default_headers=default_headers,
         )
     )
-
-
-def _aggregate_chunks_into_completion(
-    chunks: list[ChatCompletionChunk],
-    *,
-    requested_model: str | None,
-) -> ChatCompletion:
-    """Collapse a streaming chunk list into a single ``ChatCompletion``.
-
-    Mirrors OpenAI's documented chunk-concatenation behavior: per-index
-    ``delta.content`` strings are concatenated, per-index ``delta.tool_calls``
-    are merged by ``index`` (id/name from the first non-null occurrence,
-    ``function.arguments`` concatenated across chunks), and the last non-null
-    ``finish_reason`` per index wins (defaulting to ``"stop"`` or
-    ``"tool_calls"`` when only tool calls were emitted). ``usage`` and
-    ``system_fingerprint`` come from the last chunk that supplies them.
-    """
-    if not chunks:
-        return ChatCompletion(
-            id=uuid.uuid4().hex,
-            object="chat.completion",
-            created=int(datetime.datetime.now(datetime.UTC).timestamp()),
-            model=requested_model or "unknown-model",
-            choices=[],
-        )
-
-    completion_id = chunks[0].id
-    created = chunks[0].created
-    model = requested_model or chunks[0].model
-    system_fingerprint: str | None = None
-    usage_payload: dict[str, Any] | None = None
-
-    # Per-choice-index aggregator: collects text parts, tool-call shards and
-    # the latest finish_reason.
-    accumulators: dict[int, dict[str, Any]] = {}
-
-    for chunk in chunks:
-        if chunk.system_fingerprint:
-            system_fingerprint = chunk.system_fingerprint
-        if chunk.usage:
-            usage_payload = chunk.usage.model_dump()
-
-        for choice in chunk.choices:
-            idx = choice.index
-            acc = accumulators.setdefault(
-                idx,
-                {
-                    "content_parts": [],
-                    "tool_calls": {},
-                    "finish_reason": None,
-                },
-            )
-            delta = choice.delta
-            if delta.content:
-                acc["content_parts"].append(delta.content)
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    tc_acc = acc["tool_calls"].setdefault(
-                        tc.index,
-                        {
-                            "id": None,
-                            "type": "function",
-                            "name": None,
-                            "args_parts": [],
-                        },
-                    )
-                    if tc.id:
-                        tc_acc["id"] = tc.id
-                    if tc.type:
-                        tc_acc["type"] = tc.type
-                    if tc.function is not None:
-                        if tc.function.name:
-                            tc_acc["name"] = tc.function.name
-                        if tc.function.arguments:
-                            tc_acc["args_parts"].append(tc.function.arguments)
-            if choice.finish_reason:
-                acc["finish_reason"] = choice.finish_reason
-
-    openai_choices: list[dict[str, Any]] = []
-    for idx in sorted(accumulators.keys()):
-        acc = accumulators[idx]
-        tool_calls_payload: list[dict[str, Any]] = []
-        for tc_idx in sorted(acc["tool_calls"].keys()):
-            tc = acc["tool_calls"][tc_idx]
-            if tc["name"] is None and not tc["args_parts"]:
-                # Drop empty placeholders so the payload validates as OpenAI.
-                continue
-            tool_calls_payload.append(
-                {
-                    "id": tc["id"] or f"call_{uuid.uuid4().hex[:24]}",
-                    "type": tc["type"] or "function",
-                    "function": {
-                        "name": tc["name"] or "",
-                        "arguments": "".join(tc["args_parts"]),
-                    },
-                }
-            )
-
-        joined_content = "".join(acc["content_parts"])
-        message: dict[str, Any] = {
-            "role": "assistant",
-            "content": joined_content if joined_content else None,
-        }
-        if tool_calls_payload:
-            message["tool_calls"] = tool_calls_payload
-
-        finish_reason = acc["finish_reason"] or ("tool_calls" if tool_calls_payload else "stop")
-        openai_choices.append(
-            {
-                "index": idx,
-                "finish_reason": finish_reason,
-                "message": message,
-            }
-        )
-
-    payload: dict[str, Any] = {
-        "id": completion_id,
-        "object": "chat.completion",
-        "created": created,
-        "model": model,
-        "choices": openai_choices,
-    }
-    if system_fingerprint:
-        payload["system_fingerprint"] = system_fingerprint
-    if usage_payload:
-        payload["usage"] = usage_payload
-
-    return ChatCompletion.model_validate(payload)

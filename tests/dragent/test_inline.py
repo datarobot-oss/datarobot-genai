@@ -17,52 +17,45 @@ from __future__ import annotations
 import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from nat.data_models.api_server import ChatResponseChunk
-from nat.data_models.api_server import ChatResponseChunkChoice
-from nat.data_models.api_server import ChoiceDelta
-from nat.data_models.api_server import ChoiceDeltaToolCall
-from nat.data_models.api_server import ChoiceDeltaToolCallFunction
+from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import ChatResponseChoice
+from nat.data_models.api_server import ChoiceMessage
+from nat.data_models.api_server import Usage
 from openai.types.chat import ChatCompletion
-from openai.types.chat import ChatCompletionChunk
 
 from datarobot_genai.dragent import execute_dragent_inline_async
 from datarobot_genai.dragent.inline import _resolve_config_path
 from datarobot_genai.dragent.inline import execute_dragent_inline
 
-# --- Test helpers ---------------------------------------------------------
+# --- Test helpers --------------------------------------------------------
 
 
-def _make_chunk(
+def _make_chat_response(
     *,
-    choices: list[ChatResponseChunkChoice],
-    id_: str = "cmpl-1",
+    content: str = "Hello world.",
+    finish_reason: str = "stop",
     model: str = "datarobot-e2e",
-) -> ChatResponseChunk:
-    return ChatResponseChunk(
+    id_: str = "cmpl-1",
+) -> ChatResponse:
+    return ChatResponse(
         id=id_,
-        choices=choices,
-        created=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         model=model,
-    )
-
-
-def _text_chunk(text: str, *, finish_reason: str | None = None) -> ChatResponseChunk:
-    return _make_chunk(
+        created=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         choices=[
-            ChatResponseChunkChoice(
+            ChatResponseChoice(
                 index=0,
-                delta=ChoiceDelta(content=text),
+                message=ChoiceMessage(role="assistant", content=content),
                 finish_reason=finish_reason,  # type: ignore[arg-type]
             )
-        ]
+        ],
+        usage=Usage(prompt_tokens=1, completion_tokens=2, total_tokens=3),
     )
 
 
-def _build_fake_load_workflow(chunks: list[ChatResponseChunk]):
-    """Build an async context manager that mimics ``load_workflow`` -> session -> runner."""
+def _build_fake_load_workflow(response: ChatResponse):
+    """Build an async context manager that mimics load_workflow -> session -> runner."""
 
     class _FakeRunner:
         async def __aenter__(self):  # noqa: D401 - test stub
@@ -71,9 +64,8 @@ def _build_fake_load_workflow(chunks: list[ChatResponseChunk]):
         async def __aexit__(self, exc_type, exc, tb):  # noqa: D401 - test stub
             return False
 
-        async def result_stream(self, to_type):  # noqa: D401 - test stub
-            for chunk in chunks:
-                yield chunk
+        async def result(self, to_type=None):  # noqa: D401 - test stub
+            return response
 
     class _FakeSession:
         def run(self, _input):
@@ -91,67 +83,52 @@ def _build_fake_load_workflow(chunks: list[ChatResponseChunk]):
     return _fake_load_workflow
 
 
-def _install_fake_workflow(
-    monkeypatch: pytest.MonkeyPatch, chunks: list[ChatResponseChunk]
-) -> None:
-    """Patch ``load_workflow`` (and the deep session/run/stream chain) to yield ``chunks``."""
-    # Patch at source: inline.py uses a local import inside the function body
-    # so we must replace the symbol where it lives.
+def _install_fake_workflow(monkeypatch: pytest.MonkeyPatch, response: ChatResponse) -> None:
+    """Patch ``load_workflow`` and bypass disk lookup of workflow.yaml."""
     monkeypatch.setattr(
         "datarobot_genai.nat.helpers.load_workflow",
-        _build_fake_load_workflow(chunks),
+        _build_fake_load_workflow(response),
     )
-
-    # We don't depend on the file existing during the unit tests.
     monkeypatch.setattr(
         "datarobot_genai.dragent.inline._resolve_config_path",
         lambda custom_model_dir, config_file: Path("/tmp/fake-workflow.yaml"),
     )
 
 
-# --- Aggregation: streaming vs non-streaming ------------------------------
+# --- Public API ----------------------------------------------------------
 
 
-async def test_execute_dragent_inline_non_streaming_aggregates_into_chat_completion(
+async def test_execute_dragent_inline_returns_chat_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GIVEN: a dragent workflow that emits two text deltas and a final stop chunk
-    _install_fake_workflow(
-        monkeypatch,
-        chunks=[
-            _text_chunk("Hello"),
-            _text_chunk(" world"),
-            _text_chunk("", finish_reason="stop"),
-        ],
-    )
+    # GIVEN: a dragent workflow whose aggregated single output is a ChatResponse
+    # (this is the contract NAT's runner.result(to_type=ChatResponse) provides
+    # for both nat-native and dragent-native workflows).
+    _install_fake_workflow(monkeypatch, _make_chat_response(content="Hello world."))
 
-    # WHEN: execute_dragent_inline_async is called with stream=False
+    # WHEN: execute_dragent_inline_async is called
     result = await execute_dragent_inline_async(
         chat_completion={
             "model": "datarobot-e2e",
             "messages": [{"role": "user", "content": "hi"}],
-            "stream": False,
         },  # type: ignore[arg-type]
         custom_model_dir=Path("/tmp"),
     )
 
-    # THEN: the result is a single ChatCompletion with concatenated content
+    # THEN: NAT's ChatResponse is re-validated as an OpenAI ChatCompletion
     assert isinstance(result, ChatCompletion)
-    assert len(result.choices) == 1
-    assert result.choices[0].message.content == "Hello world"
-    assert result.choices[0].finish_reason == "stop"
     assert result.model == "datarobot-e2e"
     assert result.object == "chat.completion"
+    assert len(result.choices) == 1
+    assert result.choices[0].message.content == "Hello world."
+    assert result.choices[0].finish_reason == "stop"
 
 
-async def test_execute_dragent_inline_streaming_returns_chunk_list(
+async def test_execute_dragent_inline_ignores_stream_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GIVEN: a dragent workflow that emits two text deltas
-    _install_fake_workflow(
-        monkeypatch,
-        chunks=[_text_chunk("Hello"), _text_chunk(" world", finish_reason="stop")],
-    )
+    # GIVEN: a workflow that emits a ChatResponse, requested with stream=True
+    _install_fake_workflow(monkeypatch, _make_chat_response(content="Hi"))
 
     # WHEN: execute_dragent_inline_async is called with stream=True
     result = await execute_dragent_inline_async(
@@ -163,103 +140,51 @@ async def test_execute_dragent_inline_streaming_returns_chunk_list(
         custom_model_dir=Path("/tmp"),
     )
 
-    # THEN: each ChatResponseChunk is returned as a typed OpenAI ChatCompletionChunk
-    assert isinstance(result, list)
-    assert len(result) == 2
-    assert all(isinstance(c, ChatCompletionChunk) for c in result)
-    assert result[0].choices[0].delta.content == "Hello"
-    assert result[1].choices[0].delta.content == " world"
-    assert result[1].choices[0].finish_reason == "stop"
+    # THEN: stream=True is ignored — a single aggregated ChatCompletion is returned
+    # (the agentic playground does not render per-token streaming).
+    assert isinstance(result, ChatCompletion)
+    assert result.choices[0].message.content == "Hi"
 
 
-async def test_execute_dragent_inline_merges_tool_call_deltas(
+async def test_execute_dragent_inline_overrides_unknown_model_with_request_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GIVEN: a workflow that emits a tool_call name then incremental argument shards
-    _install_fake_workflow(
-        monkeypatch,
-        chunks=[
-            _make_chunk(
-                choices=[
-                    ChatResponseChunkChoice(
-                        index=0,
-                        delta=ChoiceDelta(
-                            tool_calls=[
-                                ChoiceDeltaToolCall(
-                                    index=0,
-                                    id="call_abc",
-                                    type="function",
-                                    function=ChoiceDeltaToolCallFunction(
-                                        name="lookup", arguments='{"q":'
-                                    ),
-                                )
-                            ]
-                        ),
-                    )
-                ]
-            ),
-            _make_chunk(
-                choices=[
-                    ChatResponseChunkChoice(
-                        index=0,
-                        delta=ChoiceDelta(
-                            tool_calls=[
-                                ChoiceDeltaToolCall(
-                                    index=0,
-                                    function=ChoiceDeltaToolCallFunction(arguments='"weather"}'),
-                                )
-                            ]
-                        ),
-                        finish_reason="tool_calls",  # type: ignore[arg-type]
-                    )
-                ]
-            ),
-        ],
-    )
+    # GIVEN: a workflow that returns "unknown-model" (NAT's default when the
+    # underlying workflow doesn't set one), with a real model in the request
+    _install_fake_workflow(monkeypatch, _make_chat_response(content="ok", model="unknown-model"))
 
-    # WHEN: aggregated into a single completion
+    # WHEN: execute_dragent_inline_async is called with a model in chat_completion
     result = await execute_dragent_inline_async(
         chat_completion={
             "model": "datarobot-e2e",
             "messages": [{"role": "user", "content": "hi"}],
-            "stream": False,
         },  # type: ignore[arg-type]
         custom_model_dir=Path("/tmp"),
     )
 
-    # THEN: the tool_call fragments collapse into one OpenAI tool_calls entry
-    assert isinstance(result, ChatCompletion)
-    assert result.choices[0].finish_reason == "tool_calls"
-    tool_calls = result.choices[0].message.tool_calls
-    assert tool_calls is not None
-    assert len(tool_calls) == 1
-    assert tool_calls[0].id == "call_abc"
-    assert tool_calls[0].function.name == "lookup"
-    assert tool_calls[0].function.arguments == '{"q":"weather"}'
+    # THEN: the requested model is preserved on the final completion
+    assert result.model == "datarobot-e2e"
 
 
-async def test_execute_dragent_inline_empty_stream_returns_empty_completion(
+async def test_execute_dragent_inline_keeps_workflow_provided_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GIVEN: a workflow that emits no chunks
-    _install_fake_workflow(monkeypatch, chunks=[])
+    # GIVEN: a workflow that returns a real model name
+    _install_fake_workflow(monkeypatch, _make_chat_response(content="ok", model="claude-sonnet"))
 
-    # WHEN: non-streaming aggregation runs over an empty list
+    # WHEN: execute_dragent_inline_async is called without a model in chat_completion
     result = await execute_dragent_inline_async(
         chat_completion={
-            "model": "fallback-model",
             "messages": [{"role": "user", "content": "hi"}],
         },  # type: ignore[arg-type]
         custom_model_dir=Path("/tmp"),
     )
 
-    # THEN: a well-formed empty ChatCompletion is returned (no choices, model preserved)
-    assert isinstance(result, ChatCompletion)
-    assert result.choices == []
-    assert result.model == "fallback-model"
+    # THEN: the workflow's model name is preserved (not overridden)
+    assert result.model == "claude-sonnet"
 
 
-# --- Config resolution ----------------------------------------------------
+# --- Config resolution --------------------------------------------------
 
 
 def test_resolve_config_path_prefers_explicit_argument(tmp_path: Path) -> None:
@@ -301,14 +226,14 @@ def test_resolve_config_path_raises_file_not_found(tmp_path: Path) -> None:
         _resolve_config_path(empty_dir, config_file=None)
 
 
-# --- Sync wrapper ---------------------------------------------------------
+# --- Sync wrapper -------------------------------------------------------
 
 
 def test_execute_dragent_inline_sync_wrapper_delegates_to_async(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GIVEN: a workflow that emits a single text chunk
-    _install_fake_workflow(monkeypatch, chunks=[_text_chunk("Sync", finish_reason="stop")])
+    # GIVEN: a workflow that returns a ChatResponse
+    _install_fake_workflow(monkeypatch, _make_chat_response(content="Sync"))
 
     # WHEN: calling the synchronous wrapper
     result = execute_dragent_inline(
@@ -324,7 +249,7 @@ def test_execute_dragent_inline_sync_wrapper_delegates_to_async(
     assert result.choices[0].message.content == "Sync"
 
 
-# --- Header forwarding ----------------------------------------------------
+# --- Header forwarding --------------------------------------------------
 
 
 async def test_execute_dragent_inline_forwards_default_headers(
@@ -332,7 +257,7 @@ async def test_execute_dragent_inline_forwards_default_headers(
 ) -> None:
     # GIVEN: a fake load_workflow that records the headers it was invoked with
     captured: dict[str, object] = {}
-    fake = _build_fake_load_workflow([_text_chunk("ok", finish_reason="stop")])
+    fake = _build_fake_load_workflow(_make_chat_response(content="ok"))
 
     @asynccontextmanager
     async def _sniffing_load_workflow(path, headers=None):
@@ -362,29 +287,3 @@ async def test_execute_dragent_inline_forwards_default_headers(
 
     # THEN: load_workflow received the supplied headers
     assert captured["headers"] == {"x-datarobot-api-token": "secret"}
-
-
-# --- Front-end import side effect ----------------------------------------
-
-
-async def test_execute_dragent_inline_imports_register_for_side_effect(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # GIVEN: the inline module is invoked
-    _install_fake_workflow(monkeypatch, chunks=[_text_chunk("ok", finish_reason="stop")])
-
-    # WHEN: execute_dragent_inline_async runs (importing register inside the function)
-    with patch("datarobot_genai.dragent.frontends.register") as register_module:
-        # Ensure the symbol is importable but the patch records the import.
-        register_module.__name__ = "datarobot_genai.dragent.frontends.register"
-        await execute_dragent_inline_async(
-            chat_completion={
-                "model": "datarobot-e2e",
-                "messages": [{"role": "user", "content": "hi"}],
-            },  # type: ignore[arg-type]
-            custom_model_dir=Path("/tmp"),
-        )
-
-    # THEN: no exception was raised — the lazy import resolved successfully.
-    # (The body's side-effect import registers global type converters; we cover
-    # the resolution flow at import time end-to-end via the e2e test.)
