@@ -225,9 +225,7 @@ def test_deployment_llm_forwards_extra_body_via_model_kwargs() -> None:
 
 
 def test_external_llm_forwards_extra_body_via_model_kwargs() -> None:
-    llm = langgraph_llm.get_external_llm(
-        parameters={"extra_body": {"mock_response": "hello"}}
-    )
+    llm = langgraph_llm.get_external_llm(parameters={"extra_body": {"mock_response": "hello"}})
     assert llm.model_kwargs.get("extra_body") == {"mock_response": "hello"}
 
 

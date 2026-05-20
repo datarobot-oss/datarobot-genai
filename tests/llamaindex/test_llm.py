@@ -170,9 +170,7 @@ def test_deployment_llm_forwards_extra_body_via_additional_kwargs() -> None:
 
 
 def test_external_llm_forwards_extra_body_via_additional_kwargs() -> None:
-    llm = llama_index_llm.get_external_llm(
-        parameters={"extra_body": {"mock_response": "hello"}}
-    )
+    llm = llama_index_llm.get_external_llm(parameters={"extra_body": {"mock_response": "hello"}})
     assert llm.additional_kwargs.get("extra_body") == {"mock_response": "hello"}
 
 

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.65
+- Fix `extra_body` passthrough for `workflow.yaml` LLM configs (e.g. `mock_response`). PR #274 switched from `ChatOpenAI` to `ChatLiteLLM`/`LiteLLM` which silently drop unknown kwargs; `extra_body` is now routed through `model_kwargs` (langgraph) and `additional_kwargs` (llamaindex) so it reaches the underlying DataRobot LLM gateway API call.
+
 ## 0.15.64
 - `dragent`: agent card XAA extension params now use camelCase (`tokenExchange`, `tokenRequest`, `tokenEndpointAuthMethod`, etc.) for consistency with the rest of the agentCard API response. The parser accepts both camelCase and snake_case for backward compatibility with previously generated cards.
 
