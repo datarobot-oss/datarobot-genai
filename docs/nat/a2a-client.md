@@ -112,6 +112,7 @@ reused until the TTL expires.
 | `DATAROBOT_ENDPOINT` | Yes | DataRobot API base URL, e.g. `https://app.datarobot.com/api/v2`. |
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
+| `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`
 files, file secrets, Runtime Parameters, and Pulumi config.

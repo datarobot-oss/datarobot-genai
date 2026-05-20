@@ -88,6 +88,19 @@ class TestAgentCardRegistryConfig:
             config = AgentCardRegistryConfig()
             assert config.agent_card_registry_cache_ttl == 120
 
+    def test_default_on_duplicate(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_on_duplicate == "first"
+
+    def test_on_duplicate_from_env(self):
+        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_ON_DUPLICATE": "error"}):
+            config = AgentCardRegistryConfig()
+            assert config.agent_card_registry_on_duplicate == "error"
+
+    def test_on_duplicate_last(self):
+        config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
+        assert config.agent_card_registry_on_duplicate == "last"
+
 
 # ---------------------------------------------------------------------------
 # Tests: _CacheEntry
@@ -158,6 +171,95 @@ class TestParseRegistryResponse:
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": {"bad": True}})
         cards = _parse_registry_response(body)
         assert cards == {}
+
+
+class TestParseRegistryResponseDuplicates:
+    """Tests for the on_duplicate strategy with duplicate external IDs."""
+
+    def _body_with_duplicate_ext(self):
+        return _registry_response(
+            _entry(dep_id="dep-1", ext_id="shared-ext", card=_SAMPLE_AGENT_CARD),
+            _entry(dep_id="dep-2", ext_id="shared-ext", card=_SAMPLE_AGENT_CARD_2),
+        )
+
+    def test_first_keeps_first_card(self):
+        cards = _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="first")
+        assert cards["shared-ext"].name == "Test Agent"
+        # Both deployment IDs are still indexed independently
+        assert "dep-1" in cards
+        assert "dep-2" in cards
+
+    def test_last_keeps_last_card(self):
+        cards = _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="last")
+        assert cards["shared-ext"].name == "Second Agent"
+
+    def test_error_raises_on_duplicate(self):
+        with pytest.raises(AgentCardRegistryError, match="Multiple agent cards found"):
+            _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="error")
+
+    def test_no_duplicate_no_error(self):
+        """When external IDs are unique, 'error' strategy passes."""
+        body = _registry_response(
+            _entry(dep_id="dep-1", ext_id="ext-1"),
+            _entry(dep_id="dep-2", ext_id="ext-2"),
+        )
+        cards = _parse_registry_response(body, on_duplicate="error")
+        assert "ext-1" in cards
+        assert "ext-2" in cards
+
+    def test_default_strategy_is_first(self):
+        cards = _parse_registry_response(self._body_with_duplicate_ext())
+        assert cards["shared-ext"].name == "Test Agent"
+
+
+_SAMPLE_AGENT_CARD_3 = {
+    "name": "Third Agent",
+    "description": "Third agent",
+    "url": "https://agent3.example.com/a2a/",
+    "version": "3.0.0",
+    "skills": [],
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "capabilities": {"streaming": False},
+}
+
+
+class TestParseRegistryResponseMultiIdBatch:
+    """Simulate a batch query for externalIds=A,B where A has 3 cards and B has 1.
+
+    The API returns 4 rows total.  The on_duplicate strategy must apply
+    per-external-ID, and IDs without duplicates must be unaffected.
+    """
+
+    def _batch_response(self):
+        """Three entries for ext_id 'agent-A', one for ext_id 'agent-B'."""
+        return _registry_response(
+            _entry(dep_id="dep-a1", ext_id="agent-A", card=_SAMPLE_AGENT_CARD),
+            _entry(dep_id="dep-a2", ext_id="agent-A", card=_SAMPLE_AGENT_CARD_2),
+            _entry(dep_id="dep-a3", ext_id="agent-A", card=_SAMPLE_AGENT_CARD_3),
+            _entry(dep_id="dep-b1", ext_id="agent-B", card=_SAMPLE_AGENT_CARD_2),
+        )
+
+    def test_first_picks_first_of_three(self):
+        cards = _parse_registry_response(self._batch_response(), on_duplicate="first")
+        # agent-A → first card (Test Agent)
+        assert cards["agent-A"].name == "Test Agent"
+        # agent-B has no duplicates → stored as-is
+        assert cards["agent-B"].name == "Second Agent"
+        # All deployment IDs are independently indexed
+        assert len({cards[k].name for k in ["dep-a1", "dep-a2", "dep-a3", "dep-b1"]}) == 3
+
+    def test_last_picks_last_of_three(self):
+        cards = _parse_registry_response(self._batch_response(), on_duplicate="last")
+        # agent-A → last card (Third Agent)
+        assert cards["agent-A"].name == "Third Agent"
+        # agent-B unaffected
+        assert cards["agent-B"].name == "Second Agent"
+
+    def test_error_raises_for_duplicate_id_only(self):
+        """Error is raised for agent-A (3 cards) — agent-B (1 card) never reached."""
+        with pytest.raises(AgentCardRegistryError, match="agent-A"):
+            _parse_registry_response(self._batch_response(), on_duplicate="error")
 
 
 # ---------------------------------------------------------------------------

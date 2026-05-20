@@ -40,6 +40,7 @@ import asyncio
 import logging
 import time
 from typing import Any
+from typing import Literal
 
 import httpx
 from a2a.types import AgentCard
@@ -55,6 +56,9 @@ _DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
 
 # Default HTTP timeout for registry requests (in seconds).
 _DEFAULT_TIMEOUT_SECONDS = 30.0
+
+# Allowed strategies for duplicate external IDs.
+DuplicateStrategy = Literal["first", "last", "error"]
 
 
 class DataRobotRegistrySettings(DataRobotAppFrameworkBaseSettings):
@@ -93,7 +97,18 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
     agent_card_registry_timeout: float = Field(
         default=_DEFAULT_TIMEOUT_SECONDS,
         gt=0,
-        description=("HTTP timeout in seconds for registry API requests. Default: 30."),
+        description="HTTP timeout in seconds for registry API requests. Default: 30.",
+    )
+
+    agent_card_registry_on_duplicate: DuplicateStrategy = Field(
+        default="first",
+        description=(
+            "Strategy when the registry returns multiple agent cards for the "
+            "same external ID.  The registry API returns cards sorted by "
+            "creation time (ascending), so 'first' keeps the earliest "
+            "registered card, 'last' keeps the most recently registered card, "
+            "and 'error' raises AgentCardRegistryError.  Default: 'first'."
+        ),
     )
 
 
@@ -122,11 +137,22 @@ def _resolve_settings(
     return resolved_token, resolved_endpoint
 
 
-def _parse_registry_response(body: dict[str, Any]) -> dict[str, AgentCard]:
+def _parse_registry_response(
+    body: dict[str, Any],
+    on_duplicate: DuplicateStrategy = "first",
+) -> dict[str, AgentCard]:
     """Parse a paginated registry response into ``{id: AgentCard}``.
 
-    Each record is indexed by *both* ``deploymentId`` and ``externalId``
-    (when present) so callers can look up by either key type.
+    Each record is indexed by ``deploymentId`` (always unique) and
+    ``externalId`` (may have duplicates).  The ``on_duplicate`` strategy
+    controls what happens when multiple entries share the same external ID.
+
+    The registry API returns entries sorted by ``_id`` ascending (creation
+    time), so the iteration order matches chronological registration order:
+
+    * ``"first"`` — keep the earliest registered card, log a warning.
+    * ``"last"`` — keep the most recently registered card, log a warning.
+    * ``"error"`` — raise :class:`AgentCardRegistryError`.
     """
     cards: dict[str, AgentCard] = {}
     for entry in body.get("data", []):
@@ -147,10 +173,29 @@ def _parse_registry_response(body: dict[str, Any]) -> dict[str, AgentCard]:
             )
             continue
 
+        # Deployment IDs are unique by platform design — always overwrite.
         if dep_id := entry.get("deploymentId"):
             cards[dep_id] = card
+
+        # External IDs may have duplicates — apply the configured strategy.
         if ext_id := entry.get("externalId"):
-            cards[ext_id] = card
+            if ext_id not in cards:
+                cards[ext_id] = card
+            else:
+                logger.warning(
+                    "Duplicate external ID '%s' in registry response (on_duplicate=%s).",
+                    ext_id,
+                    on_duplicate,
+                )
+                if on_duplicate == "error":
+                    raise AgentCardRegistryError(
+                        f"Multiple agent cards found for external_id='{ext_id}'. "
+                        "Set AGENT_CARD_REGISTRY_ON_DUPLICATE='first' or 'last' "
+                        "to pick one, or fix the duplicate registrations."
+                    )
+                if on_duplicate == "last":
+                    cards[ext_id] = card
+                # "first" — keep existing entry (no-op)
     return cards
 
 
@@ -190,6 +235,7 @@ class AgentCardRegistry:
         endpoint: str | None = None,
         timeout: float | None = None,
         cache_ttl: int | None = None,
+        on_duplicate: DuplicateStrategy | None = None,
     ) -> None:
         self._api_token = api_token
         self._endpoint = endpoint
@@ -204,6 +250,9 @@ class AgentCardRegistry:
         self._timeout = timeout if timeout is not None else config.agent_card_registry_timeout
         self._cache_ttl = (
             cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
+        )
+        self._on_duplicate: DuplicateStrategy = (
+            on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
         )
 
         logger.debug("AgentCardRegistry created (cache_ttl=%ds)", self._cache_ttl)
@@ -259,7 +308,7 @@ class AgentCardRegistry:
         except httpx.HTTPError as exc:
             raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
-        cards = _parse_registry_response(response.json())
+        cards = _parse_registry_response(response.json(), on_duplicate=self._on_duplicate)
         logger.info("Fetched %d agent card(s) from registry.", len(cards))
         return cards
 
