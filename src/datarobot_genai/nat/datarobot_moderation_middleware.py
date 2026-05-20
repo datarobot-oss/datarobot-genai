@@ -1275,6 +1275,61 @@ def _pending_deferred_in_emit_order(
     return ends_first + [item for item in pending if item not in ends_first]
 
 
+def _buffer_dragent_passthrough(
+    response: DRAgentEventResponse,
+    *,
+    pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
+) -> None:
+    if response.events and _defer_until_after_moderated_chunk(response.events[0]):
+        pending_deferred.append(response)
+    else:
+        pending_pass_through.append(response)
+
+
+async def _next_text_dragent_response(
+    upstream: AsyncIterator[DRAgentEventResponse],
+    *,
+    pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
+) -> DRAgentEventResponse | None:
+    """Advance upstream, buffering pass-through until the next text chunk or exhaustion."""
+    async for response in upstream:
+        if not response.events or skip_event_type(response.events[0]):
+            _buffer_dragent_passthrough(
+                response,
+                pending_deferred=pending_deferred,
+                pending_pass_through=pending_pass_through,
+            )
+            continue
+        return response
+    return None
+
+
+async def _completion_chunks_from_dragent_upstream(
+    upstream: AsyncIterator[DRAgentEventResponse],
+    first_text: DRAgentEventResponse,
+    *,
+    moderation_source_responses: list[DRAgentEventResponse],
+    pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
+) -> AsyncIterator[ChatCompletionChunk]:
+    """Feed ``stream_response_async``; align sources with peek-ahead inside the pipeline."""
+    current: DRAgentEventResponse | None = first_text
+    while current is not None:
+        pending_pass_through.clear()
+        moderation_source_responses.append(current)
+        yield cast(
+            ChatCompletionChunk,
+            dragent_event_response_to_chat_completion(current, as_streaming_chunk=True),
+        )
+        current = await _next_text_dragent_response(
+            upstream,
+            pending_deferred=pending_deferred,
+            pending_pass_through=pending_pass_through,
+        )
+
+
 @dataclass
 class _ModerationInvokeState:
     """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
@@ -1584,60 +1639,33 @@ class DataRobotModerationMiddleware(
                 stream_state.input_df.loc[0, prompt_column_name]
             )
 
-            upstream = call_next(*ctx.modified_args, **ctx.modified_kwargs).__aiter__()
+            upstream = cast(
+                AsyncIterator[DRAgentEventResponse],
+                call_next(*ctx.modified_args, **ctx.modified_kwargs),
+            )
 
-            async def read_upstream() -> DRAgentEventResponse | None:
-                try:
-                    return cast(DRAgentEventResponse, await upstream.__anext__())
-                except StopAsyncIteration:
-                    return None
+            # Leading pass-through (non–text-message) events before the first moderated chunk.
+            first_text: DRAgentEventResponse | None = None
+            async for response in upstream:
+                if response.events and not skip_event_type(response.events[0]):
+                    first_text = response
+                    break
+                yield response
+            if first_text is None:
+                return
 
-            # Leading pass-through (non–text-message) events
-            while True:
-                response = await read_upstream()
-                if response is None:
-                    return
-                if not response.events or skip_event_type(response.events[0]):
-                    yield response
-                    continue
-                break
-
-            current_response = response
             pending_deferred_pass_through: list[DRAgentEventResponse] = []
             pending_pass_through: list[DRAgentEventResponse] = []
-            # ``stream_response_async`` peeks one chunk ahead on the completion iterator.
-            # Queue each upstream response when its chunk is yielded so the outer loop can
-            # pop the matching source after moderation (not the peeked-next response).
             moderation_source_responses: list[DRAgentEventResponse] = []
 
-            async def upstream_completion_chunks() -> AsyncIterator[ChatCompletionChunk]:
-                """Feed ``stream_response_async``; collect pass-through while peeking ahead."""
-                moderation_source_responses.append(current_response)
-                yield cast(
-                    ChatCompletionChunk,
-                    dragent_event_response_to_chat_completion(
-                        current_response, as_streaming_chunk=True
-                    ),
-                )
-                while True:
-                    pending_pass_through.clear()
-                    peek = await read_upstream()
-                    while peek is not None and (not peek.events or skip_event_type(peek.events[0])):
-                        if peek.events and _defer_until_after_moderated_chunk(peek.events[0]):
-                            pending_deferred_pass_through.append(peek)
-                        else:
-                            pending_pass_through.append(peek)
-                        peek = await read_upstream()
-                    if peek is None:
-                        return
-                    moderation_source_responses.append(peek)
-                    yield cast(
-                        ChatCompletionChunk,
-                        dragent_event_response_to_chat_completion(peek, as_streaming_chunk=True),
-                    )
-
             async for moderated in moderation.stream_response_async(
-                upstream_completion_chunks(),
+                _completion_chunks_from_dragent_upstream(
+                    upstream,
+                    first_text,
+                    moderation_source_responses=moderation_source_responses,
+                    pending_deferred=pending_deferred_pass_through,
+                    pending_pass_through=pending_pass_through,
+                ),
                 prompt=prompt_for_stream,
                 prescore_df=stream_state.prescore_df,
                 prescore_latency=stream_state.latency_so_far,
