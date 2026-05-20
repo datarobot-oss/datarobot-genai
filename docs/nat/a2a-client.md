@@ -52,6 +52,9 @@ mutually exclusive ways to obtain it.
 
 ### Direct fetch (`url`)
 
+This is the simplest setup — use it when the card endpoint is directly reachable with the same
+credentials used for RPC calls.
+
 In a direct fetch, the client fetches the card from `{url}/.well-known/agent-card.json`. The `auth_provider` is used
 for both the card fetch and subsequent RPC calls.
 
@@ -63,12 +66,10 @@ function_groups:
     auth_provider: datarobot_auth
 ```
 
-This is the simplest setup — use it when the card endpoint is directly reachable with the same
-credentials used for RPC calls.
 
 ### Central registry (`registry`)
 
-In DataRobot deployments, the agent card endpoint is protected by per-agent AuthN/Auth. However, the
+In DataRobot deployments, the agent card endpoint is protected by per-agent AuthN/AuthZ. However, the
 card itself describes *how* to authenticate, creating a chicken-and-egg problem. The **central
 agent card registry** solves this by exposing all agent cards in the tenant at a single endpoint
 that requires only a standard `DATAROBOT_API_TOKEN`.
@@ -112,8 +113,8 @@ reused until the TTL expires.
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
 
-Variables are loaded via env vars, `.env` files, file secrets, Runtime Parameters, and Pulumi
-config.
+Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`
+files, file secrets, Runtime Parameters, and Pulumi config.
 
 ## Configuration reference
 
