@@ -298,6 +298,19 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
 async def dr_mem0_memory_client(
     config: DRMem0MemoryClientConfig, builder: Builder
 ) -> AsyncGenerator[MemoryEditor]:
+    if config.memory_space_id and config.api_key:
+        # These point at different services with different tokens. Silently
+        # picking one masks misconfiguration — e.g. a config copied from a
+        # Mem0-SaaS deployment that left ``api_key`` populated, or a stray
+        # ``MEM0_API_KEY`` in env hydrating ``api_key`` via its default
+        # factory. Force the caller to disambiguate.
+        raise RuntimeError(
+            "memory_space_id and api_key are mutually exclusive: they target "
+            "different services (DataRobot Memory Service vs. Mem0 SaaS) with "
+            "different auth tokens. Set exactly one. If MEM0_API_KEY is in env, "
+            "either unset it or pass api_key=None explicitly when using memory_space_id."
+        )
+
     if config.memory_space_id:
         api_key = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
         if not api_key:

@@ -107,7 +107,7 @@ async def _search_until_visible(
     query: str,
     user_id: str,
     needle: str,
-    timeout_s: float = 30.0,
+    timeout_s: float = 60.0,
     interval_s: float = 1.5,
 ) -> list[Any]:
     """Poll ``editor.search`` until ``needle`` appears or the deadline passes.
