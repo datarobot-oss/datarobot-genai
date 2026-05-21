@@ -24,8 +24,8 @@ Expected workflow contracts:
   non-streaming output ``ChatResponse``.
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
-streaming converts ``DRAgentEventResponse`` → NAT ``ChatResponseChunk`` → dome chunk at that
-boundary, then reverses on the way out.
+streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
+boundary, then reverses to AG-UI on the way out.
 """
 
 from __future__ import annotations
@@ -93,19 +93,17 @@ from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as OpenAIChunkChoice
-from openai.types.chat.chat_completion_chunk import ChoiceDelta as OpenAIChoiceDelta
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall as OpenAIChoiceDeltaToolCall
 from openai.types.chat.chat_completion_chunk import (
     ChoiceDeltaToolCallFunction as OpenAIChoiceDeltaToolCallFunction,
 )
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIToolFunction
-from openai.types.completion_usage import CompletionUsage
 from pydantic import Field
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.dragent.frontends.converters import (
-    convert_dragent_event_response_to_chat_response_chunk,
+    convert_dragent_event_response_to_openai_chat_completion_chunk,
 )
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
@@ -173,9 +171,6 @@ def _optional_prompt_for_moderation_eval(value: Any) -> str | None:
     return s or None
 
 
-_FINISH_REASON = Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
-
-
 def _tool_calls_from_ag_ui_events(
     events: list[Any],
 ) -> list[ChatCompletionMessageToolCall] | None:
@@ -208,73 +203,6 @@ def _tool_calls_from_ag_ui_events(
             )
         )
     return calls or None
-
-
-def _nat_choice_delta_tool_calls_to_openai(
-    nat_tool_calls: list[ChoiceDeltaToolCall] | None,
-) -> list[OpenAIChoiceDeltaToolCall] | None:
-    if not nat_tool_calls:
-        return None
-    out: list[OpenAIChoiceDeltaToolCall] = []
-    for tc in nat_tool_calls:
-        fn = tc.function
-        out.append(
-            OpenAIChoiceDeltaToolCall(
-                index=tc.index,
-                id=tc.id,
-                type=tc.type or "function",
-                function=(
-                    OpenAIChoiceDeltaToolCallFunction(
-                        name=(fn.name if fn else None) or "",
-                        arguments=(fn.arguments if fn else None) or "",
-                    )
-                    if fn is not None
-                    else None
-                ),
-            )
-        )
-    return out or None
-
-
-def _nat_chat_response_chunk_to_openai_chat_completion_chunk(
-    chunk: ChatResponseChunk,
-) -> ChatCompletionChunk:
-    """Map NAT streaming chunk to OpenAI ``chat.completion.chunk`` (delta, not aggregated message)."""
-    if not chunk.choices:
-        raise ValueError("ChatResponseChunk has no choices")
-    c0 = chunk.choices[0]
-    delta = c0.delta
-    openai_delta = OpenAIChoiceDelta(
-        content=delta.content,
-        role=delta.role.value if delta.role is not None else None,
-        tool_calls=_nat_choice_delta_tool_calls_to_openai(delta.tool_calls),
-    )
-    finish = cast(_FINISH_REASON | None, c0.finish_reason)
-    choice = OpenAIChunkChoice(
-        index=0,
-        delta=openai_delta,
-        finish_reason=finish,
-    )
-    created = chunk.created
-    if created.tzinfo is None:
-        created = created.replace(tzinfo=UTC)
-    created_ts = int(created.timestamp())
-    usage_openai: CompletionUsage | None = None
-    if chunk.usage is not None:
-        u = chunk.usage
-        usage_openai = CompletionUsage(
-            prompt_tokens=u.prompt_tokens,
-            completion_tokens=u.completion_tokens,
-            total_tokens=u.total_tokens,
-        )
-    return ChatCompletionChunk(
-        id=chunk.id,
-        choices=[choice],
-        created=created_ts,
-        model=chunk.model,
-        object="chat.completion.chunk",
-        usage=usage_openai,
-    )
 
 
 def _message_tool_calls_to_openai_delta_tool_calls(
@@ -404,9 +332,8 @@ def dragent_event_response_to_dome_chunk(
     response: DRAgentEventResponse,
 ) -> ChatCompletionChunk:
     """Convert one DRAgent stream chunk to an OpenAI chunk for ``ModerationPipeline`` streaming."""
-    nat_chunk = convert_dragent_event_response_to_chat_response_chunk(response)
+    completion_chunk = convert_dragent_event_response_to_openai_chat_completion_chunk(response)
     event_tool_calls = _tool_calls_from_ag_ui_events(response.events)
-    completion_chunk = _nat_chat_response_chunk_to_openai_chat_completion_chunk(nat_chunk)
     if not event_tool_calls:
         return completion_chunk
     stream_choice = completion_chunk.choices[0]
