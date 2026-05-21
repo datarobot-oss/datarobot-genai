@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.68
+- `drmcp`: `MCPServerConfig` now reads `pulumi_config.json` via `PulumiConfigSettingsSource` (lowest priority) and accepts standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` fields. Telemetry setup bridges these to `os.environ` so local OTel tracing works without manual env var configuration.
+
 ## 0.15.67
 - Bump `datarobot-moderations` to 11.2.30 to use the async interface with `DataRobotModerationMiddleware`
 

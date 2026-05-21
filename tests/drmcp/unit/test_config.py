@@ -569,8 +569,12 @@ class TestOtelStandardFields:
         with patch.dict(
             os.environ,
             {
-                "MLOPS_RUNTIME_PARAM_OTEL_EXPORTER_OTLP_ENDPOINT": '{"type":"string","payload":"https://rt.example.com/otel"}',
-                "MLOPS_RUNTIME_PARAM_OTEL_EXPORTER_OTLP_HEADERS": '{"type":"string","payload":"x-key=rt123"}',
+                "MLOPS_RUNTIME_PARAM_OTEL_EXPORTER_OTLP_ENDPOINT": (
+                    '{"type":"string","payload":"https://rt.example.com/otel"}'
+                ),
+                "MLOPS_RUNTIME_PARAM_OTEL_EXPORTER_OTLP_HEADERS": (
+                    '{"type":"string","payload":"x-key=rt123"}'
+                ),
             },
             clear=False,
         ):

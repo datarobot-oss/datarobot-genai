@@ -18,6 +18,7 @@ from typing import Literal
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
 
+from datarobot.core.config import PulumiConfigSettingsSource
 from fastmcp.settings import DuplicateBehavior
 from pydantic import AliasChoices
 from pydantic import Field
@@ -25,8 +26,6 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 from pydantic_settings.sources import PydanticBaseSettingsSource
-
-from datarobot.core.config import PulumiConfigSettingsSource
 
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload

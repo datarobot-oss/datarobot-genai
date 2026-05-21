@@ -67,7 +67,8 @@ def test_setup_otel_env_variables() -> None:
 
 def test_setup_otel_env_variables_bridges_config_fields() -> None:
     """When Config has standard OTel fields (e.g. from pulumi_config.json),
-    they are bridged to os.environ via setdefault."""
+    they are bridged to os.environ via setdefault.
+    """
     mock_config = MagicMock()
     mock_config.otel_exporter_otlp_endpoint = "https://config.example.com/otel"
     mock_config.otel_exporter_otlp_headers = "x-key=config123"
@@ -109,7 +110,8 @@ def test_setup_otel_env_variables_setdefault_no_override() -> None:
 
 def test_initialize_telemetry_proceeds_with_config_headers() -> None:
     """initialize_telemetry should NOT skip when otel_exporter_otlp_headers is set
-    in Config, even if otel_entity_id is empty."""
+    in Config, even if otel_entity_id is empty.
+    """
     mcp_mock = MagicMock()
     mock_config = MagicMock()
     mock_config.otel_enabled = True
