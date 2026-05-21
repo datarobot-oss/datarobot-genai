@@ -4,8 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.62
+## 0.15.65
 - Added `datarobot_genai.dragent.execute_dragent_inline` (plus an async variant) — an in-process runner so `datarobot-user-models`'s `run_agent.py` can route between DRUM and dragent with a single env-var-gated branch. Workflow YAML is taken from the `config_file` argument when supplied, otherwise from `<custom_model_dir>/workflow.yaml`. Always returns a single aggregated OpenAI `ChatCompletion`; the `stream` flag on the request is ignored because the agentic playground only renders the final assistant message.
+
+## 0.15.64
+- `dragent`: agent card XAA extension params now use camelCase (`tokenExchange`, `tokenRequest`, `tokenEndpointAuthMethod`, etc.) for consistency with the rest of the agentCard API response. The parser accepts both camelCase and snake_case for backward compatibility with previously generated cards.
+
+## 0.15.63
+- `nat/datarobot_mem0_memory`: the `dr_mem0_memory` provider now routes on config. When `memory_space_id` is set, requests go to the DataRobot Memory Service's mem0-compatible endpoint at `{datarobot_endpoint}/memory/{memory_space_id}` (authenticated with `datarobot_api_token` / `DATAROBOT_API_TOKEN`); otherwise `api_key` / `MEM0_API_KEY` is used against Mem0 SaaS. Both routes share the same `DRMem0Editor` because the DR endpoint is API-compatible with mem0 (PBMP-7431). New config fields: `memory_space_id`, `datarobot_endpoint`, `datarobot_api_token`.
+- `nat/datarobot_mem0_memory`: providing both `memory_space_id` and `api_key` now raises `RuntimeError("...mutually exclusive...")` at factory time. The fields target different services with different tokens, so silently picking one would mask misconfiguration (e.g. a stray `MEM0_API_KEY` in env hydrating `api_key` via its default factory). The error message documents the `api_key=None` escape hatch for the env-contamination case.
+
+## 0.15.61
+- Added central agent card registry support to `authenticated_a2a_client`. Set `registry.deployment_id` or `registry.external_id` instead of `url` to resolve agent cards from the tenant-wide DataRobot registry.
 
 ## 0.15.60
 - `dragent`: replace the `UserManager` monkey-patch with a `DRAgentUserManager` subclass that resolves `user_id` from the signed `X-DataRobot-Authorization-Context` header (then NAT's standard extractors). `DRAgentAGUISessionManager.session()` invokes it explicitly and, for per-user workflows only, falls back to a constant `default-user` key when no identity is present so the workflow does not crash (e.g. direct API-token calls to a deployed agent). The identity resolver and the per-user workflow fallback are kept separate so callers that need real identity are not silently handed a default.

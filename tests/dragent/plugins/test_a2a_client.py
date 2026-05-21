@@ -23,7 +23,9 @@ from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
+from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
@@ -118,6 +120,14 @@ def patched_fg_env():
         yield mock_cls
 
 
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    """Reset the agent card registry singleton between tests."""
+    reset_default_registry()
+    yield
+    reset_default_registry()
+
+
 # ---------------------------------------------------------------------------
 # Tests: _extract_auth_headers
 # ---------------------------------------------------------------------------
@@ -156,6 +166,26 @@ class TestA2ADiscoveryAuthMixin:
 # ---------------------------------------------------------------------------
 
 
+class TestAgentCardRegistryLookup:
+    def test_deployment_id_only(self):
+        lookup = AgentCardRegistryLookup(deployment_id="dep-123")
+        assert lookup.deployment_id == "dep-123"
+        assert lookup.external_id is None
+
+    def test_external_id_only(self):
+        lookup = AgentCardRegistryLookup(external_id="ext-456")
+        assert lookup.external_id == "ext-456"
+        assert lookup.deployment_id is None
+
+    def test_both_ids_raises(self):
+        with pytest.raises(ValueError, match="not both"):
+            AgentCardRegistryLookup(deployment_id="dep-1", external_id="ext-1")
+
+    def test_neither_id_raises(self):
+        with pytest.raises(ValueError, match="requires exactly one"):
+            AgentCardRegistryLookup()
+
+
 class TestAuthenticatedA2AClientConfig:
     def test_is_a2a_client_config(self, a2a_config):
         assert isinstance(a2a_config, A2AClientConfig)
@@ -163,6 +193,30 @@ class TestAuthenticatedA2AClientConfig:
     def test_url_only_is_valid(self):
         cfg = AuthenticatedA2AClientConfig(url=_AGENT_URL)
         assert str(cfg.url).rstrip("/") == _AGENT_URL
+
+    def test_registry_only_is_valid(self):
+        cfg = AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(deployment_id="dep-123")
+        )
+        assert cfg.registry is not None
+        assert cfg.registry.deployment_id == "dep-123"
+        assert cfg.url is None
+
+    def test_registry_with_external_id(self):
+        cfg = AuthenticatedA2AClientConfig(registry=AgentCardRegistryLookup(external_id="ext-456"))
+        assert cfg.registry is not None
+        assert cfg.registry.external_id == "ext-456"
+
+    def test_url_and_registry_raises(self):
+        with pytest.raises(ValueError, match="not both"):
+            AuthenticatedA2AClientConfig(
+                url=_AGENT_URL,
+                registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+            )
+
+    def test_neither_url_nor_registry_raises(self):
+        with pytest.raises(ValueError, match="Either 'url' or 'registry'"):
+            AuthenticatedA2AClientConfig()
 
 
 # ---------------------------------------------------------------------------
@@ -294,3 +348,104 @@ class TestAuthenticatedA2AClientFunctionGroup:
             fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
             with pytest.raises(RuntimeError, match="User ID not found in context"):
                 await fg.__aenter__()
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthenticatedA2AClientFunctionGroup — registry path
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2AClientFunctionGroupRegistry:
+    @pytest.fixture
+    def registry_config(self):
+        return AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(deployment_id="dep-001"),
+            auth_provider="my_auth",
+        )
+
+    @pytest.fixture
+    def registry_config_external(self):
+        return AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(external_id="ext-001"),
+        )
+
+    async def test_registry_fetches_card_and_derives_base_url(
+        self, registry_config, mock_builder, patched_fg_env
+    ):
+        mock_auth_provider = MagicMock()
+        mock_builder.get_auth_provider.return_value = mock_auth_provider
+
+        mock_card = MagicMock()
+        mock_card.url = "https://agent.example.com/a2a/"
+
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            mock_registry.get.assert_awaited_once_with(
+                deployment_id="dep-001",
+                external_id=None,
+            )
+            # Verify base_url derived from card.url
+            assert patched_fg_env.call_args.kwargs["base_url"] == "https://agent.example.com/a2a/"
+
+    async def test_registry_external_id_path(
+        self, registry_config_external, mock_builder, patched_fg_env
+    ):
+        mock_card = MagicMock()
+        mock_card.url = "https://agent.example.com/a2a/"
+
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(
+                config=registry_config_external, builder=mock_builder
+            )
+            await fg.__aenter__()
+
+            mock_registry.get.assert_awaited_once_with(
+                deployment_id=None,
+                external_id="ext-001",
+            )
+
+    async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):
+        """When registry provides a card, _AuthenticatedA2ABaseClient skips _resolve_agent_card."""
+        mock_auth_provider = MagicMock()
+        mock_builder.get_auth_provider.return_value = mock_auth_provider
+
+        mock_card = MagicMock()
+        mock_card.url = "https://agent.example.com/a2a/"
+        mock_card.security_schemes = None
+
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
+        with (
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(f"{_MODULE}.httpx") as mock_httpx,
+            patch(f"{_MODULE}.ClientFactory") as mock_factory,
+            patch.object(AuthenticatedA2AClientFunctionGroup, "_register_functions"),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
+            mock_httpx.Timeout = MagicMock()
+            mock_factory.return_value.create.return_value = MagicMock(aclose=AsyncMock())
+
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            # The client should have the pre-resolved card, not call _resolve_agent_card
+            assert fg._client._agent_card is mock_card
