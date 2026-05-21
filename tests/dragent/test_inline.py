@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -229,20 +230,29 @@ def test_resolve_config_path_raises_file_not_found(tmp_path: Path) -> None:
 # --- Sync wrapper -------------------------------------------------------
 
 
-def test_execute_dragent_inline_sync_wrapper_delegates_to_async(
+def test_execute_dragent_inline_sync_wrapper_under_ipykernel_like_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # GIVEN: a workflow that returns a ChatResponse
     _install_fake_workflow(monkeypatch, _make_chat_response(content="Sync"))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    # WHEN: calling the synchronous wrapper
-    result = execute_dragent_inline(
-        chat_completion={
-            "model": "datarobot-e2e",
-            "messages": [{"role": "user", "content": "hi"}],
-        },  # type: ignore[arg-type]
-        custom_model_dir=Path("/tmp"),
-    )
+    async def _execute_sync_cell() -> ChatCompletion:
+        return execute_dragent_inline(
+            chat_completion={
+                "model": "datarobot-e2e",
+                "messages": [{"role": "user", "content": "hi"}],
+            },  # type: ignore[arg-type]
+            custom_model_dir=Path("/tmp"),
+        )
+
+    try:
+        # WHEN: calling the sync entry point like run_agent inside ipykernel
+        result = loop.run_until_complete(_execute_sync_cell())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
     # THEN: the synchronous wrapper returns the same shape as the async function
     assert isinstance(result, ChatCompletion)

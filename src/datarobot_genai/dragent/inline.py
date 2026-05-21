@@ -24,6 +24,7 @@ agentic playground only renders the final assistant message.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 from pathlib import Path
 
@@ -142,16 +143,24 @@ def execute_dragent_inline(
     config_file: Path | None = None,
     default_headers: dict[str, str] | None = None,
 ) -> ChatCompletion:
-    """Run :func:`execute_dragent_inline_async` synchronously via ``asyncio.run``.
+    """Run :func:`execute_dragent_inline_async` synchronously for ``run_agent.py``.
 
-    Convenient for use from sync entry points such as
-    ``datarobot-user-models``'s ``run_agent.py``.
+    Sync entry point used by ``datarobot-user-models``'s ``run_agent.py`` when the
+    dragent inline path is enabled. The host process may already have an asyncio
+    loop running on the current thread (for example when ``run_agent_procedure``
+    is invoked from an ``ipykernel`` driven agentic notebook) without exposing
+    that loop to this call site; in that case ``asyncio.run`` cannot be used here
+    and the coroutine is executed in a worker thread with its own event loop.
     """
-    return asyncio.run(
-        execute_dragent_inline_async(
-            chat_completion=chat_completion,
-            custom_model_dir=custom_model_dir,
-            config_file=config_file,
-            default_headers=default_headers,
-        )
+    coro = execute_dragent_inline_async(
+        chat_completion=chat_completion,
+        custom_model_dir=custom_model_dir,
+        config_file=config_file,
+        default_headers=default_headers,
     )
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coro).result()

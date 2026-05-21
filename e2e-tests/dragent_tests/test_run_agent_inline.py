@@ -26,7 +26,6 @@ import json
 import os
 import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 from openai.types.chat import ChatCompletion
@@ -77,6 +76,7 @@ def spawn_runner(
         env={**os.environ},
         check=False,
     )
+
 
 def test_run_agent_inline(tmp_path: Path) -> None:
     """Inline run produces a valid ``ChatCompletion`` JSON file."""

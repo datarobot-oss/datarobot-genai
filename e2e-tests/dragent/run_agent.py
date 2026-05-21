@@ -17,24 +17,54 @@
 Used by ``test_run_agent_inline.py`` to exercise ``execute_dragent_inline``
 end-to-end as if it were running inside the agent custom-model environment:
 chat completion params come in as JSON on the command line and the resulting
-``ChatCompletion`` or list of ``ChatCompletionChunk`` is written to disk as
-JSON for the test to read back.
+``ChatCompletion`` is written to disk as JSON for the test to read back.
 
 CLI shape intentionally matches the relevant subset of ``run_agent.py``:
 ``--chat_completion``, ``--custom_model_dir``, ``--output_path``.
+
+When executed as ``__main__``, the runner wraps ``main()`` in a short
+ipykernel-like host (sync code on a thread that already has a running asyncio
+loop) so subprocess e2e tests match production agentic notebooks
+(``datarobot/notebooks`` → ``ipykernel``).
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from datarobot_genai.dragent import execute_dragent_inline
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+def _run_sync_under_ipykernel_like_loop(fn: Callable[[], _T]) -> _T:
+    """Run *fn* the way ``ipykernel`` runs a synchronous notebook cell.
+
+    The notebooks service sends an ``execute_request`` to ``ipykernel``; user
+    code runs on the kernel thread while that thread's asyncio loop is already
+    active. Wrapping *fn* in ``loop.run_until_complete`` models that layout for
+    subprocess-based e2e runners that do not start from a live Jupyter kernel.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+
+        async def _execute_sync_cell() -> _T:
+            return fn()
+
+        return loop.run_until_complete(_execute_sync_cell())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
 
 def _parse_args() -> argparse.Namespace:
@@ -77,7 +107,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        exit_code = main()
+        exit_code = _run_sync_under_ipykernel_like_loop(main)
     finally:
         # Flush log handlers and stdio buffers before the subprocess exits so
         # the parent test runner sees the full stdout/stderr captured output
