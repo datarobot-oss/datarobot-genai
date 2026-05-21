@@ -413,15 +413,15 @@ class TestCreateAgentCard:
                 "scheme": CROSS_APP_SECURITY_SCHEME_REF,
                 "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
             },
-            "token_endpoint_auth_method": "private_key_jwt",
-            "token_exchange": {
-                "grant_type": TOKEN_EXCHANGE_GRANT_TYPE_URI,
-                "requested_token_type": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
-                "trusted_issuer": "https://your-org.oktapreview.com",
+            "tokenEndpointAuthMethod": "private_key_jwt",
+            "tokenExchange": {
+                "grantType": TOKEN_EXCHANGE_GRANT_TYPE_URI,
+                "requestedTokenType": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
+                "trustedIssuer": "https://your-org.oktapreview.com",
                 "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             },
-            "token_request": {
-                "grant_type": JWT_BEARER_GRANT_TYPE_URI,
+            "tokenRequest": {
+                "grantType": JWT_BEARER_GRANT_TYPE_URI,
                 "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             },
         }
@@ -508,15 +508,15 @@ class TestCreateAgentCard:
                 "scheme": CROSS_APP_SECURITY_SCHEME_REF,
                 "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
             },
-            "token_endpoint_auth_method": "private_key_jwt",
-            "token_exchange": {
-                "grant_type": TOKEN_EXCHANGE_GRANT_TYPE_URI,
-                "requested_token_type": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
-                "trusted_issuer": "https://your-org.oktapreview.com",
+            "tokenEndpointAuthMethod": "private_key_jwt",
+            "tokenExchange": {
+                "grantType": TOKEN_EXCHANGE_GRANT_TYPE_URI,
+                "requestedTokenType": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
+                "trustedIssuer": "https://your-org.oktapreview.com",
                 "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
             },
-            "token_request": {
-                "grant_type": JWT_BEARER_GRANT_TYPE_URI,
+            "tokenRequest": {
+                "grantType": JWT_BEARER_GRANT_TYPE_URI,
                 "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
             },
         }

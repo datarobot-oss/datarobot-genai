@@ -95,15 +95,15 @@ def _make_agent_card() -> AgentCard:
         ),
         params={
             "ref": {"scheme": "oauth2", "flow": "clientCredentials"},
-            "token_endpoint_auth_method": _AUTH_METHOD,
-            "token_exchange": {
-                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-                "requested_token_type": "urn:ietf:params:oauth:token-type:id-jag",
-                "trusted_issuer": _TRUSTED_ISSUER,
+            "tokenEndpointAuthMethod": _AUTH_METHOD,
+            "tokenExchange": {
+                "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "requestedTokenType": "urn:ietf:params:oauth:token-type:id-jag",
+                "trustedIssuer": _TRUSTED_ISSUER,
                 "audience": _EXCHANGE_AUDIENCE,
             },
-            "token_request": {
-                "grant_type": _GRANT_TYPE,
+            "tokenRequest": {
+                "grantType": _GRANT_TYPE,
                 "audience": _TARGET_AUDIENCE,
             },
         },
@@ -217,7 +217,8 @@ class TestSetAgentCard:
 
 
 class TestParseCrossAppParams:
-    def test_happy_path(self):
+    def test_camel_case_params(self):
+        """Extension params in camelCase (canonical — matches agent card generation)."""
         params = _parse_cross_app_params(_make_agent_card())
 
         assert params.token_url == _AGENT_TOKEN_URL
@@ -226,6 +227,51 @@ class TestParseCrossAppParams:
         assert params.target_audience == _TARGET_AUDIENCE
         assert params.token_endpoint_auth_method == _AUTH_METHOD
         assert params.id_jag_scopes == ["read_data"]
+
+    def test_snake_case_params(self):
+        """Extension params in snake_case (backward compatibility)."""
+        cc_flow = ClientCredentialsOAuthFlow(
+            token_url=_AGENT_TOKEN_URL,
+            scopes={"read_data": "Read access"},
+        )
+        security_scheme = SecurityScheme(
+            root=OAuth2SecurityScheme(type="oauth2", flows=OAuthFlows(client_credentials=cc_flow))
+        )
+        extension = AgentExtension(
+            uri="urn:ietf:params:oauth:grant-type:jwt-bearer",
+            description="",
+            params={
+                "token_endpoint_auth_method": _AUTH_METHOD,
+                "token_exchange": {
+                    "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                    "requested_token_type": "urn:ietf:params:oauth:token-type:id-jag",
+                    "trusted_issuer": _TRUSTED_ISSUER,
+                    "audience": _EXCHANGE_AUDIENCE,
+                },
+                "token_request": {
+                    "grant_type": _GRANT_TYPE,
+                    "audience": _TARGET_AUDIENCE,
+                },
+            },
+        )
+        card = AgentCard(
+            name="Test Agent",
+            description="Test",
+            url="https://agent.example.com/",
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False, extensions=[extension]),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+            security_schemes={"oauth2": security_scheme},
+            security=[{"oauth2": ["read_data"]}],
+        )
+        params = _parse_cross_app_params(card)
+        assert params.token_url == _AGENT_TOKEN_URL
+        assert params.trusted_issuer == _TRUSTED_ISSUER
+        assert params.exchange_audience == _EXCHANGE_AUDIENCE
+        assert params.target_audience == _TARGET_AUDIENCE
+        assert params.token_endpoint_auth_method == _AUTH_METHOD
 
     def test_scopes_come_from_card(self):
         cc_flow = ClientCredentialsOAuthFlow(

@@ -106,3 +106,25 @@ def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
     """
     base = endpoint.rstrip("/")
     return f"{base}/deployments/{deployment_id}/agentCard/"
+
+
+def build_agent_cards_registry_url(endpoint: str) -> str:
+    """Construct the URL for the central agent card registry.
+
+    The central registry lists all agent cards within the user's organisation
+    (tenant context) and requires only API-token authentication, not the
+    per-agent AuthZ that the agent's own card endpoint demands.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot API endpoint base URL, e.g. ``https://app.datarobot.com/api/v2``.
+        A trailing slash is stripped before composing the URL.
+
+    Returns
+    -------
+    str
+        A URL of the form ``{endpoint}/agentCards/``.
+    """
+    base = endpoint.rstrip("/")
+    return f"{base}/agentCards/"
