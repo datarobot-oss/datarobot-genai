@@ -980,7 +980,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.67"
+version = "0.15.68"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1306,7 +1306,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
-    { name = "ipdb" },
     { name = "nbmake" },
     { name = "openai" },
     { name = "pytest" },
@@ -1314,7 +1313,6 @@ dependencies = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "python-dotenv" },
-    { name = "rpdb" },
 ]
 
 [package.dev-dependencies]
@@ -1322,6 +1320,7 @@ dev = [
     { name = "ipdb" },
     { name = "jupyter" },
     { name = "mypy" },
+    { name = "rpdb" },
     { name = "ruff" },
 ]
 dragent-base = [
@@ -1346,7 +1345,6 @@ example-quickstart = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
-    { name = "ipdb", specifier = ">=0.13.13" },
     { name = "nbmake", specifier = ">=1.5.5" },
     { name = "openai", specifier = ">=2.0.0,<3.0.0" },
     { name = "pytest" },
@@ -1354,7 +1352,6 @@ requires-dist = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "python-dotenv" },
-    { name = "rpdb", specifier = ">=0.2.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1362,6 +1359,7 @@ dev = [
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "mypy", specifier = ">=1.19.1" },
+    { name = "rpdb", specifier = ">=0.2.0" },
     { name = "ruff", specifier = ">=0.15.2" },
 ]
 dragent-base = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
