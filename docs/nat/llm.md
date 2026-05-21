@@ -40,6 +40,18 @@ llms:
 
 The exact fields inside each block mirror what you would set in env for routing (model name, gateway on/off, deployment ids). Prefer the **same env vars as the e2e tests** unless you need to pin something in YAML for a deployment.
 
+## Passing extra kwargs with `extra_body`
+
+Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`.
+
+```yaml
+llms:
+  datarobot_llm:
+    _type: datarobot-llm-component
+    extra_body:
+      mock_response: "this is a mock response"
+```
+
 ## Linking workflows to an LLM
 
 Any **`workflow`** or **`functions.*`** entry that needs a model sets **`llm_name:`** to the key under **`llms:`** (e.g. `llm_name: datarobot_llm`).
