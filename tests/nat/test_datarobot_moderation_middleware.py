@@ -35,6 +35,8 @@ pytest.importorskip("datarobot_dome")
 from ag_ui.core import EventType
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
+from ag_ui.core import StepFinishedEvent
+from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
@@ -43,8 +45,10 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
+from datarobot_dome.api import _from_dataframe
 from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
+from datarobot_dome.constants import DEFAULT_RESPONSE_COLUMN_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.schema.moderation_config import ModerationConfig
@@ -241,7 +245,40 @@ def _moderation_mock(pipeline: MagicMock) -> MagicMock:
     mod = MagicMock()
     mod._pipeline = pipeline
     mod._executor = MagicMock()
+    mod.evaluate_prompt_async = AsyncMock()
+    mod.evaluate_response_async = AsyncMock()
+    mod.stream_response_async = _passthrough_stream_response_async
     return mod
+
+
+def _set_evaluate_prompt_async_return(
+    moderation: MagicMock,
+    prescore_df: pd.DataFrame,
+    *,
+    latency: float = 0.0,
+) -> None:
+    prompt_eval = _from_dataframe(prescore_df, PROMPT_COL)
+    moderation.evaluate_prompt_async.return_value = (prompt_eval, latency, prescore_df)
+
+
+async def _passthrough_stream_response_async(
+    completion: Any,
+    **kwargs: Any,
+) -> Any:
+    """Mirror ``ModerationPipeline.stream_response_async`` peek-ahead chunk ordering."""
+    aiter = completion.__aiter__()
+    try:
+        current = await aiter.__anext__()
+    except StopAsyncIteration:
+        return
+    while True:
+        try:
+            peek = await aiter.__anext__()
+        except StopAsyncIteration:
+            yield current
+            return
+        yield current
+        current = peek
 
 
 def _prescore_df_blocked(prompt: str, blocked_message: str) -> pd.DataFrame:
@@ -318,7 +355,6 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         pipeline = load_llm_moderation_pipeline(cfg)
@@ -346,12 +382,18 @@ def test_enabled_false_when_pipeline_not_loaded(builder_mock: MagicMock) -> None
 async def test_pre_invoke_no_prescore_guards_prescore_df_has_blocked_and_replaced_columns(
     builder_mock: MagicMock,
 ) -> None:
-    # GIVEN the pipeline has no prescore guards (``run_guards`` is not used for prompt stage)
+    # GIVEN the pipeline has no prescore guards
     # WHEN pre_invoke runs
-    # THEN prescore_df matches the executor shape so downstream streaming/metadata sees both flags
+    # THEN prescore state is stored for downstream streaming/postscore
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = []
     moderation = _moderation_mock(pipeline)
+    prescore_df = pd.DataFrame({PROMPT_COL: ["hello"]})
+    moderation.evaluate_prompt_async.return_value = (
+        EvaluationResult(blocked=False),
+        0.0,
+        prescore_df,
+    )
 
     run_input = _make_run_input("hello")
     ctx = _invocation(run_input)
@@ -367,26 +409,22 @@ async def test_pre_invoke_no_prescore_guards_prescore_df_has_blocked_and_replace
             await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            df = st.prescore_df
-            assert f"blocked_{PROMPT_COL}" in df.columns
-            assert bool(df.loc[0, f"blocked_{PROMPT_COL}"]) is False
-            assert f"replaced_{PROMPT_COL}" in df.columns
-            assert bool(df.loc[0, f"replaced_{PROMPT_COL}"]) is False
+            assert st.prescore_df.equals(prescore_df)
         finally:
             _clear_moderation_invoke_state_if_set()
 
-    moderation._executor.run_guards.assert_not_called()
+    moderation.evaluate_prompt_async.assert_awaited_once_with("hello")
 
 
 async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> None:
-    # GIVEN prescore ``run_guards`` marks the prompt blocked (single execution path)
+    # GIVEN prescore marks the prompt blocked
     # WHEN pre_invoke runs
     # THEN context.output is set to a DRAgentEventResponse and call_next must not run
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_blocked("bad", "blocked-by-test")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     run_input = _make_run_input("bad")
     ctx = _invocation(run_input)
@@ -422,7 +460,7 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_blocked("bad", "blocked-by-test")
     prescore_df["token_count_prompt"] = [42]
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     run_input = _make_run_input("bad")
     ctx = _invocation(run_input)
@@ -444,14 +482,14 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
 
 
 async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) -> None:
-    # GIVEN prescore ``run_guards`` requests a replacement string
+    # GIVEN prescore requests a replacement string
     # WHEN pre_invoke runs
     # THEN the last UserMessage content is updated and context.output stays unset
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_replaced("secret", "[redacted]")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     run_input = _make_run_input("secret")
     ctx = _invocation(run_input)
@@ -486,7 +524,7 @@ async def test_pre_invoke_replaces_chat_request_or_message_input_message(
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_replaced("secret", "[redacted]")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     crm = ChatRequestOrMessage(input_message="secret")
     ctx = InvocationContext(
@@ -529,7 +567,7 @@ async def test_pre_invoke_replacement_apply_failure_clears_prescore_replaced_fla
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_replaced("secret", "[redacted]")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     run_input = _make_run_input("secret")
     ctx = _invocation(run_input)
@@ -650,7 +688,7 @@ async def test_post_invoke_skips_dr_agent_when_joined_text_blank(
 
     assert out is None
     assert ctx.output is response
-    moderation.evaluate_response.assert_not_called()
+    moderation.evaluate_response_async.assert_not_awaited()
 
 
 async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchanged(
@@ -660,9 +698,10 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
+    moderation.evaluate_response_async.return_value = (
         EvaluationResult(blocked=False, metrics={"token_count": 2}),
         0.0,
+        pd.DataFrame(),
     )
 
     mid = "msg-1"
@@ -716,9 +755,10 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
+    moderation.evaluate_response_async.return_value = (
         EvaluationResult(blocked=False, replaced=True, replacement="final-out"),
         0.0,
+        pd.DataFrame(),
     )
 
     run_input = _make_run_input()
@@ -755,9 +795,10 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
+    moderation.evaluate_response_async.return_value = (
         EvaluationResult(blocked=False, replaced=True, replacement="final-out"),
         0.0,
+        pd.DataFrame(),
     )
 
     nat_out = _nat_chat_response_assistant_text("model-out")
@@ -790,9 +831,10 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
+    moderation.evaluate_response_async.return_value = (
         EvaluationResult(blocked=False, replaced=True, replacement="final-out"),
         0.0,
+        pd.DataFrame(),
     )
 
     ctx = _invocation(_make_run_input(), output="model-out")
@@ -825,9 +867,10 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
     # THEN assistant content is "" (not None) and finish_reason is content_filter
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
-    moderation.evaluate_response.return_value = (
+    moderation.evaluate_response_async.return_value = (
         EvaluationResult(blocked=True, blocked_message=None),
         0.0,
+        pd.DataFrame(),
     )
 
     ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
@@ -864,7 +907,7 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_blocked("x", "stop")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     call_next = AsyncMock()
 
@@ -890,32 +933,28 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
 ) -> None:
     """Each asyncio task must keep its own prescore frame across ``await call_next``.
 
-    Postscore reads task-local state via ``moderation.evaluate_response`` (same hook as
-    ``ModerationPipeline.evaluate_response`` on the loaded pipeline); the prompt passed there
+    Postscore reads task-local state via ``evaluate_response_async``; the prompt passed there
     must match the prescore row for that task, not a sibling task.
     """
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
-
-    def run_guards_side_effect(
-        data: pd.DataFrame, guards: Any, stage: Any
-    ) -> tuple[pd.DataFrame, float]:
-        prompt = str(data.loc[0, PROMPT_COL])
-        return _prescore_df_ok(prompt), 0.0
-
-    moderation._executor.run_guards.side_effect = run_guards_side_effect
     seen_in_evaluate_response: dict[asyncio.Task[Any], str] = {}
 
-    def evaluate_response_side_effect(
+    async def evaluate_prompt_async_side_effect(prompt: str) -> tuple[Any, float, pd.DataFrame]:
+        prescore_df = _prescore_df_ok(prompt)
+        return _from_dataframe(prescore_df, PROMPT_COL), 0.0, prescore_df
+
+    async def evaluate_response_async_side_effect(
         _response_text: str, *, prompt: str | None = None, **_: Any
-    ) -> tuple[EvaluationResult, float]:
+    ) -> tuple[EvaluationResult, float, pd.DataFrame]:
         task = asyncio.current_task()
         assert task is not None
         seen_in_evaluate_response[task] = prompt or ""
-        return (EvaluationResult(blocked=False), 0.0)
+        return EvaluationResult(blocked=False), 0.0, pd.DataFrame()
 
-    moderation.evaluate_response.side_effect = evaluate_response_side_effect
+    moderation.evaluate_prompt_async.side_effect = evaluate_prompt_async_side_effect
+    moderation.evaluate_response_async.side_effect = evaluate_response_async_side_effect
 
     async def slow_call_next(*_a: Any, **_k: Any) -> DRAgentEventResponse:
         await asyncio.sleep(0.05)
@@ -955,7 +994,6 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1003,7 +1041,6 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1049,7 +1086,6 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1092,7 +1128,6 @@ async def test_function_middleware_invoke_prompt_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1133,7 +1168,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_to
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1172,7 +1206,6 @@ async def test_function_middleware_stream_prompt_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1212,7 +1245,6 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1235,8 +1267,9 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
     assert mods["Responses_token_count"] == 80
-    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
-        f"expected a blocked_response flag in {mods!r}"
+    blocked_suffix = f"_blocked_{DEFAULT_RESPONSE_COLUMN_NAME}"
+    assert any(k.endswith(blocked_suffix) and mods[k] is True for k in mods), (
+        f"expected a {blocked_suffix!r} flag in {mods!r}"
     )
 
 
@@ -1257,7 +1290,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1279,8 +1311,9 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
     assert mods["Responses_token_count"] == 80
-    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
-        f"expected a blocked_response flag in {mods!r}"
+    blocked_suffix = f"_blocked_{DEFAULT_RESPONSE_COLUMN_NAME}"
+    assert any(k.endswith(blocked_suffix) and mods[k] is True for k in mods), (
+        f"expected a {blocked_suffix!r} flag in {mods!r}"
     )
 
 
@@ -1298,7 +1331,6 @@ async def test_function_middleware_stream_response_token_limit_blocks(
         {
             "DATAROBOT_API_TOKEN": "test-token",
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-            "TARGET_NAME": '"response"',
         },
     ):
         mw = DataRobotModerationMiddleware(
@@ -1323,8 +1355,9 @@ async def test_function_middleware_stream_response_token_limit_blocks(
     assert chunk.datarobot_moderations is not None
     mods = chunk.datarobot_moderations
     assert mods["Responses_token_count"] == 80
-    assert any(k.endswith("_blocked_response") and mods[k] is True for k in mods), (
-        f"expected a blocked_response flag in {mods!r}"
+    blocked_suffix = f"_blocked_{DEFAULT_RESPONSE_COLUMN_NAME}"
+    assert any(k.endswith(blocked_suffix) and mods[k] is True for k in mods), (
+        f"expected a {blocked_suffix!r} flag in {mods!r}"
     )
 
 
@@ -1347,7 +1380,6 @@ async def test_function_middleware_invoke_prompt_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1392,7 +1424,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1439,7 +1470,6 @@ async def test_function_middleware_stream_prompt_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1484,7 +1514,6 @@ async def test_function_middleware_invoke_response_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1529,7 +1558,6 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1576,7 +1604,6 @@ async def test_function_middleware_stream_response_replace(
             {
                 "DATAROBOT_API_TOKEN": "test-token",
                 "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
-                "TARGET_NAME": '"response"',
             },
         ),
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
@@ -1612,7 +1639,7 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_blocked("x", "no-stream")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
     stream_next = MagicMock()
 
     with (
@@ -1637,14 +1664,14 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
 
 
 async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock: MagicMock) -> None:
-    # GIVEN one streamed text chunk from upstream and ModerationIterator echoes chunks
+    # GIVEN one streamed text chunk from upstream and stream_response_async echoes chunks
     # WHEN function_middleware_stream runs
     # THEN one moderated DRAgentEventResponse is yielded
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_ok("hi")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
 
     async def upstream():
         yield _text_response("delta-one")
@@ -1655,10 +1682,6 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",
-            side_effect=lambda _sc, src: src,
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1682,7 +1705,7 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
 ) -> None:
     # GIVEN pre_invoke returns before prescore (no first positional arg / no run input)
     # WHEN function_middleware_stream runs
-    # THEN upstream chunks are yielded and ModerationIterator is never used
+    # THEN upstream chunks are yielded and stream_response_async is never used
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
 
@@ -1695,10 +1718,6 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
-        ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",
-            side_effect=AssertionError("ModerationIterator should not run without prescore"),
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1715,6 +1734,55 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
     assert chunks[0].events == _text_response("passthrough").events
 
 
+async def test_function_middleware_stream_preserves_message_id_per_text_chunk(
+    builder_mock: MagicMock,
+) -> None:
+    """Each moderated chunk must use the source response for that chunk, not the peeked next one."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    mid_a = "msg-chunk-a"
+    mid_b = "msg-chunk-b"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="a")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_b, delta="b")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    content_events = [
+        ev for resp in chunks for ev in resp.events if isinstance(ev, TextMessageContentEvent)
+    ]
+    assert len(content_events) == 2
+    assert content_events[0].message_id == mid_a
+    assert content_events[0].delta == "a"
+    assert content_events[1].message_id == mid_b
+    assert content_events[1].delta == "b"
+
+
 async def test_function_middleware_stream_defers_text_message_end_before_run_finished(
     builder_mock: MagicMock,
 ) -> None:
@@ -1723,7 +1791,7 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
     prescore_df = _prescore_df_ok("hi")
-    moderation._executor.run_guards.return_value = (prescore_df, 0.0)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
     mid = "msg-1"
     zero = default_usage_metrics()
 
@@ -1756,10 +1824,6 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
             "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationIterator",
-            side_effect=lambda _sc, src: src,
-        ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         chunks = [
@@ -1776,6 +1840,104 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
     end_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_END)
     finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
     assert end_idx < finished_idx
+
+
+async def test_function_middleware_stream_preserves_step_order_at_agent_transition(
+    builder_mock: MagicMock,
+) -> None:
+    """CrewAI emits END, STEP_FINISHED, STEP_STARTED, START between agent text segments."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("topic")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    planner_mid = "msg-planner"
+    writer_mid = "msg-writer"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepStartedEvent(step_name="Content Planner")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                TextMessageStartEvent(message_id=planner_mid, role="assistant"),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=planner_mid, delta="plan")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=planner_mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepFinishedEvent(step_name="Content Planner")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepStartedEvent(step_name="Content Writer")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                TextMessageStartEvent(message_id=writer_mid, role="assistant"),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=writer_mid, delta="write")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=writer_mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepFinishedEvent(step_name="Content Writer")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("topic"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    writer_start_idx = next(
+        i
+        for i, e in enumerate(flat)
+        if e.type == EventType.STEP_STARTED and e.step_name == "Content Writer"
+    )
+    writer_finish_idx = next(
+        i
+        for i, e in enumerate(flat)
+        if e.type == EventType.STEP_FINISHED and e.step_name == "Content Writer"
+    )
+    assert writer_start_idx < writer_finish_idx
 
 
 def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
