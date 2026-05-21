@@ -113,7 +113,6 @@ from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_c
 _logger = logging.getLogger(__name__)
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
-WorkflowOutput: TypeAlias = DRAgentEventResponse | ChatResponse | str
 
 
 def _workflow_input_from_args(args: tuple[Any, ...]) -> WorkflowInput | None:
