@@ -24,6 +24,9 @@ from pydantic import Field
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
+from pydantic_settings.sources import PydanticBaseSettingsSource
+
+from datarobot.core.config import PulumiConfigSettingsSource
 
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
@@ -315,6 +318,22 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Enable/disable HTTP instrumentors",
     )
+    otel_exporter_otlp_endpoint: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+        ),
+        description="Standard OTel OTLP endpoint. Takes priority over otel_collector_base_url.",
+    )
+    otel_exporter_otlp_headers: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_EXPORTER_OTLP_HEADERS",
+            "OTEL_EXPORTER_OTLP_HEADERS",
+        ),
+        description="Standard OTel OTLP headers. Takes priority over entity_id construction.",
+    )
     mcp_server_register_dynamic_tools_on_startup: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -412,6 +431,8 @@ class MCPServerConfig(BaseSettings):
         "otel_entity_id",
         "otel_enabled",
         "otel_enabled_http_instrumentors",
+        "otel_exporter_otlp_endpoint",
+        "otel_exporter_otlp_headers",
         "enable_memory_management",
         "mcp_cli_configs",
         "tool_registration_allow_empty_schema",
@@ -424,6 +445,23 @@ class MCPServerConfig(BaseSettings):
     def validate_runtime_params(cls, v: Any) -> Any:
         """Validate runtime parameters."""
         return extract_datarobot_runtime_param_payload(v)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            PulumiConfigSettingsSource(settings_cls),
+        )
 
     model_config = SettingsConfigDict(
         env_file=".env",

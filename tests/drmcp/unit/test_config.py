@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import os
+from pathlib import Path
 from typing import Any
 from typing import get_args
 from unittest.mock import patch
@@ -534,3 +536,94 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_perplexity_tools is False
             assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
+
+
+class TestOtelStandardFields:
+    """Test standard OTel env var fields on MCPServerConfig."""
+
+    def test_otel_exporter_fields_default_empty(self) -> None:
+        """Standard OTel fields default to empty string."""
+        with patch.dict(os.environ, clear=True):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert config.otel_exporter_otlp_endpoint == ""
+            assert config.otel_exporter_otlp_headers == ""
+            config_module._config = None
+
+    def test_otel_exporter_fields_from_env(self) -> None:
+        """Standard OTel fields can be set via env vars."""
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "https://collector.example.com/otel",
+                "OTEL_EXPORTER_OTLP_HEADERS": "x-api-key=test123",
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.otel_exporter_otlp_endpoint == "https://collector.example.com/otel"
+            assert config.otel_exporter_otlp_headers == "x-api-key=test123"
+
+    def test_otel_exporter_fields_from_runtime_params(self) -> None:
+        """Standard OTel fields accept MLOPS_RUNTIME_PARAM_ prefix."""
+        with patch.dict(
+            os.environ,
+            {
+                "MLOPS_RUNTIME_PARAM_OTEL_EXPORTER_OTLP_ENDPOINT": '{"type":"string","payload":"https://rt.example.com/otel"}',
+                "MLOPS_RUNTIME_PARAM_OTEL_EXPORTER_OTLP_HEADERS": '{"type":"string","payload":"x-key=rt123"}',
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.otel_exporter_otlp_endpoint == "https://rt.example.com/otel"
+            assert config.otel_exporter_otlp_headers == "x-key=rt123"
+
+
+class TestPulumiConfigSource:
+    """Test that MCPServerConfig reads from pulumi_config.json."""
+
+    def test_reads_otel_from_pulumi_config_json(self, tmp_path: Path) -> None:
+        """Config reads OTel vars from pulumi_config.json when env vars are absent."""
+        pulumi_config = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "https://pulumi.example.com/otel",
+            "OTEL_EXPORTER_OTLP_HEADERS": "x-key=pulumi123",
+        }
+        config_file = tmp_path / "pulumi_config.json"
+        config_file.write_text(json.dumps(pulumi_config))
+
+        with patch.dict(os.environ, {}, clear=True):
+            config_module._config = None
+            original_cwd = os.getcwd()
+            os.chdir(tmp_path)
+            try:
+                config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+                assert config.otel_exporter_otlp_endpoint == "https://pulumi.example.com/otel"
+                assert config.otel_exporter_otlp_headers == "x-key=pulumi123"
+            finally:
+                os.chdir(original_cwd)
+                config_module._config = None
+
+    def test_env_var_takes_priority_over_pulumi_config(self, tmp_path: Path) -> None:
+        """Env vars override pulumi_config.json values."""
+        pulumi_config = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "https://pulumi.example.com/otel",
+        }
+        config_file = tmp_path / "pulumi_config.json"
+        config_file.write_text(json.dumps(pulumi_config))
+
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "https://env.example.com/otel",
+            },
+            clear=True,
+        ):
+            config_module._config = None
+            original_cwd = os.getcwd()
+            os.chdir(tmp_path)
+            try:
+                config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+                assert config.otel_exporter_otlp_endpoint == "https://env.example.com/otel"
+            finally:
+                os.chdir(original_cwd)
+                config_module._config = None
