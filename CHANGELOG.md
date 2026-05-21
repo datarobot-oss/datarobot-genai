@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.91
+- Bump E2E-path timeout defaults from 300s to 600s (`AgentKernel.custom_model`, `dragent.cli.remote.stream_agui_events`) and translate `status="ERROR"` polling responses with `"Failed to start codespace session."` to `requests.ConnectionError` so consumer retry classifiers treat them as transient.
+
 ## 0.15.90
 - `e2e-tests`: Enabled A2A server in all agent workflows and added A2A protocol end-to-end tests (agent card, `message/send`).
 
