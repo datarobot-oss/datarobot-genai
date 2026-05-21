@@ -152,6 +152,13 @@ class OtelASGIMiddleware(BaseHTTPMiddleware):
 
 def _setup_otel_env_variables() -> None:
     """Set up OpenTelemetry environment variables for DataRobot integration."""
+    config = get_config()
+
+    if config.otel_exporter_otlp_endpoint:
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", config.otel_exporter_otlp_endpoint)
+    if config.otel_exporter_otlp_headers:
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_HEADERS", config.otel_exporter_otlp_headers)
+
     # do not override if already set
     if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or os.environ.get(
         "OTEL_EXPORTER_OTLP_HEADERS"
@@ -163,7 +170,6 @@ def _setup_otel_env_variables() -> None:
 
     credentials = get_credentials()
 
-    config = get_config()
     otlp_endpoint = config.otel_collector_base_url
     entity_id = config.otel_entity_id
 
@@ -275,7 +281,11 @@ def initialize_telemetry(mcp: FastMCP) -> None:
         return None
 
     # If OTEL_ENTITY_ID is not set, skip telemetry
-    if not config.otel_entity_id and not os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"):
+    if (
+        not config.otel_entity_id
+        and not config.otel_exporter_otlp_headers
+        and not os.environ.get("OTEL_EXPORTER_OTLP_HEADERS")
+    ):
         root_logger.info(
             "Neither OTEL_ENTITY_ID nor OTEL_EXPORTER_OTLP_HEADERS is set, skipping telemetry"
         )
