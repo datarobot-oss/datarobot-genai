@@ -797,10 +797,6 @@ def dome_chunk_to_dragent_event_response(
     )
 
 
-# Backward-compatible alias for tests and external imports.
-chat_completion_to_dragent_event_response = dome_chunk_to_dragent_event_response
-
-
 def _ag_ui_message_to_openai(msg: object) -> dict[str, Any]:
     if isinstance(msg, UserMessage):
         return {"role": "user", "content": _user_content_to_openai(msg.content)}

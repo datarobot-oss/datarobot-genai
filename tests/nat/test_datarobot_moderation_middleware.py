@@ -80,9 +80,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
 from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
-from datarobot_genai.nat.datarobot_moderation_middleware import (
-    chat_completion_to_dragent_event_response,
-)
+from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
 from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
@@ -1940,7 +1938,7 @@ async def test_function_middleware_stream_preserves_step_order_at_agent_transiti
     assert writer_start_idx < writer_finish_idx
 
 
-def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
+def test_dome_chunk_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
     """Moderation rehydration must not drop tool AG-UI events bundled with a text delta."""
     mid = "msg-1"
     source = [
@@ -1979,7 +1977,7 @@ def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() 
         model="test-model",
         object="chat.completion.chunk",
     )
-    out = chat_completion_to_dragent_event_response(
+    out = dome_chunk_to_dragent_event_response(
         moderated_chunk,
         source_ag_ui_events=source,
         stream_tool_index_map={},
@@ -1993,7 +1991,7 @@ def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() 
     assert starts[0].tool_call_name == "generate_objectid"
 
 
-def test_chat_completion_to_dragent_event_response_serializes_numpy_moderations() -> None:
+def test_dome_chunk_to_dragent_event_response_serializes_numpy_moderations() -> None:
     """datarobot_dome may attach numpy scalars; SSE must still serialize via model_dump_json."""
     chunk = ChatCompletionChunk(
         id="chunk-1",
@@ -2017,7 +2015,7 @@ def test_chat_completion_to_dragent_event_response_serializes_numpy_moderations(
             "ts": pd.Timestamp("2026-01-01T00:00:00Z"),
         },
     )
-    out = chat_completion_to_dragent_event_response(chunk)
+    out = dome_chunk_to_dragent_event_response(chunk)
     assert out.datarobot_moderations is not None
     assert out.datarobot_moderations["count"] == 42
     assert out.datarobot_moderations["nested"]["x"] == 1.5
