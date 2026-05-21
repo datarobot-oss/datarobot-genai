@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.66
+- Added `datarobot_genai.dragent.execute_dragent_inline` (plus an async variant) — an in-process runner so `datarobot-user-models`'s `run_agent.py` can route between DRUM and dragent with a single env-var-gated branch. Workflow YAML is taken from the `config_file` argument when supplied, otherwise from `<custom_model_dir>/workflow.yaml`. Always returns a single aggregated OpenAI `ChatCompletion`; the `stream` flag on the request is ignored because the agentic playground only renders the final assistant message.
+
 ## 0.15.65
 - Fix `extra_body` passthrough for `workflow.yaml` LLM configs (e.g. `mock_response`). PR #274 switched from `ChatOpenAI` to `ChatLiteLLM`/`LiteLLM` which silently drop unknown kwargs; `extra_body` is now routed through `model_kwargs` (langgraph) and `additional_kwargs` (llamaindex) so it reaches the underlying DataRobot LLM gateway API call.
 

@@ -34,6 +34,13 @@ header:
   paths:
     # do NOT modify the next line as it is used by the groovy script in the CI pipeline
     # INSERT_FILES_FROM_PULL_REQUEST_HERE
+    - e2e-tests/dragent/run_agent.py
+    - e2e-tests/dragent_tests/test_run_agent_inline.py
+    - src/datarobot_genai/dragent/__init__.py
+    - src/datarobot_genai/dragent/frontends/converters.py
+    - src/datarobot_genai/dragent/inline.py
+    - tests/dragent/frontends/test_converters.py
+    - tests/dragent/test_inline.py
     - src/datarobot_genai/core/agents/__init__.py
     - src/datarobot_genai/core/agents/base.py
     - src/datarobot_genai/core/chat/__init__.py

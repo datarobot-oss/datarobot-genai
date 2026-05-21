@@ -138,7 +138,17 @@ class AgentKernel:
             headers=headers,
             json=data,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            # Try to print server response with more info for debugging
+            print(f"Request failed with status code {response.status_code}")
+            try:
+                print("Response JSON:", response.json())
+            except Exception:
+                print("Response Text:", response.text)
+
+            raise
         if not response.headers.get("Location"):
             raise Exception(
                 f"POST {chat_api_url} returned {response.status_code} without Location header: "

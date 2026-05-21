@@ -59,8 +59,10 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         for chunk in response:
             assert chunk.choices
             content = chunk.choices[0].delta.content
-            assert content is not None
-            full_response += content
+            tool_calls = chunk.choices[0].delta.tool_calls
+            assert content is not None or tool_calls is not None, "Expected content or tool calls"
+            if content is not None:
+                full_response += content
 
         assert len(full_response) > 0, "Expected non-empty assistant message content"
     else:
