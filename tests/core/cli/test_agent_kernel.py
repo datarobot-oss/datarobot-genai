@@ -445,6 +445,7 @@ class TestAgentKernel:
                 "Content-Type": "application/json",
             },
             json={"messages": [{"role": "user", "content": "Hello, assistant!"}]},
+            timeout=600,
         )
 
         # Verify status polling was done
@@ -495,6 +496,7 @@ class TestAgentKernel:
                 "Content-Type": "application/json",
             },
             json={"messages": [{"role": "user", "content": "Hello, assistant!"}]},
+            timeout=600,
         )
 
     @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
@@ -726,6 +728,74 @@ class TestAgentKernel:
 
         kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
         with pytest.raises(Exception, match="ERROR"):
+            kernel.custom_model("cm-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.core.cli.agent_kernel.time.sleep")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_status_error_client_timeout_raises_timeout(
+        self, mock_sleep, mock_post, mock_get
+    ):
+        """A `status=ERROR` with a 'Client timed out waiting for' platform message
+        surfaces as `requests.Timeout` so retry classifiers treat it as transient.
+        """
+        post_resp = Mock()
+        post_resp.ok = True
+        post_resp.status_code = 202
+        post_resp.headers = {"Location": "https://test.example.com/status/1"}
+        mock_post.return_value = post_resp
+
+        status_resp = Mock()
+        status_resp.ok = True
+        status_resp.status_code = 200
+        status_resp.json.return_value = {
+            "status": "ERROR",
+            "message": (
+                "Client timed out waiting for "
+                "https://app.eu.datarobot.com/api/v2/status/abc/ to resolve"
+            ),
+        }
+        mock_get.return_value = status_resp
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(requests.Timeout):
+            kernel.custom_model("cm-1", "hi")
+
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.get")
+    @patch("datarobot_genai.core.cli.agent_kernel.requests.post")
+    @patch("datarobot_genai.core.cli.agent_kernel.time.sleep")
+    @patch(
+        "os.environ",
+        {"DATAROBOT_API_TOKEN": "test-api-token"},
+    )
+    def test_custom_model_status_error_codespace_session_raises_connection_error(
+        self, mock_sleep, mock_post, mock_get
+    ):
+        """A `status=ERROR` with a 'Failed to start codespace session.' platform
+        message surfaces as `requests.ConnectionError` so retry classifiers treat
+        it as transient (typically concurrent-session limit).
+        """
+        post_resp = Mock()
+        post_resp.ok = True
+        post_resp.status_code = 202
+        post_resp.headers = {"Location": "https://test.example.com/status/1"}
+        mock_post.return_value = post_resp
+
+        status_resp = Mock()
+        status_resp.ok = True
+        status_resp.status_code = 200
+        status_resp.json.return_value = {
+            "status": "ERROR",
+            "message": "Failed to start codespace session.",
+        }
+        mock_get.return_value = status_resp
+
+        kernel = AgentKernel(api_token="test-token", base_url="https://test.example.com")
+        with pytest.raises(requests.ConnectionError):
             kernel.custom_model("cm-1", "hi")
 
     @patch("datarobot_genai.core.cli.agent_kernel.requests.get")

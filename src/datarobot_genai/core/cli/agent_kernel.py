@@ -115,7 +115,7 @@ class AgentKernel:
 
         return self._do_chat_completion(chat_api_url, user_prompt, completion_json, stream=stream)
 
-    def custom_model(self, custom_model_id: str, user_prompt: str, timeout: float = 300) -> str:
+    def custom_model(self, custom_model_id: str, user_prompt: str, timeout: float = 600) -> str:
         chat_api_url = (
             f"{self.base_url}/api/v2/genai/agents/fromCustomModel/{custom_model_id}/chat/"
         )
@@ -137,6 +137,7 @@ class AgentKernel:
             chat_api_url,
             headers=headers,
             json=data,
+            timeout=timeout,
         )
         try:
             response.raise_for_status()
@@ -163,12 +164,22 @@ class AgentKernel:
             )
             response.raise_for_status()
             if response.status_code == 303:
-                result_resp = requests.get(response.headers["Location"], headers=headers)
+                result_resp = requests.get(
+                    response.headers["Location"], headers=headers, timeout=timeout
+                )
                 result_resp.raise_for_status()
                 agent_response = result_resp.json()
                 break
             status_response = response.json()
             if status_response["status"] in ["ERROR", "ABORTED"]:
+                # Translate known server-side infra failures to typed exceptions
+                # so the af-component-agent E2E retry classifier picks them up
+                # via `isinstance` instead of message-text matching.
+                status_message = (status_response.get("message") or "").lower()
+                if "timed out" in status_message:
+                    raise requests.Timeout(str(status_response))
+                if "failed to start codespace session" in status_message:
+                    raise requests.ConnectionError(str(status_response))
                 raise Exception(str(status_response))
 
         if "errorMessage" in agent_response and agent_response["errorMessage"]:

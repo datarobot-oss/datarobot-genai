@@ -143,7 +143,7 @@ def stream_agui_events(
     """POST to an AG-UI /generate/stream endpoint and print text events."""
     run_error: str | None = None
     try:
-        with httpx.stream("POST", url, json=payload, headers=headers, timeout=300) as resp:
+        with httpx.stream("POST", url, json=payload, headers=headers, timeout=600) as resp:
             if not resp.is_success:
                 resp.read()
                 raise click.ClickException(f"HTTP {resp.status_code}: {resp.text}")
