@@ -14,8 +14,6 @@ dependencies = [
     "python-dotenv",
     "nbmake>=1.5.5",
     "pytest-xdist>=3.8.0",
-    "ipdb>=0.13.13",
-    "rpdb>=0.2.0",
 ]
 
 [dependency-groups]
@@ -41,6 +39,7 @@ dev = [
     "ipdb>=0.13.13",
     "jupyter>=1.1.1",
     "mypy>=1.19.1",
+    "rpdb>=0.2.0",
     "ruff>=0.15.2",
 ]
 
