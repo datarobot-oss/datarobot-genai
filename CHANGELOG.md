@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.69
+- `nat/datarobot_mem0_memory`: `_UserManagerShim.get_id()` now reads `Context.user_id` instead of re-decoding the `X-DataRobot-Authorization-Context` header. Identity resolution already happens upstream in `DRAgentAGUISessionManager` (via `DRAgentUserManager`, added in 0.15.60) and is stored on `ContextState.user_id`, so the shim just forwards it. Removed `_memory_user_uuid()` and the `AuthContextHeaderHandler` / `UserInfo` imports from the module. Per-user-workflow `default-user` fallback now flows through to the editor when no identity is present (previously the shim returned `None` and the editor fell back to the api-key owner).
+
 ## 0.15.68
 - `nat/datarobot_moderation_middleware`: refactored DRAgent and NAT chat moderation to use OpenAI `ChatCompletionChunk` at the dome streaming boundary only. Shared AG-UI delta extraction and NAT↔OpenAI chunk converters live in `dragent/frontends/converters.py` (`convert_dragent_event_response_to_openai_chat_completion_chunk`, `convert_nat_chat_response_chunk_to_openai_chat_completion_chunk`).
 - Prescore prompt extraction now delegates to `get_chat_prompt` from `datarobot_moderation_interface` (via `workflow_input_to_completion_dict`), matching DRUM integration behavior for multimodal content and tool context.
