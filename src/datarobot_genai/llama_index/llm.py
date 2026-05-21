@@ -53,6 +53,12 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
                 model_name=self.model,
             )
 
+    extra_body = config.pop("extra_body", None)
+    if extra_body is not None:
+        additional_kwargs = dict(config.get("additional_kwargs") or {})
+        additional_kwargs["extra_body"] = extra_body
+        config["additional_kwargs"] = additional_kwargs
+
     return DataRobotLiteLLM(**config)
 
 
