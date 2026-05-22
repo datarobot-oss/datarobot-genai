@@ -106,6 +106,7 @@ from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_openai_chat_completion_chunk,
 )
+from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 
@@ -919,14 +920,6 @@ def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     )
 
 
-def _assistant_text_joined_from_ag_ui(response: DRAgentEventResponse) -> str:
-    return "".join(
-        ev.delta
-        for ev in response.events
-        if isinstance(ev, (TextMessageContentEvent, TextMessageChunkEvent))
-    )
-
-
 def _merge_moderations_into_multi_event_response(
     incoming: DRAgentEventResponse,
     moderated_completion_response: DRAgentEventResponse,
@@ -1219,7 +1212,7 @@ class DataRobotModerationMiddleware(
         if isinstance(original_output, DRAgentEventResponse):
             if not _response_has_assistant_text_deltas(original_output):
                 return None
-            response_text = _assistant_text_joined_from_ag_ui(original_output)
+            response_text = convert_dragent_event_response_to_str(original_output)
         elif isinstance(original_output, ChatResponse):
             if not original_output.choices:
                 return None
