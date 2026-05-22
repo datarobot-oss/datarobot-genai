@@ -908,6 +908,24 @@ def _clear_prompt_replacement_flags_in_prescore_df(df: pd.DataFrame, prompt_colu
         df.loc[df.index[0], replaced_msg_col] = np.nan
 
 
+def _prompt_sent_after_prescore_replacement(
+    workflow_input: WorkflowInput,
+    *,
+    original_prompt: str,
+    prompt_eval: EvaluationResult,
+    prescore_df: pd.DataFrame,
+    prompt_column: str,
+) -> tuple[str, bool]:
+    """Apply prescore replacement to workflow input; return prompt for postscore and whether it applied."""
+    replacement = prompt_eval.replacement
+    if not (prompt_eval.replaced and replacement is not None):
+        return original_prompt, False
+    if _apply_moderated_prompt_text_to_workflow_input(workflow_input, replacement):
+        return replacement, True
+    _clear_prompt_replacement_flags_in_prescore_df(prescore_df, prompt_column)
+    return original_prompt, False
+
+
 def skip_event_type(event: Event) -> bool:
     return event.type not in {
         EventType.TEXT_MESSAGE_CONTENT,
@@ -1190,7 +1208,6 @@ class DataRobotModerationMiddleware(
         prompt_eval, prescore_latency, prescore_df = await self._moderation.evaluate_prompt_async(
             prompt
         )
-        prompt_sent = prompt
 
         if prompt_eval.blocked:
             # If all prompts in the input are blocked, means history as well as the prompt
@@ -1198,32 +1215,20 @@ class DataRobotModerationMiddleware(
             context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
             return context
 
-        replacement_requested = bool(prompt_eval.replaced and prompt_eval.replacement is not None)
-        applied_replacement = False
-        if replacement_requested:
-            # PII-style guards may redact the prompt; apply the replacement on the workflow
-            # object so ``call_next`` (LLM) receives moderated text; track the string sent.
-            moderated_prompt = prompt_eval.replacement
-            assert moderated_prompt is not None
-            applied_replacement = _apply_moderated_prompt_text_to_workflow_input(
-                workflow_input, moderated_prompt
-            )
-            if applied_replacement:
-                prompt_sent = moderated_prompt
-            else:
-                _clear_prompt_replacement_flags_in_prescore_df(prescore_df, prompt_column_name)
-
+        prompt_sent, workflow_rewritten = _prompt_sent_after_prescore_replacement(
+            workflow_input,
+            original_prompt=prompt,
+            prompt_eval=prompt_eval,
+            prescore_df=prescore_df,
+            prompt_column=prompt_column_name,
+        )
         _set_moderation_invoke_state(
             prompt=prompt_sent,
             prescore_df=prescore_df,
             latency_so_far=prescore_latency,
         )
-
-        if replacement_requested:
-            # Return context only when this middleware actually rewrote the workflow input;
-            # otherwise behave like a no-op for ``InvocationContext`` (same as no replacement).
-            return context if applied_replacement else None
-        return None
+        # Return context only when workflow input was rewritten (signals modified_args to NAT).
+        return context if workflow_rewritten else None
 
     async def post_invoke(self, context: InvocationContext) -> InvocationContext | None:
         """Post-invocation hook called after the function returns.
