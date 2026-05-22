@@ -32,24 +32,19 @@ class TestFeatureFlags:
             yield mock_func
 
     @pytest.fixture
-    def mock_datarobot_client_with_async_api_cls(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.DataRobotClientWithAsyncAPI") as mock_cls:
-            yield mock_cls
+    def mock_is_mcp_tools_gallery_support_enabled(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(
+            f"{module_under_test}.is_mcp_tools_gallery_support_enabled",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
 
     @pytest.mark.asyncio
     async def test_is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user(
         self,
         mock_get_credentials: Mock,
-        mock_datarobot_client_with_async_api_cls: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
     ) -> None:
-        mock_api_client = (
-            mock_datarobot_client_with_async_api_cls.return_value.__aenter__.return_value
-        )
-        expected_feature_flag_value = Mock()
-        mock_api_client.is_feature_flag_enabled = AsyncMock(
-            return_value=expected_feature_flag_value
-        )
-
         output = (
             await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user()
         )
@@ -57,9 +52,5 @@ class TestFeatureFlags:
         mock_credentials = mock_get_credentials.return_value
         mock_token = mock_credentials.datarobot.application_api_token
         mock_endpoint = mock_credentials.datarobot.endpoint
-        mock_datarobot_client_with_async_api_cls.assert_called_once_with(mock_endpoint)
-        mock_api_client.is_feature_flag_enabled.assert_called_once_with(
-            "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
-            mock_token,
-        )
-        assert output == expected_feature_flag_value
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with(mock_endpoint, mock_token)
+        assert output == mock_is_mcp_tools_gallery_support_enabled.return_value

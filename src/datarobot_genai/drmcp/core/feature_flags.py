@@ -13,8 +13,8 @@
 # limitations under the License.
 from async_lru import alru_cache
 
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClientWithAsyncAPI
 from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drtools.core.feature_flags import is_mcp_tools_gallery_support_enabled
 
 
 class FeatureFlag:
@@ -27,8 +27,6 @@ class FeatureFlag:
             credentials.datarobot.application_api_token
         )
 
-        async with DataRobotClientWithAsyncAPI(dr_api_endpoint) as datarobot_client:
-            return await datarobot_client.is_feature_flag_enabled(
-                "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
-                dr_api_token_of_static_account_in_mcp_container,
-            )
+        return await is_mcp_tools_gallery_support_enabled(
+            dr_api_endpoint, dr_api_token_of_static_account_in_mcp_container
+        )
