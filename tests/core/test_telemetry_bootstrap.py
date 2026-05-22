@@ -145,12 +145,30 @@ def test_unwraps_datarobot_runtime_param_payload(monkeypatch: pytest.MonkeyPatch
 
 
 def test_setup_dragent_tracing_calls_instrument(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OTEL_ENABLED", "false")  # short-circuit provider install
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_ENTITY_ID", "test-entity")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "test-token")
+
+    with (
+        patch("opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"),
+        patch("datarobot_genai.core.telemetry_agent.instrument") as instrument_call,
+    ):
+        telemetry_bootstrap.setup_dragent_tracing(service_name="svc")
+
+    instrument_call.assert_called_once_with(framework="nat")
+
+
+def test_setup_dragent_tracing_skips_instrument_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OTEL_ENABLED", "false")
 
     with patch("datarobot_genai.core.telemetry_agent.instrument") as instrument_call:
         telemetry_bootstrap.setup_dragent_tracing(service_name="svc")
 
-    instrument_call.assert_called_once_with(framework="nat")
+    instrument_call.assert_not_called()
 
 
 def test_setup_dragent_tracing_swallows_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -162,3 +180,38 @@ def test_setup_dragent_tracing_swallows_errors(monkeypatch: pytest.MonkeyPatch) 
     ):
         # Must not raise — agent execution should never be blocked by tracing.
         telemetry_bootstrap.setup_dragent_tracing(service_name="svc")
+
+
+def test_default_otlp_endpoint_strips_api_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+    monkeypatch.delenv("MLOPS_RUNTIME_PARAM_DATAROBOT_ENDPOINT", raising=False)
+
+    endpoint = telemetry_bootstrap._default_otlp_endpoint()
+    assert endpoint == "https://app.datarobot.com/otel"
+
+
+def test_default_otlp_endpoint_respects_custom_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://custom.dr.io/api/v2")
+    monkeypatch.delenv("MLOPS_RUNTIME_PARAM_DATAROBOT_ENDPOINT", raising=False)
+
+    endpoint = telemetry_bootstrap._default_otlp_endpoint()
+    assert endpoint == "https://custom.dr.io/otel"
+
+
+def test_headers_url_encode_special_chars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_ENTITY_ID", "id=with,special")
+    monkeypatch.setenv("OTEL_COLLECTOR_BASE_URL", "http://collector.test/otel")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok=en,val")
+
+    with patch("opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"):
+        telemetry_bootstrap.initialize_tracer_provider(service_name="svc")
+
+    import os
+
+    headers = os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+    assert "tok%3Den%2Cval" in headers
+    assert "id%3Dwith%2Cspecial" in headers
+    assert headers.count(",") == 1

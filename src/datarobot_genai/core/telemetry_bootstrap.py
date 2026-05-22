@@ -23,8 +23,10 @@ and is dropped. This module fills that gap.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
+from urllib.parse import quote
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
 
@@ -100,7 +102,8 @@ def _setup_otel_env_variables() -> bool:
 
     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
     os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
-        f"X-DataRobot-Api-Key={api_token},X-DataRobot-Entity-Id={entity_id}"
+        f"X-DataRobot-Api-Key={quote(api_token, safe='')}"
+        f",X-DataRobot-Entity-Id={quote(entity_id, safe='')}"
     )
     logger.info("Configured OTLP exporter: endpoint=%s, entity_id=%s", endpoint, entity_id)
     return True
@@ -129,11 +132,12 @@ def initialize_tracer_provider(*, service_name: str) -> bool:
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     provider = TracerProvider(resource=Resource.create({"datarobot.service.name": service_name}))
-    provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(provider)
+    atexit.register(provider.shutdown)
 
     _BOOTSTRAP_STATE["installed"] = True
     logger.info("Installed global TracerProvider for service %s", service_name)
@@ -150,7 +154,8 @@ def setup_dragent_tracing(*, service_name: str) -> None:
     try:
         from datarobot_genai.core.telemetry_agent import instrument
 
-        initialize_tracer_provider(service_name=service_name)
+        if not initialize_tracer_provider(service_name=service_name):
+            return
         instrument(framework="nat")
     except Exception:
         logger.exception("Failed to initialize OpenTelemetry tracing for dragent")
