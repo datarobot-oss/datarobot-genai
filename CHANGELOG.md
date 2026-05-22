@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.70
+- Added cross-model smoke tests (`e2e-tests/smoke_tests/`) for LangGraph, CrewAI, and LlamaIndex frameworks. Tests invoke each agent class directly (no HTTP server) against GPT, Sonnet, and Gemini models via a new `smoke.yml` GitHub Actions workflow (`framework × model` matrix, 9 parallel jobs). Also added a `task smoke` entry to `e2e-tests/Taskfile.yaml` for local runs.
+- `llama_index/llm.py`: Fixed `DataRobotLiteLLM` sending `tool_choice` in requests when no tools are provided. LlamaIndex's `_prepare_chat_with_tools` unconditionally emits `tool_choice: auto`, which the DR LLM gateway rejects for Azure/GPT backends. Override strips `tool_choice` from the request when `tools` is absent.
+
 ## 0.15.69
 - `nat/datarobot_mem0_memory`: `_UserManagerShim.get_id()` now reads `Context.user_id` instead of re-decoding the `X-DataRobot-Authorization-Context` header. Identity resolution already happens upstream in `DRAgentAGUISessionManager` (via `DRAgentUserManager`, added in 0.15.60) and is stored on `ContextState.user_id`, so the shim just forwards it. Removed `_memory_user_uuid()` and the `AuthContextHeaderHandler` / `UserInfo` imports from the module. Per-user-workflow `default-user` fallback now flows through to the editor when no identity is present (previously the shim returned `None` and the editor fell back to the api-key owner).
 
