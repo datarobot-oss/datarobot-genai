@@ -4,6 +4,8 @@ agent:
   - llamaindex
   - nat
   - base
+python-version:
+  - "3.12"
 model:
   - label: default
     id: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
