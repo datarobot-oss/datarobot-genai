@@ -53,6 +53,14 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
                 model_name=self.model,
             )
 
+        def _prepare_chat_with_tools(self, tools: Any, **kwargs: Any) -> Any:
+            result = super()._prepare_chat_with_tools(tools, **kwargs)
+            # Some DR LLM gateway backends (e.g. Azure/GPT) reject tool_choice
+            # when no tools are present. LlamaIndex always emits it, so strip it.
+            if not result.get("tools"):
+                result.pop("tool_choice", None)
+            return result
+
     extra_body = config.pop("extra_body", None)
     if extra_body is not None:
         additional_kwargs = dict(config.get("additional_kwargs") or {})
