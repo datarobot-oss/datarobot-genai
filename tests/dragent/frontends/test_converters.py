@@ -18,6 +18,10 @@ from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import Tool
+from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallChunkEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from langchain_core.messages import ToolMessage as LangchainToolMessage
 from nat.data_models.api_server import ChatRequest
@@ -451,3 +455,107 @@ def test_convert_dragent_event_response_to_chat_response_chunk_returns_original_
     # THEN the existing chunk is returned unchanged (events are not merged)
     assert result is existing
     assert result.choices[0].delta.content == "from-stream"
+
+
+# --- Tool-call event conversion ------------------------------------------
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_tool_call_start() -> None:
+    # GIVEN a ToolCallStartEvent
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[ToolCallStartEvent(tool_call_id="tc_1", tool_call_name="lookup")],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the chunk carries the OpenAI "first chunk" shape:
+    # id/type set, function.name set, content null, index 0.
+    assert result.choices[0].delta.content is None
+    tool_calls = result.choices[0].delta.tool_calls
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].index == 0
+    assert tool_calls[0].id == "tc_1"
+    assert tool_calls[0].type == "function"
+    assert tool_calls[0].function is not None
+    assert tool_calls[0].function.name == "lookup"
+    assert tool_calls[0].function.arguments is None
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_tool_call_args() -> None:
+    # GIVEN a ToolCallArgsEvent (subsequent chunk)
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[ToolCallArgsEvent(tool_call_id="tc_1", delta='{"q": "weat')],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the chunk only carries function.arguments with id/type null and index 0
+    tool_calls = result.choices[0].delta.tool_calls
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].index == 0
+    assert tool_calls[0].id is None
+    assert tool_calls[0].type is None
+    assert tool_calls[0].function is not None
+    assert tool_calls[0].function.name is None
+    assert tool_calls[0].function.arguments == '{"q": "weat'
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_tool_call_chunk_with_id() -> None:
+    # GIVEN a ToolCallChunkEvent that carries both id+name and arguments delta
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[
+            ToolCallChunkEvent(tool_call_id="tc_2", tool_call_name="search", delta='{"q":'),
+        ],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the chunk carries id/type and both name and arguments
+    tool_calls = result.choices[0].delta.tool_calls
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].id == "tc_2"
+    assert tool_calls[0].type == "function"
+    assert tool_calls[0].function is not None
+    assert tool_calls[0].function.name == "search"
+    assert tool_calls[0].function.arguments == '{"q":'
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_tool_call_chunk_args_only() -> None:
+    # GIVEN a subsequent ToolCallChunkEvent without an id
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[ToolCallChunkEvent(delta='"weather"}')],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the chunk has only function.arguments set; id/type are null and index is 0
+    tool_calls = result.choices[0].delta.tool_calls
+    assert tool_calls is not None and len(tool_calls) == 1
+    assert tool_calls[0].index == 0
+    assert tool_calls[0].id is None
+    assert tool_calls[0].type is None
+    assert tool_calls[0].function is not None
+    assert tool_calls[0].function.arguments == '"weather"}'
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_tool_call_end_is_skipped() -> None:
+    # GIVEN only a ToolCallEndEvent (end is conveyed via finish_reason, not delta)
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[ToolCallEndEvent(tool_call_id="tc_1")],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN no tool_calls are emitted and content reverts to the empty default
+    assert result.choices[0].delta.tool_calls is None
+    assert result.choices[0].delta.content == ""

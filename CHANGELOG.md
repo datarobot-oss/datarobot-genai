@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.68
+- `langgraph/agent.py`: handle reasoning content from reasoning models (Claude extended thinking, Qwen, OpenAI o1, GPT-OSS, DeepSeek). Two surfaces are normalized: native list-form `AIMessage.content` with `{"type": "thinking"/"reasoning", ...}` blocks (Anthropic/Bedrock SDK pass-through) and OpenAI-compatible flat shape where reasoning lives in `additional_kwargs["reasoning_content"]` (DataRobot LLM gateway and other OpenAI-style proxies). Thinking/reasoning blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s before the text lifecycle; list content is flattened to text before ragas conversion so evaluation traces stay valid (thinking is dropped from ragas; AG-UI stream still carries it). New helpers: `_iter_content_blocks`, `_iter_message_blocks`, `_flatten_to_text`.
+
+## 0.15.67
+- Bump `datarobot-moderations` to 11.2.30 to use the async interface with `DataRobotModerationMiddleware`
+
 ## 0.15.66
-- `langgraph/agent.py`: also harvest reasoning from `additional_kwargs["reasoning_content"]` (OpenAI-compatible flat shape produced by the DataRobot LLM gateway and other OpenAI-style proxies). New `_iter_message_blocks(message)` helper yields reasoning from `additional_kwargs` first, then delegates to `_iter_content_blocks(message.content)` for the native list-form shape. Streaming emitter now enters the branch for pure-reasoning chunks (empty content with `reasoning_content` delta). `_iter_content_blocks` and `_flatten_to_text` are unchanged — ragas evaluation traces still drop thinking.
+- Added `datarobot_genai.dragent.execute_dragent_inline` (plus an async variant) — an in-process runner so `datarobot-user-models`'s `run_agent.py` can route between DRUM and dragent with a single env-var-gated branch. Workflow YAML is taken from the `config_file` argument when supplied, otherwise from `<custom_model_dir>/workflow.yaml`. Always returns a single aggregated OpenAI `ChatCompletion`; the `stream` flag on the request is ignored because the agentic playground only renders the final assistant message.
 
 ## 0.15.65
-- `langgraph/agent.py`: handle list-form `AIMessage.content` from reasoning models. Thinking blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s; list content is flattened to text before ragas conversion.
+- Fix `extra_body` passthrough for `workflow.yaml` LLM configs (e.g. `mock_response`). PR #274 switched from `ChatOpenAI` to `ChatLiteLLM`/`LiteLLM` which silently drop unknown kwargs; `extra_body` is now routed through `model_kwargs` (langgraph) and `additional_kwargs` (llamaindex) so it reaches the underlying DataRobot LLM gateway API call.
 
 ## 0.15.64
 - `dragent`: agent card XAA extension params now use camelCase (`tokenExchange`, `tokenRequest`, `tokenEndpointAuthMethod`, etc.) for consistency with the rest of the agentCard API response. The parser accepts both camelCase and snake_case for backward compatibility with previously generated cards.

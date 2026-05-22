@@ -1098,3 +1098,40 @@ async def test_stream_mixed_blocks_in_one_chunk(run_agent_input):
     assert types.index(EventType.REASONING_MESSAGE_CHUNK) < types.index(
         EventType.TEXT_MESSAGE_START
     )
+
+
+@pytest.mark.asyncio
+async def test_stream_reasoning_content_kwarg_emits_reasoning_chunks(run_agent_input):
+    # Case B: OpenAI-compatible flat shape produced by the DR LLM gateway.
+    # Pure-reasoning chunks arrive with empty content and reasoning_content in
+    # additional_kwargs. The streaming guard must enter the branch for these.
+    agent = _agent_yielding(
+        [
+            AIMessageChunk(
+                content="",
+                additional_kwargs={"reasoning_content": "step 1 "},
+                id="m1",
+            ),
+            AIMessageChunk(
+                content="",
+                additional_kwargs={"reasoning_content": "step 2"},
+                id="m1",
+            ),
+            AIMessageChunk(content="answer", id="m1"),
+        ]
+    )
+
+    events = await _collect_events(agent, run_agent_input)
+    types = [e.type for e in events]
+
+    assert types.count(EventType.REASONING_MESSAGE_CHUNK) == 2
+    reasoning_deltas = [e.delta for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK]
+    assert reasoning_deltas == ["step 1 ", "step 2"]
+
+    # Reasoning is emitted before the text lifecycle opens.
+    assert types.index(EventType.REASONING_MESSAGE_CHUNK) < types.index(
+        EventType.TEXT_MESSAGE_START
+    )
+
+    text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
+    assert text_deltas == ["answer"]

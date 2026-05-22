@@ -36,6 +36,12 @@ def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     else:
         config.pop("stream_options", None)
 
+    extra_body = config.pop("extra_body", None)
+    if extra_body is not None:
+        model_kwargs = config.get("model_kwargs") or {}
+        model_kwargs["extra_body"] = extra_body
+        config["model_kwargs"] = model_kwargs
+
     return ChatLiteLLM(**config)
 
 
