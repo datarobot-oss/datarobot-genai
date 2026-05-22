@@ -898,7 +898,7 @@ def _clear_prompt_replacement_flags_in_prescore_df(df: pd.DataFrame, prompt_colu
     """Clear replacement columns when moderated text could not be written to the workflow object.
 
     Keeps ``state.prescore_df`` / streaming ``ModerationIterator`` metadata aligned with the
-    prompt text actually sent to the LLM (original row in ``input_df``).
+    prompt text actually sent to the LLM (``state.prompt``).
     """
     replaced_col = f"replaced_{prompt_column}"
     if replaced_col in df.columns:
@@ -1076,7 +1076,7 @@ async def _moderated_dragent_stream(
 class _ModerationInvokeState:
     """Per-async-task prescore payload for post_invoke / streaming (middleware may be shared)."""
 
-    input_df: pd.DataFrame
+    prompt: str
     prescore_df: pd.DataFrame
     latency_so_far: float
     ctx_token: contextvars.Token[_ModerationInvokeState | None] | None = None
@@ -1089,12 +1089,12 @@ _moderation_invoke_state_ctx: contextvars.ContextVar[_ModerationInvokeState | No
 
 def _set_moderation_invoke_state(
     *,
-    input_df: pd.DataFrame,
+    prompt: str,
     prescore_df: pd.DataFrame,
     latency_so_far: float,
 ) -> None:
     state = _ModerationInvokeState(
-        input_df=input_df,
+        prompt=prompt,
         prescore_df=prescore_df,
         latency_so_far=latency_so_far,
     )
@@ -1190,7 +1190,7 @@ class DataRobotModerationMiddleware(
         prompt_eval, prescore_latency, prescore_df = await self._moderation.evaluate_prompt_async(
             prompt
         )
-        data = pd.DataFrame({prompt_column_name: [prompt]})
+        prompt_sent = prompt
 
         if prompt_eval.blocked:
             # If all prompts in the input are blocked, means history as well as the prompt
@@ -1202,19 +1202,19 @@ class DataRobotModerationMiddleware(
         applied_replacement = False
         if replacement_requested:
             # PII-style guards may redact the prompt; apply the replacement on the workflow
-            # object so ``call_next`` (LLM) receives moderated text; align postscore ``data``.
+            # object so ``call_next`` (LLM) receives moderated text; track the string sent.
             moderated_prompt = prompt_eval.replacement
             assert moderated_prompt is not None
             applied_replacement = _apply_moderated_prompt_text_to_workflow_input(
                 workflow_input, moderated_prompt
             )
             if applied_replacement:
-                data.at[0, prompt_column_name] = moderated_prompt
+                prompt_sent = moderated_prompt
             else:
                 _clear_prompt_replacement_flags_in_prescore_df(prescore_df, prompt_column_name)
 
         _set_moderation_invoke_state(
-            input_df=data,
+            prompt=prompt_sent,
             prescore_df=prescore_df,
             latency_so_far=prescore_latency,
         )
@@ -1263,7 +1263,7 @@ class DataRobotModerationMiddleware(
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
         # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        prompt_for_eval = state.input_df.loc[0, prompt_column_name]
+        prompt_for_eval = state.prompt
 
         response_eval, _, _postscore_df = await self._moderation.evaluate_response_async(
             _text_for_moderation_eval(response_text),
@@ -1376,10 +1376,7 @@ class DataRobotModerationMiddleware(
             moderation = self._moderation
             assert moderation is not None
 
-            prompt_column_name = moderation._pipeline.get_input_column(GuardStage.PROMPT)
-            prompt_for_stream = _text_for_moderation_eval(
-                stream_state.input_df.loc[0, prompt_column_name]
-            )
+            prompt_for_stream = _text_for_moderation_eval(stream_state.prompt)
             upstream = call_next(*ctx.modified_args, **ctx.modified_kwargs)
             stream_tool_index_map: dict[int, str] = {}
 

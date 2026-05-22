@@ -507,7 +507,7 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            assert st.input_df.loc[0, PROMPT_COL] == "[redacted]"
+            assert st.prompt == "[redacted]"
         finally:
             _clear_moderation_invoke_state_if_set()
 
@@ -549,7 +549,7 @@ async def test_pre_invoke_replaces_chat_request_or_message_input_message(
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            assert st.input_df.loc[0, PROMPT_COL] == "[redacted]"
+            assert st.prompt == "[redacted]"
         finally:
             _clear_moderation_invoke_state_if_set()
 
@@ -589,7 +589,7 @@ async def test_pre_invoke_replacement_apply_failure_clears_prescore_replaced_fla
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            assert st.input_df.loc[0, PROMPT_COL] == "secret"
+            assert st.prompt == "secret"
             assert bool(st.prescore_df.loc[0, f"replaced_{PROMPT_COL}"]) is False
         finally:
             _clear_moderation_invoke_state_if_set()
@@ -679,7 +679,7 @@ async def test_post_invoke_skips_dr_agent_when_joined_text_blank(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -733,7 +733,7 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -773,7 +773,7 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -813,7 +813,7 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -848,7 +848,7 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -884,7 +884,7 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
