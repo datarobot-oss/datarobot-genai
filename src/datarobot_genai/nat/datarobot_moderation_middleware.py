@@ -149,29 +149,6 @@ def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> Moderatio
     return ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
 
 
-def _text_for_moderation_eval(value: Any) -> str:
-    if value is None:
-        return ""
-    try:
-        if pd.isna(value):
-            return ""
-    except TypeError:
-        pass
-    return str(value)
-
-
-def _optional_prompt_for_moderation_eval(value: Any) -> str | None:
-    if value is None:
-        return None
-    try:
-        if pd.isna(value):
-            return None
-    except TypeError:
-        pass
-    s = str(value)
-    return s or None
-
-
 def _tool_calls_from_ag_ui_events(
     events: list[Any],
 ) -> list[ChatCompletionMessageToolCall] | None:
@@ -1019,9 +996,7 @@ async def _moderated_dragent_stream(
     upstream: AsyncIterator[DRAgentEventResponse],
     *,
     moderation: ModerationPipeline,
-    prompt_for_stream: str,
     stream_state: _ModerationInvokeState,
-    stream_tool_index_map: dict[int, str],
 ) -> AsyncIterator[tuple[bool, DRAgentEventResponse]]:
     """Yield ``(is_moderated_text, response)`` with AG-UI-safe ordering around moderated deltas.
 
@@ -1029,6 +1004,7 @@ async def _moderated_dragent_stream(
     moderated via ``stream_response_async``; ``TEXT_MESSAGE_START`` / ``END`` and other events read
     during peek-ahead are buffered and emitted after each moderated chunk.
     """
+    stream_tool_index_map: dict[int, str] = {}
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
@@ -1067,7 +1043,7 @@ async def _moderated_dragent_stream(
 
     async for moderated in moderation.stream_response_async(
         completion_chunks(first_text),
-        prompt=prompt_for_stream,
+        prompt=stream_state.prompt,
         prescore_df=stream_state.prescore_df,
         prescore_latency=stream_state.latency_so_far,
     ):
@@ -1268,11 +1244,9 @@ class DataRobotModerationMiddleware(
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
         # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        prompt_for_eval = state.prompt
-
         response_eval, _, _postscore_df = await self._moderation.evaluate_response_async(
-            _text_for_moderation_eval(response_text),
-            prompt=_optional_prompt_for_moderation_eval(prompt_for_eval),
+            response_text,
+            prompt=state.prompt,
         )
 
         prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
@@ -1331,10 +1305,7 @@ class DataRobotModerationMiddleware(
         """Execute middleware hooks around DRAgent streaming (``DRAgentEventResponse`` chunks).
 
         Pre-invoke runs once before streaming starts.
-        Post-invoke runs per-chunk as they stream through.
-
-        Override for custom streaming behavior (e.g., buffering,
-        aggregation, chunk filtering).
+        Moderation is applied per-chunk as they stream through.
 
         Note: Framework checks ``enabled`` before calling this method.
         You do NOT need to check ``enabled`` yourself.
@@ -1381,16 +1352,10 @@ class DataRobotModerationMiddleware(
             moderation = self._moderation
             assert moderation is not None
 
-            prompt_for_stream = _text_for_moderation_eval(stream_state.prompt)
-            upstream = call_next(*ctx.modified_args, **ctx.modified_kwargs)
-            stream_tool_index_map: dict[int, str] = {}
-
             async for is_moderated, response in _moderated_dragent_stream(
-                upstream,
+                call_next(*ctx.modified_args, **ctx.modified_kwargs),
                 moderation=moderation,
-                prompt_for_stream=prompt_for_stream,
                 stream_state=stream_state,
-                stream_tool_index_map=stream_tool_index_map,
             ):
                 if is_moderated:
                     ctx.output = response
