@@ -16,6 +16,8 @@ import datetime
 import logging
 import uuid
 from typing import Any
+from typing import Literal
+from typing import cast
 
 from ag_ui.core import CustomEvent
 from ag_ui.core import RunAgentInput
@@ -33,6 +35,14 @@ from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 from nat.data_models.api_server import Message
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
+from openai.types.chat.chat_completion_chunk import Choice as OpenAIChunkChoice
+from openai.types.chat.chat_completion_chunk import ChoiceDelta as OpenAIChoiceDelta
+from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall as OpenAIChoiceDeltaToolCall
+from openai.types.chat.chat_completion_chunk import (
+    ChoiceDeltaToolCallFunction as OpenAIChoiceDeltaToolCallFunction,
+)
+from openai.types.completion_usage import CompletionUsage
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
@@ -85,20 +95,16 @@ def convert_dragent_run_agent_input_to_chat_request_or_message(
     return ChatRequestOrMessage.model_validate(chat_request.model_dump())
 
 
-def convert_dragent_event_response_to_chat_response_chunk(
-    response: DRAgentEventResponse,
-) -> ChatResponseChunk:
-    if response.original_chunk is not None:
-        return response.original_chunk
-
+def _dragent_streaming_delta_from_events(
+    events: list[Any],
+) -> tuple[str | None, list[ChoiceDeltaToolCall]]:
+    """Extract streaming delta fields from AG-UI events (shared NAT / OpenAI chunk builders)."""
     content_parts: list[str] = []
     tool_calls: list[ChoiceDeltaToolCall] = []
-
-    for event in response.events:
+    for event in events:
         if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
             content_parts.append(event.delta)
             continue
-
         # AG-UI tool-call events -> OpenAI streaming tool_calls deltas.
         # OpenAI's streaming format expects the *first* chunk of a tool call
         # to carry ``id``, ``type`` and ``function.name``; subsequent
@@ -141,17 +147,21 @@ def convert_dragent_event_response_to_chat_response_chunk(
         # tool-call completion is signalled by ``finish_reason`` at the
         # outer choice level, and tool results are sent as separate
         # ``role="tool"`` messages rather than streaming deltas.
-
-    # Preserve the existing empty-string semantics for the "no events"
-    # case while matching OpenAI's streaming convention of ``null`` content
-    # whenever a chunk carries only tool_calls.
     if content_parts:
         content: str | None = "".join(content_parts)
     elif tool_calls:
         content = None
     else:
         content = ""
+    return content, tool_calls
 
+
+def convert_dragent_event_response_to_chat_response_chunk(
+    response: DRAgentEventResponse,
+) -> ChatResponseChunk:
+    if response.original_chunk is not None:
+        return response.original_chunk
+    content, tool_calls = _dragent_streaming_delta_from_events(response.events)
     return ChatResponseChunk(
         id=uuid.uuid4().hex,
         choices=[
@@ -161,6 +171,102 @@ def convert_dragent_event_response_to_chat_response_chunk(
             )
         ],
         created=datetime.datetime.now(datetime.UTC),
+    )
+
+
+_FINISH_REASON = Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
+
+
+def _nat_choice_delta_tool_calls_to_openai(
+    nat_tool_calls: list[ChoiceDeltaToolCall] | None,
+) -> list[OpenAIChoiceDeltaToolCall] | None:
+    if not nat_tool_calls:
+        return None
+    out: list[OpenAIChoiceDeltaToolCall] = []
+    for tc in nat_tool_calls:
+        fn = tc.function
+        out.append(
+            OpenAIChoiceDeltaToolCall(
+                index=tc.index,
+                id=tc.id,
+                type=tc.type or "function",
+                function=(
+                    OpenAIChoiceDeltaToolCallFunction(
+                        name=(fn.name if fn else None) or "",
+                        arguments=(fn.arguments if fn else None) or "",
+                    )
+                    if fn is not None
+                    else None
+                ),
+            )
+        )
+    return out or None
+
+
+def convert_nat_chat_response_chunk_to_openai_chat_completion_chunk(
+    chunk: ChatResponseChunk,
+) -> ChatCompletionChunk:
+    """Map NAT streaming chunk to OpenAI ``chat.completion.chunk``."""
+    if not chunk.choices:
+        raise ValueError("ChatResponseChunk has no choices")
+    c0 = chunk.choices[0]
+    delta = c0.delta
+    openai_delta = OpenAIChoiceDelta(
+        content=delta.content,
+        role=delta.role.value if delta.role is not None else None,
+        tool_calls=_nat_choice_delta_tool_calls_to_openai(delta.tool_calls),
+    )
+    finish = cast(_FINISH_REASON | None, c0.finish_reason)
+    choice = OpenAIChunkChoice(
+        index=0,
+        delta=openai_delta,
+        finish_reason=finish,
+    )
+    created = chunk.created
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=datetime.UTC)
+    created_ts = int(created.timestamp())
+    usage_openai: CompletionUsage | None = None
+    if chunk.usage is not None:
+        u = chunk.usage
+        usage_openai = CompletionUsage(
+            prompt_tokens=u.prompt_tokens,
+            completion_tokens=u.completion_tokens,
+            total_tokens=u.total_tokens,
+        )
+    return ChatCompletionChunk(
+        id=chunk.id,
+        choices=[choice],
+        created=created_ts,
+        model=chunk.model,
+        object="chat.completion.chunk",
+        usage=usage_openai,
+    )
+
+
+def convert_dragent_event_response_to_openai_chat_completion_chunk(
+    response: DRAgentEventResponse,
+) -> ChatCompletionChunk:
+    """Convert one DRAgent stream chunk to an OpenAI chunk (dome / moderation streaming)."""
+    if response.original_chunk is not None:
+        return convert_nat_chat_response_chunk_to_openai_chat_completion_chunk(
+            response.original_chunk
+        )
+    content, tool_calls = _dragent_streaming_delta_from_events(response.events)
+    created_ts = int(datetime.datetime.now(datetime.UTC).timestamp())
+    return ChatCompletionChunk(
+        id=uuid.uuid4().hex,
+        choices=[
+            OpenAIChunkChoice(
+                index=0,
+                delta=OpenAIChoiceDelta(content=content, tool_calls=tool_calls or None),
+                finish_reason=None,
+            )
+        ],
+        created=created_ts,
+        model=response.model or "unknown-model",
+        object="chat.completion.chunk",
+        usage=None,
     )
 
 

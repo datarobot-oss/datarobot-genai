@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.68
+- `nat/datarobot_moderation_middleware`: refactored DRAgent and NAT chat moderation to use OpenAI `ChatCompletionChunk` at the dome streaming boundary only. Shared AG-UI delta extraction and NAT↔OpenAI chunk converters live in `dragent/frontends/converters.py` (`convert_dragent_event_response_to_openai_chat_completion_chunk`, `convert_nat_chat_response_chunk_to_openai_chat_completion_chunk`).
+- Prescore prompt extraction now delegates to `get_chat_prompt` from `datarobot_moderation_interface` (via `workflow_input_to_completion_dict`), matching DRUM integration behavior for multimodal content and tool context.
+- Per-invoke moderation state stores the moderated prompt string instead of a prescore `DataFrame`; postscore reads `state.prompt`. Invoke context is not set when prescore blocks the prompt (post_invoke and streaming are skipped).
+- `pre_invoke` fails closed with `TypeError` when the workflow argument is not `RunAgentInput`, `ChatRequest`, or `ChatRequestOrMessage`.
+
 ## 0.15.67
 - Bump `datarobot-moderations` to 11.2.30 to use the async interface with `DataRobotModerationMiddleware`
 
