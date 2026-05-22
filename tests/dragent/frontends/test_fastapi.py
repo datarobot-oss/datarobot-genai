@@ -140,6 +140,16 @@ def patch_super_add_routes():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_telemetry_bootstrap_state():
+    """Keep the global bootstrap idempotency flag from leaking between tests."""
+    from datarobot_genai.core import telemetry_bootstrap
+
+    telemetry_bootstrap._reset_for_tests()
+    yield
+    telemetry_bootstrap._reset_for_tests()
+
+
 class TestDRAgentFastApiFrontEndPluginWorker:
     @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
     def test_health_routes_return_healthy_status(self, app_with_health, path):
@@ -147,6 +157,32 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             response = client.get(path)
             assert response.status_code == 200, f"Expected 200 at {path}"
             assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
+
+    def test_build_app_invokes_tracer_bootstrap_and_instruments_app(self, worker):
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        instrument_mock = MagicMock()
+        fake_module = MagicMock()
+        fake_module.FastAPIInstrumentor = instrument_mock
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+            patch(
+                "datarobot_genai.core.telemetry_bootstrap.setup_dragent_tracing"
+            ) as setup_tracing,
+            patch.dict(
+                "sys.modules",
+                {"opentelemetry.instrumentation.fastapi": fake_module},
+            ),
+        ):
+            app = worker.build_app()
+
+        setup_tracing.assert_called_once()
+        assert "service_name" in setup_tracing.call_args.kwargs
+        instrument_mock.instrument_app.assert_called_once_with(app)
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)

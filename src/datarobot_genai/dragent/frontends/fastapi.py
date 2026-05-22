@@ -170,7 +170,12 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
     def build_app(self) -> FastAPI:
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
+        # Bootstrap tracing before constructing the app so NAT's own workflow
+        # build/run spans flow through the exporter.
+        self._init_tracing()
+
         app = super().build_app()
+        self._instrument_fastapi_app(app)
 
         # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
         # NAT 1.6 no longer calls self.add_health_route() so we register here.
@@ -193,6 +198,31 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         setup_logging()
         return app
+
+    def _init_tracing(self) -> None:
+        """Install a TracerProvider + OTLP exporter and attach instrumentors."""
+        from datarobot_genai.core.telemetry_bootstrap import setup_dragent_tracing
+
+        workflow = getattr(self._config, "workflow", None)
+        workflow_type = getattr(workflow, "type", None) if workflow is not None else None
+        setup_dragent_tracing(service_name=workflow_type or "dragent")
+
+    @staticmethod
+    def _instrument_fastapi_app(app: FastAPI) -> None:
+        """Attach OpenTelemetry FastAPI middleware to a specific app instance.
+
+        Per-app instrumentation is more reliable than the global
+        ``FastAPIInstrumentor().instrument()`` hook, which depends on import
+        order relative to ``FastAPI()`` construction. ``opentelemetry-
+        instrumentation-fastapi`` ships only with the ``dragent`` extra, so
+        the import is deferred to keep module loading dep-free in dev.
+        """
+        try:
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+            FastAPIInstrumentor.instrument_app(app)
+        except Exception:
+            logger.exception("Failed to instrument FastAPI app for OpenTelemetry")
 
     def _register_health_routes(self, app: FastAPI) -> None:
         """Register DataRobot health check endpoints."""

@@ -103,8 +103,14 @@ async def execute_dragent_inline_async(
     from datarobot_genai.core.chat.completions import (
         convert_chat_completion_params_to_run_agent_input,
     )
+    from datarobot_genai.core.telemetry_bootstrap import setup_dragent_tracing
     from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
     from datarobot_genai.nat.helpers import load_workflow
+
+    # Wire tracing before NAT loads the workflow so spans from workflow build
+    # and execution reach the OTLP exporter. Idempotent and safely shares
+    # state with the FastAPI server path.
+    setup_dragent_tracing(service_name="dragent-inline")
 
     workflow_path = _resolve_config_path(Path(custom_model_dir), config_file)
     logger.info("Running dragent workflow from %s", workflow_path)
