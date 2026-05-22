@@ -997,8 +997,8 @@ async def _moderated_dragent_stream(
     *,
     moderation: ModerationPipeline,
     stream_state: _ModerationInvokeState,
-) -> AsyncIterator[tuple[bool, DRAgentEventResponse]]:
-    """Yield ``(is_moderated_text, response)`` with AG-UI-safe ordering around moderated deltas.
+) -> AsyncIterator[DRAgentEventResponse]:
+    """Yield DRAgent stream chunks with AG-UI-safe ordering around moderated text deltas.
 
     Non-text upstream events pass through immediately until the first text delta. Text deltas are
     moderated via ``stream_response_async``; ``TEXT_MESSAGE_START`` / ``END`` and other events read
@@ -1037,7 +1037,7 @@ async def _moderated_dragent_stream(
         if response.events and not skip_event_type(response.events[0]):
             first_text = response
             break
-        yield False, response
+        yield response
     if first_text is None:
         return
 
@@ -1048,22 +1048,19 @@ async def _moderated_dragent_stream(
         prescore_latency=stream_state.latency_so_far,
     ):
         source_response = moderation_source_responses.pop(0)
-        yield (
-            True,
-            dome_chunk_to_dragent_event_response(
-                moderated,
-                source_ag_ui_events=source_response.events,
-                stream_tool_index_map=stream_tool_index_map,
-            ),
+        yield dome_chunk_to_dragent_event_response(
+            moderated,
+            source_ag_ui_events=source_response.events,
+            stream_tool_index_map=stream_tool_index_map,
         )
         for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
-            yield False, item
+            yield item
         finish = moderated.choices[0].finish_reason if moderated.choices else None
         if finish == "content_filter":
             return
 
     for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
-        yield False, item
+        yield item
 
 
 @dataclass
@@ -1317,7 +1314,7 @@ class DataRobotModerationMiddleware(
             kwargs: Keyword arguments for the function.
 
         Yields:
-            Stream chunks (potentially transformed by post_invoke).
+            Stream chunks with per-delta postscore via ``ModerationPipeline.stream_response_async``.
 
         When prescore blocks the prompt, ``pre_invoke`` sets ``ctx.output``; we yield that
         response once and return without calling ``call_next``, so the LLM stream is never
@@ -1352,13 +1349,11 @@ class DataRobotModerationMiddleware(
             moderation = self._moderation
             assert moderation is not None
 
-            async for is_moderated, response in _moderated_dragent_stream(
+            async for response in _moderated_dragent_stream(
                 call_next(*ctx.modified_args, **ctx.modified_kwargs),
                 moderation=moderation,
                 stream_state=stream_state,
             ):
-                if is_moderated:
-                    ctx.output = response
                 yield response
         finally:
             _clear_moderation_invoke_state_if_set()
