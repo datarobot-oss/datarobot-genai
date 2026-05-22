@@ -1194,12 +1194,7 @@ class DataRobotModerationMiddleware(
 
         if prompt_eval.blocked:
             # If all prompts in the input are blocked, means history as well as the prompt
-            # are not worthy to be sent to LLM
-            _set_moderation_invoke_state(
-                input_df=data,
-                prescore_df=prescore_df,
-                latency_so_far=prescore_latency,
-            )
+            # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never run.
             context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
             return context
 

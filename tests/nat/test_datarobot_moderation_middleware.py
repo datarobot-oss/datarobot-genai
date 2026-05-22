@@ -439,6 +439,7 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
+            assert _moderation_invoke_state_ctx.get() is None
         finally:
             _clear_moderation_invoke_state_if_set()
 
