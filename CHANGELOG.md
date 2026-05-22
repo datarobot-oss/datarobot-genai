@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.70
+## 0.15.71
 - Expanded the `e2e-dragent-llmgw` job in `.github/workflows/e2e.yml` to cover multiple model providers. Matrix is now loaded from a new `e2e-tests/llmgw_matrix.yaml` file (5 agents × 4 models). The `default` model (bedrock) runs the full `dragent_tests` suite; other models (gpt, sonnet, gemini) run `test_streaming.py` only as a fast cross-model smoke check. This pre-empts model-specific framework bugs (like the LlamaIndex `tool_choice` issue below) before they reach downstream consumers.
 - Tightened the planner/writer system prompts in `e2e-tests/dragent/{langgraph,crewai,llamaindex,nat}/` to reduce input tokens, output verbosity, and TTFT during e2e runs. Dropped the `make_system_prompt` boilerplate wrapper from test agents and shortened outputs to "1 bullet" + "1 short sentence". Test contracts (tool calls, HITL interrupt, multi-agent handoff) are preserved.
 - `llama_index/llm.py`: Fixed `DataRobotLiteLLM` sending `tool_choice` and `parallel_tool_calls` in requests when no tools are provided. LlamaIndex's `_prepare_chat_with_tools` unconditionally emits both fields, which the DR LLM gateway rejects for Azure/GPT backends. Override strips both from the request when `tools` is absent.
+
+## 0.15.70
+- Added `prompt.py` for prompt templates integration
 
 ## 0.15.69
 - `nat/datarobot_mem0_memory`: `_UserManagerShim.get_id()` now reads `Context.user_id` instead of re-decoding the `X-DataRobot-Authorization-Context` header. Identity resolution already happens upstream in `DRAgentAGUISessionManager` (via `DRAgentUserManager`, added in 0.15.60) and is stored on `ContextState.user_id`, so the shim just forwards it. Removed `_memory_user_uuid()` and the `AuthContextHeaderHandler` / `UserInfo` imports from the module. Per-user-workflow `default-user` fallback now flows through to the editor when no identity is present (previously the shim returned `None` and the editor fell back to the api-key owner).
