@@ -38,6 +38,8 @@ jobs:
             id: "datarobot/anthropic/claude-sonnet-4-5-20250929"
           - label: gemini
             id: "datarobot/vertex_ai/gemini-3.1-pro-preview"
+          - label: bedrock
+            id: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
     permissions:
       contents: read
     env:
