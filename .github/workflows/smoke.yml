@@ -9,6 +9,7 @@ on:
       - "src/datarobot_genai/crewai/**"
       - "src/datarobot_genai/llama_index/**"
       - "src/datarobot_genai/core/**"
+      - "e2e-tests/smoke_matrix.yaml"
       - ".github/workflows/smoke.yml"
   pull_request:
     paths:
@@ -16,30 +17,35 @@ on:
       - "src/datarobot_genai/crewai/**"
       - "src/datarobot_genai/llama_index/**"
       - "src/datarobot_genai/core/**"
+      - "e2e-tests/smoke_matrix.yaml"
       - ".github/workflows/smoke.yml"
 
-env:
-  TASK_VERSION: 3.48.0
-
 jobs:
+  load-matrix:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          matrix=$(python3 -c "
+          import yaml, json
+          with open('e2e-tests/smoke_matrix.yaml') as f:
+              data = yaml.safe_load(f)
+          print(json.dumps(data))
+          ")
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
   smoke:
     name: "Smoke / ${{ matrix.framework }} / ${{ matrix.model.label }}"
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: load-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        framework: [langgraph, crewai, llamaindex]
-        model:
-          - label: gpt
-            id: "datarobot/azure/gpt-5-1-2025-11-13"
-          - label: sonnet
-            id: "datarobot/anthropic/claude-sonnet-4-5-20250929"
-          - label: gemini
-            id: "datarobot/vertex_ai/gemini-3.1-pro-preview"
-          - label: bedrock
-            id: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+      matrix: ${{ fromJSON(needs.load-matrix.outputs.matrix) }}
     permissions:
       contents: read
     env:

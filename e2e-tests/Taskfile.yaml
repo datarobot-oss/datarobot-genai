@@ -91,6 +91,38 @@ tasks:
       - uv sync --group dragent-{{.FRAMEWORK}}
       - uv run pytest smoke_tests/test_smoke_{{.FRAMEWORK}}.py -vv -s --timeout=60
 
+  smoke-all:
+    desc: "🔥 Run all smoke tests (all framework × model combinations from smoke_matrix.yaml)"
+    cmds:
+      - uv sync --group dragent-langgraph --group dragent-crewai --group dragent-llamaindex
+      - |
+        uv run python - << 'EOF'
+        import os, subprocess, sys, yaml
+
+        with open("smoke_matrix.yaml") as f:
+            matrix = yaml.safe_load(f)
+
+        failed = []
+        for fw in matrix["framework"]:
+            for model in matrix["model"]:
+                label, model_id = model["label"], model["id"]
+                print(f"\n🔥  {fw} / {label}  ({model_id})")
+                env = {**os.environ, "LLM_DEFAULT_MODEL": model_id, "LLM": "llmgw"}
+                result = subprocess.run(
+                    ["uv", "run", "pytest", f"smoke_tests/test_smoke_{fw}.py",
+                     "-v", "-s", "--timeout=60", "--tb=short"],
+                    env=env,
+                )
+                if result.returncode != 0:
+                    failed.append(f"{fw}/{label}")
+
+        print()
+        if failed:
+            print(f"❌  Failed: {', '.join(failed)}")
+            sys.exit(1)
+        print("✅  All smoke tests passed!")
+        EOF
+
   run-dragent:
     desc: "🔨 Run dragent"
     requires:
