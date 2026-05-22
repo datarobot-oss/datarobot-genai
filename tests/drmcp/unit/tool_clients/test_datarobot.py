@@ -230,6 +230,7 @@ class TestDataRobotClientWithAsyncAPI:
         mock_get_async_https_retry_client.assert_called_once_with(mock_session)
         assert api_client._retry_client == mock_get_async_https_retry_client.return_value
 
+    @pytest.mark.asyncio
     @pytest.mark.usefixtures(
         "mock_get_async_https_retry_client",
         "mock_get_async_https_session",
