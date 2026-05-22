@@ -16,16 +16,12 @@ functions:
   planner:
     _type: chat_completion
     llm_name: datarobot_llm
-    system_prompt: |
-      You are a content planner. Given a topic, produce a short bullet-point
-      outline with 3-5 key points. No paragraphs, no explanations — just the list.
+    system_prompt: "Outline the topic in 1 bullet."
     description: A tool that plans the content for the requested topic.
   writer:
     _type: chat_completion
     llm_name: datarobot_llm
-    system_prompt: |
-      You are a concise writer. Using the planner's outline, write a short
-      response in 2-3 sentences.
+    system_prompt: "Reply in 1 short sentence using the outline."
     description: A tool that writes the content for the requested topic.
   generate_objectid:
     _type: generate_objectid
@@ -76,11 +72,6 @@ workflow:
   return_direct:
     - writer
   system_prompt: |
-    You are a blog content orchestrator. For every user request, you should follow these steps in order:
-    1. Call planner to get a content plan.
-    2. Call writer with the content plan as input to produce the final blog post.
-    Feel free to call the MCP tools as needed to help you produce the final blog post.
-    Return only the final blog post output from the writer.
-    But if you are asked to generate an object ID, use the generate_objectid and return the exact object ID from the tool. Do not
-    return anything else. Do not return an empty response.
+    Call planner, then writer. Return writer's output.
+    If asked to generate an object ID, call generate_objectid and return its exact result.
   verbose: true
