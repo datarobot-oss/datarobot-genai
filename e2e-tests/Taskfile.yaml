@@ -77,6 +77,20 @@ tasks:
       - echo "🧪 Running examples"
       - uv run pytest --nbmake "examples" -vv -s
 
+  smoke:
+    desc: "🔥 Run smoke tests for a specific framework against LLM_DEFAULT_MODEL"
+    requires:
+      vars:
+      - name: FRAMEWORK
+        enum:
+          - langgraph
+          - crewai
+          - llamaindex
+    cmds:
+      - echo "🔥 Running smoke test for {{.FRAMEWORK}} with model $LLM_DEFAULT_MODEL"
+      - uv sync --group dragent-{{.FRAMEWORK}}
+      - uv run pytest smoke_tests/test_smoke_{{.FRAMEWORK}}.py -vv -s --timeout=60
+
   run-dragent:
     desc: "🔨 Run dragent"
     requires:
