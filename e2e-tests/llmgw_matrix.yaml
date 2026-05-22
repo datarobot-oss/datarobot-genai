@@ -15,3 +15,25 @@ model:
     id: "datarobot/anthropic/claude-sonnet-4-5-20250929"
   - label: gemini
     id: "datarobot/vertex_ai/gemini-3.1-pro-preview"
+# nat and base run the full suite (the if-block ignores model.label for them),
+# so cross-model variants add no coverage — only redundant CI minutes. base
+# never calls the LLM, and nat's orchestration path doesn't vary by model.
+exclude:
+  - agent: nat
+    model:
+      label: gpt
+  - agent: nat
+    model:
+      label: sonnet
+  - agent: nat
+    model:
+      label: gemini
+  - agent: base
+    model:
+      label: gpt
+  - agent: base
+    model:
+      label: sonnet
+  - agent: base
+    model:
+      label: gemini
