@@ -161,10 +161,10 @@ def _apply_prompt_stubs() -> None:
 
 
 def apply_lineage_manager_stubs() -> None:
-    FeatureFlag.is_mcp_tools_gallery_support_enabled = Mock()  # type: ignore[assignment]
     LineageManager.__init__ = Mock(return_value=None)  # type: ignore[assignment]
     LineageManager.sync_mcp_tools = AsyncMock()  # type: ignore[assignment]
     LineageManager.sync_mcp_prompts = AsyncMock()  # type: ignore[assignment]
+    FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user = AsyncMock()  # type: ignore[assignment]
 
 
 def _apply_dr_client_stubs() -> None:
