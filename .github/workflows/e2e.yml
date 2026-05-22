@@ -155,7 +155,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results-${{ matrix.agent }}-${{ matrix.model.label }}-llmgw
+          name: e2e-results-${{ matrix.agent }}-${{ matrix.model.label }}-py${{ matrix.python-version }}-llmgw
           path: e2e-tests/test_results/
           if-no-files-found: ignore
 
