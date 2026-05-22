@@ -120,7 +120,7 @@ def _workflow_input_from_args(args: tuple[Any, ...]) -> WorkflowInput | None:
     candidate = args[0]
     if isinstance(candidate, (RunAgentInput, ChatRequest, ChatRequestOrMessage)):
         return candidate
-    return None
+    raise TypeError(f"Unsupported workflow input type for moderation: {type(candidate).__name__}")
 
 
 class DataRobotModerationConfig(

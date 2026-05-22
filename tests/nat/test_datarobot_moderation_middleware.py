@@ -80,6 +80,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
 from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
+from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
 from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
 from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
 from datarobot_genai.nat.datarobot_moderation_middleware import (
@@ -330,6 +331,38 @@ def test_moderation_prompt_from_workflow_input_run_agent_input() -> None:
 def test_moderation_prompt_from_workflow_input_input_message_only() -> None:
     crm = ChatRequestOrMessage(input_message="gateway string only")
     assert moderation_prompt_from_workflow_input(crm) == "gateway string only"
+
+
+def test_workflow_input_from_args_empty_returns_none() -> None:
+    assert _workflow_input_from_args(()) is None
+
+
+def test_workflow_input_from_args_unrecognized_type_raises() -> None:
+    with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
+        _workflow_input_from_args(("not a workflow input",))
+
+
+@pytest.mark.asyncio
+async def test_pre_invoke_unrecognized_workflow_input_raises(builder_mock: MagicMock) -> None:
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    ctx = InvocationContext(
+        function_context=_fn_context(),
+        original_args=("unexpected",),
+        original_kwargs={},
+        modified_args=("unexpected",),
+        modified_kwargs={},
+        output=None,
+    )
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
+            await mw.pre_invoke(ctx)
 
 
 def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
