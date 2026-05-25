@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.71
+- Fix issue with empty `chunk.content` value for CrewAI
+
 ## 0.15.70
 - Added `prompt.py` for prompt templates integration
 
