@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.72
+- `dragent/plugins/streaming_memory_agent`: new `streaming_memory_agent` function (registered on the `nat.plugins` entry point) that wraps an inner agent with NAT's mem0 capture/retrieve semantics while preserving its `ChatResponseChunk` stream. The wrapper `astream`s the inner agent and pipes chunks through `convert_chunks_to_agui_events` so token deltas and tool-call deltas surface as AG-UI `TextMessage*` / `ToolCall*` events (NAT's upstream `auto_memory_agent` collapses the stream to a single `DEFAULT_NAT_RESPONSE`). `StreamingMemoryAgentConfig` inherits from upstream `AutoMemoryAgentConfig`, so the configuration surface (`memory_name`, `inner_agent_name`, `save_user_messages_to_memory`, `retrieve_memory_for_every_response`, `save_ai_messages_to_memory`, `search_params`, `add_params`) is identical to `auto_memory_agent`; switching wrappers is a `_type` rename in `workflow.yaml`. mem0 errors are logged and swallowed so partial output still reaches the client. Includes unit-test coverage for config registration/inheritance/defaults, the helper functions, all-flags-off streaming, user-message capture and AI-response persistence, memory retrieval and system-message injection, param forwarding, and the swallow-and-log error semantics.
+
 ## 0.15.71
 - Fixed issue with empty `chunk.content` value for CrewAI.
 
