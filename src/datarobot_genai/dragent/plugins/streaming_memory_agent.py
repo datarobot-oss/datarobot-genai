@@ -28,8 +28,11 @@ response) but ``astream``s the inner agent and pipes its
 :func:`convert_chunks_to_agui_events`, so token deltas and tool-call deltas
 surface as proper AG-UI ``TextMessage*`` / ``ToolCall*`` events.
 
-When ``memory_name`` is omitted the wrapper is a pure streaming pass-through
-with no mem0 calls.
+The configuration surface (``memory_name``, ``inner_agent_name``,
+``save_user_messages_to_memory``, ``retrieve_memory_for_every_response``,
+``save_ai_messages_to_memory``, ``search_params``, ``add_params``) is inherited
+from upstream ``AutoMemoryAgentConfig`` so the two wrappers can be swapped
+without reauthoring ``workflow.yaml``.
 """
 
 import logging
@@ -42,15 +45,12 @@ from nat.builder.context import Context
 from nat.builder.function_info import FunctionInfo
 from nat.builder.function_info import Streaming
 from nat.cli.register_workflow import register_function
-from nat.data_models.agent import AgentBaseConfig
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import Message
 from nat.data_models.api_server import UserMessageContentRoleType
-from nat.data_models.component_ref import FunctionRef
-from nat.data_models.component_ref import MemoryRef
 from nat.memory.models import MemoryItem
-from pydantic import Field
+from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -60,46 +60,18 @@ logger = logging.getLogger(__name__)
 
 
 class StreamingMemoryAgentConfig(  # type: ignore[call-arg, misc]
-    AgentBaseConfig,
+    AutoMemoryAgentConfig,
     name="streaming_memory_agent",
 ):
-    """Configuration for the streaming variant of ``auto_memory_agent``."""
+    """Streaming variant of ``auto_memory_agent``.
 
-    memory_name: MemoryRef | None = Field(
-        default=None,
-        description=(
-            "Memory backend (from the ``memory:`` section of the workflow config).  "
-            "When omitted the wrapper streams the inner agent unchanged and skips "
-            "all mem0 operations."
-        ),
-    )
-    inner_agent_name: FunctionRef = Field(
-        ..., description="Name of the agent function to wrap with automatic memory."
-    )
-    save_user_messages: bool = Field(
-        default=True,
-        description="Save the latest user message to memory before invoking the inner agent.",
-    )
-    retrieve_memory: bool = Field(
-        default=True,
-        description=(
-            "Search memory for context relevant to the latest user message and inject "
-            "it as a system message before invoking the inner agent."
-        ),
-    )
-    save_ai_responses: bool = Field(
-        default=True,
-        description="Save the inner agent's accumulated text response "
-        "to memory after streaming completes.",
-    )
-    search_params: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Backend-specific parameters forwarded to ``memory_editor.search``.",
-    )
-    add_params: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Backend-specific parameters forwarded to ``memory_editor.add_items``.",
-    )
+    Inherits ``memory_name``, ``inner_agent_name``,
+    ``save_user_messages_to_memory``, ``retrieve_memory_for_every_response``,
+    ``save_ai_messages_to_memory``, ``search_params``, and ``add_params``
+    from :class:`AutoMemoryAgentConfig`.  No additional fields — only the
+    ``_type`` discriminator differs, so a workflow can switch between the two
+    by renaming ``_type``.
+    """
 
 
 def _user_id_from_context() -> str:
@@ -146,9 +118,7 @@ async def streaming_memory_agent(
     config: StreamingMemoryAgentConfig, builder: Builder
 ) -> AsyncGenerator[Any, None]:
     """Build the streaming memory agent workflow."""
-    memory_editor = (
-        await builder.get_memory_client(config.memory_name) if config.memory_name else None
-    )
+    memory_editor = await builder.get_memory_client(config.memory_name)
     inner_agent_fn = await builder.get_function(config.inner_agent_name)
 
     async def _stream_fn(
@@ -161,7 +131,7 @@ async def streaming_memory_agent(
         user_id = _user_id_from_context()
 
         # 1. Capture the user's latest message.
-        if memory_editor is not None and config.save_user_messages and user_text:
+        if config.save_user_messages_to_memory and user_text:
             try:
                 await memory_editor.add_items(
                     [
@@ -177,7 +147,7 @@ async def streaming_memory_agent(
 
         # 2. Retrieve relevant memory and inject it as a system message.
         messages = list(chat_request.messages)
-        if memory_editor is not None and config.retrieve_memory and user_text:
+        if config.retrieve_memory_for_every_response and user_text:
             try:
                 memory_items = await memory_editor.search(
                     query=user_text,
@@ -212,7 +182,7 @@ async def streaming_memory_agent(
         #    so partial output still lands in memory; convert_chunks_to_agui_events
         #    has already surfaced any upstream error as a RunErrorEvent.
         ai_text = "".join(ai_buffer)
-        if memory_editor is not None and config.save_ai_responses and ai_text:
+        if config.save_ai_messages_to_memory and ai_text:
             try:
                 await memory_editor.add_items(
                     [

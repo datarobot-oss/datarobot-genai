@@ -30,6 +30,7 @@ from nat.data_models.component_ref import FunctionRef
 from nat.data_models.component_ref import LLMRef
 from nat.data_models.component_ref import MemoryRef
 from nat.memory.models import MemoryItem
+from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
 from datarobot_genai.dragent.plugins.streaming_memory_agent import StreamingMemoryAgentConfig
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _last_user_text
@@ -72,15 +73,14 @@ def _chunk(content: str | None = None, chunk_id: str = "chunk-1") -> ChatRespons
     )
 
 
-def _make_config(memory_name: str | None = "mem0", **overrides) -> StreamingMemoryAgentConfig:
+def _make_config(memory_name: str = "mem0", **overrides) -> StreamingMemoryAgentConfig:
     """Build a config with sensible defaults for tests."""
     defaults: dict = {
         "llm_name": LLMRef("test-llm"),
         "description": "test streaming memory agent",
         "inner_agent_name": FunctionRef("inner-agent"),
+        "memory_name": MemoryRef(memory_name),
     }
-    if memory_name is not None:
-        defaults["memory_name"] = MemoryRef(memory_name)
     defaults.update(overrides)
     return StreamingMemoryAgentConfig(**defaults)
 
@@ -122,19 +122,31 @@ async def _drain(gen: AsyncGenerator) -> list:
 
 
 class TestStreamingMemoryAgentConfig:
-    def test_is_subclass_of_agent_base_config(self):
+    def test_is_subclass_of_auto_memory_agent_config(self):
+        # Inheriting from upstream lets workflows swap _type between the two
+        # wrappers without restating any other field.
+        assert issubclass(StreamingMemoryAgentConfig, AutoMemoryAgentConfig)
+        # Transitively still an AgentBaseConfig.
         assert issubclass(StreamingMemoryAgentConfig, AgentBaseConfig)
 
     def test_registered_name(self):
         assert StreamingMemoryAgentConfig.static_type() == "streaming_memory_agent"
 
+    def test_only_discriminator_differs_from_upstream(self):
+        # The whole point of inheriting is field parity with auto_memory_agent;
+        # if a new field appears in only one of the two classes, this test
+        # forces an explicit decision.
+        parent_fields = set(AutoMemoryAgentConfig.model_fields) - {"type"}
+        child_fields = set(StreamingMemoryAgentConfig.model_fields) - {"type"}
+        assert parent_fields == child_fields
+
     def test_defaults(self):
-        config = _make_config(memory_name=None)
-        assert config.memory_name is None
+        config = _make_config()
         assert config.inner_agent_name == "inner-agent"
-        assert config.save_user_messages is True
-        assert config.retrieve_memory is True
-        assert config.save_ai_responses is True
+        assert config.memory_name == "mem0"
+        assert config.save_user_messages_to_memory is True
+        assert config.retrieve_memory_for_every_response is True
+        assert config.save_ai_messages_to_memory is True
         assert config.search_params == {}
         assert config.add_params == {}
 
@@ -143,11 +155,16 @@ class TestStreamingMemoryAgentConfig:
             StreamingMemoryAgentConfig(
                 llm_name=LLMRef("x"),
                 description="x",
+                memory_name=MemoryRef("mem0"),
             )  # type: ignore[call-arg]
 
-    def test_memory_name_optional(self):
-        config = _make_config(memory_name=None)
-        assert config.memory_name is None
+    def test_memory_name_required(self):
+        with pytest.raises(Exception):
+            StreamingMemoryAgentConfig(
+                llm_name=LLMRef("x"),
+                description="x",
+                inner_agent_name=FunctionRef("inner-agent"),
+            )  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -302,28 +319,21 @@ def passthrough_converter():
 
 class TestStreamingMemoryAgentFactory:
     async def test_yields_function_info_with_stream_fn(self, context_user_id):
-        config = _make_config(memory_name=None)
-        builder = _make_builder()
+        config = _make_config()
+        builder = _make_builder(memory_editor=AsyncMock())
         async with streaming_memory_agent(config, builder) as fn_info:
             assert fn_info is not None
             assert fn_info.stream_fn is not None
             assert fn_info.description == config.description
 
-    async def test_skips_memory_lookup_when_memory_name_is_none(self, context_user_id):
-        config = _make_config(memory_name=None)
-        builder = _make_builder()
-        async with streaming_memory_agent(config, builder):
-            pass
-        builder.get_memory_client.assert_not_called()
-        builder.get_function.assert_awaited_once_with("inner-agent")
-
-    async def test_fetches_memory_client_when_memory_name_set(self, context_user_id):
+    async def test_fetches_memory_client_and_inner_agent(self, context_user_id):
         config = _make_config(memory_name="mem0")
         memory_editor = AsyncMock()
         builder = _make_builder(memory_editor=memory_editor)
         async with streaming_memory_agent(config, builder):
             pass
         builder.get_memory_client.assert_awaited_once_with("mem0")
+        builder.get_function.assert_awaited_once_with("inner-agent")
 
 
 # ---------------------------------------------------------------------------
@@ -331,13 +341,18 @@ class TestStreamingMemoryAgentFactory:
 # ---------------------------------------------------------------------------
 
 
-class TestStreamFnPassthrough:
-    """memory_name=None → pure streaming pass-through, no mem0 calls."""
+class TestStreamFnAllFlagsOff:
+    """All save/retrieve flags off → chunks still stream, no mem0 calls."""
 
     async def test_streams_chunks_unchanged(self, context_user_id, passthrough_converter):
-        config = _make_config(memory_name=None)
+        config = _make_config(
+            save_user_messages_to_memory=False,
+            retrieve_memory_for_every_response=False,
+            save_ai_messages_to_memory=False,
+        )
+        memory_editor = AsyncMock()
         chunks = [_chunk("Hello"), _chunk(" world")]
-        builder = _make_builder(inner_agent_chunks=chunks)
+        builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=chunks)
 
         async with streaming_memory_agent(config, builder) as fn_info:
             request = ChatRequest(messages=[_user("hi")])
@@ -346,6 +361,9 @@ class TestStreamFnPassthrough:
         assert len(out) == 2
         assert out[0].choices[0].delta.content == "Hello"
         assert out[1].choices[0].delta.content == " world"
+        # No memory side effects when every flag is off.
+        memory_editor.add_items.assert_not_called()
+        memory_editor.search.assert_not_called()
 
 
 class TestStreamFnSavesUserMessage:
@@ -369,7 +387,7 @@ class TestStreamFnSavesUserMessage:
         assert item.user_id == "test-user"
 
     async def test_skips_save_when_disabled(self, context_user_id, passthrough_converter):
-        config = _make_config(memory_name="mem0", save_user_messages=False)
+        config = _make_config(memory_name="mem0", save_user_messages_to_memory=False)
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
@@ -417,7 +435,7 @@ class TestStreamFnSavesUserMessage:
     async def test_save_failure_does_not_propagate(
         self, context_user_id, passthrough_converter, caplog
     ):
-        config = _make_config(memory_name="mem0", save_ai_responses=False)
+        config = _make_config(memory_name="mem0", save_ai_messages_to_memory=False)
         memory_editor = AsyncMock()
         memory_editor.add_items.side_effect = RuntimeError("kapow")
         memory_editor.search.return_value = []
@@ -436,7 +454,11 @@ class TestStreamFnRetrievesMemory:
     async def test_injects_search_results_as_system_message(
         self, context_user_id, passthrough_converter
     ):
-        config = _make_config(memory_name="mem0", save_user_messages=False, save_ai_responses=False)
+        config = _make_config(
+            memory_name="mem0",
+            save_user_messages_to_memory=False,
+            save_ai_messages_to_memory=False,
+        )
         memory_editor = AsyncMock()
         memory_editor.search.return_value = [
             MemoryItem(memory="user likes cats", user_id="test-user"),
@@ -474,7 +496,7 @@ class TestStreamFnRetrievesMemory:
         assert "user lives in NYC" in injected
 
     async def test_skips_search_when_disabled(self, context_user_id, passthrough_converter):
-        config = _make_config(memory_name="mem0", retrieve_memory=False)
+        config = _make_config(memory_name="mem0", retrieve_memory_for_every_response=False)
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
@@ -487,7 +509,11 @@ class TestStreamFnRetrievesMemory:
     async def test_no_system_message_when_search_returns_no_text(
         self, context_user_id, passthrough_converter
     ):
-        config = _make_config(memory_name="mem0", save_user_messages=False, save_ai_responses=False)
+        config = _make_config(
+            memory_name="mem0",
+            save_user_messages_to_memory=False,
+            save_ai_messages_to_memory=False,
+        )
         memory_editor = AsyncMock()
         # Items with no `memory` text get filtered out.
         memory_editor.search.return_value = [MemoryItem(memory=None, user_id="test-user")]
@@ -510,8 +536,8 @@ class TestStreamFnRetrievesMemory:
     async def test_forwards_search_params(self, context_user_id, passthrough_converter):
         config = _make_config(
             memory_name="mem0",
-            save_user_messages=False,
-            save_ai_responses=False,
+            save_user_messages_to_memory=False,
+            save_ai_messages_to_memory=False,
             search_params={"top_k": 5},
         )
         memory_editor = AsyncMock()
@@ -526,7 +552,11 @@ class TestStreamFnRetrievesMemory:
     async def test_search_failure_does_not_propagate(
         self, context_user_id, passthrough_converter, caplog
     ):
-        config = _make_config(memory_name="mem0", save_user_messages=False, save_ai_responses=False)
+        config = _make_config(
+            memory_name="mem0",
+            save_user_messages_to_memory=False,
+            save_ai_messages_to_memory=False,
+        )
         memory_editor = AsyncMock()
         memory_editor.search.side_effect = RuntimeError("search down")
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
@@ -543,7 +573,11 @@ class TestStreamFnSavesAiResponse:
     async def test_accumulates_text_and_saves_after_stream(
         self, context_user_id, passthrough_converter
     ):
-        config = _make_config(memory_name="mem0", save_user_messages=False, retrieve_memory=False)
+        config = _make_config(
+            memory_name="mem0",
+            save_user_messages_to_memory=False,
+            retrieve_memory_for_every_response=False,
+        )
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(
@@ -566,9 +600,9 @@ class TestStreamFnSavesAiResponse:
     async def test_skips_save_when_disabled(self, context_user_id, passthrough_converter):
         config = _make_config(
             memory_name="mem0",
-            save_user_messages=False,
-            retrieve_memory=False,
-            save_ai_responses=False,
+            save_user_messages_to_memory=False,
+            retrieve_memory_for_every_response=False,
+            save_ai_messages_to_memory=False,
         )
         memory_editor = AsyncMock()
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("hi")])
@@ -581,7 +615,11 @@ class TestStreamFnSavesAiResponse:
     async def test_skips_save_when_no_text_accumulated(
         self, context_user_id, passthrough_converter
     ):
-        config = _make_config(memory_name="mem0", save_user_messages=False, retrieve_memory=False)
+        config = _make_config(
+            memory_name="mem0",
+            save_user_messages_to_memory=False,
+            retrieve_memory_for_every_response=False,
+        )
         memory_editor = AsyncMock()
         # No chunks → no accumulated text → skip the assistant save.
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[])
@@ -594,7 +632,11 @@ class TestStreamFnSavesAiResponse:
     async def test_save_failure_does_not_propagate(
         self, context_user_id, passthrough_converter, caplog
     ):
-        config = _make_config(memory_name="mem0", save_user_messages=False, retrieve_memory=False)
+        config = _make_config(
+            memory_name="mem0",
+            save_user_messages_to_memory=False,
+            retrieve_memory_for_every_response=False,
+        )
         memory_editor = AsyncMock()
         memory_editor.add_items.side_effect = RuntimeError("save down")
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
@@ -609,7 +651,11 @@ class TestStreamFnSavesAiResponse:
 
 class TestStreamFnInnerRequest:
     async def test_inner_request_has_stream_true(self, context_user_id, passthrough_converter):
-        config = _make_config(memory_name=None)
+        config = _make_config(
+            save_user_messages_to_memory=False,
+            retrieve_memory_for_every_response=False,
+            save_ai_messages_to_memory=False,
+        )
         captured: dict = {}
 
         async def _astream(inner_request, to_type=None):  # noqa: ARG001
@@ -617,7 +663,7 @@ class TestStreamFnInnerRequest:
             captured["to_type"] = to_type
             yield _chunk("ok")
 
-        builder = _make_builder()
+        builder = _make_builder(memory_editor=AsyncMock())
         builder.get_function.return_value.astream = _astream
 
         async with streaming_memory_agent(config, builder) as fn_info:
