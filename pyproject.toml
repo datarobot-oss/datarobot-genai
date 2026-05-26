@@ -28,6 +28,7 @@ datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
 datarobot_mem0_memory = "datarobot_genai.nat.datarobot_mem0_memory"
 datarobot_moderation_middleware = "datarobot_genai.nat.datarobot_moderation_middleware"
+datarobot_otelcollector = "datarobot_genai.nat.datarobot_otelcollector"
 
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.frontends.register"
