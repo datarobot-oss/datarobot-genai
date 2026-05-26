@@ -19,12 +19,12 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import DataRobotRegistrySettings
 from datarobot_genai.dragent.agent_card_registry import _CacheEntry
-from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import _parse_registry_response
 from datarobot_genai.dragent.agent_card_registry import _resolve_settings
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
@@ -536,9 +536,7 @@ class TestAgentCardRegistryFetch:
         page3_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(
-            side_effect=[page1_response, page2_response, page3_response]
-        )
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_response, page3_response])
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -571,9 +569,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(
-                api_token="tok", endpoint="https://ep", cache_ttl=3600
-            )
+            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
             cards = await registry._fetch({"deploymentIds": "dep-1"})
 
         assert "dep-1" in cards

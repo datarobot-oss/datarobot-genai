@@ -312,9 +312,7 @@ class AgentCardRegistry:
 
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
-                response = await client.get(
-                    registry_url, params=params_with_limit, headers=headers
-                )
+                response = await client.get(registry_url, params=params_with_limit, headers=headers)
                 response.raise_for_status()
                 body = response.json()
                 all_entries.extend(body.get("data", []))
@@ -346,9 +344,7 @@ class AgentCardRegistry:
         except httpx.HTTPError as exc:
             raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
-        cards = _parse_registry_response(
-            {"data": all_entries}, on_duplicate=self._on_duplicate
-        )
+        cards = _parse_registry_response({"data": all_entries}, on_duplicate=self._on_duplicate)
         logger.info("Fetched %d agent card(s) from registry (%d pages).", len(cards), pages_fetched)
         return cards
 
