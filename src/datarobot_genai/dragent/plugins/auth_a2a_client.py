@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import abc
+import asyncio
+import functools
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -287,8 +289,46 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
         return self
 
 
+def _wrap_a2a_function(fn: Any) -> Any:
+    """Wrap an A2A function so that exceptions are returned as error strings
+    instead of propagating and crashing the agent.
+
+    Works for both regular async functions and async generators.
+    """
+    if asyncio.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                logger.error("A2A remote call failed: %s", exc, exc_info=True)
+                return f"Error: failed to communicate with the remote agent: {exc}"
+
+        return _safe
+
+    if asyncio.isasyncgenfunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            try:
+                async for event in fn(*args, **kwargs):
+                    yield event
+            except Exception as exc:
+                logger.error("A2A remote call failed: %s", exc, exc_info=True)
+                yield f"Error: failed to communicate with the remote agent: {exc}"
+
+        return _safe_gen
+
+    return fn
+
+
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
+
+    def add_function(self, name: str, fn: Any, **kwargs: Any) -> None:  # type: ignore[override]
+        """Intercept function registration to wrap *fn* with error handling."""
+        super().add_function(name, _wrap_a2a_function(fn), **kwargs)
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
         config: AuthenticatedA2AClientConfig = self._config  # type: ignore[assignment]

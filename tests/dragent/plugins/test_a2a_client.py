@@ -30,6 +30,7 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClie
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
 from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_headers
+from datarobot_genai.dragent.plugins.auth_a2a_client import _wrap_a2a_function
 
 _AGENT_URL = "http://agent.example.com"
 
@@ -348,6 +349,88 @@ class TestAuthenticatedA2AClientFunctionGroup:
             fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
             with pytest.raises(RuntimeError, match="User ID not found in context"):
                 await fg.__aenter__()
+
+
+# ---------------------------------------------------------------------------
+# Tests: _wrap_a2a_function — error handling wrapper
+# ---------------------------------------------------------------------------
+
+
+class TestWrapA2AFunction:
+    """Verify that _wrap_a2a_function catches errors and returns them as values,
+    not raising exceptions that would crash the agent.
+    """
+
+    async def test_async_fn_success_passes_through(self):
+        async def ok(x: str) -> str:
+            return f"ok:{x}"
+
+        wrapped = _wrap_a2a_function(ok)
+        assert await wrapped("hello") == "ok:hello"
+
+    async def test_async_fn_error_returns_error_string(self):
+        async def boom(x: str) -> str:
+            raise RuntimeError("connection refused")
+
+        wrapped = _wrap_a2a_function(boom)
+        result = await wrapped("hello")
+
+        assert isinstance(result, str)
+        assert "Error" in result
+        assert "connection refused" in result
+
+    async def test_async_gen_success_passes_through(self):
+        async def gen(x: str):
+            yield "a"
+            yield "b"
+
+        wrapped = _wrap_a2a_function(gen)
+        events = [e async for e in wrapped("hello")]
+        assert events == ["a", "b"]
+
+    async def test_async_gen_error_yields_error_string(self):
+        async def gen(x: str):
+            yield "a"
+            raise RuntimeError("stream broken")
+
+        wrapped = _wrap_a2a_function(gen)
+        events = [e async for e in wrapped("hello")]
+
+        assert events[0] == "a"
+        assert "Error" in events[-1]
+        assert "stream broken" in events[-1]
+
+    def test_sync_fn_returned_unchanged(self):
+        def plain(x: str) -> str:
+            return x
+
+        assert _wrap_a2a_function(plain) is plain
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthenticatedA2AClientFunctionGroup.add_function wraps with error handling
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2AClientFunctionGroupAddFunction:
+    """Verify that add_function applies _wrap_a2a_function transparently."""
+
+    async def test_registered_fn_catches_error(self, a2a_config, mock_builder):
+        """A function added via add_function should return error strings on failure."""
+        fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
+
+        async def exploding(query: str) -> str:
+            raise RuntimeError("auth failed")
+
+        fg.add_function(name="test_fn", fn=exploding, description="test")
+
+        # The function was wrapped — invoke the underlying callable
+        fn_obj = fg._functions["test_fn"]
+        result = await fn_obj.ainvoke("hello")
+
+        assert isinstance(result, str)
+        assert "Error" in result
+        assert "auth failed" in result
 
 
 # ---------------------------------------------------------------------------
