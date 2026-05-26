@@ -141,8 +141,11 @@ class TestExporterFactory:
         assert isinstance(api_key_header, str)
         assert api_key_header == API_KEY
 
-    async def test_resource_attributes_forwarded(self):
-        cfg = _make_config(resource_attributes={"service.name": "my-agent"})
+    async def test_project_becomes_service_name(self):
+        # The inherited ``project`` field should populate the OTel
+        # ``service.name`` resource attribute, matching NAT's built-in
+        # otelcollector exporter.
+        cfg = _make_config(project="my-agent")
         with patch(
             "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
@@ -151,6 +154,29 @@ class TestExporterFactory:
             ):
                 pass
 
-        assert mock_exporter.call_args.kwargs["resource_attributes"] == {
-            "service.name": "my-agent"
-        }
+        attrs = mock_exporter.call_args.kwargs["resource_attributes"]
+        assert attrs["service.name"] == "my-agent"
+        assert attrs["telemetry.sdk.language"] == "python"
+        assert attrs["telemetry.sdk.name"] == "opentelemetry"
+        assert "telemetry.sdk.version" in attrs
+
+    async def test_resource_attributes_override_defaults(self):
+        # Explicit resource_attributes win over the defaults derived from
+        # ``project`` / SDK metadata.
+        cfg = _make_config(
+            project="my-agent",
+            resource_attributes={"service.name": "override-name", "env": "prod"},
+        )
+        with patch(
+            "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(
+                cfg, builder=MagicMock()
+            ):
+                pass
+
+        attrs = mock_exporter.call_args.kwargs["resource_attributes"]
+        assert attrs["service.name"] == "override-name"
+        assert attrs["env"] == "prod"
+        # SDK defaults still merged in.
+        assert attrs["telemetry.sdk.language"] == "python"

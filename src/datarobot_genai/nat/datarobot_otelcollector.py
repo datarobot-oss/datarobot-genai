@@ -54,6 +54,7 @@ from nat.data_models.telemetry_exporter import TelemetryExporterBaseConfig
 from nat.observability.mixin.batch_config_mixin import BatchConfigMixin
 from nat.observability.mixin.collector_config_mixin import CollectorConfigMixin
 from nat.plugins.opentelemetry import OTLPSpanAdapterExporter
+from nat.plugins.opentelemetry.otel_span_exporter import get_opentelemetry_sdk_version
 from pydantic import Field
 from pydantic import field_validator
 
@@ -130,6 +131,20 @@ async def datarobot_otelcollector_telemetry_exporter(
     # specific X-DataRobot-* metadata without forking the exporter.
     headers.update(config.extra_headers)
 
+    # Mirror nat.plugins.opentelemetry.register.otel_telemetry_exporter:
+    # the inherited ``project`` field is the OTel ``service.name`` for spans.
+    # User-supplied resource_attributes win on collision.
+    default_resource_attributes = {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": get_opentelemetry_sdk_version(),
+        "service.name": config.project,
+    }
+    merged_resource_attributes = {
+        **default_resource_attributes,
+        **config.resource_attributes,
+    }
+
     # Never log the secret. Sorted keys only.
     logger.debug(
         "Configuring datarobot_otelcollector exporter "
@@ -142,7 +157,7 @@ async def datarobot_otelcollector_telemetry_exporter(
     yield OTLPSpanAdapterExporter(
         endpoint=config.endpoint,
         headers=headers,
-        resource_attributes=config.resource_attributes,
+        resource_attributes=merged_resource_attributes,
         batch_size=config.batch_size,
         flush_interval=config.flush_interval,
         max_queue_size=config.max_queue_size,
