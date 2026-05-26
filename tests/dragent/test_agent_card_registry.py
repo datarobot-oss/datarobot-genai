@@ -19,6 +19,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
@@ -478,7 +479,8 @@ class TestAgentCardRegistryFetch:
         assert "dep-1" in cards
         assert "dep-2" in cards
         call_kwargs = mock_httpx_client.get.call_args.kwargs
-        assert call_kwargs["params"] == {"deploymentIds": "dep-1,dep-2"}
+        assert call_kwargs["params"]["deploymentIds"] == "dep-1,dep-2"
+        assert call_kwargs["params"]["limit"] == "100"
         assert call_kwargs["headers"]["Authorization"] == "Bearer my-tok"
 
     async def test_fetch_http_error(self):
@@ -497,6 +499,140 @@ class TestAgentCardRegistryFetch:
             registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
             with pytest.raises(AgentCardRegistryError, match="HTTP 403"):
                 await registry._fetch({"deploymentIds": "dep-1"})
+
+    async def test_fetch_paginates_through_all_pages(self):
+        """_fetch follows the 'next' link until all pages are consumed."""
+        page1_response = MagicMock(spec=httpx.Response)
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "data": [_entry(dep_id="dep-1")],
+            "count": 1,
+            "totalCount": 3,
+            "next": "https://app.dr.com/api/v2/agentCards/?offset=1&limit=1",
+            "previous": None,
+        }
+        page1_response.raise_for_status = MagicMock()
+
+        page2_response = MagicMock(spec=httpx.Response)
+        page2_response.status_code = 200
+        page2_response.json.return_value = {
+            "data": [_entry(dep_id="dep-2", card=_SAMPLE_AGENT_CARD_2)],
+            "count": 1,
+            "totalCount": 3,
+            "next": "https://app.dr.com/api/v2/agentCards/?offset=2&limit=1",
+            "previous": "https://app.dr.com/api/v2/agentCards/?offset=0&limit=1",
+        }
+        page2_response.raise_for_status = MagicMock()
+
+        page3_response = MagicMock(spec=httpx.Response)
+        page3_response.status_code = 200
+        page3_response.json.return_value = {
+            "data": [_entry(dep_id="dep-3", card=_SAMPLE_AGENT_CARD_3)],
+            "count": 1,
+            "totalCount": 3,
+            "next": None,
+            "previous": "https://app.dr.com/api/v2/agentCards/?offset=1&limit=1",
+        }
+        page3_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_response, page3_response])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
+            registry = AgentCardRegistry(
+                api_token="my-tok", endpoint="https://app.dr.com/api/v2", cache_ttl=3600
+            )
+            cards = await registry._fetch({"deploymentIds": "dep-1,dep-2,dep-3"})
+
+        assert "dep-1" in cards
+        assert "dep-2" in cards
+        assert "dep-3" in cards
+        assert len(cards) == 3
+        assert mock_client.get.await_count == 3
+
+    async def test_fetch_no_pagination_when_next_absent(self):
+        """When 'next' is absent or null, only one request is made."""
+        single_response = MagicMock(spec=httpx.Response)
+        single_response.status_code = 200
+        single_response.json.return_value = {
+            "data": [_entry(dep_id="dep-1")],
+            "count": 1,
+            "totalCount": 1,
+        }
+        single_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=single_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
+            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            cards = await registry._fetch({"deploymentIds": "dep-1"})
+
+        assert "dep-1" in cards
+        assert mock_client.get.await_count == 1
+
+    async def test_fetch_pagination_error_on_second_page_raises(self):
+        """HTTP error on a pagination request propagates correctly."""
+        page1_response = MagicMock(spec=httpx.Response)
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "data": [_entry(dep_id="dep-1")],
+            "count": 1,
+            "totalCount": 2,
+            "next": "https://app.dr.com/api/v2/agentCards/?offset=1&limit=1",
+        }
+        page1_response.raise_for_status = MagicMock()
+
+        page2_response = MagicMock(spec=httpx.Response)
+        page2_response.status_code = 500
+        page2_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Server Error", request=MagicMock(), response=page2_response
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1_response, page2_response])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
+            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            with pytest.raises(AgentCardRegistryError, match="HTTP 500"):
+                await registry._fetch({"deploymentIds": "dep-1,dep-2"})
+
+    async def test_fetch_stops_at_safety_limit(self):
+        """Pagination stops after _MAX_PAGES to prevent infinite loops."""
+
+        def _make_page(page_num: int, has_next: bool):
+            resp = MagicMock(spec=httpx.Response)
+            resp.status_code = 200
+            resp.json.return_value = {
+                "data": [_entry(dep_id=f"dep-{page_num}")],
+                "count": 1,
+                "totalCount": 9999,
+                "next": f"https://ep/agentCards/?offset={page_num}&limit=100" if has_next else None,
+            }
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        # All pages claim there's a next page (simulating a buggy API / infinite loop)
+        pages = [_make_page(i, has_next=True) for i in range(_MAX_PAGES + 5)]
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=pages)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
+            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            cards = await registry._fetch({"deploymentIds": "dep-0"})
+
+        # Should have fetched exactly _MAX_PAGES (stopped at the safety limit)
+        assert mock_client.get.await_count == _MAX_PAGES
+        assert len(cards) == _MAX_PAGES
 
 
 # ---------------------------------------------------------------------------

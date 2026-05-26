@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import abc
+import asyncio
+import functools
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -134,7 +136,7 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
                 self._agent_card = await resolver.get_agent_card()
                 logger.info("Successfully fetched agent card")
         except Exception as e:
-            logger.error("Failed to fetch agent card: %s", e, exc_info=True)
+            logger.error("Failed to fetch agent card from %s: %s", self._base_url, e)
             raise RuntimeError(f"Failed to fetch agent card from {self._base_url}") from e
 
     async def __aenter__(self) -> "_AuthenticatedA2ABaseClient":
@@ -287,8 +289,82 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
         return self
 
 
+def _sanitize_a2a_error(exc: Exception) -> str:
+    """Return a safe, single-line error description without sensitive material.
+
+    Strips raw HTTP bodies, traceback detail, and anything that could echo
+    back tokens or assertions.  Only the exception *type* and a curated
+    category survive — the raw ``str(exc)`` is never surfaced.
+    """
+    # httpx status errors — include status + URL but NOT the response body
+    # (which could echo submitted parameters like tokens or assertions).
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.host}{exc.request.url.path}"
+
+    # Categorise by type so the LLM gets actionable context without
+    # exposing the raw message which may contain sensitive material.
+    if isinstance(exc, httpx.TimeoutException):
+        return "request to remote agent timed out"
+
+    if isinstance(exc, (httpx.ConnectError, httpx.NetworkError, ConnectionError, OSError)):
+        return "network error communicating with remote agent"
+
+    if isinstance(exc, (RuntimeError, ValueError)):
+        return f"{type(exc).__name__}: authentication or protocol error"
+
+    return f"{type(exc).__name__}: request to remote agent failed"
+
+
+def _wrap_a2a_function(fn: Any) -> Any:
+    """Wrap an A2A function so that exceptions are returned as error strings
+    instead of propagating and crashing the agent.
+
+    Works for both regular async functions and async generators.
+
+    Sensitive material (tokens, assertions, HTTP bodies) is stripped from
+    both the returned error string and the log line — only a sanitized
+    summary is emitted.  The full traceback is deliberately **not** logged
+    (``exc_info=False``) to prevent token values captured in frame locals
+    from reaching log sinks.
+    """
+    if asyncio.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                return f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe
+
+    if asyncio.isasyncgenfunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            try:
+                async for event in fn(*args, **kwargs):
+                    yield event
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                yield f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe_gen
+
+    return fn
+
+
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
+
+    def add_function(self, name: str, fn: Any, **kwargs: Any) -> None:  # type: ignore[override]
+        """Intercept function registration to wrap *fn* with error handling."""
+        super().add_function(name, _wrap_a2a_function(fn), **kwargs)
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
         config: AuthenticatedA2AClientConfig = self._config  # type: ignore[assignment]
