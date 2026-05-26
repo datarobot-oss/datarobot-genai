@@ -30,6 +30,7 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClie
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
 from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_headers
+from datarobot_genai.dragent.plugins.auth_a2a_client import _sanitize_a2a_error
 from datarobot_genai.dragent.plugins.auth_a2a_client import _wrap_a2a_function
 
 _AGENT_URL = "http://agent.example.com"
@@ -352,6 +353,62 @@ class TestAuthenticatedA2AClientFunctionGroup:
 
 
 # ---------------------------------------------------------------------------
+# Tests: _sanitize_a2a_error — sensitive data stripping
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeA2AError:
+    """Verify that _sanitize_a2a_error never leaks tokens or response bodies."""
+
+    def test_runtime_error_does_not_expose_message(self):
+        """RuntimeError messages could originate from third-party SDKs — never trusted."""
+        exc = RuntimeError("token=eyJhbGciOi... failed at https://as.example.com")
+        result = _sanitize_a2a_error(exc)
+        assert "eyJhbGciOi" not in result
+        assert "RuntimeError" in result
+
+    def test_generic_exception_hides_message(self):
+        """Unknown exception types could carry token material — only class name survives."""
+        exc = ValueError("subject_token=eyJhbGciOi...")
+        result = _sanitize_a2a_error(exc)
+        assert "eyJhbGciOi" not in result
+        assert "ValueError" in result
+
+    def test_httpx_status_error_strips_body(self):
+        """Httpx errors could echo submitted form params — only status + host survive."""
+        import httpx
+
+        request = httpx.Request("POST", "https://as.example.com/oauth2/v1/token")
+        response = httpx.Response(
+            401,
+            request=request,
+            content=b'{"error":"invalid_client","assertion":"eyJ..."}',
+        )
+        exc = httpx.HTTPStatusError("401", request=request, response=response)
+        result = _sanitize_a2a_error(exc)
+        assert "401" in result
+        assert "as.example.com" in result
+        assert "eyJ" not in result
+        assert "invalid_client" not in result
+
+    def test_timeout_gives_actionable_message(self):
+        import httpx
+
+        exc = httpx.ReadTimeout("timed out")
+        result = _sanitize_a2a_error(exc)
+        assert "timed out" in result
+        assert "ReadTimeout" not in result  # generic, not class name
+
+    def test_network_error_gives_actionable_message(self):
+        import httpx
+
+        exc = httpx.ConnectError("Connection refused to host with token=secret")
+        result = _sanitize_a2a_error(exc)
+        assert "network error" in result
+        assert "secret" not in result
+
+
+# ---------------------------------------------------------------------------
 # Tests: _wrap_a2a_function — error handling wrapper
 # ---------------------------------------------------------------------------
 
@@ -377,7 +434,20 @@ class TestWrapA2AFunction:
 
         assert isinstance(result, str)
         assert "Error" in result
-        assert "connection refused" in result
+        # RuntimeError message is sanitised — not passed through verbatim
+        assert "connection refused" not in result
+
+    async def test_async_fn_does_not_leak_token_material(self):
+        """Exception messages containing tokens must be sanitised."""
+
+        async def leak(x: str) -> str:
+            raise ValueError("subject_token=eyJhbGciOiJSUzI1NiJ9.secret")
+
+        wrapped = _wrap_a2a_function(leak)
+        result = await wrapped("hello")
+
+        assert "eyJhbGciOi" not in result
+        assert "Error" in result
 
     async def test_async_gen_success_passes_through(self):
         async def gen(x: str):
@@ -398,7 +468,8 @@ class TestWrapA2AFunction:
 
         assert events[0] == "a"
         assert "Error" in events[-1]
-        assert "stream broken" in events[-1]
+        # RuntimeError message is sanitised — not passed through verbatim
+        assert "stream broken" not in events[-1]
 
     def test_sync_fn_returned_unchanged(self):
         def plain(x: str) -> str:
@@ -430,7 +501,8 @@ class TestAuthenticatedA2AClientFunctionGroupAddFunction:
 
         assert isinstance(result, str)
         assert "Error" in result
-        assert "auth failed" in result
+        # RuntimeError message is sanitised — not passed through verbatim
+        assert "auth failed" not in result
 
 
 # ---------------------------------------------------------------------------
