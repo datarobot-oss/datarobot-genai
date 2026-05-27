@@ -86,9 +86,9 @@ def workflow_path() -> Path:
     return Path(__file__).parent / "fixtures" / "workflow_with_a2a.yaml"
 
 
-@pytest.fixture(scope="module")
-def nat_config(workflow_path: Path):
-    """Parse the YAML once per module; all tests share the same Config object."""
+@pytest.fixture
+def nat_config(workflow_path: Path, set_datarobot_api_token_for_agent_card):
+    """Parse the YAML; depends on the token env var being set first."""
     return load_config(workflow_path)
 
 
@@ -100,11 +100,11 @@ def set_context_user_id() -> None:
 
 @pytest.fixture(autouse=True)
 def set_datarobot_api_token_for_agent_card(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Provide a DataRobot API token for respx tests.
+    """Provide a DataRobot API token before the config is parsed.
 
-    ``DataRobotAPIKeyAuthProvider`` does not implement ``A2ADiscoveryAuthMixin``,
-    so ``_resolve_agent_card`` falls back to calling ``authenticate()``, which
-    reads ``DATAROBOT_API_TOKEN`` from the environment.
+    ``DataRobotAPIKeyAuthProviderConfig`` reads ``DATAROBOT_API_TOKEN`` at
+    parse time (``default_factory=_get_default_api_token``), so the env var
+    must be present **before** ``load_config()`` runs.
     """
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "integration-test-token")
 
