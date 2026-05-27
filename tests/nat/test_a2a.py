@@ -209,13 +209,6 @@ class TestAuthenticatedA2AClientGroup:
         assert "name" in info
         assert "version" in info
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Regression: datarobot_api_key auth provider does not forward "
-            "Authorization header on A2A RPC calls. Remove this marker once the fix lands."
-        ),
-    )
     async def test_authorization_header_forwarded_on_rpc_call(self, nat_config, mock_a2a_endpoints):
         """The Authorization header must be forwarded on every A2A RPC call.
 
