@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.84
+- `nat/datarobot_otelcollector`: new NAT telemetry exporter that sends OTLP traces to the DataRobot OTel ingest endpoint with `X-DataRobot-Api-Key` / `X-DataRobot-Entity-Id` headers (NAT's built-in `otelcollector` doesn't support headers). `endpoint`, `datarobot_api_key`, and `datarobot_entity_id` auto-derive from deployment env (`MLOPS_DEPLOYMENT_ID`, `DATAROBOT_API_TOKEN`, `DATAROBOT_(PUBLIC_)ENDPOINT`), so the minimal `workflow.yaml` block is `_type: datarobot_otelcollector` + `project`. `project` maps to `service.name`. When required env is missing, `nat.helpers.load_config` prunes the exporter before NAT validation so listing it unconditionally is safe in local dev and CI.
+- `core/telemetry_agent`: `instrument()` installs a global `TracerProvider` wired to the same DataRobot OTel endpoint when deployment env is present, so framework auto-instrumentors (Langchain, CrewAI, LlamaIndex) emit spans to the deployment's Tracing tab alongside the NAT exporter. No-ops when env is incomplete or another component has already set a `TracerProvider`. Shared env-resolution helpers live in `core/datarobot_otel`.
+
 ## 0.15.83
 - `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.
 
