@@ -24,8 +24,7 @@ from datarobot.errors import ClientError
 from datarobot.models.model import Model
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
@@ -193,53 +192,54 @@ async def get_best_model(
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    if not project:
-        raise ToolError(f"Project with ID {project_id} not found.", kind=ToolErrorKind.NOT_FOUND)
+    async with dr_client() as client:
+        try:
+            project = client.Project.get(project_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        if not project:
+            raise ToolError(
+                f"Project with ID {project_id} not found.", kind=ToolErrorKind.NOT_FOUND
+            )
 
-    leaderboard = project.get_models()
-    if not leaderboard:
-        raise ToolError("No models found for this project.", kind=ToolErrorKind.NOT_FOUND)
+        leaderboard = project.get_models()
+        if not leaderboard:
+            raise ToolError("No models found for this project.", kind=ToolErrorKind.NOT_FOUND)
 
-    if metric:
-        reverse_sort = metric.upper() in [
-            "AUC",
-            "ACCURACY",
-            "F1",
-            "PRECISION",
-            "RECALL",
-        ]
-        leaderboard = sorted(
-            leaderboard,
-            key=lambda m: m.metrics.get(metric, {}).get(
-                "validation", float("-inf") if reverse_sort else float("inf")
-            ),
-            reverse=reverse_sort,
-        )
-        logger.info(f"Sorted models by metric: {metric}")
+        if metric:
+            reverse_sort = metric.upper() in [
+                "AUC",
+                "ACCURACY",
+                "F1",
+                "PRECISION",
+                "RECALL",
+            ]
+            leaderboard = sorted(
+                leaderboard,
+                key=lambda m: m.metrics.get(metric, {}).get(
+                    "validation", float("-inf") if reverse_sort else float("inf")
+                ),
+                reverse=reverse_sort,
+            )
+            logger.info(f"Sorted models by metric: {metric}")
 
-    best_model = leaderboard[0]
-    logger.info(f"Found best model {best_model.id} for project {project_id}")
+        best_model = leaderboard[0]
+        logger.info(f"Found best model {best_model.id} for project {project_id}")
 
-    metric_value = None
+        metric_value = None
 
-    if metric and best_model.metrics and metric in best_model.metrics:
-        metric_value = best_model.metrics[metric].get("validation")
+        if metric and best_model.metrics and metric in best_model.metrics:
+            metric_value = best_model.metrics[metric].get("validation")
 
-    # Include full metrics in the response
-    best_model_dict = model_to_dict(best_model)
-    best_model_dict["metric"] = metric
-    best_model_dict["metric_value"] = metric_value
+        # Include full metrics in the response
+        best_model_dict = model_to_dict(best_model)
+        best_model_dict["metric"] = metric
+        best_model_dict["metric_value"] = metric_value
 
-    return {
-        "project_id": project_id,
-        "best_model": best_model_dict,
-    }
+        return {
+            "project_id": project_id,
+            "best_model": best_model_dict,
+        }
 
 
 @tool_metadata(
@@ -265,25 +265,24 @@ async def score_dataset_with_model(
     if not dataset_id or not dataset_id.strip():
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-        dr_model = client.Model.get(project, model_id)
-        catalog_dataset = client.Dataset.get(dataset_id)
-        prediction_dataset = project.upload_dataset_from_catalog(dataset_id=catalog_dataset.id)
-        job = dr_model.request_predictions(dataset_id=prediction_dataset.id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    async with dr_client() as client:
+        try:
+            project = client.Project.get(project_id)
+            dr_model = client.Model.get(project, model_id)
+            catalog_dataset = client.Dataset.get(dataset_id)
+            prediction_dataset = project.upload_dataset_from_catalog(dataset_id=catalog_dataset.id)
+            job = dr_model.request_predictions(dataset_id=prediction_dataset.id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    return {
-        "message": "Scoring job started",
-        "scoring_job_id": job.id,
-        "catalog_dataset_id": catalog_dataset.id,
-        "prediction_dataset_id": prediction_dataset.id,
-        "project_id": project_id,
-        "model_id": model_id,
-    }
+        return {
+            "message": "Scoring job started",
+            "scoring_job_id": job.id,
+            "catalog_dataset_id": catalog_dataset.id,
+            "prediction_dataset_id": prediction_dataset.id,
+            "project_id": project_id,
+            "model_id": model_id,
+        }
 
 
 @tool_metadata(
@@ -321,28 +320,27 @@ async def list_models(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    iterate_offset = 0 if offset is None else offset
-    models = project.get_model_records(limit=limit, offset=iterate_offset)
+    async with dr_client() as client:
+        try:
+            project = client.Project.get(project_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        iterate_offset = 0 if offset is None else offset
+        models = project.get_model_records(limit=limit, offset=iterate_offset)
 
-    final_results: dict[str, Any] = {
-        "project_id": project_id,
-        "models": [model_to_dict(model) for model in models],
-        "count": len(models),
-        "may_have_more": len(models) == limit,
-    }
-    return merge_pagination_metadata(
-        final_results=final_results,
-        api_response={},
-        message=message,
-        offset=offset,
-        limit=limit,
-    )
+        final_results: dict[str, Any] = {
+            "project_id": project_id,
+            "models": [model_to_dict(model) for model in models],
+            "count": len(models),
+            "may_have_more": len(models) == limit,
+        }
+        return merge_pagination_metadata(
+            final_results=final_results,
+            api_response={},
+            message=message,
+            offset=offset,
+            limit=limit,
+        )
 
 
 @tool_metadata(
@@ -366,42 +364,41 @@ async def get_model_details(
         bool, "If true, include validation ROC points (classification)."
     ] = False,
 ) -> dict[str, Any]:
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-        model = client.Model.get(project=project, model_id=model_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-
-    insights = ModelInsights(
-        model_id=model_id,
-        project_id=project_id,
-        model_type=model.model_type,
-        featurelist_name=getattr(model, "featurelist_name", None),
-        target=project.target,
-        metric=project.metric,
-        metrics=model.metrics,
-        sample_pct=getattr(model, "sample_pct", None),
-    )
-
-    if include_feature_impact:
+    async with dr_client() as client:
         try:
-            insights.feature_impact = model.get_or_request_feature_impact()
-        except Exception as exc:
-            insights.feature_impact_error = str(exc)
+            project = client.Project.get(project_id)
+            model = client.Model.get(project=project, model_id=model_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    if include_roc_curve:
-        try:
-            roc = model.get_roc_curve(source="validation")
-            insights.roc_curve = {
-                "source": "validation",
-                "roc_points": roc.roc_points if hasattr(roc, "roc_points") else [],
-            }
-        except Exception as exc:
-            insights.roc_curve_error = str(exc)
+        insights = ModelInsights(
+            model_id=model_id,
+            project_id=project_id,
+            model_type=model.model_type,
+            featurelist_name=getattr(model, "featurelist_name", None),
+            target=project.target,
+            metric=project.metric,
+            metrics=model.metrics,
+            sample_pct=getattr(model, "sample_pct", None),
+        )
 
-    return {k: v for k, v in asdict(insights).items() if v is not None}
+        if include_feature_impact:
+            try:
+                insights.feature_impact = model.get_or_request_feature_impact()
+            except Exception as exc:
+                insights.feature_impact_error = str(exc)
+
+        if include_roc_curve:
+            try:
+                roc = model.get_roc_curve(source="validation")
+                insights.roc_curve = {
+                    "source": "validation",
+                    "roc_points": roc.roc_points if hasattr(roc, "roc_points") else [],
+                }
+            except Exception as exc:
+                insights.roc_curve_error = str(exc)
+
+        return {k: v for k, v in asdict(insights).items() if v is not None}
 
 
 @tool_metadata(
@@ -431,26 +428,24 @@ async def is_eligible_for_timeseries_training(
     if not target_column:
         raise ToolError("Target column must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        dataset = client.Dataset.get(dataset_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    async with dr_client() as client:
+        try:
+            dataset = client.Dataset.get(dataset_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        try:
+            pandas_df = dataset.get_as_dataframe()
+            df = pl.from_pandas(pandas_df)
+        except Exception as exc:
+            raise ToolError(
+                f"Could not load AI Catalog dataset '{dataset_id}': {exc}. "
+                "Confirm the dataset id is correct, the dataset has finished "
+                "ingesting (status=COMPLETED), and your token has read access.",
+                kind=ToolErrorKind.UPSTREAM,
+            )
 
     errors: list[str] = []
     infos: list[str] = []
-
-    try:
-        pandas_df = dataset.get_as_dataframe()
-        df = pl.from_pandas(pandas_df)
-    except Exception as exc:
-        raise ToolError(
-            f"Could not load AI Catalog dataset '{dataset_id}': {exc}. "
-            "Confirm the dataset id is correct, the dataset has finished "
-            "ingesting (status=COMPLETED), and your token has read access.",
-            kind=ToolErrorKind.UPSTREAM,
-        )
 
     available_columns = list(df.columns)
     row_count = df.height

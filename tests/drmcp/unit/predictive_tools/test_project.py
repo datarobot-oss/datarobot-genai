@@ -28,15 +28,9 @@ async def test_list_projects_success() -> None:
     mock_proj1 = MagicMock(id="1", project_name="proj1")
     mock_proj2 = MagicMock(id="2", project_name="proj2")
     mock_client.Project.list.return_value = [mock_proj1, mock_proj2]
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.project.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await project.list_projects()
     assert isinstance(result, dict)
     projects_dict = result
@@ -50,15 +44,9 @@ async def test_list_projects_success() -> None:
 async def test_list_projects_empty() -> None:
     mock_client = MagicMock()
     mock_client.Project.list.return_value = []
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.project.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await project.list_projects()
     assert isinstance(result, dict)
     assert result == {}
@@ -67,8 +55,7 @@ async def test_list_projects_empty() -> None:
 @pytest.mark.asyncio
 async def test_list_projects_error() -> None:
     with patch(
-        "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
-        new_callable=AsyncMock,
+        "datarobot_genai.drtools.predictive.project.dr_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -86,15 +73,9 @@ async def test_get_project_dataset_by_name_success() -> None:
     mock_project.get_datasets.return_value = [mock_ds1]
     mock_project.get_dataset.return_value = None
     mock_client.Project.get.return_value = mock_project
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.project.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await project.get_project_dataset_by_name(
             project_id="pid", dataset_name="training"
         )
@@ -110,15 +91,9 @@ async def test_get_project_dataset_by_name_not_found() -> None:
     mock_project.get_datasets.return_value = []
     mock_project.get_dataset.return_value = None
     mock_client.Project.get.return_value = mock_project
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.project.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.project.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         with pytest.raises(ToolError) as exc_info:
             await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
     assert (
@@ -129,8 +104,7 @@ async def test_get_project_dataset_by_name_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_project_dataset_by_name_error() -> None:
     with patch(
-        "datarobot_genai.drtools.predictive.project.get_datarobot_access_token",
-        new_callable=AsyncMock,
+        "datarobot_genai.drtools.predictive.project.dr_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:

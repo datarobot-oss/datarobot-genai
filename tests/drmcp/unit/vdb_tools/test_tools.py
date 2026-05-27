@@ -40,15 +40,9 @@ async def test_list_vector_databases_success() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.vdb.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_vector_databases()
         assert isinstance(result, dict)
@@ -68,15 +62,9 @@ async def test_list_vector_databases_pagination_params() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.vdb.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_vector_databases(offset=10, limit=25)
         mock_rest_client.get.assert_called_once_with(
@@ -103,15 +91,9 @@ async def test_list_vector_databases_empty() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.vdb.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_vector_databases()
         assert result["count"] == 0
@@ -126,15 +108,9 @@ async def test_query_vector_database_success() -> None:
     mock_rest_client.post.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.vdb.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.query_vector_database(deployment_id="dep1", query="test query")
         assert isinstance(result, dict)

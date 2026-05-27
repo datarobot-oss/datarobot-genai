@@ -12,13 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import datarobot as dr
+from datarobot.context import Context as DRContext
 
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template_versions
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_templates
+from datarobot_genai.drtools.core.credentials import get_credentials
+
+
+def _ensure_dr_client() -> None:
+    """Configure the SDK from env so helper REST calls use the same token as acceptance tests."""
+    creds = get_credentials()
+    token = creds.datarobot.application_api_token
+    if not token:
+        raise ValueError("DATAROBOT_API_TOKEN is required for prompt template helper API calls.")
+    dr.Client(token=token, endpoint=creds.datarobot.endpoint)
+    DRContext.use_case = None
 
 
 def create_prompt_template(name: str) -> dict:
     try:
+        _ensure_dr_client()
         client = dr.client.get_client()
         r = client.post(
             url="genai/promptTemplates/",
@@ -72,6 +85,7 @@ def get_or_create_prompt_template_version(
         print(f"Error checking for existing prompt template versions: {e}")
 
     try:
+        _ensure_dr_client()
         client = dr.client.get_client()
         r = client.post(
             url=f"genai/promptTemplates/{prompt_template_id}/versions/",
@@ -97,6 +111,7 @@ def get_or_create_prompt_template_version(
 
 def delete_prompt_template(prompt_template_id: str) -> None:
     try:
+        _ensure_dr_client()
         client = dr.client.get_client()
         client.delete(url=f"genai/promptTemplates/{prompt_template_id}/", join_endpoint=True)
         return None

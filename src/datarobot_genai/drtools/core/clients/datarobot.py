@@ -15,9 +15,14 @@
 """DataRobot API client for tools."""
 
 import logging
+from collections.abc import AsyncGenerator
+from collections.abc import Generator
+from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from typing import Any
 
 import datarobot as dr
+from datarobot.client import client_configuration
 from datarobot.context import Context as DRContext
 
 from datarobot_genai.drtools.core.auth import resolve_token_from_headers
@@ -65,20 +70,35 @@ class DataRobotClient:
     def __init__(self, token: str) -> None:
         self._token = token
 
-    def get_client(self) -> Any:
+    @contextmanager
+    def get_client(self) -> Generator[Any, None, None]:
         """
-        Configure the DataRobot SDK with this client's token and return the dr module.
+        Context manager that configures the DR SDK for this asyncio task and yields dr.
 
-        The returned value is the global datarobot module (dr) after
-        dr.Client(token=..., endpoint=...) has been called. Use it as
-        client.Project.list(), client.Deployment.get(...), etc.
-
-        Returns
-        -------
-            The datarobot module (dr) configured for the current token and endpoint.
+        Uses client_configuration() which stores the RESTClientObject in a ContextVar
+        (_context_client) rather than a plain global. Each asyncio Task that enters this
+        context gets its own isolated client — preventing token mixing between concurrent
+        MCP tool invocations.
         """
         credentials = get_credentials()
-        dr.Client(token=self._token, endpoint=credentials.datarobot.endpoint)
-        # Avoid use-case context from trafaret affecting tool calls
-        DRContext.use_case = None
-        return dr
+        with client_configuration(token=self._token, endpoint=credentials.datarobot.endpoint):
+            # Avoid use-case context from trafaret affecting tool calls.
+            DRContext.use_case = None
+            yield dr
+
+
+@asynccontextmanager
+async def dr_client() -> AsyncGenerator[Any, None]:
+    """Async context manager that resolves the request token and yields a configured dr module.
+
+    Combines get_datarobot_access_token() + DataRobotClient.get_client() into a single
+    entry point, eliminating the two-line boilerplate repeated across every tool function.
+
+    Usage::
+
+        async with dr_client() as client:
+            deployments = client.Deployment.list()
+    """
+    token = await get_datarobot_access_token()
+    with DataRobotClient(token).get_client() as client:
+        yield client

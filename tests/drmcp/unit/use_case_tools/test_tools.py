@@ -35,15 +35,9 @@ async def test_list_use_cases_success() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.use_case.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_use_cases()
         assert isinstance(result, dict)
@@ -59,15 +53,9 @@ async def test_list_use_cases_with_search() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.use_case.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_use_cases(search="Matching")
         mock_rest_client.get.assert_called_once_with(
@@ -84,15 +72,9 @@ async def test_list_use_cases_empty() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.use_case.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_use_cases()
         assert result["count"] == 0
@@ -101,29 +83,23 @@ async def test_list_use_cases_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_list_use_case_assets_success() -> None:
-    with (
-        patch(
-            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_client = MagicMock()
-        mock_use_case = MagicMock()
-        mock_use_case.name = "Test UC"
+    mock_client = MagicMock()
+    mock_use_case = MagicMock()
+    mock_use_case.name = "Test UC"
 
-        mock_ds = MagicMock(id="ds1", name="Dataset 1")
-        mock_use_case.list_datasets.return_value = [mock_ds]
+    mock_ds = MagicMock(id="ds1", name="Dataset 1")
+    mock_use_case.list_datasets.return_value = [mock_ds]
 
-        mock_dep = MagicMock(id="dep1", label="Deployment 1")
-        mock_use_case.list_deployments.return_value = [mock_dep]
+    mock_dep = MagicMock(id="dep1", label="Deployment 1")
+    mock_use_case.list_deployments.return_value = [mock_dep]
 
-        mock_proj = MagicMock(id="proj1", project_name="Project 1")
-        mock_use_case.list_projects.return_value = [mock_proj]
+    mock_proj = MagicMock(id="proj1", project_name="Project 1")
+    mock_use_case.list_projects.return_value = [mock_proj]
 
-        mock_client.UseCase.get.return_value = mock_use_case
-        mock_drc.return_value.get_client.return_value = mock_client
+    mock_client.UseCase.get.return_value = mock_use_case
+    with patch("datarobot_genai.drtools.use_case.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_use_case_assets(use_case_id="uc1")
         assert isinstance(result, dict)
@@ -137,30 +113,24 @@ async def test_list_use_case_assets_success() -> None:
 
 @pytest.mark.asyncio
 async def test_list_use_case_assets_multiple_ids() -> None:
-    with (
-        patch(
-            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_client = MagicMock()
+    mock_client = MagicMock()
 
-        mock_uc1 = MagicMock()
-        mock_uc1.name = "UC 1"
-        mock_uc1.list_datasets.return_value = [MagicMock(id="ds1", name="DS 1")]
-        mock_uc1.list_deployments.return_value = []
-        mock_uc1.list_projects.return_value = []
+    mock_uc1 = MagicMock()
+    mock_uc1.name = "UC 1"
+    mock_uc1.list_datasets.return_value = [MagicMock(id="ds1", name="DS 1")]
+    mock_uc1.list_deployments.return_value = []
+    mock_uc1.list_projects.return_value = []
 
-        mock_uc2 = MagicMock()
-        mock_uc2.name = "UC 2"
-        mock_uc2.list_datasets.return_value = []
-        mock_uc2.list_deployments.return_value = [MagicMock(id="dep1", label="Dep 1")]
-        mock_uc2.list_projects.return_value = []
+    mock_uc2 = MagicMock()
+    mock_uc2.name = "UC 2"
+    mock_uc2.list_datasets.return_value = []
+    mock_uc2.list_deployments.return_value = [MagicMock(id="dep1", label="Dep 1")]
+    mock_uc2.list_projects.return_value = []
 
-        mock_client.UseCase.get.side_effect = lambda uid: {"uc1": mock_uc1, "uc2": mock_uc2}[uid]
-        mock_drc.return_value.get_client.return_value = mock_client
+    mock_client.UseCase.get.side_effect = lambda uid: {"uc1": mock_uc1, "uc2": mock_uc2}[uid]
+    with patch("datarobot_genai.drtools.use_case.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_use_case_assets(use_case_ids=["uc1", "uc2"])
         assert isinstance(result, dict)
@@ -177,24 +147,18 @@ async def test_list_use_case_assets_missing_id() -> None:
 
 @pytest.mark.asyncio
 async def test_list_use_case_assets_partial_error() -> None:
-    with (
-        patch(
-            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_client = MagicMock()
-        mock_use_case = MagicMock()
-        mock_use_case.name = "Test UC"
+    mock_client = MagicMock()
+    mock_use_case = MagicMock()
+    mock_use_case.name = "Test UC"
 
-        mock_use_case.list_datasets.side_effect = Exception("dataset error")
-        mock_use_case.list_deployments.return_value = []
-        mock_use_case.list_projects.return_value = []
+    mock_use_case.list_datasets.side_effect = Exception("dataset error")
+    mock_use_case.list_deployments.return_value = []
+    mock_use_case.list_projects.return_value = []
 
-        mock_client.UseCase.get.return_value = mock_use_case
-        mock_drc.return_value.get_client.return_value = mock_client
+    mock_client.UseCase.get.return_value = mock_use_case
+    with patch("datarobot_genai.drtools.use_case.tools.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
         result = await tools.list_use_case_assets(use_case_id="uc1")
         use_case_data = result["use_cases"][0]

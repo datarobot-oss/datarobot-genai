@@ -40,15 +40,9 @@ async def test_list_deployments_success() -> None:
     mock_dep1 = MagicMock(id="1", label="dep1")
     mock_dep2 = MagicMock(id="2", label="dep2")
     mock_client.Deployment.list.return_value = [mock_dep1, mock_dep2]
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.list_deployments()
         assert result["deployments"]["1"] == "dep1"
         assert result["deployments"]["2"] == "dep2"
@@ -58,15 +52,9 @@ async def test_list_deployments_success() -> None:
 async def test_list_deployments_empty() -> None:
     mock_client = MagicMock()
     mock_client.Deployment.list.return_value = []
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.list_deployments()
         assert result["deployments"] == []
 
@@ -74,8 +62,7 @@ async def test_list_deployments_empty() -> None:
 @pytest.mark.asyncio
 async def test_list_deployments_error() -> None:
     with patch(
-        "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-        new_callable=AsyncMock,
+        "datarobot_genai.drtools.predictive.deployment.dr_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -89,15 +76,9 @@ async def test_get_model_info_from_deployment_success() -> None:
     mock_deployment = MagicMock()
     mock_deployment.model = {"project_id": "pid", "model_id": "mid"}
     mock_client.Deployment.get.return_value = mock_deployment
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.get_model_info_from_deployment(deployment_id="dep_id")
         mock_client.Deployment.get.assert_called_once_with("dep_id")
         assert result["project_id"] == "pid"
@@ -112,15 +93,9 @@ async def test_get_model_info_from_deployment_not_found() -> None:
         status_code=404,
         json={"message": "Not Found"},
     )
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         with pytest.raises(ToolError) as exc_info:
             await deployment.get_model_info_from_deployment(deployment_id="dep_id")
         assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
@@ -130,8 +105,7 @@ async def test_get_model_info_from_deployment_not_found() -> None:
 @pytest.mark.asyncio
 async def test_get_model_info_from_deployment_error() -> None:
     with patch(
-        "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-        new_callable=AsyncMock,
+        "datarobot_genai.drtools.predictive.deployment.dr_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -146,15 +120,9 @@ async def test_deploy_model_success() -> None:
     mock_client.PredictionServer.list.return_value = [mock_server]
     mock_deployment = MagicMock(id="dep123")
     mock_client.Deployment.create_from_learning_model.return_value = mock_deployment
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.deploy_model(
             model_id="model123", label="Test Deployment", description="desc"
         )
@@ -166,15 +134,9 @@ async def test_deploy_model_success() -> None:
 async def test_deploy_model_no_prediction_servers() -> None:
     mock_client = MagicMock()
     mock_client.PredictionServer.list.return_value = []
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         with pytest.raises(ToolError) as exc_info:
             await deployment.deploy_model(model_id="model123", label="Test Deployment")
         assert "No prediction servers available" in str(exc_info.value)
@@ -184,15 +146,9 @@ async def test_deploy_model_no_prediction_servers() -> None:
 async def test_deploy_model_error() -> None:
     mock_client = MagicMock()
     mock_client.PredictionServer.list.side_effect = Exception("fail servers")
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         with pytest.raises(Exception) as exc_info:
             await deployment.deploy_model(model_id="model123", label="Test Deployment")
         assert "fail servers" in str(exc_info.value)
@@ -211,15 +167,9 @@ async def test_get_prediction_history_success() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.get_prediction_history(deployment_id="dep1")
         assert result["deployment_id"] == "dep1"
         assert result["row_count"] == 2
@@ -239,15 +189,9 @@ async def test_get_prediction_history_with_time_range() -> None:
     mock_rest_client.get.return_value = mock_response
     mock_dr_module = MagicMock()
     mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
+    with patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client:
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_dr_module)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.get_prediction_history(
             deployment_id="dep1",
             start_time="2025-01-01T00:00:00Z",
@@ -306,18 +250,14 @@ async def test_deploy_custom_model_mocked_success() -> None:
         "registered_model_version_id": "rmv1",
     }
     with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client,
         patch(
             "datarobot_genai.drtools.predictive.deployment.deploy_custom_model_impl",
             return_value=out,
         ),
     ):
-        mock_drc.return_value.get_client.return_value = MagicMock()
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.deploy_custom_model(
             model_folder=folder,
             model_file_path=model_file,
@@ -382,18 +322,14 @@ async def test_deploy_custom_model_no_model_file_with_model_file_path_succeeds()
     provided_path = os.path.join(folder, "custom.py")
     out = {"deployment_id": "d", "label": "L"}
     with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment.DataRobotClient") as mock_drc,
+        patch("datarobot_genai.drtools.predictive.deployment.dr_client") as mock_dr_client,
         patch(
             "datarobot_genai.drtools.predictive.deployment.deploy_custom_model_impl",
             return_value=out,
         ),
     ):
-        mock_drc.return_value.get_client.return_value = MagicMock()
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await deployment.deploy_custom_model(
             model_folder=folder,
             model_file_path=provided_path,

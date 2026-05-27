@@ -26,12 +26,6 @@ from datarobot_genai.drmcp import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 
-@pytest.fixture(scope="session")
-def vdb_deployment_id() -> str:
-    """Return a VDB deployment ID for acceptance tests."""
-    return "vdb_deployment_id_ete"
-
-
 @pytest.mark.asyncio
 class TestVDBToolsE2E(ToolBaseE2E):
     """End-to-end acceptance tests for VDB MCP tools."""

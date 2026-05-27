@@ -23,8 +23,7 @@ from typing import Any
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import is_valid_url
@@ -88,52 +87,51 @@ async def upload_dataset_to_ai_catalog(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    catalog_item = None
-    if file_content_base64 is not None:
-        raw_b64 = file_content_base64.strip()
-        if not raw_b64:
-            raise ToolError(
-                "Argument validation error: 'file_content_base64' cannot be empty.",
-                kind=ToolErrorKind.VALIDATION,
+    async with dr_client() as client:
+        catalog_item = None
+        if file_content_base64 is not None:
+            raw_b64 = file_content_base64.strip()
+            if not raw_b64:
+                raise ToolError(
+                    "Argument validation error: 'file_content_base64' cannot be empty.",
+                    kind=ToolErrorKind.VALIDATION,
+                )
+            try:
+                raw = base64.b64decode(raw_b64)
+            except binascii.Error as e:
+                raise ToolError(
+                    "Invalid base64 in file_content_base64.", kind=ToolErrorKind.VALIDATION
+                ) from e
+            if not raw:
+                raise ToolError("Decoded file content is empty.", kind=ToolErrorKind.VALIDATION)
+            fname = (
+                dataset_filename.strip()
+                if dataset_filename and dataset_filename.strip()
+                else "data.csv"
             )
-        try:
-            raw = base64.b64decode(raw_b64)
-        except binascii.Error as e:
-            raise ToolError(
-                "Invalid base64 in file_content_base64.", kind=ToolErrorKind.VALIDATION
-            ) from e
-        if not raw:
-            raise ToolError("Decoded file content is empty.", kind=ToolErrorKind.VALIDATION)
-        fname = (
-            dataset_filename.strip()
-            if dataset_filename and dataset_filename.strip()
-            else "data.csv"
-        )
-        buffer = io.BytesIO(raw)
-        buffer.name = fname
-        try:
-            catalog_item = client.Dataset.create_from_file(filelike=buffer)
-        except ClientError as e:
-            raise_tool_error_for_client_error(e)
-    else:
-        if file_url is None or not is_valid_url(file_url):
-            logger.error("Invalid file URL: %s", file_url)
-            raise ToolError(f"Invalid file URL: {file_url}", kind=ToolErrorKind.VALIDATION)
-        try:
-            catalog_item = client.Dataset.create_from_url(file_url)
-        except ClientError as e:
-            raise_tool_error_for_client_error(e)
+            buffer = io.BytesIO(raw)
+            buffer.name = fname
+            try:
+                catalog_item = client.Dataset.create_from_file(filelike=buffer)
+            except ClientError as e:
+                raise_tool_error_for_client_error(e)
+        else:
+            if file_url is None or not is_valid_url(file_url):
+                logger.error("Invalid file URL: %s", file_url)
+                raise ToolError(f"Invalid file URL: {file_url}", kind=ToolErrorKind.VALIDATION)
+            try:
+                catalog_item = client.Dataset.create_from_url(file_url)
+            except ClientError as e:
+                raise_tool_error_for_client_error(e)
 
-    if not catalog_item:
-        raise ToolError("Failed to upload dataset.", kind=ToolErrorKind.UPSTREAM)
+        if not catalog_item:
+            raise ToolError("Failed to upload dataset.", kind=ToolErrorKind.UPSTREAM)
 
-    return {
-        "dataset_id": catalog_item.id,
-        "dataset_version_id": catalog_item.version_id,
-        "dataset_name": catalog_item.name,
-    }
+        return {
+            "dataset_id": catalog_item.id,
+            "dataset_version_id": catalog_item.version_id,
+            "dataset_name": catalog_item.name,
+        }
 
 
 @tool_metadata(
@@ -164,40 +162,39 @@ async def list_ai_catalog_items(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    # DataRobot ``Dataset.iterate`` expects an int; do not pass ``None`` when offset is omitted.
-    iterate_offset = 0 if offset is None else offset
-    try:
-        gen = client.Dataset.iterate(offset=iterate_offset, limit=limit)
-        datasets = list(itertools.islice(gen, limit))
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    async with dr_client() as client:
+        # DataRobot ``Dataset.iterate`` expects an int; do not pass ``None`` when offset is omitted.
+        iterate_offset = 0 if offset is None else offset
+        try:
+            gen = client.Dataset.iterate(offset=iterate_offset, limit=limit)
+            datasets = list(itertools.islice(gen, limit))
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    if not datasets:
-        logger.info("No AI Catalog items found")
-        final_results: dict[str, Any] = {"datasets": {}, "count": 0}
-        return merge_pagination_metadata(
-            final_results=final_results,
-            api_response={},
+        if not datasets:
+            logger.info("No AI Catalog items found")
+            final_results: dict[str, Any] = {"datasets": {}, "count": 0}
+            return merge_pagination_metadata(
+                final_results=final_results,
+                api_response={},
+                message=message,
+                offset=offset,
+                limit=limit,
+            )
+
+        datasets_dict = {ds.id: ds.name for ds in datasets}
+        final_results = merge_pagination_metadata(
+            {
+                "datasets": datasets_dict,
+                "count": len(datasets),
+            },
+            {},
             message=message,
             offset=offset,
             limit=limit,
         )
-
-    datasets_dict = {ds.id: ds.name for ds in datasets}
-    final_results = merge_pagination_metadata(
-        {
-            "datasets": datasets_dict,
-            "count": len(datasets),
-        },
-        {},
-        message=message,
-        offset=offset,
-        limit=limit,
-    )
-    final_results["may_have_more"] = len(datasets) == limit
-    return final_results
+        final_results["may_have_more"] = len(datasets) == limit
+        return final_results
 
 
 @tool_metadata(
@@ -221,28 +218,27 @@ async def get_dataset_details(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        dataset = client.Dataset.get(dataset_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-
-    result: dict = {
-        "id": dataset.id,
-        "name": dataset.name,
-        "created_at": str(dataset.created_at),
-        "row_count": getattr(dataset, "row_count", None),
-    }
-    if include_sample:
+    async with dr_client() as client:
         try:
-            df = dataset.get_raw_sample_data()
-            result["columns"] = list(df.columns)
-            result["sample"] = df.head(sample_rows).to_dict(orient="records")
-        except Exception as exc:
-            result["sample_error"] = str(exc)
+            dataset = client.Dataset.get(dataset_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    return result
+        result: dict = {
+            "id": dataset.id,
+            "name": dataset.name,
+            "created_at": str(dataset.created_at),
+            "row_count": getattr(dataset, "row_count", None),
+        }
+        if include_sample:
+            try:
+                df = dataset.get_raw_sample_data()
+                result["columns"] = list(df.columns)
+                result["sample"] = df.head(sample_rows).to_dict(orient="records")
+            except Exception as exc:
+                result["sample_error"] = str(exc)
+
+        return result
 
 
 @tool_metadata(
@@ -272,41 +268,40 @@ async def list_datastores(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
+    async with dr_client() as dr_module:
+        rest_client = dr_module.client.get_client()
 
-    params: dict[str, Any] = {"limit": limit}
-    if offset is not None:
-        params["offset"] = offset
-    try:
-        response = rest_client.get("externalDataStores/", params=params)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    api_response = response.json()
-    items = api_response.get("data", [])
-    if not isinstance(items, list):
-        items = []
+        params: dict[str, Any] = {"limit": limit}
+        if offset is not None:
+            params["offset"] = offset
+        try:
+            response = rest_client.get("externalDataStores/", params=params)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        api_response = response.json()
+        items = api_response.get("data", [])
+        if not isinstance(items, list):
+            items = []
 
-    final_results: dict[str, Any] = {
-        "datastores": [
-            {
-                "id": ds.get("id", ""),
-                "canonical_name": ds.get("canonicalName", ""),
-                "creator_id": ds.get("creatorId", ""),
-                "params": _serialize_datastore_params(ds.get("params", {})),
-            }
-            for ds in items
-        ],
-        "count": len(items),
-    }
-    return merge_pagination_metadata(
-        final_results=final_results,
-        api_response=api_response,
-        message=message,
-        offset=offset,
-        limit=limit,
-    )
+        final_results: dict[str, Any] = {
+            "datastores": [
+                {
+                    "id": ds.get("id", ""),
+                    "canonical_name": ds.get("canonicalName", ""),
+                    "creator_id": ds.get("creatorId", ""),
+                    "params": _serialize_datastore_params(ds.get("params", {})),
+                }
+                for ds in items
+            ],
+            "count": len(items),
+        }
+        return merge_pagination_metadata(
+            final_results=final_results,
+            api_response=api_response,
+            message=message,
+            offset=offset,
+            limit=limit,
+        )
 
 
 @tool_metadata(
@@ -339,38 +334,37 @@ async def browse_datastore(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
+    async with dr_client() as dr_module:
+        rest_client = dr_module.client.get_client()
 
-    params: dict = {"offset": offset, "limit": limit}
-    if path:
-        params["path"] = path
-    if search:
-        params["search"] = search
-    try:
-        response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    data = response.json()
-    items = data.get("data", data) if isinstance(data, dict) else data
-    if not isinstance(items, list):
-        items = [items] if items is not None else []
+        params: dict = {"offset": offset, "limit": limit}
+        if path:
+            params["path"] = path
+        if search:
+            params["search"] = search
+        try:
+            response = rest_client.get(f"externalDataDrivers/{datastore_id}/tables/", params=params)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        data = response.json()
+        items = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            items = [items] if items is not None else []
 
-    final_results: dict[str, Any] = {
-        "datastore_id": datastore_id,
-        "path": path or "/",
-        "items": items,
-        "count": len(items),
-    }
-    api_response = data if isinstance(data, dict) else {}
-    return merge_pagination_metadata(
-        final_results=final_results,
-        api_response=api_response,
-        message=message,
-        offset=offset,
-        limit=limit,
-    )
+        final_results: dict[str, Any] = {
+            "datastore_id": datastore_id,
+            "path": path or "/",
+            "items": items,
+            "count": len(items),
+        }
+        api_response = data if isinstance(data, dict) else {}
+        return merge_pagination_metadata(
+            final_results=final_results,
+            api_response=api_response,
+            message=message,
+            offset=offset,
+            limit=limit,
+        )
 
 
 @tool_metadata(
@@ -404,30 +398,31 @@ async def query_datastore(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
+    async with dr_client() as dr_module:
+        rest_client = dr_module.client.get_client()
 
-    payload = {"query": sql, "offset": offset, "limit": limit}
-    try:
-        response = rest_client.post(f"externalDataDrivers/{datastore_id}/execute/", json=payload)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    api_response = response.json()
-    row_data = api_response.get("data", [])
+        payload = {"query": sql, "offset": offset, "limit": limit}
+        try:
+            response = rest_client.post(
+                f"externalDataDrivers/{datastore_id}/execute/", json=payload
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        api_response = response.json()
+        row_data = api_response.get("data", [])
 
-    final_results: dict[str, Any] = {
-        "rows": row_data,
-        "row_count": len(row_data) if isinstance(row_data, list) else 0,
-        "columns": api_response.get("columns", []),
-    }
-    return merge_pagination_metadata(
-        final_results=final_results,
-        api_response=api_response,
-        message=message,
-        offset=offset,
-        limit=limit,
-    )
+        final_results: dict[str, Any] = {
+            "rows": row_data,
+            "row_count": len(row_data) if isinstance(row_data, list) else 0,
+            "columns": api_response.get("columns", []),
+        }
+        return merge_pagination_metadata(
+            final_results=final_results,
+            api_response=api_response,
+            message=message,
+            offset=offset,
+            limit=limit,
+        )
 
 
 # from fastmcp import Context

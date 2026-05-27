@@ -33,7 +33,10 @@ logger = logging.getLogger(__name__)
 
 
 async def register_prompt_from_prompt_template_id_and_version(
-    prompt_template_id: str, prompt_template_version_id: str | None
+    prompt_template_id: str,
+    prompt_template_version_id: str | None,
+    *,
+    headers_auth_only: bool = False,
 ) -> Prompt:
     """Register a Prompt for a specific prompt template ID and version.
 
@@ -50,7 +53,9 @@ async def register_prompt_from_prompt_template_id_and_version(
     -------
         The registered Prompt instance.
     """
-    prompt_template = get_datarobot_prompt_template(prompt_template_id)
+    prompt_template = get_datarobot_prompt_template(
+        prompt_template_id, headers_auth_only=headers_auth_only
+    )
 
     if not prompt_template:
         raise DynamicPromptRegistrationError("Registration failed. Could not find prompt template.")
@@ -69,7 +74,9 @@ async def register_prompt_from_prompt_template_id_and_version(
         return registered_prompt
 
     prompt_template_version = get_datarobot_prompt_template_version(
-        prompt_template_id, prompt_template_version_id
+        prompt_template_id,
+        prompt_template_version_id,
+        headers_auth_only=headers_auth_only,
     )
 
     if not prompt_template_version:

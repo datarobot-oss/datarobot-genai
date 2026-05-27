@@ -74,53 +74,71 @@ class TestDataRobotClient:
 
     @patch("datarobot_genai.drtools.core.clients.datarobot.DRContext")
     @patch("datarobot_genai.drtools.core.clients.datarobot.dr")
+    @patch("datarobot_genai.drtools.core.clients.datarobot.client_configuration")
     @patch("datarobot_genai.drtools.core.clients.datarobot.get_credentials")
-    def test_get_client_calls_dr_client_with_token_and_endpoint(
-        self, mock_get_credentials: MagicMock, mock_dr: MagicMock, mock_dr_context: MagicMock
+    def test_get_client_calls_client_configuration_with_token_and_endpoint(
+        self,
+        mock_get_credentials: MagicMock,
+        mock_client_config: MagicMock,
+        mock_dr: MagicMock,
+        mock_dr_context: MagicMock,
     ) -> None:
-        """Test that get_client configures dr.Client with token and endpoint from credentials."""
+        """Test that get_client uses client_configuration with the correct token and endpoint."""
         mock_creds = MagicMock()
         mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
         mock_get_credentials.return_value = mock_creds
+        mock_client_config.return_value.__enter__ = MagicMock(return_value=None)
+        mock_client_config.return_value.__exit__ = MagicMock(return_value=False)
 
         client = DataRobotClient("token-from-headers")
-        result = client.get_client()
+        with client.get_client():
+            pass
 
-        mock_dr.Client.assert_called_once_with(
+        mock_client_config.assert_called_once_with(
             token="token-from-headers",
             endpoint="https://app.datarobot.com/api/v2",
         )
-        assert result is mock_dr
 
     @patch("datarobot_genai.drtools.core.clients.datarobot.DRContext")
     @patch("datarobot_genai.drtools.core.clients.datarobot.dr")
+    @patch("datarobot_genai.drtools.core.clients.datarobot.client_configuration")
     @patch("datarobot_genai.drtools.core.clients.datarobot.get_credentials")
     def test_get_client_resets_dr_context_use_case(
-        self, mock_get_credentials: MagicMock, mock_dr: MagicMock, mock_dr_context: MagicMock
+        self,
+        mock_get_credentials: MagicMock,
+        mock_client_config: MagicMock,
+        mock_dr: MagicMock,
+        mock_dr_context: MagicMock,
     ) -> None:
-        """Test that get_client sets DRContext.use_case to None."""
+        """Test that get_client sets DRContext.use_case to None inside the context."""
         mock_creds = MagicMock()
         mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
         mock_get_credentials.return_value = mock_creds
+        mock_client_config.return_value.__enter__ = MagicMock(return_value=None)
+        mock_client_config.return_value.__exit__ = MagicMock(return_value=False)
 
         client = DataRobotClient("token")
-        client.get_client()
-
-        # Implementation does DRContext.use_case = None
-        assert mock_dr_context.use_case is None
+        with client.get_client():
+            assert mock_dr_context.use_case is None
 
     @patch("datarobot_genai.drtools.core.clients.datarobot.DRContext")
     @patch("datarobot_genai.drtools.core.clients.datarobot.dr")
+    @patch("datarobot_genai.drtools.core.clients.datarobot.client_configuration")
     @patch("datarobot_genai.drtools.core.clients.datarobot.get_credentials")
-    def test_get_client_returns_dr_module(
-        self, mock_get_credentials: MagicMock, mock_dr: MagicMock, mock_dr_context: MagicMock
+    def test_get_client_yields_dr_module(
+        self,
+        mock_get_credentials: MagicMock,
+        mock_client_config: MagicMock,
+        mock_dr: MagicMock,
+        mock_dr_context: MagicMock,
     ) -> None:
-        """Test that get_client returns the datarobot module."""
+        """Test that get_client yields the datarobot module."""
         mock_creds = MagicMock()
         mock_creds.datarobot.endpoint = "https://example.com/api/v2"
         mock_get_credentials.return_value = mock_creds
+        mock_client_config.return_value.__enter__ = MagicMock(return_value=None)
+        mock_client_config.return_value.__exit__ = MagicMock(return_value=False)
 
         client = DataRobotClient("any-token")
-        result = client.get_client()
-
-        assert result is mock_dr
+        with client.get_client() as result:
+            assert result is mock_dr

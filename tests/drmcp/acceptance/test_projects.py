@@ -237,8 +237,10 @@ class TestProjectsE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        I'm working on a machine learning project {project_name} and I need to get the
-        dataset by name '{dataset_name}'. Can you help me get the dataset by name?
+        I'm working on a machine learning project named '{project_name}' and I need the
+        dataset by name '{dataset_name}'.
+        First call list_projects to find the project id for '{project_name}', then call
+        get_project_dataset_by_name with that project_id and dataset_name '{dataset_name}'.
         """
         ],
     )

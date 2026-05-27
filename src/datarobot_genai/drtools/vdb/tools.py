@@ -19,8 +19,7 @@ from typing import Annotated
 from typing import Any
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
@@ -54,19 +53,17 @@ async def list_vector_databases(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
-
     params: dict[str, Any] = {"limit": limit, "modelTargetType": "VectorDatabase"}
     if offset is not None:
         params["offset"] = offset
 
-    response = rest_client.get("deployments/", params=params)
-    api_response = response.json()
-    vdbs = api_response.get("data", [])
-    if not isinstance(vdbs, list):
-        vdbs = []
+    async with dr_client() as dr_module:
+        rest_client = dr_module.client.get_client()
+        response = rest_client.get("deployments/", params=params)
+        api_response = response.json()
+        vdbs = api_response.get("data", [])
+        if not isinstance(vdbs, list):
+            vdbs = []
 
     final_results: dict[str, Any] = {
         "vector_databases": [
@@ -111,21 +108,20 @@ async def query_vector_database(
     if not query:
         raise ToolError("Query must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
-
     payload: dict[str, Any] = {
         "query": query,
         "num_results": num_results,
         "retrieval_mode": retrieval_mode,
     }
-    response = rest_client.post(
-        f"deployments/{deployment_id}/predictions/",
-        json=payload,
-    )
-    data = response.json()
-    documents = data if isinstance(data, list) else data.get("data", [])
+
+    async with dr_client() as dr_module:
+        rest_client = dr_module.client.get_client()
+        response = rest_client.post(
+            f"deployments/{deployment_id}/predictions/",
+            json=payload,
+        )
+        data = response.json()
+        documents = data if isinstance(data, list) else data.get("data", [])
 
     return {
         "deployment_id": deployment_id,

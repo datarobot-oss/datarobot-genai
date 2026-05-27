@@ -27,6 +27,9 @@ without injecting headers.
 """
 
 import os
+from collections.abc import Generator
+from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -185,7 +188,18 @@ def _apply_dr_client_stubs() -> None:
     stub_dr.client.get_client = lambda: mock_rest
 
     clients.get_sdk_client = lambda *args, **kwargs: stub_dr
-    tools_datarobot_client.DataRobotClient.get_client = lambda self: stub_dr  # type: ignore[method-assign]
+
+    @asynccontextmanager
+    async def _stub_dr_client() -> Any:
+        yield stub_dr
+
+    @contextmanager
+    def _stub_get_client(_self: Any) -> Generator[Any, None, None]:
+        yield stub_dr
+
+    tools_datarobot_client.DataRobotClient.get_client = _stub_get_client  # type: ignore[method-assign]
+    # async with dr_client() (predictive tools)
+    tools_datarobot_client.dr_client = _stub_dr_client  # type: ignore[assignment]
     # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()

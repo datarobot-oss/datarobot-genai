@@ -19,8 +19,7 @@ from typing import Annotated
 from typing import Any
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
@@ -41,10 +40,6 @@ async def list_use_cases(
     search: Annotated[str | None, "Optional search filter for use case names"] = None,
     limit: Annotated[int, "Maximum number of use cases to return"] = 100,
 ) -> dict[str, Any]:
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
-
     if search is not None and (not search or not search.strip()):
         raise ToolError(
             "Argument validation error: 'search' cannot be empty.", kind=ToolErrorKind.VALIDATION
@@ -53,8 +48,11 @@ async def list_use_cases(
     params: dict = {"limit": limit}
     if search:
         params["search"] = search
-    response = rest_client.get("useCases/", params=params)
-    items = response.json().get("data", [])
+
+    async with dr_client() as dr_module:
+        rest_client = dr_module.client.get_client()
+        response = rest_client.get("useCases/", params=params)
+        items = response.json().get("data", [])
 
     return {
         "use_cases": [{"id": item["id"], "name": item.get("name", "Untitled")} for item in items],
@@ -99,40 +97,38 @@ async def list_use_case_assets(
             "Either use_case_id or use_case_ids must be provided.", kind=ToolErrorKind.VALIDATION
         )
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-
     results: list[dict] = []
-    for uc_id in ids:
-        entry: dict = {"use_case_id": uc_id}
+    async with dr_client() as dr_module:
+        for uc_id in ids:
+            entry: dict = {"use_case_id": uc_id}
 
-        try:
-            use_case = dr_module.UseCase.get(uc_id)
-        except Exception as exc:
-            entry["error"] = str(exc)
+            try:
+                use_case = dr_module.UseCase.get(uc_id)
+            except Exception as exc:
+                entry["error"] = str(exc)
+                results.append(entry)
+                continue
+
+            entry["name"] = use_case.name
+
+            try:
+                datasets = list(use_case.list_datasets())
+                entry["datasets"] = [{"id": d.id, "name": d.name} for d in datasets]
+            except Exception as exc:
+                entry["datasets_error"] = str(exc)
+
+            try:
+                deployments = list(use_case.list_deployments())
+                entry["deployments"] = [{"id": d.id, "label": d.label} for d in deployments]
+            except Exception as exc:
+                entry["deployments_error"] = str(exc)
+
+            try:
+                projects = list(use_case.list_projects())
+                entry["experiments"] = [{"id": p.id, "name": p.project_name} for p in projects]
+            except Exception as exc:
+                entry["experiments_error"] = str(exc)
+
             results.append(entry)
-            continue
-
-        entry["name"] = use_case.name
-
-        try:
-            datasets = list(use_case.list_datasets())
-            entry["datasets"] = [{"id": d.id, "name": d.name} for d in datasets]
-        except Exception as exc:
-            entry["datasets_error"] = str(exc)
-
-        try:
-            deployments = list(use_case.list_deployments())
-            entry["deployments"] = [{"id": d.id, "label": d.label} for d in deployments]
-        except Exception as exc:
-            entry["deployments_error"] = str(exc)
-
-        try:
-            projects = list(use_case.list_projects())
-            entry["experiments"] = [{"id": p.id, "name": p.project_name} for p in projects]
-        except Exception as exc:
-            entry["experiments_error"] = str(exc)
-
-        results.append(entry)
 
     return {"use_cases": results, "count": len(results)}

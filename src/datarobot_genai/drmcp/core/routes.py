@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from datarobot_genai import __version__
+from datarobot_genai.drtools.core.auth import set_request_headers_for_context
 
 from .config import get_config
 from .dynamic_prompts.controllers import delete_registered_prompt_template
@@ -27,6 +28,7 @@ from .dynamic_prompts.controllers import register_prompt_from_prompt_template_id
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
+from .exceptions import DynamicPromptRegistrationError
 from .mcp_instance import DataRobotMCP
 from .memory_management.manager import get_memory_manager
 from .routes_utils import prefix_mount_path
@@ -499,9 +501,16 @@ def register_routes(mcp: DataRobotMCP) -> None:
         """Add or update prompt template."""
         prompt_template_id = request.path_params["prompt_template_id"]
         prompt_template_version_id = request.query_params.get("promptTemplateVersionId")
+        # Ensure token resolution sees this REST request (not only the open MCP stream).
+        try:
+            set_request_headers_for_context({k.lower(): v for k, v in request.headers.items()})
+        except (AttributeError, TypeError):
+            pass
         try:
             prompt = await register_prompt_from_prompt_template_id_and_version(
-                prompt_template_id, prompt_template_version_id
+                prompt_template_id,
+                prompt_template_version_id,
+                headers_auth_only=False,
             )
             return JSONResponse(
                 status_code=HTTPStatus.CREATED,
@@ -511,6 +520,11 @@ def register_routes(mcp: DataRobotMCP) -> None:
                     "promptTemplateId": prompt_template_id,
                     "promptTemplateVersionId": prompt.meta["prompt_template_version_id"],
                 },
+            )
+        except DynamicPromptRegistrationError as e:
+            return JSONResponse(
+                status_code=HTTPStatus.NOT_FOUND,
+                content={"error": f"Failed to add prompt template: {str(e) or 'not found'}"},
             )
         except Exception as e:
             return JSONResponse(
@@ -522,7 +536,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
     async def refresh_prompt_templates(_: Request) -> JSONResponse:
         """Refresh prompt templates."""
         try:
-            await refresh_registered_prompt_template()
+            await refresh_registered_prompt_template(headers_auth_only=True)
             return JSONResponse(
                 status_code=HTTPStatus.OK,
                 content={"message": "Prompts refreshed successfully"},

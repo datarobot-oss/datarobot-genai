@@ -26,8 +26,7 @@ import polars as pl
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -65,64 +64,63 @@ async def get_deployment_info(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        deployment = client.Deployment.get(deployment_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-
-    # get features from the deployment
-    features_raw = deployment.get_features()
-    deployment.get_capabilities()
-
-    # Parse features if it's a JSON string
-    if isinstance(features_raw, str):
+    async with dr_client() as client:
         try:
-            features = json.loads(features_raw)
-        except json.JSONDecodeError:
-            features = []
-    else:
-        features = features_raw
-
-    # get model type if its not a custom model
-    project = None
-    if deployment.model.get("project_id") is None:
-        model_type = "custom"
-        target = ""
-        target_type = ""
-    else:
-        try:
-            dr_project = client.Project.get(deployment.model["project_id"])
-            model = client.Model.get(project=dr_project, model_id=deployment.model["id"])
+            deployment = client.Deployment.get(deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
-        project = dr_project
-        model_type = model.model_type
-        target = dr_project.target
-        target_type = dr_project.target_type
 
-    # Add model metadata
-    result = {
-        "deployment_id": deployment_id,
-        "model_type": model_type,
-        "target": target,
-        "target_type": target_type,
-        "features": sorted(features, key=_feature_importance_value, reverse=True),
-        "total_features": len(features),
-    }
+        # get features from the deployment
+        features_raw = deployment.get_features()
+        deployment.get_capabilities()
 
-    # Add time series specific information if applicable
-    if project and getattr(project, "datetime_partitioning", None) is not None:
-        partition = project.datetime_partitioning
-        result["time_series_config"] = {
-            "datetime_column": partition.datetime_partition_column,
-            "forecast_window_start": partition.forecast_window_start,
-            "forecast_window_end": partition.forecast_window_end,
-            "series_id_columns": partition.multiseries_id_columns or [],
+        # Parse features if it's a JSON string
+        if isinstance(features_raw, str):
+            try:
+                features = json.loads(features_raw)
+            except json.JSONDecodeError:
+                features = []
+        else:
+            features = features_raw
+
+        # get model type if its not a custom model
+        project = None
+        if deployment.model.get("project_id") is None:
+            model_type = "custom"
+            target = ""
+            target_type = ""
+        else:
+            try:
+                dr_project = client.Project.get(deployment.model["project_id"])
+                model = client.Model.get(project=dr_project, model_id=deployment.model["id"])
+            except ClientError as e:
+                raise_tool_error_for_client_error(e)
+            project = dr_project
+            model_type = model.model_type
+            target = dr_project.target
+            target_type = dr_project.target_type
+
+        # Add model metadata
+        result = {
+            "deployment_id": deployment_id,
+            "model_type": model_type,
+            "target": target,
+            "target_type": target_type,
+            "features": sorted(features, key=_feature_importance_value, reverse=True),
+            "total_features": len(features),
         }
 
-    return result
+        # Add time series specific information if applicable
+        if project and getattr(project, "datetime_partitioning", None) is not None:
+            partition = project.datetime_partitioning
+            result["time_series_config"] = {
+                "datetime_column": partition.datetime_partition_column,
+                "forecast_window_start": partition.forecast_window_start,
+                "forecast_window_end": partition.forecast_window_end,
+                "series_id_columns": partition.multiseries_id_columns or [],
+            }
+
+        return result
 
 
 @tool_metadata(

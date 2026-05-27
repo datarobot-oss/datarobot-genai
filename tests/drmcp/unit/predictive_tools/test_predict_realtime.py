@@ -40,21 +40,15 @@ def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
     mock_deployment = MagicMock()
     mock_client.Deployment = mock_deployment
     mock_deployment.get = MagicMock()
-    mock_dr_client_instance = MagicMock()
-    mock_dr_client_instance.get_client.return_value = mock_client
     with (
         patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient",
-            return_value=mock_dr_client_instance,
-        ),
+            "datarobot_genai.drtools.predictive.predict_realtime.dr_client",
+        ) as mock_dr_client,
         patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv") as mock_read_csv,
         patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict") as mock_dr_predict,
     ):
+        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         yield {
             "mock_read_csv": mock_read_csv,
             "mock_deployment_get": mock_deployment,
@@ -616,16 +610,8 @@ class TestPredictByAiCatalogRt:
     @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
-    @patch(
-        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
-        new_callable=AsyncMock,
-        return_value="token",
-    )
     async def test_predict_by_ai_catalog_rt_with_get_as_dataframe(
         self,
-        mock_get_datarobot_access_token,
-        mock_data_robot_client,
         mock_dr_predict,
         mock_predictions_result_response,
     ):
@@ -637,7 +623,6 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -645,10 +630,15 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        # Call function
-        result = await predict_by_ai_catalog_rt(
-            deployment_id="deployment123", dataset_id="dataset123"
-        )
+        with patch(
+            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
+        ) as mock_dr_client:
+            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+            # Call function
+            result = await predict_by_ai_catalog_rt(
+                deployment_id="deployment123", dataset_id="dataset123"
+            )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -670,16 +660,8 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
-    @patch(
-        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
-        new_callable=AsyncMock,
-        return_value="token",
-    )
     async def test_predict_by_ai_catalog_rt_with_download(
         self,
-        mock_get_datarobot_access_token,
-        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
@@ -694,7 +676,6 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -705,10 +686,15 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        # Call function
-        result = await predict_by_ai_catalog_rt(
-            deployment_id="deployment123", dataset_id="dataset123"
-        )
+        with patch(
+            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
+        ) as mock_dr_client:
+            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+            # Call function
+            result = await predict_by_ai_catalog_rt(
+                deployment_id="deployment123", dataset_id="dataset123"
+            )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -732,16 +718,8 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
-    @patch(
-        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
-        new_callable=AsyncMock,
-        return_value="token",
-    )
     async def test_predict_by_ai_catalog_rt_with_get_file(
         self,
-        mock_get_datarobot_access_token,
-        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
@@ -755,7 +733,6 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -766,9 +743,14 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        result = await predict_by_ai_catalog_rt(
-            deployment_id="deployment123", dataset_id="dataset123"
-        )
+        with patch(
+            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
+        ) as mock_dr_client:
+            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+            result = await predict_by_ai_catalog_rt(
+                deployment_id="deployment123", dataset_id="dataset123"
+            )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -791,16 +773,8 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
-    @patch(
-        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
-        new_callable=AsyncMock,
-        return_value="token",
-    )
     async def test_predict_by_ai_catalog_rt_with_get_bytes(
         self,
-        mock_get_datarobot_access_token,
-        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
@@ -817,7 +791,6 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -828,10 +801,15 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        # Call function
-        result = await predict_by_ai_catalog_rt(
-            deployment_id="deployment123", dataset_id="dataset123"
-        )
+        with patch(
+            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
+        ) as mock_dr_client:
+            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+            # Call function
+            result = await predict_by_ai_catalog_rt(
+                deployment_id="deployment123", dataset_id="dataset123"
+            )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")
@@ -854,16 +832,8 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    @patch("datarobot_genai.drtools.predictive.predict_realtime.DataRobotClient")
-    @patch(
-        "datarobot_genai.drtools.predictive.predict_realtime.get_datarobot_access_token",
-        new_callable=AsyncMock,
-        return_value="token",
-    )
     async def test_predict_by_ai_catalog_rt_with_url_fallback(
         self,
-        mock_get_datarobot_access_token,
-        mock_data_robot_client,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
@@ -881,7 +851,6 @@ class TestPredictByAiCatalogRt:
         mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
         mock_client.Deployment.get.return_value = mock_deployment
-        mock_data_robot_client.return_value.get_client.return_value = mock_client
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -892,10 +861,15 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        # Call function
-        result = await predict_by_ai_catalog_rt(
-            deployment_id="deployment123", dataset_id="dataset123"
-        )
+        with patch(
+            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
+        ) as mock_dr_client:
+            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+            # Call function
+            result = await predict_by_ai_catalog_rt(
+                deployment_id="deployment123", dataset_id="dataset123"
+            )
 
         # Verify calls
         mock_client.Dataset.get.assert_called_once_with("dataset123")

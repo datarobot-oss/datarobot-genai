@@ -26,8 +26,7 @@ from datarobot_predict.deployment import predict as dr_predict
 from dateutil import parser as dateutil_parser
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import predictions_result_response
@@ -71,52 +70,51 @@ async def predict_by_ai_catalog_rt(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        dataset = client.Dataset.get(dataset_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    async with dr_client() as client:
+        try:
+            dataset = client.Dataset.get(dataset_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    # 1. Preferred: built-in DataFrame helper (newer SDKs)
-    if hasattr(dataset, "get_as_dataframe"):
-        df = dataset.get_as_dataframe()
+        # 1. Preferred: built-in DataFrame helper (newer SDKs)
+        if hasattr(dataset, "get_as_dataframe"):
+            df = dataset.get_as_dataframe()
 
-    # 2. Next: if there is a method returning a local file path
-    elif hasattr(dataset, "download"):
-        path = dataset.download("dataset.csv")
-        df = pl.read_csv(path).to_pandas()
+        # 2. Next: if there is a method returning a local file path
+        elif hasattr(dataset, "download"):
+            path = dataset.download("dataset.csv")
+            df = pl.read_csv(path).to_pandas()
 
-    # 3. Next: if there is a method returning a local file path
-    elif hasattr(dataset, "get_file"):
-        path = dataset.get_file()
-        df = pl.read_csv(path).to_pandas()
+        # 3. Next: if there is a method returning a local file path
+        elif hasattr(dataset, "get_file"):
+            path = dataset.get_file()
+            df = pl.read_csv(path).to_pandas()
 
-    # 4. Bytes fallback
-    elif hasattr(dataset, "get_bytes"):
-        raw = dataset.get_bytes()
-        df = pl.read_csv(io.BytesIO(raw)).to_pandas()
+        # 4. Bytes fallback
+        elif hasattr(dataset, "get_bytes"):
+            raw = dataset.get_bytes()
+            df = pl.read_csv(io.BytesIO(raw)).to_pandas()
 
-    # 5. Last resort: expose URL then fetch manually
-    else:
-        url = dataset.url
-        df = pl.read_csv(url).to_pandas()
+        # 5. Last resort: expose URL then fetch manually
+        else:
+            url = dataset.url
+            df = pl.read_csv(url).to_pandas()
 
-    try:
-        deployment = client.Deployment.get(deployment_id=deployment_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    result = dr_predict(deployment, df, timeout=timeout or 600)
-    predictions = result.dataframe
-    prediction_results = predictions_result_response(predictions, show_explanations=True)
-    content = (
-        prediction_results.model_dump()
-        if hasattr(prediction_results, "model_dump")
-        else prediction_results
-        if isinstance(prediction_results, dict)
-        else prediction_results.__dict__
-    )
-    return content
+        try:
+            deployment = client.Deployment.get(deployment_id=deployment_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        result = dr_predict(deployment, df, timeout=timeout or 600)
+        predictions = result.dataframe
+        prediction_results = predictions_result_response(predictions, show_explanations=True)
+        content = (
+            prediction_results.model_dump()
+            if hasattr(prediction_results, "model_dump")
+            else prediction_results
+            if isinstance(prediction_results, dict)
+            else prediction_results.__dict__
+        )
+        return content
 
 
 @tool_metadata(
@@ -244,73 +242,72 @@ async def predict_realtime(
     if series_id_column and series_id_column not in pl_df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        deployment = client.Deployment.get(deployment_id=deployment_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    async with dr_client() as client:
+        try:
+            deployment = client.Deployment.get(deployment_id=deployment_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    # Check if this is a time series prediction or regular prediction
-    is_time_series = bool(forecast_point or (forecast_range_start and forecast_range_end))
+        # Check if this is a time series prediction or regular prediction
+        is_time_series = bool(forecast_point or (forecast_range_start and forecast_range_end))
 
-    # Convert to pandas at the predict API boundary
-    df = pl_df.to_pandas()
-    predict_kwargs = {
-        "deployment": deployment,
-        "data_frame": df,
-        "timeout": timeout,
-    }
+        # Convert to pandas at the predict API boundary
+        df = pl_df.to_pandas()
+        predict_kwargs = {
+            "deployment": deployment,
+            "data_frame": df,
+            "timeout": timeout,
+        }
 
-    # Add time series parameters if applicable
-    if is_time_series:
-        if forecast_point:
-            forecast_point_dt = _parse_datetime(forecast_point)
-            predict_kwargs["time_series_type"] = TimeSeriesType.FORECAST
-            predict_kwargs["forecast_point"] = forecast_point_dt
-        elif forecast_range_start and forecast_range_end:
-            predictions_start_date_dt = _parse_datetime(forecast_range_start)
-            predictions_end_date_dt = _parse_datetime(forecast_range_end)
-            predict_kwargs["time_series_type"] = TimeSeriesType.HISTORICAL
-            predict_kwargs["predictions_start_date"] = predictions_start_date_dt
-            predict_kwargs["predictions_end_date"] = predictions_end_date_dt
+        # Add time series parameters if applicable
+        if is_time_series:
+            if forecast_point:
+                forecast_point_dt = _parse_datetime(forecast_point)
+                predict_kwargs["time_series_type"] = TimeSeriesType.FORECAST
+                predict_kwargs["forecast_point"] = forecast_point_dt
+            elif forecast_range_start and forecast_range_end:
+                predictions_start_date_dt = _parse_datetime(forecast_range_start)
+                predictions_end_date_dt = _parse_datetime(forecast_range_end)
+                predict_kwargs["time_series_type"] = TimeSeriesType.HISTORICAL
+                predict_kwargs["predictions_start_date"] = predictions_start_date_dt
+                predict_kwargs["predictions_end_date"] = predictions_end_date_dt
 
-    # Add explanation parameters
-    if max_explanations != 0:
-        predict_kwargs["max_explanations"] = max_explanations
-    if max_ngram_explanations is not None:
-        predict_kwargs["max_ngram_explanations"] = max_ngram_explanations
-    if threshold_high is not None:
-        predict_kwargs["threshold_high"] = threshold_high
-    if threshold_low is not None:
-        predict_kwargs["threshold_low"] = threshold_low
-    if explanation_algorithm is not None:
-        predict_kwargs["explanation_algorithm"] = explanation_algorithm
+        # Add explanation parameters
+        if max_explanations != 0:
+            predict_kwargs["max_explanations"] = max_explanations
+        if max_ngram_explanations is not None:
+            predict_kwargs["max_ngram_explanations"] = max_ngram_explanations
+        if threshold_high is not None:
+            predict_kwargs["threshold_high"] = threshold_high
+        if threshold_low is not None:
+            predict_kwargs["threshold_low"] = threshold_low
+        if explanation_algorithm is not None:
+            predict_kwargs["explanation_algorithm"] = explanation_algorithm
 
-    # Add passthrough columns
-    if passthrough_columns is not None:
-        if passthrough_columns == "all":
-            predict_kwargs["passthrough_columns"] = "all"
-        else:
-            # Convert comma-separated string to set
-            columns_set = {col.strip() for col in passthrough_columns.split(",")}
-            predict_kwargs["passthrough_columns"] = columns_set
+        # Add passthrough columns
+        if passthrough_columns is not None:
+            if passthrough_columns == "all":
+                predict_kwargs["passthrough_columns"] = "all"
+            else:
+                # Convert comma-separated string to set
+                columns_set = {col.strip() for col in passthrough_columns.split(",")}
+                predict_kwargs["passthrough_columns"] = columns_set
 
-    # Add custom prediction endpoint
-    if prediction_endpoint is not None:
-        predict_kwargs["prediction_endpoint"] = prediction_endpoint
+        # Add custom prediction endpoint
+        if prediction_endpoint is not None:
+            predict_kwargs["prediction_endpoint"] = prediction_endpoint
 
-    # Run prediction
-    result = dr_predict(**predict_kwargs)
-    predictions = result.dataframe
-    prediction_results = predictions_result_response(
-        predictions, show_explanations=max_explanations not in {0, "0"}
-    )
-    content = (
-        prediction_results.model_dump()
-        if hasattr(prediction_results, "model_dump")
-        else prediction_results
-        if isinstance(prediction_results, dict)
-        else prediction_results.__dict__
-    )
-    return content
+        # Run prediction
+        result = dr_predict(**predict_kwargs)
+        predictions = result.dataframe
+        prediction_results = predictions_result_response(
+            predictions, show_explanations=max_explanations not in {0, "0"}
+        )
+        content = (
+            prediction_results.model_dump()
+            if hasattr(prediction_results, "model_dump")
+            else prediction_results
+            if isinstance(prediction_results, dict)
+            else prediction_results.__dict__
+        )
+        return content
