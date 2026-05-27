@@ -33,9 +33,17 @@ tasks:
       - |
           echo "pytest path: tests/{{.MODULE}}"
           {{if eq .MODULE "nat"}}uv sync --extra nat --extra crewai --extra llamaindex --extra dragent{{end}}
+          {{if eq .MODULE "drmcpbase"}}
+          # drmcpbase is intentionally minimal (FastMCP only), 
+          # so avoid loading root conftest rather than pulling in the full SDK just to run a package smoke test for now
+          uv run pytest tests/drmcpbase \
+            --confcutdir=tests/drmcpbase \
+            --junitxml=test_results/test-results.xml -vv -s
+          {{else}}
           uv run pytest tests/{{.MODULE}} \
             --junitxml=test_results/test-results.xml -vv -s \
             --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration
+          {{end}}
     silent: true
 
   test-nat-integration:
