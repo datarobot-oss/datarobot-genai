@@ -19,11 +19,14 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from a2a.types import AgentCapabilities
+from a2a.types import AgentCard
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
+from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
@@ -31,6 +34,7 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClie
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
 from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_headers
+from datarobot_genai.dragent.plugins.auth_a2a_client import _FailedRegistryClient
 from datarobot_genai.dragent.plugins.auth_a2a_client import _sanitize_a2a_error
 from datarobot_genai.dragent.plugins.auth_a2a_client import _wrap_a2a_function
 
@@ -440,6 +444,26 @@ class TestSanitizeA2AError:
         assert "network error" in result
         assert "secret" not in result
 
+    def test_agent_card_registry_error_surfaces_message(self):
+        """AgentCardRegistryError messages are safe — they contain only IDs and guidance."""
+        exc = AgentCardRegistryError(
+            "No agent card found in the central registry for "
+            "deployment_id='000000000000000000000000'. "
+            "Verify that the deployment exists and is registered in your organisation."
+        )
+        result = _sanitize_a2a_error(exc)
+        assert "000000000000000000000000" in result
+        assert "agent card registry error" in result
+        assert "Verify that the deployment exists" in result
+
+    def test_agent_card_registry_error_not_treated_as_generic_runtime_error(self):
+        """AgentCardRegistryError should NOT fall through to the generic RuntimeError branch."""
+        exc = AgentCardRegistryError("deployment not found")
+        result = _sanitize_a2a_error(exc)
+        # Must not hit the generic "authentication or protocol error" branch
+        assert "authentication or protocol error" not in result
+        assert "deployment not found" in result
+
 
 # ---------------------------------------------------------------------------
 # Tests: _wrap_a2a_function — error handling wrapper
@@ -639,3 +663,182 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
             # The client should have the pre-resolved card, not call _resolve_agent_card
             assert fg._client._agent_card is mock_card
+
+
+# ---------------------------------------------------------------------------
+# Tests: _FailedRegistryClient — placeholder client for failed registry lookups
+# ---------------------------------------------------------------------------
+
+
+class TestFailedRegistryClient:
+    """Verify _FailedRegistryClient provides agent_card for registration."""
+
+    def test_agent_card_property_returns_card(self):
+        card = AgentCard(
+            name="test",
+            description="test",
+            url="https://test/",
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+        )
+        client = _FailedRegistryClient(card)
+        assert client.agent_card is card
+
+    async def test_aexit_is_noop(self):
+        card = AgentCard(
+            name="test",
+            description="test",
+            url="https://test/",
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+        )
+        client = _FailedRegistryClient(card)
+        # Should not raise
+        await client.__aexit__(None, None, None)
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthenticatedA2AClientFunctionGroup — registry error (graceful degradation)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2AClientFunctionGroupRegistryError:
+    """Verify that a failed registry lookup produces a degraded function group.
+
+    The group should complete __aenter__, register functions via NAT, and
+    return actionable error messages when those functions are invoked.
+    Covered for both deployment_id and external_id lookup keys.
+    """
+
+    @pytest.fixture(
+        params=[
+            pytest.param(
+                {
+                    "key": "deployment_id",
+                    "value": "000000000000000000000000",
+                    "error_msg": (
+                        "No agent card found in the central registry for "
+                        "deployment_id='000000000000000000000000'. "
+                        "Verify that the deployment exists and is registered "
+                        "in your organisation."
+                    ),
+                },
+                id="deployment_id",
+            ),
+            pytest.param(
+                {
+                    "key": "external_id",
+                    "value": "my-external-agent",
+                    "error_msg": (
+                        "No agent card found in the central registry for "
+                        "external_id='my-external-agent'. "
+                        "Verify that the deployment exists and is registered "
+                        "in your organisation."
+                    ),
+                },
+                id="external_id",
+            ),
+        ]
+    )
+    def registry_scenario(self, request):
+        return request.param
+
+    @pytest.fixture
+    def registry_config(self, registry_scenario):
+        lookup_kwargs = {registry_scenario["key"]: registry_scenario["value"]}
+        return AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(**lookup_kwargs),
+        )
+
+    @pytest.fixture
+    def failing_registry(self, registry_scenario):
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(
+            side_effect=AgentCardRegistryError(registry_scenario["error_msg"])
+        )
+        return mock_registry
+
+    async def test_aenter_succeeds_on_registry_error(
+        self, registry_config, mock_builder, failing_registry
+    ):
+        """__aenter__ must return self, not raise."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            result = await fg.__aenter__()
+            assert result is fg
+
+    async def test_functions_are_registered_via_nat(
+        self, registry_config, mock_builder, failing_registry
+    ):
+        """NAT's _register_functions populates functions against the placeholder client."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            # Don't assert exact names — stay resilient to NAT upgrades.
+            assert len(fg._functions) > 0
+            assert "call" in fg._functions
+
+    async def test_call_stub_returns_error_with_original_message(
+        self, registry_config, registry_scenario, mock_builder, failing_registry
+    ):
+        """Invoking 'call' returns an error string with the original registry error message."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            fn_obj = fg._functions["call"]
+            result = await fn_obj.ainvoke({"query": "say hi"})
+
+            assert isinstance(result, str)
+            assert "Error" in result
+            assert registry_scenario["value"] in result
+            assert "Verify that the deployment exists" in result
+
+    async def test_client_is_failed_registry_client(
+        self, registry_config, mock_builder, failing_registry
+    ):
+        """self._client should be a _FailedRegistryClient, not a real A2A client."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            assert isinstance(fg._client, _FailedRegistryClient)

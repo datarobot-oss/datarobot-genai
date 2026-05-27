@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.15.77
+- A non-existent `deployment_id` or `external_id` in the agent card registry now returns an actionable error message instead of a generic JSON-RPC `-32603 Internal error`.
+
 ## 0.15.76
 - Pinned `starlette>=1.0.1` on the `drmcp` extra and switched MCP middleware to `request.scope["path"]` to harden against CVE-2026-48710 (BadHost)
 
