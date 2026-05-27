@@ -53,7 +53,7 @@ crewai = core + [
     "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
-    "nvidia-nat-crewai==1.6.0",
+    "nvidia-nat-crewai==1.7.0",
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "pybase64>=1.4.2,<2.0.0",
 ]
@@ -63,7 +63,7 @@ langgraph = core + [
     "langgraph>=1.0.0,<2.0.0",
     "langgraph-prebuilt>=1.0.0,<2.0.0",
     "litellm>=1.83.0,<2.0.0",
-    "nvidia-nat-langchain==1.6.0",
+    "nvidia-nat-langchain==1.7.0",
     "opentelemetry-instrumentation-langchain>=0.40.5,<1.0.0",
 ]
 
@@ -75,26 +75,25 @@ llamaindex = core + [
     "litellm>=1.83.0,<2.0.0",
     "llama-index-llms-openai>=0.6.0,<0.7.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
-    "nvidia-nat-llama-index==1.6.0",
+    "nvidia-nat-llama-index==1.7.0",
     "opentelemetry-instrumentation-llamaindex>=0.40.5,<1.0.0",
     "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
 ]
 
 nat = core + [
     "litellm>=1.83.0,<2.0.0",
-    "nvidia-nat==1.6.0",
-    "nvidia-nat-a2a==1.6.0",
-    "nvidia-nat-opentelemetry==1.6.0",
-    "nvidia-nat-langchain==1.6.0",  # NAT built-in agents require this
-    "nvidia-nat-mcp==1.6.0",
+    "nvidia-nat==1.7.0",
+    "nvidia-nat-a2a==1.7.0",
+    "nvidia-nat-opentelemetry==1.7.0",
+    "nvidia-nat-langchain==1.7.0",  # NAT built-in agents require this
+    "nvidia-nat-mcp==1.7.0",
     "anyio==4.11.0",
 ]
 
 dragent = nat + [
     # 'FastAPI' object has no attribute 'add_event_handler'
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
-    "fastapi<0.133.0",
-    "starlette<1.0.0",
+    "starlette>=1.0.1",
 ]
 
 # Eventually NAT will be merged into dragent
@@ -129,6 +128,7 @@ drtools = auth + [
 
 # drmcpbase is standalone set of dependencies for MCP Servers only (no core).
 drmcpbase = [
+    "starlette>=1.0.1", # CVE-2026-48710 fixed in 1.0.1
     "fastmcp>=3.2.0,<4.0.0",
 ]
 

@@ -27,6 +27,7 @@ from a2a.client import A2ACardResolver
 from a2a.client import AuthInterceptor
 from a2a.client import ClientConfig
 from a2a.client import ClientFactory
+from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
@@ -42,6 +43,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 
+from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 
@@ -163,12 +165,29 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
 
         interceptors: list[Any] = []
         if self._auth_provider:
-            credential_service = A2ACredentialService(
-                auth_provider=self._auth_provider,
-                agent_card=self._agent_card,
-            )
-            interceptors.append(AuthInterceptor(credential_service))
-            logger.info("Task-phase authentication configured for A2A client (AuthInterceptor)")
+            if self._agent_card.security_schemes:
+                # Agent card declares security schemes — use A2ACredentialService
+                # for proper credential validation per the A2A spec.  This path
+                # supports OAuth2 providers that need security-scheme negotiation.
+                credential_service = A2ACredentialService(
+                    auth_provider=self._auth_provider,
+                    agent_card=self._agent_card,
+                )
+                interceptors.append(AuthInterceptor(credential_service))
+                logger.info(
+                    "Agent card declares security schemes, using security-scheme negotiation."
+                )
+            else:
+                # No security schemes on the card — A2ACredentialService would
+                # skip credential injection entirely.  Fall back to direct header
+                # injection so simple auth providers (e.g. APIKeyAuthProvider)
+                # still forward the token on every RPC call.
+                user_id = Context.get().user_id or "default-user"
+                auth_result = await self._auth_provider.authenticate(user_id=user_id)
+                if auth_result:
+                    assert self._httpx_client is not None
+                    self._httpx_client.headers.update(_extract_auth_headers(auth_result))
+                logger.info("No security schemes configured on the agent card, using default.")
 
         client_config = ClientConfig(
             httpx_client=self._httpx_client,
@@ -310,6 +329,11 @@ def _sanitize_a2a_error(exc: Exception) -> str:
     if isinstance(exc, (httpx.ConnectError, httpx.NetworkError, ConnectionError, OSError)):
         return "network error communicating with remote agent"
 
+    # Safe to surface verbatim — crafted by this codebase, never contains secrets.
+    # Checked before RuntimeError (its superclass).
+    if isinstance(exc, AgentCardRegistryError):
+        return f"agent card registry error: {exc}"
+
     if isinstance(exc, (RuntimeError, ValueError)):
         return f"{type(exc).__name__}: authentication or protocol error"
 
@@ -328,20 +352,8 @@ def _wrap_a2a_function(fn: Any) -> Any:
     (``exc_info=False``) to prevent token values captured in frame locals
     from reaching log sinks.
     """
-    if asyncio.iscoroutinefunction(fn):
-
-        @functools.wraps(fn)
-        async def _safe(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return await fn(*args, **kwargs)
-            except Exception as exc:
-                safe_msg = _sanitize_a2a_error(exc)
-                logger.error("A2A remote call failed: %s", safe_msg)
-                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
-                return f"Error: failed to communicate with the remote agent: {safe_msg}"
-
-        return _safe
-
+    # Check async generators first — they also satisfy iscoroutinefunction
+    # in some Python versions, so the order matters.
     if inspect.isasyncgenfunction(fn):
 
         @functools.wraps(fn)
@@ -357,14 +369,82 @@ def _wrap_a2a_function(fn: Any) -> Any:
 
         return _safe_gen
 
+    if asyncio.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                return f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe
+
     return fn
+
+
+class _FailedRegistryClient:
+    """Minimal stand-in providing ``agent_card`` for ``_register_functions()``.
+
+    Used when registry lookup fails.  Only ``agent_card`` and ``__aexit__``
+    are needed — the actual RPC methods are never called because
+    ``add_function`` replaces every registered function before it can
+    reference the client.
+    """
+
+    __slots__ = ("_agent_card",)
+
+    def __init__(self, agent_card: AgentCard) -> None:
+        self._agent_card = agent_card
+
+    @property
+    def agent_card(self) -> AgentCard:
+        return self._agent_card
+
+    async def __aexit__(self, *args: Any) -> None:
+        """No-op — nothing to close."""
+
+
+def _make_placeholder_agent_card(error_msg: str) -> AgentCard:
+    """Build a minimal ``AgentCard`` for ``_register_functions()`` to read.
+
+    The description embeds the original error for observability in logs.
+    """
+    return AgentCard(
+        name="unavailable",
+        description=f"Agent card could not be resolved: {error_msg}",
+        url="https://unavailable/",
+        version="0.0.0",
+        skills=[],
+        capabilities=AgentCapabilities(streaming=False),
+        default_input_modes=["text"],
+        default_output_modes=["text"],
+    )
 
 
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
 
     def add_function(self, name: str, fn: Any, **kwargs: Any) -> None:  # type: ignore[override]
-        """Intercept function registration to wrap *fn* with error handling."""
+        """Intercept function registration to wrap *fn* with error handling.
+
+        In degraded mode (registry lookup failed), replaces *fn* entirely
+        with one that raises the stored error — so ``_wrap_a2a_function``
+        catches it and returns an actionable message to the LLM.
+        This avoids coupling to NAT's client method signatures or protocols.
+        """
+        registry_error = getattr(self, "_registry_error", None)
+        if registry_error is not None:
+            err = registry_error
+
+            @functools.wraps(fn)
+            async def _raise_registry_error(*args: Any, **kwargs: Any) -> Any:
+                raise err
+
+            fn = _raise_registry_error
         super().add_function(name, _wrap_a2a_function(fn), **kwargs)
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
@@ -396,12 +476,28 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
         pre_resolved_card: AgentCard | None = None
 
         if config.registry:
-            # Fetch the card from the central DataRobot agent card registry
-            registry = await get_default_registry()
-            pre_resolved_card = await registry.get(
-                deployment_id=config.registry.deployment_id,
-                external_id=config.registry.external_id,
-            )
+            # Catch AgentCardRegistryError so the function group initialises
+            # in a degraded state instead of crashing (generic JSON-RPC -32603).
+            try:
+                registry = await get_default_registry()
+                pre_resolved_card = await registry.get(
+                    deployment_id=config.registry.deployment_id,
+                    external_id=config.registry.external_id,
+                )
+            except AgentCardRegistryError as exc:
+                error_msg = str(exc)
+                logger.error(
+                    "Agent card registry lookup failed: %s",
+                    error_msg,
+                )
+                # Store the error so add_function replaces every registered
+                # function with one that raises it (caught by _wrap_a2a_function).
+                self._registry_error = exc
+                placeholder_card = _make_placeholder_agent_card(error_msg)
+                self._client = _FailedRegistryClient(placeholder_card)  # type: ignore[assignment]
+                self._register_functions()
+                return self
+
             base_url = str(pre_resolved_card.url)
             logger.info(
                 "Agent card resolved via central registry (deployment_id=%s, external_id=%s), "
