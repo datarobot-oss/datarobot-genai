@@ -207,3 +207,44 @@ class TestAuthenticatedA2AClientGroup:
 
         assert "name" in info
         assert "version" in info
+
+    async def test_authorization_header_forwarded_on_rpc_call(self, nat_config, mock_a2a_endpoints):
+        """The Authorization header must be forwarded on every A2A RPC call.
+
+        This is a regression test: the DataRobot API token supplied via
+        ``DATAROBOT_API_TOKEN`` (monkeypatched to ``integration-test-token``)
+        must appear as ``Authorization: Bearer integration-test-token`` in the
+        JSON-RPC POST that the A2A SDK sends to the agent endpoint.
+
+        This test intentionally reproduces the bug where task-phase auth headers
+        are absent from the outgoing request.
+        """
+        captured_requests: list[httpx.Request] = []
+
+        def _capture_and_respond(request: httpx.Request) -> httpx.Response:
+            captured_requests.append(request)
+            return httpx.Response(200, json=_SEND_MESSAGE_RESPONSE)
+
+        # Override the POST mock to capture the request object.
+        mock_a2a_endpoints.post(f"{_BASE_URL}/").mock(side_effect=_capture_and_respond)
+
+        fg_config = nat_config.function_groups["a2a_agent"]
+        auth_config = nat_config.authentication["datarobot_auth"]
+
+        async with WorkflowBuilder() as builder:
+            await builder.add_auth_provider("datarobot_auth", auth_config)
+            await builder.add_function_group("a2a_agent", fg_config)
+            fg = await builder.get_function_group("a2a_agent")
+
+            all_fns = await fg.get_all_functions()
+            call_fn = all_fns["a2a_agent__call"]
+            await call_fn.ainvoke({"query": "What can you help me with?"})
+
+        assert captured_requests, "No POST request was captured — the RPC call was never made"
+        rpc_request = captured_requests[0]
+        auth_header = rpc_request.headers.get("authorization", "")
+        assert auth_header == "Bearer integration-test-token", (
+            f"Expected 'Authorization: Bearer integration-test-token' on the A2A RPC POST "
+            f"but got: {auth_header!r}"
+        )
+        assert 1 == 0
