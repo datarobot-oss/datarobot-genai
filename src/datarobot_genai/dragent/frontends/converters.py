@@ -156,22 +156,56 @@ def _dragent_streaming_delta_from_events(
     return content, tool_calls
 
 
+def _resolve_datarobot_moderations_for_chunk(
+    chunk: ChatResponseChunk | None,
+    from_response: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if from_response is not None:
+        return from_response
+    return getattr(chunk, "datarobot_moderations", None)
+
+
+def _nat_chat_response_chunk_with_datarobot_moderations(
+    chunk: ChatResponseChunk,
+    datarobot_moderations: dict[str, Any] | None,
+) -> ChatResponseChunk:
+    if datarobot_moderations is None:
+        return chunk
+    if getattr(chunk, "datarobot_moderations", None) == datarobot_moderations:
+        return chunk
+    return chunk.model_copy(update={"datarobot_moderations": datarobot_moderations})
+
+
+def _openai_chat_completion_chunk_with_datarobot_moderations(
+    chunk: ChatCompletionChunk,
+    datarobot_moderations: dict[str, Any] | None,
+) -> ChatCompletionChunk:
+    if datarobot_moderations is None:
+        return chunk
+    if getattr(chunk, "datarobot_moderations", None) == datarobot_moderations:
+        return chunk
+    return chunk.model_copy(update={"datarobot_moderations": datarobot_moderations})
+
+
 def convert_dragent_event_response_to_chat_response_chunk(
     response: DRAgentEventResponse,
 ) -> ChatResponseChunk:
     if response.original_chunk is not None:
-        return response.original_chunk
-    content, tool_calls = _dragent_streaming_delta_from_events(response.events)
-    return ChatResponseChunk(
-        id=uuid.uuid4().hex,
-        choices=[
-            ChatResponseChunkChoice(
-                index=0,
-                delta=ChoiceDelta(content=content, tool_calls=tool_calls or None),
-            )
-        ],
-        created=datetime.datetime.now(datetime.UTC),
-    )
+        chunk = response.original_chunk
+    else:
+        content, tool_calls = _dragent_streaming_delta_from_events(response.events)
+        chunk = ChatResponseChunk(
+            id=uuid.uuid4().hex,
+            choices=[
+                ChatResponseChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(content=content, tool_calls=tool_calls or None),
+                )
+            ],
+            created=datetime.datetime.now(datetime.UTC),
+        )
+    moderations = _resolve_datarobot_moderations_for_chunk(chunk, response.datarobot_moderations)
+    return _nat_chat_response_chunk_with_datarobot_moderations(chunk, moderations)
 
 
 _FINISH_REASON = Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
@@ -234,13 +268,16 @@ def convert_nat_chat_response_chunk_to_openai_chat_completion_chunk(
             completion_tokens=u.completion_tokens,
             total_tokens=u.total_tokens,
         )
-    return ChatCompletionChunk(
+    openai_chunk = ChatCompletionChunk(
         id=chunk.id,
         choices=[choice],
         created=created_ts,
         model=chunk.model,
         object="chat.completion.chunk",
         usage=usage_openai,
+    )
+    return _openai_chat_completion_chunk_with_datarobot_moderations(
+        openai_chunk, getattr(chunk, "datarobot_moderations", None)
     )
 
 
@@ -249,25 +286,30 @@ def convert_dragent_event_response_to_openai_chat_completion_chunk(
 ) -> ChatCompletionChunk:
     """Convert one DRAgent stream chunk to an OpenAI chunk (dome / moderation streaming)."""
     if response.original_chunk is not None:
-        return convert_nat_chat_response_chunk_to_openai_chat_completion_chunk(
+        chunk = convert_nat_chat_response_chunk_to_openai_chat_completion_chunk(
             response.original_chunk
         )
-    content, tool_calls = _dragent_streaming_delta_from_events(response.events)
-    created_ts = int(datetime.datetime.now(datetime.UTC).timestamp())
-    return ChatCompletionChunk(
-        id=uuid.uuid4().hex,
-        choices=[
-            OpenAIChunkChoice(
-                index=0,
-                delta=OpenAIChoiceDelta(content=content, tool_calls=tool_calls or None),
-                finish_reason=None,
-            )
-        ],
-        created=created_ts,
-        model=response.model or "unknown-model",
-        object="chat.completion.chunk",
-        usage=None,
+    else:
+        content, tool_calls = _dragent_streaming_delta_from_events(response.events)
+        created_ts = int(datetime.datetime.now(datetime.UTC).timestamp())
+        chunk = ChatCompletionChunk(
+            id=uuid.uuid4().hex,
+            choices=[
+                OpenAIChunkChoice(
+                    index=0,
+                    delta=OpenAIChoiceDelta(content=content, tool_calls=tool_calls or None),
+                    finish_reason=None,
+                )
+            ],
+            created=created_ts,
+            model=response.model or "unknown-model",
+            object="chat.completion.chunk",
+            usage=None,
+        )
+    moderations = _resolve_datarobot_moderations_for_chunk(
+        response.original_chunk, response.datarobot_moderations
     )
+    return _openai_chat_completion_chunk_with_datarobot_moderations(chunk, moderations)
 
 
 ## --- dragent Chat Completions -> AG-UI ---
