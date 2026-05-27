@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Integration tests for the ``authenticated_a2a_client`` function group.
+# Tests for the ``authenticated_a2a_client`` function group.
+# Fully mocked with respx — no real network connection required.
 
 from pathlib import Path
 
@@ -27,9 +28,14 @@ from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.runtime.loader import load_config
 
 import datarobot_genai.dragent.plugins.auth_a2a_client  # noqa: F401 — registers authenticated_a2a_client
+import datarobot_genai.dragent.plugins.okta_a2a_auth  # noqa: F401 — registers okta_cross_app_access
 import datarobot_genai.nat.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
+from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessAuthProviderConfig,
+)
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
 
 # ---------------------------------------------------------------------------
@@ -82,12 +88,12 @@ _SEND_MESSAGE_RESPONSE = {
 
 @pytest.fixture(scope="module")
 def workflow_path() -> Path:
-    return Path(__file__).parent / "workflow_with_a2a.yaml"
+    return Path(__file__).parent / "fixtures" / "workflow_with_a2a.yaml"
 
 
-@pytest.fixture(scope="module")
-def nat_config(workflow_path: Path):
-    """Parse the YAML once per module; all tests share the same Config object."""
+@pytest.fixture
+def nat_config(workflow_path: Path, set_datarobot_api_token_for_agent_card):
+    """Parse the YAML; depends on the token env var being set first."""
     return load_config(workflow_path)
 
 
@@ -99,11 +105,11 @@ def set_context_user_id() -> None:
 
 @pytest.fixture(autouse=True)
 def set_datarobot_api_token_for_agent_card(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Provide a DataRobot API token for respx tests.
+    """Provide a DataRobot API token before the config is parsed.
 
-    ``DataRobotAPIKeyAuthProvider`` does not implement ``A2ADiscoveryAuthMixin``,
-    so ``_resolve_agent_card`` falls back to calling ``authenticate()``, which
-    reads ``DATAROBOT_API_TOKEN`` from the environment.
+    ``DataRobotAPIKeyAuthProviderConfig`` reads ``DATAROBOT_API_TOKEN`` at
+    parse time (``default_factory=_get_default_api_token``), so the env var
+    must be present **before** ``load_config()`` runs.
     """
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "integration-test-token")
 
@@ -150,16 +156,83 @@ async def function_group(nat_config, mock_a2a_endpoints):
 
 
 class TestConfigParsedFromYaml:
-    def test_function_group_is_authenticated_a2a_client(self, nat_config):
-        assert isinstance(nat_config.function_groups["a2a_agent"], AuthenticatedA2AClientConfig)
+    """Validate that all function_groups and auth providers in workflow_with_a2a.yaml
+    are parsed into the correct config types with the expected field values.
+    """
 
-    def test_auth_provider_is_datarobot_api_key(self, nat_config):
+    # -- auth providers --------------------------------------------------------
+
+    def test_auth_provider_datarobot_api_key(self, nat_config):
         assert isinstance(
             nat_config.authentication["datarobot_auth"], DataRobotAPIKeyAuthProviderConfig
         )
 
-    def test_function_group_references_auth_provider(self, nat_config):
+    def test_auth_provider_okta_cross_app_access(self, nat_config):
+        assert isinstance(
+            nat_config.authentication["okta_auth"],
+            OAuth2CrossApplicationAccessAuthProviderConfig,
+        )
+
+    # -- a2a_agent: direct URL + datarobot_auth --------------------------------
+
+    def test_a2a_agent_type(self, nat_config):
+        assert isinstance(nat_config.function_groups["a2a_agent"], AuthenticatedA2AClientConfig)
+
+    def test_a2a_agent_url(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent"]
+        assert str(cfg.url) == "http://agent.example.com:8080"
+
+    def test_a2a_agent_no_registry(self, nat_config):
+        assert nat_config.function_groups["a2a_agent"].registry is None
+
+    def test_a2a_agent_auth_provider(self, nat_config):
         assert nat_config.function_groups["a2a_agent"].auth_provider == "datarobot_auth"
+
+    # -- a2a_agent_with_registry1: deployment_id + datarobot_auth --------------
+
+    def test_registry1_type(self, nat_config):
+        assert isinstance(
+            nat_config.function_groups["a2a_agent_with_registry1"], AuthenticatedA2AClientConfig
+        )
+
+    def test_registry1_has_registry_lookup(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry1"]
+        assert isinstance(cfg.registry, AgentCardRegistryLookup)
+
+    def test_registry1_deployment_id(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry1"]
+        assert cfg.registry.deployment_id == "1234"
+        assert cfg.registry.external_id is None
+
+    def test_registry1_no_url(self, nat_config):
+        assert nat_config.function_groups["a2a_agent_with_registry1"].url is None
+
+    def test_registry1_auth_provider(self, nat_config):
+        assert (
+            nat_config.function_groups["a2a_agent_with_registry1"].auth_provider == "datarobot_auth"
+        )
+
+    # -- a2a_agent_with_registry2: external_id + okta_auth ---------------------
+
+    def test_registry2_type(self, nat_config):
+        assert isinstance(
+            nat_config.function_groups["a2a_agent_with_registry2"], AuthenticatedA2AClientConfig
+        )
+
+    def test_registry2_has_registry_lookup(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry2"]
+        assert isinstance(cfg.registry, AgentCardRegistryLookup)
+
+    def test_registry2_external_id(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry2"]
+        assert cfg.registry.external_id == "abcd"
+        assert cfg.registry.deployment_id is None
+
+    def test_registry2_no_url(self, nat_config):
+        assert nat_config.function_groups["a2a_agent_with_registry2"].url is None
+
+    def test_registry2_auth_provider(self, nat_config):
+        assert nat_config.function_groups["a2a_agent_with_registry2"].auth_provider == "okta_auth"
 
 
 # ---------------------------------------------------------------------------
@@ -207,3 +280,40 @@ class TestAuthenticatedA2AClientGroup:
 
         assert "name" in info
         assert "version" in info
+
+    async def test_authorization_header_forwarded_on_rpc_call(self, nat_config, mock_a2a_endpoints):
+        """The Authorization header must be forwarded on every A2A RPC call.
+
+        This is a regression test: the DataRobot API token supplied via
+        ``DATAROBOT_API_TOKEN`` (monkeypatched to ``integration-test-token``)
+        must appear as ``Authorization: Bearer integration-test-token`` in the
+        JSON-RPC POST that the A2A SDK sends to the agent endpoint.
+        """
+        captured_requests: list[httpx.Request] = []
+
+        def _capture_and_respond(request: httpx.Request) -> httpx.Response:
+            captured_requests.append(request)
+            return httpx.Response(200, json=_SEND_MESSAGE_RESPONSE)
+
+        # Override the POST mock to capture the request object.
+        mock_a2a_endpoints.post(f"{_BASE_URL}/").mock(side_effect=_capture_and_respond)
+
+        fg_config = nat_config.function_groups["a2a_agent"]
+        auth_config = nat_config.authentication["datarobot_auth"]
+
+        async with WorkflowBuilder() as builder:
+            await builder.add_auth_provider("datarobot_auth", auth_config)
+            await builder.add_function_group("a2a_agent", fg_config)
+            fg = await builder.get_function_group("a2a_agent")
+
+            all_fns = await fg.get_all_functions()
+            call_fn = all_fns["a2a_agent__call"]
+            await call_fn.ainvoke({"query": "What can you help me with?"})
+
+        assert captured_requests, "No POST request was captured — the RPC call was never made"
+        rpc_request = captured_requests[0]
+        auth_header = rpc_request.headers.get("authorization", "")
+        assert auth_header == "Bearer integration-test-token", (
+            f"Expected 'Authorization: Bearer integration-test-token' on the A2A RPC POST "
+            f"but got: {auth_header!r}"
+        )

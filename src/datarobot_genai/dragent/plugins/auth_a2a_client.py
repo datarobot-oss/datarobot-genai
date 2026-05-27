@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import abc
+import asyncio
+import functools
+import inspect
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -134,7 +137,7 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
                 self._agent_card = await resolver.get_agent_card()
                 logger.info("Successfully fetched agent card")
         except Exception as e:
-            logger.error("Failed to fetch agent card: %s", e, exc_info=True)
+            logger.error("Failed to fetch agent card from %s: %s", self._base_url, e)
             raise RuntimeError(f"Failed to fetch agent card from {self._base_url}") from e
 
     async def __aenter__(self) -> "_AuthenticatedA2ABaseClient":
@@ -160,12 +163,29 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
 
         interceptors: list[Any] = []
         if self._auth_provider:
-            credential_service = A2ACredentialService(
-                auth_provider=self._auth_provider,
-                agent_card=self._agent_card,
-            )
-            interceptors.append(AuthInterceptor(credential_service))
-            logger.info("Task-phase authentication configured for A2A client (AuthInterceptor)")
+            if self._agent_card.security_schemes:
+                # Agent card declares security schemes — use A2ACredentialService
+                # for proper credential validation per the A2A spec.  This path
+                # supports OAuth2 providers that need security-scheme negotiation.
+                credential_service = A2ACredentialService(
+                    auth_provider=self._auth_provider,
+                    agent_card=self._agent_card,
+                )
+                interceptors.append(AuthInterceptor(credential_service))
+                logger.info(
+                    "Agent card declares security schemes, using security-scheme negotiation."
+                )
+            else:
+                # No security schemes on the card — A2ACredentialService would
+                # skip credential injection entirely.  Fall back to direct header
+                # injection so simple auth providers (e.g. APIKeyAuthProvider)
+                # still forward the token on every RPC call.
+                user_id = Context.get().user_id or "default-user"
+                auth_result = await self._auth_provider.authenticate(user_id=user_id)
+                if auth_result:
+                    assert self._httpx_client is not None
+                    self._httpx_client.headers.update(_extract_auth_headers(auth_result))
+                logger.info("No security schemes configured on the agent card, using default.")
 
         client_config = ClientConfig(
             httpx_client=self._httpx_client,
@@ -287,8 +307,84 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
         return self
 
 
+def _sanitize_a2a_error(exc: Exception) -> str:
+    """Return a safe, single-line error description without sensitive material.
+
+    Strips raw HTTP bodies, traceback detail, and anything that could echo
+    back tokens or assertions.  Only the exception *type* and a curated
+    category survive — the raw ``str(exc)`` is never surfaced.
+    """
+    # httpx status errors — include status + URL but NOT the response body
+    # (which could echo submitted parameters like tokens or assertions).
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.host}{exc.request.url.path}"
+
+    # Categorise by type so the LLM gets actionable context without
+    # exposing the raw message which may contain sensitive material.
+    if isinstance(exc, httpx.TimeoutException):
+        return "request to remote agent timed out"
+
+    if isinstance(exc, (httpx.ConnectError, httpx.NetworkError, ConnectionError, OSError)):
+        return "network error communicating with remote agent"
+
+    if isinstance(exc, (RuntimeError, ValueError)):
+        return f"{type(exc).__name__}: authentication or protocol error"
+
+    return f"{type(exc).__name__}: request to remote agent failed"
+
+
+def _wrap_a2a_function(fn: Any) -> Any:
+    """Wrap an A2A function so that exceptions are returned as error strings
+    instead of propagating and crashing the agent.
+
+    Works for both regular async functions and async generators.
+
+    Sensitive material (tokens, assertions, HTTP bodies) is stripped from
+    both the returned error string and the log line — only a sanitized
+    summary is emitted.  The full traceback is deliberately **not** logged
+    (``exc_info=False``) to prevent token values captured in frame locals
+    from reaching log sinks.
+    """
+    # Check async generators first — they also satisfy iscoroutinefunction
+    # in some Python versions, so the order matters.
+    if inspect.isasyncgenfunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            try:
+                async for event in fn(*args, **kwargs):
+                    yield event
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                yield f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe_gen
+
+    if asyncio.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                return f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe
+
+    return fn
+
+
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
+
+    def add_function(self, name: str, fn: Any, **kwargs: Any) -> None:  # type: ignore[override]
+        """Intercept function registration to wrap *fn* with error handling."""
+        super().add_function(name, _wrap_a2a_function(fn), **kwargs)
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
         config: AuthenticatedA2AClientConfig = self._config  # type: ignore[assignment]
