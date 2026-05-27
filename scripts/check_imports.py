@@ -31,6 +31,11 @@ from typing import List
 from typing import Tuple
 
 
+def _is_under_module(module_name: str, parent: str) -> bool:
+    """True if module_name is parent or a submodule of parent."""
+    return module_name == parent or module_name.startswith(f"{parent}.")
+
+
 def load_config(base_dir: Path) -> dict[str, Any]:
     """Load configuration from pyproject.toml."""
     pyproject_path = base_dir / "pyproject.toml"
@@ -85,7 +90,7 @@ class ImportChecker(ast.NodeVisitor):
         package_label: str,
     ) -> None:
         for forbidden in forbidden_imports:
-            if module_name.startswith(forbidden):
+            if _is_under_module(module_name, forbidden):
                 if forbidden == "fastmcp" and (
                     module_name.startswith("fastmcp.server.dependencies")
                     or module_name.startswith("fastmcp.server.middleware")
