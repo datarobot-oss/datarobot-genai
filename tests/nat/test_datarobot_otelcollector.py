@@ -220,9 +220,7 @@ class TestExporterFactory:
         with patch(
             "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
-            async with datarobot_otelcollector_telemetry_exporter(
-                cfg, builder=MagicMock()
-            ):
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
 
         mock_exporter.assert_called_once()
@@ -241,9 +239,7 @@ class TestExporterFactory:
         with patch(
             "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
-            async with datarobot_otelcollector_telemetry_exporter(
-                cfg, builder=MagicMock()
-            ):
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
 
         kwargs = mock_exporter.call_args.kwargs
@@ -259,9 +255,7 @@ class TestExporterFactory:
         with patch(
             "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
-            async with datarobot_otelcollector_telemetry_exporter(
-                cfg, builder=MagicMock()
-            ):
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
 
         api_key_header = mock_exporter.call_args.kwargs["headers"]["X-DataRobot-Api-Key"]
@@ -276,9 +270,7 @@ class TestExporterFactory:
         with patch(
             "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
-            async with datarobot_otelcollector_telemetry_exporter(
-                cfg, builder=MagicMock()
-            ):
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
 
         attrs = mock_exporter.call_args.kwargs["resource_attributes"]
@@ -297,9 +289,7 @@ class TestExporterFactory:
         with patch(
             "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
-            async with datarobot_otelcollector_telemetry_exporter(
-                cfg, builder=MagicMock()
-            ):
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
 
         attrs = mock_exporter.call_args.kwargs["resource_attributes"]

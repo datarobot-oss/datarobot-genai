@@ -238,8 +238,7 @@ async def datarobot_otelcollector_telemetry_exporter(
 
     # Never log the secret. Sorted keys only.
     logger.debug(
-        "Configuring datarobot_otelcollector exporter "
-        "endpoint=%s entity_id=%s header_keys=%s",
+        "Configuring datarobot_otelcollector exporter endpoint=%s entity_id=%s header_keys=%s",
         config.endpoint,
         config.datarobot_entity_id,
         sorted(headers.keys()),
