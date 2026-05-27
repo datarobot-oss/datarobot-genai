@@ -247,4 +247,7 @@ class TestAuthenticatedA2AClientGroup:
             f"Expected 'Authorization: Bearer integration-test-token' on the A2A RPC POST "
             f"but got: {auth_header!r}"
         )
-        assert False
+        pytest.fail(
+            "BUG REPRODUCED: this test must fail until the auth-forwarding fix is applied. "
+            "Remove this line once the fix lands."
+        )
