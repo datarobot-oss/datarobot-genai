@@ -92,7 +92,7 @@ nat = core + [
 dragent = nat + [
     # 'FastAPI' object has no attribute 'add_event_handler'
     # in fastapi_front_end_plugin_worker.py", line 328, in configure
-    "starlette>=1.0.1",  # CVE-2026-48710 fixed in 1.0.1
+    "starlette>=1.0.1",
 ]
 
 # Eventually NAT will be merged into dragent
