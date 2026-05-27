@@ -1054,6 +1054,9 @@ auth = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
+fs = [
+    { name = "fsspec" },
+]
 
 [[package]]
 name = "datarobot-asgi-middleware"
@@ -1091,7 +1094,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.72"
+version = "0.15.73"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1150,8 +1153,9 @@ crewai = [
 dragent = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
+    { name = "backoff" },
     { name = "colorama" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["fs"] },
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
@@ -1335,6 +1339,7 @@ requires-dist = [
     { name = "anyio", marker = "extra == 'dragent'", specifier = "==4.11.0" },
     { name = "anyio", marker = "extra == 'nat'", specifier = "==4.11.0" },
     { name = "azure-ai-inference", marker = "extra == 'crewai'", specifier = ">=1.0.0b9,<2.0.0" },
+    { name = "backoff", marker = "extra == 'dragent'", specifier = ">=2.2.1,<3.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
     { name = "boto3", marker = "extra == 'drmcp'", specifier = ">=1.34.0,<2.0.0" },
@@ -1349,14 +1354,13 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'crewai'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'dragent'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", extras = ["fs"], marker = "extra == 'dragent'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },
