@@ -157,7 +157,7 @@ def _dragent_streaming_delta_from_events(
 
 
 def _resolve_datarobot_moderations_for_chunk(
-    chunk: ChatResponseChunk,
+    chunk: ChatResponseChunk | None,
     from_response: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     if from_response is not None:
@@ -306,8 +306,8 @@ def convert_dragent_event_response_to_openai_chat_completion_chunk(
             object="chat.completion.chunk",
             usage=None,
         )
-    moderations = response.datarobot_moderations or getattr(
-        response.original_chunk, "datarobot_moderations", None
+    moderations = _resolve_datarobot_moderations_for_chunk(
+        response.original_chunk, response.datarobot_moderations
     )
     return _openai_chat_completion_chunk_with_datarobot_moderations(chunk, moderations)
 

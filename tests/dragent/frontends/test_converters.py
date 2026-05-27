@@ -643,6 +643,23 @@ def test_convert_dragent_event_response_to_openai_chunk_attaches_datarobot_moder
     assert result.datarobot_moderations == moderations
 
 
+def test_convert_dragent_event_response_to_openai_chunk_preserves_empty_datarobot_moderations() -> (
+    None
+):
+    # GIVEN a response that explicitly sets empty moderation metadata
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        datarobot_moderations={},
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+    )
+
+    # WHEN converting to OpenAI chunk
+    result = convert_dragent_event_response_to_openai_chat_completion_chunk(response)
+
+    # THEN explicit empty metadata is preserved (not treated as falsy/missing)
+    assert result.datarobot_moderations == {}
+
+
 def test_openai_chunk_from_nat_matches_dragent_event_path_for_text() -> None:
     response = DRAgentEventResponse(
         original_chunk=None,
