@@ -963,7 +963,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.75"
+version = "0.15.76"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1261,6 +1261,7 @@ requires-dist = [
     { name = "requests", marker = "extra == 'nat'", specifier = ">=2.32.4,<3.0.0" },
     { name = "rich", marker = "extra == 'drmcp'", specifier = ">=13.0.0,<16.0.0" },
     { name = "starlette", marker = "extra == 'dragent'", specifier = ">=1.0.1" },
+    { name = "starlette", marker = "extra == 'drmcp'", specifier = ">=1.0.1" },
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]

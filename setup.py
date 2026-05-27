@@ -127,6 +127,7 @@ drtools = auth + [
 
 # drmcp is standalone set of dependencies for MCP Server only (no core), only depends on drtools.
 drmcp = drtools + [
+    "starlette>=1.0.1",  # CVE-2026-48710 fixed in 1.0.1
     "fastmcp>=3.2.0,<4.0.0",
     "requests>=2.32.4,<3.0.0",
     "openai>=2.0.0,<3.0.0",
