@@ -671,7 +671,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
 
 class TestFailedRegistryClient:
-    """Verify _FailedRegistryClient exposes agent_card and raises on RPC calls."""
+    """Verify _FailedRegistryClient provides agent_card for registration."""
 
     def test_agent_card_property_returns_card(self):
         card = AgentCard(
@@ -684,35 +684,10 @@ class TestFailedRegistryClient:
             default_input_modes=["text"],
             default_output_modes=["text"],
         )
-        error = AgentCardRegistryError("not found")
-        client = _FailedRegistryClient(card, error)
+        client = _FailedRegistryClient(card)
         assert client.agent_card is card
 
-    async def test_any_method_raises_stored_error(self):
-
-        card = AgentCard(
-            name="test",
-            description="test",
-            url="https://test/",
-            version="1.0.0",
-            skills=[],
-            capabilities=AgentCapabilities(streaming=False),
-            default_input_modes=["text"],
-            default_output_modes=["text"],
-        )
-        error = AgentCardRegistryError("deployment not found")
-        client = _FailedRegistryClient(card, error)
-
-        with pytest.raises(AgentCardRegistryError, match="deployment not found"):
-            async for _ in client.send_message("hello"):
-                pass  # pragma: no cover
-
-        with pytest.raises(AgentCardRegistryError, match="deployment not found"):
-            async for _ in client.cancel_task("task-1"):
-                pass  # pragma: no cover
-
     async def test_aexit_is_noop(self):
-
         card = AgentCard(
             name="test",
             description="test",
@@ -723,8 +698,7 @@ class TestFailedRegistryClient:
             default_input_modes=["text"],
             default_output_modes=["text"],
         )
-        error = AgentCardRegistryError("not found")
-        client = _FailedRegistryClient(card, error)
+        client = _FailedRegistryClient(card)
         # Should not raise
         await client.__aexit__(None, None, None)
 

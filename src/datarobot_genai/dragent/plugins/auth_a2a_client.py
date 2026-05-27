@@ -387,47 +387,31 @@ def _wrap_a2a_function(fn: Any) -> Any:
 
 
 class _FailedRegistryClient:
-    """Stand-in for :class:`A2ABaseClient` when registry lookup fails.
+    """Minimal stand-in providing ``agent_card`` for ``_register_functions()``.
 
-    Provides ``agent_card`` so NAT's ``_register_functions()`` succeeds at
-    registration time.  All other attribute accesses return async-generator
-    factories that raise the original error at invocation time, where
-    ``_wrap_a2a_function`` catches it and surfaces an actionable message.
-
-    Decoupled from NAT's function set — no hardcoded method names.
+    Used when registry lookup fails.  Only ``agent_card`` and ``__aexit__``
+    are needed — the actual RPC methods are never called because
+    ``add_function`` replaces every registered function before it can
+    reference the client.
     """
 
-    def __init__(self, agent_card: AgentCard, error: AgentCardRegistryError) -> None:
+    __slots__ = ("_agent_card",)
+
+    def __init__(self, agent_card: AgentCard) -> None:
         self._agent_card = agent_card
-        self._error = error
 
     @property
     def agent_card(self) -> AgentCard:
         return self._agent_card
 
-    def __getattr__(self, name: str) -> Any:
-        """Return an async-generator factory that raises the stored error.
-
-        Satisfies both ``await`` and ``async for`` patterns used by NAT.
-        """
-        error = self._error
-
-        def _make_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
-            async def _gen() -> AsyncGenerator[Any, None]:
-                raise error
-                yield  # noqa: RET503 — unreachable, makes this an async generator
-
-            return _gen()
-
-        return _make_gen
-
     async def __aexit__(self, *args: Any) -> None:
-        """No-op cleanup — nothing to close."""
+        """No-op — nothing to close."""
 
 
 def _make_placeholder_agent_card(error_msg: str) -> AgentCard:
-    """Build a minimal :class:`AgentCard` so ``_register_functions()`` can read
-    agent metadata without crashing. The description carries the original error.
+    """Build a minimal ``AgentCard`` for ``_register_functions()`` to read.
+
+    The description embeds the original error for observability in logs.
     """
     return AgentCard(
         name="unavailable",
@@ -445,7 +429,22 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
 
     def add_function(self, name: str, fn: Any, **kwargs: Any) -> None:  # type: ignore[override]
-        """Intercept function registration to wrap *fn* with error handling."""
+        """Intercept function registration to wrap *fn* with error handling.
+
+        In degraded mode (registry lookup failed), replaces *fn* entirely
+        with one that raises the stored error — so ``_wrap_a2a_function``
+        catches it and returns an actionable message to the LLM.
+        This avoids coupling to NAT's client method signatures or protocols.
+        """
+        registry_error = getattr(self, "_registry_error", None)
+        if registry_error is not None:
+            err = registry_error
+
+            @functools.wraps(fn)
+            async def _raise_registry_error(*args: Any, **kwargs: Any) -> Any:
+                raise err
+
+            fn = _raise_registry_error
         super().add_function(name, _wrap_a2a_function(fn), **kwargs)
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
@@ -491,10 +490,11 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
                     "Agent card registry lookup failed: %s",
                     error_msg,
                 )
-                # Install a placeholder client: registration succeeds, but
-                # every RPC call raises the error → caught by _wrap_a2a_function.
+                # Store the error so add_function replaces every registered
+                # function with one that raises it (caught by _wrap_a2a_function).
+                self._registry_error = exc
                 placeholder_card = _make_placeholder_agent_card(error_msg)
-                self._client = _FailedRegistryClient(placeholder_card, exc)  # type: ignore[assignment]
+                self._client = _FailedRegistryClient(placeholder_card)  # type: ignore[assignment]
                 self._register_functions()
                 return self
 
