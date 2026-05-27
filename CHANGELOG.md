@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.75
+- A non-existent `deployment_id` or `external_id` in the agent card registry now returns an actionable error message instead of a generic JSON-RPC `-32603 Internal error`.
+
 ## 0.15.74
 - Fixed `datarobot_api_key` auth provider not forwarding `Authorization: Bearer` header on A2A RPC calls when the agent card has no `security_schemes`.
 - Fixed `asyncio.isasyncgenfunction` error on Python 3.12+

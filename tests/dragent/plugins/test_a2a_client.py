@@ -739,27 +739,54 @@ class TestAuthenticatedA2AClientFunctionGroupRegistryError:
 
     The group should complete __aenter__, register functions via NAT, and
     return actionable error messages when those functions are invoked.
+    Covered for both deployment_id and external_id lookup keys.
     """
 
-    _REGISTRY_ERROR_MSG = (
-        "No agent card found in the central registry for "
-        "deployment_id='000000000000000000000000'. "
-        "Verify that the deployment exists and is registered in your organisation."
+    @pytest.fixture(
+        params=[
+            pytest.param(
+                {
+                    "key": "deployment_id",
+                    "value": "000000000000000000000000",
+                    "error_msg": (
+                        "No agent card found in the central registry for "
+                        "deployment_id='000000000000000000000000'. "
+                        "Verify that the deployment exists and is registered "
+                        "in your organisation."
+                    ),
+                },
+                id="deployment_id",
+            ),
+            pytest.param(
+                {
+                    "key": "external_id",
+                    "value": "my-external-agent",
+                    "error_msg": (
+                        "No agent card found in the central registry for "
+                        "external_id='my-external-agent'. "
+                        "Verify that the deployment exists and is registered "
+                        "in your organisation."
+                    ),
+                },
+                id="external_id",
+            ),
+        ]
     )
+    def registry_scenario(self, request):
+        return request.param
 
     @pytest.fixture
-    def registry_config(self):
+    def registry_config(self, registry_scenario):
+        lookup_kwargs = {registry_scenario["key"]: registry_scenario["value"]}
         return AuthenticatedA2AClientConfig(
-            registry=AgentCardRegistryLookup(deployment_id="000000000000000000000000"),
+            registry=AgentCardRegistryLookup(**lookup_kwargs),
         )
 
     @pytest.fixture
-    def failing_registry(self):
+    def failing_registry(self, registry_scenario):
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(
-            side_effect=AgentCardRegistryError(
-                TestAuthenticatedA2AClientFunctionGroupRegistryError._REGISTRY_ERROR_MSG
-            )
+            side_effect=AgentCardRegistryError(registry_scenario["error_msg"])
         )
         return mock_registry
 
@@ -798,11 +825,10 @@ class TestAuthenticatedA2AClientFunctionGroupRegistryError:
 
             # Don't assert exact names — stay resilient to NAT upgrades.
             assert len(fg._functions) > 0
-            # At minimum, the "call" function should always exist.
             assert "call" in fg._functions
 
     async def test_call_stub_returns_error_with_original_message(
-        self, registry_config, mock_builder, failing_registry
+        self, registry_config, registry_scenario, mock_builder, failing_registry
     ):
         """Invoking 'call' returns an error string with the original registry error message."""
         with (
@@ -822,7 +848,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistryError:
 
             assert isinstance(result, str)
             assert "Error" in result
-            assert "000000000000000000000000" in result
+            assert registry_scenario["value"] in result
             assert "Verify that the deployment exists" in result
 
     async def test_client_is_failed_registry_client(
