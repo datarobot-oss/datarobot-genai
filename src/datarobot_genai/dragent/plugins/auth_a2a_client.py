@@ -15,6 +15,7 @@
 import abc
 import asyncio
 import functools
+import inspect
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -327,21 +328,9 @@ def _wrap_a2a_function(fn: Any) -> Any:
     (``exc_info=False``) to prevent token values captured in frame locals
     from reaching log sinks.
     """
-    if asyncio.iscoroutinefunction(fn):
-
-        @functools.wraps(fn)
-        async def _safe(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return await fn(*args, **kwargs)
-            except Exception as exc:
-                safe_msg = _sanitize_a2a_error(exc)
-                logger.error("A2A remote call failed: %s", safe_msg)
-                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
-                return f"Error: failed to communicate with the remote agent: {safe_msg}"
-
-        return _safe
-
-    if asyncio.isasyncgenfunction(fn):
+    # Check async generators first — they also satisfy iscoroutinefunction
+    # in some Python versions, so the order matters.
+    if inspect.isasyncgenfunction(fn):
 
         @functools.wraps(fn)
         async def _safe_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
@@ -355,6 +344,20 @@ def _wrap_a2a_function(fn: Any) -> Any:
                 yield f"Error: failed to communicate with the remote agent: {safe_msg}"
 
         return _safe_gen
+
+    if asyncio.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                return f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe
 
     return fn
 
