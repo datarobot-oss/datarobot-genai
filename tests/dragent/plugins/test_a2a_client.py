@@ -52,7 +52,7 @@ def _skip_agent_card_resolution(client, *, security_schemes=None):
     security_schemes
         Value for ``mock_card.security_schemes``.  ``None`` (default) means
         no security schemes — the code falls back to direct header injection.
-        Pass a truthy value (e.g. ``[MagicMock()]``) to exercise the
+        Pass a truthy value (e.g. ``{"oauth2": MagicMock()}``) to exercise the
         ``A2ACredentialService`` / ``AuthInterceptor`` path.
     """
 
@@ -299,7 +299,7 @@ class TestAuthenticatedA2ABaseClientCallPhase:
         client = _AuthenticatedA2ABaseClient(
             base_url=_AGENT_URL, auth_provider=bearer_auth_provider
         )
-        with _skip_agent_card_resolution(client, security_schemes=[MagicMock()]):
+        with _skip_agent_card_resolution(client, security_schemes={"oauth2": MagicMock()}):
             async with client:
                 create_kw = mock_factory.return_value.create.call_args.kwargs
                 assert len(create_kw["interceptors"]) == 1
@@ -321,7 +321,7 @@ class TestAuthenticatedA2ABaseClientCallPhase:
         client = _AuthenticatedA2ABaseClient(
             base_url=_AGENT_URL, auth_provider=bearer_auth_provider
         )
-        with _skip_agent_card_resolution(client, security_schemes=[MagicMock()]):
+        with _skip_agent_card_resolution(client, security_schemes={"oauth2": MagicMock()}):
             async with client:
                 _, httpx_kwargs = mock_httpx.AsyncClient.call_args
                 assert httpx_kwargs.get("headers", {}) == {}
