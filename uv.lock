@@ -1074,11 +1074,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-<<<<<<< mdambski/fix-resolution
 version = "0.15.76"
-=======
-version = "0.15.75"
->>>>>>> main
 source = { editable = "." }
 
 [package.optional-dependencies]

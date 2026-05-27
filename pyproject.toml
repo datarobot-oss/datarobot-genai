@@ -4,11 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-<<<<<<< mdambski/fix-resolution
 version = "0.15.76"
-=======
-version = "0.15.75"
->>>>>>> main
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
