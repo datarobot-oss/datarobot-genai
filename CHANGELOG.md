@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.78
+- `dragent/frontends/converters`: fixed dropped `datarobot_moderations` in dragent workflow chunk conversion paths by preserving moderation metadata on both NAT `ChatResponseChunk` and OpenAI `ChatCompletionChunk` streaming outputs.
 
 ## 0.15.77
 - A non-existent `deployment_id` or `external_id` in the agent card registry now returns an actionable error message instead of a generic JSON-RPC `-32603 Internal error`.
