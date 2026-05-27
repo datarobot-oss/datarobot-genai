@@ -15,6 +15,7 @@
 import abc
 import asyncio
 import functools
+import inspect
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -162,12 +163,29 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
 
         interceptors: list[Any] = []
         if self._auth_provider:
-            credential_service = A2ACredentialService(
-                auth_provider=self._auth_provider,
-                agent_card=self._agent_card,
-            )
-            interceptors.append(AuthInterceptor(credential_service))
-            logger.info("Task-phase authentication configured for A2A client (AuthInterceptor)")
+            if self._agent_card.security_schemes:
+                # Agent card declares security schemes — use A2ACredentialService
+                # for proper credential validation per the A2A spec.  This path
+                # supports OAuth2 providers that need security-scheme negotiation.
+                credential_service = A2ACredentialService(
+                    auth_provider=self._auth_provider,
+                    agent_card=self._agent_card,
+                )
+                interceptors.append(AuthInterceptor(credential_service))
+                logger.info(
+                    "Agent card declares security schemes, using security-scheme negotiation."
+                )
+            else:
+                # No security schemes on the card — A2ACredentialService would
+                # skip credential injection entirely.  Fall back to direct header
+                # injection so simple auth providers (e.g. APIKeyAuthProvider)
+                # still forward the token on every RPC call.
+                user_id = Context.get().user_id or "default-user"
+                auth_result = await self._auth_provider.authenticate(user_id=user_id)
+                if auth_result:
+                    assert self._httpx_client is not None
+                    self._httpx_client.headers.update(_extract_auth_headers(auth_result))
+                logger.info("No security schemes configured on the agent card, using default.")
 
         client_config = ClientConfig(
             httpx_client=self._httpx_client,
@@ -327,21 +345,9 @@ def _wrap_a2a_function(fn: Any) -> Any:
     (``exc_info=False``) to prevent token values captured in frame locals
     from reaching log sinks.
     """
-    if asyncio.iscoroutinefunction(fn):
-
-        @functools.wraps(fn)
-        async def _safe(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return await fn(*args, **kwargs)
-            except Exception as exc:
-                safe_msg = _sanitize_a2a_error(exc)
-                logger.error("A2A remote call failed: %s", safe_msg)
-                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
-                return f"Error: failed to communicate with the remote agent: {safe_msg}"
-
-        return _safe
-
-    if asyncio.isasyncgenfunction(fn):
+    # Check async generators first — they also satisfy iscoroutinefunction
+    # in some Python versions, so the order matters.
+    if inspect.isasyncgenfunction(fn):
 
         @functools.wraps(fn)
         async def _safe_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
@@ -355,6 +361,20 @@ def _wrap_a2a_function(fn: Any) -> Any:
                 yield f"Error: failed to communicate with the remote agent: {safe_msg}"
 
         return _safe_gen
+
+    if asyncio.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def _safe(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                safe_msg = _sanitize_a2a_error(exc)
+                logger.error("A2A remote call failed: %s", safe_msg)
+                logger.debug("A2A remote call exception detail: %s: %s", type(exc).__name__, exc)
+                return f"Error: failed to communicate with the remote agent: {safe_msg}"
+
+        return _safe
 
     return fn
 

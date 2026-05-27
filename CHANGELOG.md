@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.74
+- Fixed `datarobot_api_key` auth provider not forwarding `Authorization: Bearer` header on A2A RPC calls when the agent card has no `security_schemes`.
+- Fixed `asyncio.isasyncgenfunction` error on Python 3.12+
+
 ## 0.15.73
 - Unhandled exceptions in A2A remote calls (auth failures, network errors, timeouts) no longer crash the agent. Errors are caught and sanitised.
 - Fixed agent card registry returning at most 25 cards by adding pagination support. 

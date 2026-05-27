@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from contextlib import contextmanager
+from contextlib import nullcontext
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -44,13 +45,21 @@ _MODULE = "datarobot_genai.dragent.plugins.auth_a2a_client"
 
 
 @contextmanager
-def _skip_agent_card_resolution(client):
-    """Patch _resolve_agent_card to set a mock agent card without network access."""
+def _skip_agent_card_resolution(client, *, security_schemes=None):
+    """Patch _resolve_agent_card to set a mock agent card without network access.
+
+    Parameters
+    ----------
+    security_schemes
+        Value for ``mock_card.security_schemes``.  ``None`` (default) means
+        no security schemes — the code falls back to direct header injection.
+        Pass a truthy value (e.g. ``{"oauth2": MagicMock()}``) to exercise the
+        ``A2ACredentialService`` / ``AuthInterceptor`` path.
+    """
 
     async def _set_mock_card():
         mock_card = MagicMock()
-        # Ensure A2ACredentialService skips compatibility validation (no security schemes).
-        mock_card.security_schemes = None
+        mock_card.security_schemes = security_schemes
         client._agent_card = mock_card
 
     with patch.object(client, "_resolve_agent_card", side_effect=_set_mock_card):
@@ -283,40 +292,64 @@ class TestAuthenticatedA2ABaseClientResolveCard:
 
 
 class TestAuthenticatedA2ABaseClientCallPhase:
-    async def test_call_auth_uses_auth_interceptor(
+    async def _enter_client(self, auth_provider, *, security_schemes=None):
+        """Enter a client with optional mocked card security schemes.
+
+        The ``httpx``, ``ClientFactory`` and ``Context`` patches from
+        ``patched_base_client_env`` must be active in the calling test.
+
+        When security schemes are present, ``A2ACredentialService`` is also
+        mocked so the test validates branch behaviour without coupling to NAT's
+        scheme-compatibility internals.
+        """
+        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=auth_provider)
+        credential_patch = (
+            patch(f"{_MODULE}.A2ACredentialService") if security_schemes else nullcontext()
+        )
+        with credential_patch:
+            with _skip_agent_card_resolution(client, security_schemes=security_schemes):
+                async with client:
+                    return client
+
+    async def test_auth_with_security_schemes_uses_interceptor_and_no_default_headers(
         self, bearer_auth_provider, patched_base_client_env
     ):
-        """When auth_provider is set, AuthInterceptor is added for RPC calls."""
+        """With security schemes, auth is delegated via interceptor (not client headers)."""
         mock_httpx, mock_factory = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+
+        await self._enter_client(
+            bearer_auth_provider,
+            security_schemes={"oauth2": MagicMock()},
         )
-        with _skip_agent_card_resolution(client):
-            async with client:
-                create_kw = mock_factory.return_value.create.call_args.kwargs
-                assert len(create_kw["interceptors"]) == 1
+
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert len(create_kw["interceptors"]) == 1
+
+        _, httpx_kwargs = mock_httpx.AsyncClient.call_args
+        assert httpx_kwargs.get("headers", {}) == {}
+
+    async def test_auth_without_security_schemes_injects_header(
+        self, bearer_auth_provider, patched_base_client_env
+    ):
+        """Without security schemes, auth header is injected directly on httpx client."""
+        mock_httpx, mock_factory = patched_base_client_env
+        mock_client_instance = mock_httpx.AsyncClient.return_value
+        mock_client_instance.headers = {}
+
+        await self._enter_client(bearer_auth_provider)
+
+        assert mock_client_instance.headers.get("Authorization") == "Bearer test_token"
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert create_kw.get("interceptors") == []
 
     async def test_no_auth_empty_interceptors(self, patched_base_client_env):
         """When no auth_provider, no interceptors are added."""
-        mock_httpx, mock_factory = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
-        with _skip_agent_card_resolution(client):
-            async with client:
-                create_kw = mock_factory.return_value.create.call_args.kwargs
-                assert create_kw.get("interceptors") == []
+        _, mock_factory = patched_base_client_env
 
-    async def test_task_httpx_client_has_no_default_headers(
-        self, bearer_auth_provider, patched_base_client_env
-    ):
-        """The long-lived task httpx client carries no default auth headers."""
-        mock_httpx, _ = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
-        )
-        with _skip_agent_card_resolution(client):
-            async with client:
-                _, httpx_kwargs = mock_httpx.AsyncClient.call_args
-                assert httpx_kwargs.get("headers", {}) == {}
+        await self._enter_client(None)
+
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert create_kw.get("interceptors") == []
 
 
 # ---------------------------------------------------------------------------
@@ -573,7 +606,8 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
     async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):
         """When registry provides a card, _AuthenticatedA2ABaseClient skips _resolve_agent_card."""
-        mock_auth_provider = MagicMock()
+        mock_auth_provider = AsyncMock()
+        mock_auth_provider.authenticate.return_value = None
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
         mock_card = MagicMock()
@@ -595,7 +629,8 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
             patch.object(AuthenticatedA2AClientFunctionGroup, "_register_functions"),
         ):
             mock_ctx.get.return_value.user_id = "test-user"
-            mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
+            mock_client_instance = MagicMock(aclose=AsyncMock(), headers={})
+            mock_httpx.AsyncClient.return_value = mock_client_instance
             mock_httpx.Timeout = MagicMock()
             mock_factory.return_value.create.return_value = MagicMock(aclose=AsyncMock())
 
