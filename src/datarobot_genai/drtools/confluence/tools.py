@@ -19,7 +19,7 @@ from typing import Annotated
 from typing import Any
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
+from datarobot_genai.drtools.core.clients.atlassian import get_confluence_access_token
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceClient
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -63,7 +63,7 @@ async def confluence_get_page(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_confluence_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -112,7 +112,7 @@ async def confluence_create_page(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_confluence_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -144,7 +144,8 @@ async def confluence_add_comment(
 ) -> dict[str, Any]:
     if not page_id:
         raise ToolError(
-            "Argument validation error: 'page_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            "Argument validation error: 'page_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     if not comment_body:
@@ -153,7 +154,7 @@ async def confluence_add_comment(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_confluence_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -196,7 +197,8 @@ async def confluence_search(
 ) -> dict[str, Any]:
     if not cql_query:
         raise ToolError(
-            "Argument validation error: 'cql_query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            "Argument validation error: 'cql_query' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     if max_results < 1 or max_results > 100:
@@ -205,7 +207,7 @@ async def confluence_search(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_confluence_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -259,7 +261,8 @@ async def confluence_update_page(
 ) -> dict[str, Any]:
     if not page_id:
         raise ToolError(
-            "Argument validation error: 'page_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            "Argument validation error: 'page_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
     if not new_body_content:
@@ -274,7 +277,7 @@ async def confluence_update_page(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_confluence_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 

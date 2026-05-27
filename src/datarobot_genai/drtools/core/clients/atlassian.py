@@ -35,29 +35,34 @@ OAUTH_ACCESSIBLE_RESOURCES_PATH = "/oauth/token/accessible-resources"
 AtlassianServiceType = Literal["jira", "confluence"]
 
 
-async def get_atlassian_access_token() -> str | ToolError:
+async def get_jira_access_token() -> str | ToolError:
     """
-    Get Atlassian OAuth access token with error handling.
+    OAuth access token for Jira Cloud API calls.
 
-    Uses DataRobot OBO when available; otherwise ``x-datarobot-atlassian-access-token``.
+    Uses DataRobot On-Behalf-Of (OBO) for OAuth provider type ``jira`` (matches
+    ``AppOauth`` / Authlib provider ids used by the agent application template).
 
-    Returns
-    -------
-        Access token string on success, ToolError on failure
-
-    Example:
-        ```python
-        token = await get_atlassian_access_token()
-        if isinstance(token, ToolError):
-            # Handle error
-            return token
-        # Use token
-        ```
+    If OBO is unavailable, falls back to the ``x-datarobot-jira-access-token`` request header.
     """
     return await get_oauth_access_token_with_header_fallback(
-        "atlassian",
-        display_name="Atlassian",
-        access_token_header_segment="atlassian",
+        "jira",
+        display_name="Jira",
+        access_token_header_segment="jira",
+    )
+
+
+async def get_confluence_access_token() -> str | ToolError:
+    """
+    OAuth access token for Confluence Cloud API calls.
+
+    Uses DataRobot OBO for OAuth provider type ``confluence``.
+
+    If OBO is unavailable, falls back to the ``x-datarobot-confluence-access-token`` header.
+    """
+    return await get_oauth_access_token_with_header_fallback(
+        "confluence",
+        display_name="Confluence",
+        access_token_header_segment="confluence",
     )
 
 
@@ -85,7 +90,9 @@ def _find_resource_by_service(
     return None
 
 
-def _find_first_resource_with_id(resources: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _find_first_resource_with_id(
+    resources: list[dict[str, Any]],
+) -> dict[str, Any] | None:
     """
     Find the first resource that has an ID.
 

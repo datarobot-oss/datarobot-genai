@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,9 @@ import pytest
 
 from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_llm_gateway_client_config
+
+# Acceptance tests require real DataRobot credentials from .env (mcp_utils_ete loads it on import).
+os.environ["MCP_USE_CLIENT_STUBS"] = "false"
 
 
 @pytest.fixture(scope="session")
