@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from contextlib import contextmanager
+from contextlib import nullcontext
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -291,55 +292,64 @@ class TestAuthenticatedA2ABaseClientResolveCard:
 
 
 class TestAuthenticatedA2ABaseClientCallPhase:
-    async def test_call_auth_uses_auth_interceptor(
-        self, bearer_auth_provider, patched_base_client_env
-    ):
-        """When auth_provider is set and card has security schemes, AuthInterceptor is added."""
-        mock_httpx, mock_factory = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+    async def _enter_client(self, auth_provider, *, security_schemes=None):
+        """Enter a client with optional mocked card security schemes.
+
+        The ``httpx``, ``ClientFactory`` and ``Context`` patches from
+        ``patched_base_client_env`` must be active in the calling test.
+
+        When security schemes are present, ``A2ACredentialService`` is also
+        mocked so the test validates branch behaviour without coupling to NAT's
+        scheme-compatibility internals.
+        """
+        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=auth_provider)
+        credential_patch = (
+            patch(f"{_MODULE}.A2ACredentialService") if security_schemes else nullcontext()
         )
-        with _skip_agent_card_resolution(client, security_schemes={"oauth2": MagicMock()}):
-            async with client:
-                create_kw = mock_factory.return_value.create.call_args.kwargs
-                assert len(create_kw["interceptors"]) == 1
+        with credential_patch:
+            with _skip_agent_card_resolution(client, security_schemes=security_schemes):
+                async with client:
+                    return client
 
-    async def test_no_auth_empty_interceptors(self, patched_base_client_env):
-        """When no auth_provider, no interceptors are added."""
+    async def test_auth_with_security_schemes_uses_interceptor_and_no_default_headers(
+        self, bearer_auth_provider, patched_base_client_env
+    ):
+        """With security schemes, auth is delegated via interceptor (not client headers)."""
         mock_httpx, mock_factory = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
-        with _skip_agent_card_resolution(client):
-            async with client:
-                create_kw = mock_factory.return_value.create.call_args.kwargs
-                assert create_kw.get("interceptors") == []
 
-    async def test_task_httpx_client_has_no_default_headers_with_security_schemes(
-        self, bearer_auth_provider, patched_base_client_env
-    ):
-        """When security schemes are present, headers go via AuthInterceptor, not on the client."""
-        mock_httpx, _ = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+        await self._enter_client(
+            bearer_auth_provider,
+            security_schemes={"oauth2": MagicMock()},
         )
-        with _skip_agent_card_resolution(client, security_schemes={"oauth2": MagicMock()}):
-            async with client:
-                _, httpx_kwargs = mock_httpx.AsyncClient.call_args
-                assert httpx_kwargs.get("headers", {}) == {}
 
-    async def test_task_httpx_client_has_auth_headers_without_security_schemes(
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert len(create_kw["interceptors"]) == 1
+
+        _, httpx_kwargs = mock_httpx.AsyncClient.call_args
+        assert httpx_kwargs.get("headers", {}) == {}
+
+    async def test_auth_without_security_schemes_injects_header(
         self, bearer_auth_provider, patched_base_client_env
     ):
-        """When no security schemes, auth headers are injected directly on the httpx client."""
-        mock_httpx, _ = patched_base_client_env
+        """Without security schemes, auth header is injected directly on httpx client."""
+        mock_httpx, mock_factory = patched_base_client_env
         mock_client_instance = mock_httpx.AsyncClient.return_value
         mock_client_instance.headers = {}
 
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
-        )
-        with _skip_agent_card_resolution(client):
-            async with client:
-                assert mock_client_instance.headers.get("Authorization") == "Bearer test_token"
+        await self._enter_client(bearer_auth_provider)
+
+        assert mock_client_instance.headers.get("Authorization") == "Bearer test_token"
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert create_kw.get("interceptors") == []
+
+    async def test_no_auth_empty_interceptors(self, patched_base_client_env):
+        """When no auth_provider, no interceptors are added."""
+        _, mock_factory = patched_base_client_env
+
+        await self._enter_client(None)
+
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert create_kw.get("interceptors") == []
 
 
 # ---------------------------------------------------------------------------
