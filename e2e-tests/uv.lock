@@ -980,7 +980,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.72"
+version = "0.15.74"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1151,6 +1151,7 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
     { name = "fastapi", marker = "extra == 'dragent'", specifier = "<0.133.0" },
     { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.2.0,<4.0.0" },
+    { name = "fastmcp", marker = "extra == 'drmcpbase'", specifier = ">=3.2.0,<4.0.0" },
     { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
@@ -1283,7 +1284,7 @@ requires-dist = [
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "drmcp", "drtools", "dragent", "memory"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "drmcpbase", "drmcp", "drtools", "dragent", "memory"]
 
 [package.metadata.requires-dev]
 dev = [

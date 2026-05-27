@@ -24,6 +24,7 @@ tasks:
             - crewai
             - langgraph
             - llamaindex
+            - drmcpbase
             - drmcp
             - nat
             - dragent

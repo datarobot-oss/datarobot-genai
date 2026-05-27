@@ -17,7 +17,7 @@ from typing import Annotated
 from typing import Any
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
+from datarobot_genai.drtools.core.clients.atlassian import get_jira_access_token
 from datarobot_genai.drtools.core.clients.jira import JiraClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
@@ -48,16 +48,18 @@ _JIRA_ISSUES_REST = "https://developer.atlassian.com/cloud/jira/platform/rest/v3
 async def jira_search_issues(
     *,
     jql_query: Annotated[
-        str, "The JQL (Jira Query Language) string used to filter and search for issues."
+        str,
+        "The JQL (Jira Query Language) string used to filter and search for issues.",
     ],
     max_results: Annotated[int, "Maximum number of issues to return. Default is 50."] = 50,
 ) -> dict[str, Any]:
     if not jql_query:
         raise ToolError(
-            "Argument validation error: 'jql_query' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            "Argument validation error: 'jql_query' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_jira_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -79,14 +81,16 @@ async def jira_search_issues(
     ),
 )
 async def jira_get_issue(
-    *, issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."]
+    *,
+    issue_key: Annotated[str, "The key (ID) of the Jira issue to retrieve, e.g., 'PROJ-123'."],
 ) -> dict[str, Any]:
     if not issue_key:
         raise ToolError(
-            "Argument validation error: 'issue_key' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            "Argument validation error: 'issue_key' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_jira_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -120,7 +124,7 @@ async def jira_create_issue(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_jira_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -171,7 +175,8 @@ async def jira_update_issue(
 ) -> dict[str, Any]:
     if not issue_key:
         raise ToolError(
-            "Argument validation error: 'issue_key' cannot be empty.", kind=ToolErrorKind.VALIDATION
+            "Argument validation error: 'issue_key' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
         )
     if not fields_to_update or not isinstance(fields_to_update, dict):
         raise ToolError(
@@ -179,7 +184,7 @@ async def jira_update_issue(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_jira_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 
@@ -215,7 +220,7 @@ async def jira_transition_issue(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    access_token = await get_atlassian_access_token()
+    access_token = await get_jira_access_token()
     if isinstance(access_token, ToolError):
         raise access_token
 

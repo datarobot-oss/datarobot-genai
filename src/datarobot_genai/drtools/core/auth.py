@@ -457,7 +457,12 @@ def resolve_token_from_headers() -> str | None:
 
 
 def get_api_key_from_headers(header_name: str) -> str | None:
-    headers = _get_http_headers()
+    raw = _get_http_headers()
+
+    if not raw:
+        return None
+    # Case-insensitive header lookup (HTTP field names are case-insensitive).
+    headers = {str(k).lower(): v for k, v in raw.items() if isinstance(v, str) and str(v).strip()}
 
     candidates = [header_name]
 
@@ -467,7 +472,8 @@ def get_api_key_from_headers(header_name: str) -> str | None:
         candidates.append(f"x-datarobot-{header_name}")
 
     for name in candidates:
-        if value := headers.get(name):
+        key = str(name).lower()
+        if value := headers.get(key):
             return value
 
     return None

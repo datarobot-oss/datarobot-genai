@@ -15,6 +15,7 @@
 import abc
 import asyncio
 import functools
+import inspect
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -341,7 +342,7 @@ def _wrap_a2a_function(fn: Any) -> Any:
 
         return _safe
 
-    if asyncio.isasyncgenfunction(fn):
+    if inspect.isasyncgenfunction(fn):
 
         @functools.wraps(fn)
         async def _safe_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:

@@ -17,8 +17,10 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.vdb import tools
 
 
@@ -140,6 +142,58 @@ async def test_query_vector_database_success() -> None:
         assert isinstance(result, dict)
         assert result["count"] == 1
         assert result["deployment_id"] == "dep1"
+
+
+@pytest.mark.asyncio
+async def test_list_vector_databases_client_error_404() -> None:
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.side_effect = ClientError(
+        "404 client error: {'message': 'Not Found'}",
+        status_code=404,
+        json={"message": "Not Found"},
+    )
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    with (
+        patch(
+            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_dr_module
+
+        with pytest.raises(ToolError) as exc_info:
+            await tools.list_vector_databases()
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_query_vector_database_client_error_404() -> None:
+    mock_rest_client = MagicMock()
+    mock_rest_client.post.side_effect = ClientError(
+        "404 client error: {'message': 'Not Found'}",
+        status_code=404,
+        json={"message": "Not Found"},
+    )
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    with (
+        patch(
+            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_dr_module
+
+        with pytest.raises(ToolError) as exc_info:
+            await tools.query_vector_database(deployment_id="missing-dep", query="test")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
