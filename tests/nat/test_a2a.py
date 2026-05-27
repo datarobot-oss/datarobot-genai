@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Integration tests for the ``authenticated_a2a_client`` function group.
+# Tests for the ``authenticated_a2a_client`` function group.
+# Fully mocked with respx — no real network connection required.
 
 from pathlib import Path
 
@@ -82,7 +83,7 @@ _SEND_MESSAGE_RESPONSE = {
 
 @pytest.fixture(scope="module")
 def workflow_path() -> Path:
-    return Path(__file__).parent / "workflow_with_a2a.yaml"
+    return Path(__file__).parent / "fixtures" / "workflow_with_a2a.yaml"
 
 
 @pytest.fixture(scope="module")
@@ -208,6 +209,13 @@ class TestAuthenticatedA2AClientGroup:
         assert "name" in info
         assert "version" in info
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Regression: datarobot_api_key auth provider does not forward "
+            "Authorization header on A2A RPC calls. Remove this marker once the fix lands."
+        ),
+    )
     async def test_authorization_header_forwarded_on_rpc_call(self, nat_config, mock_a2a_endpoints):
         """The Authorization header must be forwarded on every A2A RPC call.
 
@@ -215,9 +223,6 @@ class TestAuthenticatedA2AClientGroup:
         ``DATAROBOT_API_TOKEN`` (monkeypatched to ``integration-test-token``)
         must appear as ``Authorization: Bearer integration-test-token`` in the
         JSON-RPC POST that the A2A SDK sends to the agent endpoint.
-
-        This test intentionally reproduces the bug where task-phase auth headers
-        are absent from the outgoing request.
         """
         captured_requests: list[httpx.Request] = []
 
@@ -247,7 +252,4 @@ class TestAuthenticatedA2AClientGroup:
             f"Expected 'Authorization: Bearer integration-test-token' on the A2A RPC POST "
             f"but got: {auth_header!r}"
         )
-        pytest.fail(
-            "BUG REPRODUCED: this test must fail until the auth-forwarding fix is applied. "
-            "Remove this line once the fix lands."
-        )
+

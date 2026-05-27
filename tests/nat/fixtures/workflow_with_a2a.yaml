@@ -21,3 +21,4 @@ function_groups:
     _type: authenticated_a2a_client
     url: "http://agent.example.com:8080"
     auth_provider: datarobot_auth
+
