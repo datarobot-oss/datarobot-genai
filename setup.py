@@ -124,6 +124,7 @@ drtools = auth + [
     "python-dateutil>=2.9.0,<3.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
+    "datarobot>=3.10.0,<4.0.0",
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
 ]
 
