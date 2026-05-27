@@ -252,4 +252,3 @@ class TestAuthenticatedA2AClientGroup:
             f"Expected 'Authorization: Bearer integration-test-token' on the A2A RPC POST "
             f"but got: {auth_header!r}"
         )
-
