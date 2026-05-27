@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.80
+- LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
+- Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
+
 ## 0.15.78
 - `dragent/frontends/converters`: fixed dropped `datarobot_moderations` in dragent workflow chunk conversion paths by preserving moderation metadata on both NAT `ChatResponseChunk` and OpenAI `ChatCompletionChunk` streaming outputs.
 

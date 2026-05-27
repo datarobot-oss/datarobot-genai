@@ -22,17 +22,66 @@ This page describes how **interrupt / resume** works when you use LangGraph insi
 
 LangGraph only **remembers** a paused run if the compiled graph was built with a [`Checkpointer`](https://langchain-ai.github.io/langgraph/reference/checkpoints/). The `LangGraphAgent` constructor accepts **`checkpointer=...`** and passes it to `StateGraph.compile(...)`.
 
-If you omit `checkpointer`, pass **`use_datarobot_fs_checkpointer=True`** on `LangGraphAgent` to
-use the **process-wide default** backed by `datarobot.fs.DataRobotFileSystem` so interrupts can
-resume when the client reuses the same `thread_id` within one process lifetime. Pass
-**`langgraph_checkpoint_base`** for the `dr://` prefix (for example from your app’s
-`DataRobotAppFrameworkBaseSettings`); if omitted, the checkpoint root is `dr://`.
-That default registers **best-effort deletion** of the LangGraph checkpoint tree only
-(``<prefix>/checkpoints``) when the process exits normally (`atexit`), not other objects under the
-same `dr://` prefix. For checkpoint data that must **survive** planned restarts or deployments,
-pass your
-own `checkpointer=` instead (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)
-and [`langgraph/dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)).
+### Choosing `checkpointer` vs `use_datarobot_fs_checkpointer`
+
+`LangGraphAgent` resolves storage in this order (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)):
+
+```mermaid
+flowchart TD
+    A["LangGraphAgent(...)"] --> B{"checkpointer set?"}
+    B -->|yes| C["Use your checkpointer"]
+    B -->|no| D{"use_datarobot_fs_checkpointer=True?"}
+    D -->|yes| E["default_langgraph_checkpointer()"]
+    D -->|no| F["No checkpointer — interrupt/resume state is not persisted"]
+    E --> G{"langgraph_checkpoint_base set?"}
+    G -->|no| H["root dr:// → catalog_id/langgraph_checkpoints/checkpoints/..."]
+    G -->|yes| I["root = your dr:// prefix + /checkpoints/..."]
+```
+
+| Option | Constructor | Resume across requests? | Typical use |
+|--------|-------------|-------------------------|-------------|
+| **None** (default) | omit both flags | No | Graphs without `interrupt()` / HITL |
+| **DR FS default** | `use_datarobot_fs_checkpointer=True` | Yes, same process + `thread_id` | DataRobot apps with DR FS credentials |
+| **Explicit saver** | `checkpointer=...` | Depends on saver | E2E (`InMemorySaver`), Postgres, custom DR FS instance |
+
+**1. No checkpointer** (default) — graph compiles without persistence:
+
+```python
+agent = MyLangGraphAgent(llm=llm, tools=tools)
+# self.checkpointer is None → interrupt()/resume will not restore prior state
+```
+
+**2. DataRobot File System** — opt in when `checkpointer` is omitted:
+
+```python
+agent = MyLangGraphAgent(
+    llm=llm,
+    tools=tools,
+    use_datarobot_fs_checkpointer=True,
+    # Optional: dr:// prefix from app settings (ignored if checkpointer= is set)
+    langgraph_checkpoint_base="dr://<catalog_id>/langgraph_checkpoints",
+)
+```
+
+If `langgraph_checkpoint_base` is omitted, the saver root is `dr://` and `DataRobotFileSystem` writes under `<catalog_id>/langgraph_checkpoints/checkpoints/...` (see [`dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)). The process-wide default is shared per root and registers **best-effort deletion** of only that `checkpoints/` subtree on normal exit (`atexit`), not the whole catalog prefix.
+
+**3. Explicit checkpointer** — always wins over `use_datarobot_fs_checkpointer`:
+
+```python
+from langgraph.checkpoint.memory import InMemorySaver
+
+# Module-level shared instance (e2e pattern — see dragent/langgraph/myagent.py)
+HITL_CHECKPOINTER = InMemorySaver()
+
+agent = MyLangGraphAgent(
+    llm=llm,
+    tools=tools,
+    checkpointer=HITL_CHECKPOINTER,
+    use_datarobot_fs_checkpointer=True,  # ignored when checkpointer is set
+)
+```
+
+Use a **durable** saver (Postgres, Redis, your own `DataRobotFileSystemCheckpointSaver`, etc.) when checkpoints must survive restarts or multiple workers. DR FS default is intended for single-process dev / short-lived runs within one deployment.
 
 ## What clients see in the event stream
 
