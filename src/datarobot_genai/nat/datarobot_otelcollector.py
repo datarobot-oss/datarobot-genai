@@ -25,25 +25,37 @@ This exporter mirrors the conventions documented in DataRobot's
 
 * Headers are passed directly to the exporter — never via
   ``OTEL_EXPORTER_OTLP_*`` env vars, which some frameworks misinterpret.
-* ``datarobot_entity_id`` is required (``deployment-<id>`` shape).
-* The endpoint convention is the base OTel URL (e.g.
-  ``https://<host>/otel``) with ``/v1/traces`` appended for span export.
+* ``datarobot_entity_id`` uses the ``deployment-<id>`` shape. When omitted it
+  is auto-derived from ``MLOPS_DEPLOYMENT_ID`` (the bare deployment ID
+  exposed inside a DataRobot deployment) with the ``deployment-`` prefix
+  auto-prepended.
+* ``datarobot_api_key`` defaults to ``DATAROBOT_API_TOKEN``.
+* ``endpoint`` defaults to ``<DR base host>/otel/v1/traces`` derived from
+  ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT`` (the OTel
+  collector ingress lives at the same host as the DR API, off
+  ``/otel/v1/traces``, not under ``/api/v2``).
 
-Example ``workflow.yaml``::
+Inside a DataRobot deployment, the minimal ``workflow.yaml`` is::
 
     telemetry:
       tracing:
         otelcollector:
           _type: datarobot_otelcollector
-          endpoint: "${DATAROBOT_OTEL_ENDPOINT}/v1/traces"
-          datarobot_api_key: "${DATAROBOT_API_TOKEN}"
-          datarobot_entity_id: "${DATAROBOT_ENTITY_ID}"
           project: "agent"
+
+Outside a deployment (local dev, CI without DR env), the exporter is
+silently pruned from the loaded config by
+:func:`prune_exporter_if_env_missing` so listing it unconditionally is
+safe. Explicit overrides for any of the three auto-derived fields are
+still honored — pin them in ``workflow.yaml`` to point at a non-default
+collector.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import urllib.parse
 from collections.abc import AsyncGenerator
 
 from nat.builder.builder import Builder
@@ -61,6 +73,33 @@ from pydantic import field_validator
 logger = logging.getLogger(__name__)
 
 
+def _resolve_api_key_from_env() -> str:
+    return os.getenv("DATAROBOT_API_TOKEN", "")
+
+
+def _resolve_entity_id_from_env() -> str:
+    # MLOPS_DEPLOYMENT_ID holds the bare deployment ID inside a DR deployment;
+    # auto-prepend the 'deployment-' prefix required by the OTel ingest path.
+    # Mirrors the MLOPS_DEPLOYMENT_ID-driven pattern used by the A2A frontend.
+    deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
+    return f"deployment-{deployment_id}" if deployment_id else ""
+
+
+def _resolve_otel_endpoint_from_env() -> str:
+    # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
+    # → https://app.datarobot.com/otel/v1/traces. The OTel collector ingress
+    # lives at the same host, off /otel/v1/traces, not under /api/v2. We
+    # only honour explicitly set env vars (no built-in default) so an
+    # unconfigured env never silently targets app.datarobot.com.
+    base = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
+    if not base:
+        return ""
+    parsed = urllib.parse.urlsplit(base)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
+
+
 class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
     BatchConfigMixin,
     CollectorConfigMixin,
@@ -74,20 +113,31 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
     ``BatchConfigMixin``). Adds the DataRobot-specific auth headers.
     """
 
-    datarobot_api_key: SerializableSecretStr = Field(
-        ...,
+    endpoint: str = Field(
+        default_factory=_resolve_otel_endpoint_from_env,
         description=(
-            "DataRobot API key sent as the X-DataRobot-Api-Key header. "
-            "Provide via env var, e.g. ${DATAROBOT_API_TOKEN}."
+            "OTLP/HTTP endpoint for the DataRobot OTel collector. If "
+            "omitted, derived from DATAROBOT_PUBLIC_API_ENDPOINT / "
+            "DATAROBOT_ENDPOINT by stripping any path (e.g. /api/v2) and "
+            "appending /otel/v1/traces."
+        ),
+    )
+    datarobot_api_key: SerializableSecretStr = Field(
+        default_factory=lambda: SerializableSecretStr(_resolve_api_key_from_env()),
+        description=(
+            "DataRobot API key sent as the X-DataRobot-Api-Key header. If "
+            "omitted, derived from the DATAROBOT_API_TOKEN env var."
         ),
     )
     datarobot_entity_id: str = Field(
-        ...,
+        default_factory=_resolve_entity_id_from_env,
         description=(
             "DataRobot entity identifier sent as the X-DataRobot-Entity-Id "
             "header. Must use the prefixed form 'deployment-<id>' (e.g. "
             "'deployment-abc123') for shell deployments created by the "
-            "datarobot-external-agent-monitoring skill."
+            "datarobot-external-agent-monitoring skill. If omitted, derived "
+            "from MLOPS_DEPLOYMENT_ID with the 'deployment-' prefix "
+            "auto-prepended."
         ),
     )
     extra_headers: dict[str, str] = Field(
@@ -105,16 +155,57 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
     @field_validator("datarobot_entity_id")
     @classmethod
     def _validate_entity_id_prefix(cls, value: str) -> str:
-        # Match the validation rule documented in the DR external agent
-        # monitoring skill: must be the 'deployment-<id>' shape, not bare.
-        if not value or not value.startswith("deployment-"):
+        # Empty is permitted so prune_exporter_if_env_missing can drop the
+        # exporter at config-load time without a pydantic ValidationError.
+        # Any non-empty value must still match the 'deployment-<id>' shape
+        # documented in the DR external-agent-monitoring skill.
+        if value and not value.startswith("deployment-"):
             raise ValueError(
                 "datarobot_entity_id must be of the form 'deployment-<id>' "
-                f"(got {value!r}). Run create_shell_deployment.py from the "
-                "datarobot-external-agent-monitoring skill if you do not "
-                "have one yet."
+                f"(got {value!r}). Inside a DataRobot deployment, omit the "
+                "field — it is auto-derived from MLOPS_DEPLOYMENT_ID. For "
+                "local dev, run create_shell_deployment.py from the "
+                "datarobot-external-agent-monitoring skill."
             )
         return value
+
+
+def prune_exporter_if_env_missing(config_yaml: dict) -> None:
+    """Drop ``datarobot_otelcollector`` tracing entries from a YAML config
+    dict when essential DataRobot env is not present (e.g. local dev).
+
+    Mutates *config_yaml* in place. Called from
+    :func:`datarobot_genai.nat.helpers.load_config` before NAT's pydantic
+    validation runs, since NAT has no built-in way to skip a misconfigured
+    exporter without raising.
+
+    An entry is pruned only when the auto-derive path can't produce values:
+    if the user pinned ``datarobot_api_key`` and ``datarobot_entity_id``
+    explicitly in the YAML, the entry is preserved regardless of env.
+    """
+    tracing = (config_yaml.get("telemetry") or {}).get("tracing") or {}
+    if not tracing:
+        return
+    has_deployment = bool(os.getenv("MLOPS_DEPLOYMENT_ID"))
+    has_api_key = bool(os.getenv("DATAROBOT_API_TOKEN"))
+    if has_deployment and has_api_key:
+        return
+    for name in list(tracing.keys()):
+        entry = tracing[name]
+        if not isinstance(entry, dict) or entry.get("_type") != "datarobot_otelcollector":
+            continue
+        entity_id_pinned = bool(entry.get("datarobot_entity_id"))
+        api_key_pinned = bool(entry.get("datarobot_api_key"))
+        if (has_deployment or entity_id_pinned) and (has_api_key or api_key_pinned):
+            continue
+        logger.info(
+            "Skipping datarobot_otelcollector tracing exporter %r: "
+            "DataRobot deployment env (MLOPS_DEPLOYMENT_ID / "
+            "DATAROBOT_API_TOKEN) not set and the field is not pinned in "
+            "workflow.yaml.",
+            name,
+        )
+        tracing.pop(name)
 
 
 @register_telemetry_exporter(config_type=DataRobotOtelCollectorTelemetryExporter)
