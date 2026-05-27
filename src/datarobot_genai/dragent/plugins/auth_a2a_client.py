@@ -27,6 +27,7 @@ from a2a.client import A2ACardResolver
 from a2a.client import AuthInterceptor
 from a2a.client import ClientConfig
 from a2a.client import ClientFactory
+from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
@@ -42,6 +43,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 
+from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 
@@ -327,6 +329,11 @@ def _sanitize_a2a_error(exc: Exception) -> str:
     if isinstance(exc, (httpx.ConnectError, httpx.NetworkError, ConnectionError, OSError)):
         return "network error communicating with remote agent"
 
+    # Safe to surface verbatim — crafted by this codebase, never contains secrets.
+    # Checked before RuntimeError (its superclass).
+    if isinstance(exc, AgentCardRegistryError):
+        return f"agent card registry error: {exc}"
+
     if isinstance(exc, (RuntimeError, ValueError)):
         return f"{type(exc).__name__}: authentication or protocol error"
 
@@ -379,6 +386,61 @@ def _wrap_a2a_function(fn: Any) -> Any:
     return fn
 
 
+class _FailedRegistryClient:
+    """Stand-in for :class:`A2ABaseClient` when registry lookup fails.
+
+    Provides ``agent_card`` so NAT's ``_register_functions()`` succeeds at
+    registration time.  All other attribute accesses return async-generator
+    factories that raise the original error at invocation time, where
+    ``_wrap_a2a_function`` catches it and surfaces an actionable message.
+
+    Decoupled from NAT's function set — no hardcoded method names.
+    """
+
+    def __init__(self, agent_card: AgentCard, error: AgentCardRegistryError) -> None:
+        self._agent_card = agent_card
+        self._error = error
+
+    @property
+    def agent_card(self) -> AgentCard:
+        return self._agent_card
+
+    def __getattr__(self, name: str) -> Any:
+        """Return an async-generator factory that raises the stored error.
+
+        Satisfies both ``await`` and ``async for`` patterns used by NAT.
+        """
+        error = self._error
+
+        def _make_gen(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+            async def _gen() -> AsyncGenerator[Any, None]:
+                raise error
+                yield  # noqa: RET503 — unreachable, makes this an async generator
+
+            return _gen()
+
+        return _make_gen
+
+    async def __aexit__(self, *args: Any) -> None:
+        """No-op cleanup — nothing to close."""
+
+
+def _make_placeholder_agent_card(error_msg: str) -> AgentCard:
+    """Build a minimal :class:`AgentCard` so ``_register_functions()`` can read
+    agent metadata without crashing. The description carries the original error.
+    """
+    return AgentCard(
+        name="unavailable",
+        description=f"Agent card could not be resolved: {error_msg}",
+        url="https://unavailable/",
+        version="0.0.0",
+        skills=[],
+        capabilities=AgentCapabilities(streaming=False),
+        default_input_modes=["text"],
+        default_output_modes=["text"],
+    )
+
+
 class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
     """Uses :class:`_AuthenticatedA2ABaseClient` so both A2A phases are authenticated."""
 
@@ -415,12 +477,27 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
         pre_resolved_card: AgentCard | None = None
 
         if config.registry:
-            # Fetch the card from the central DataRobot agent card registry
-            registry = await get_default_registry()
-            pre_resolved_card = await registry.get(
-                deployment_id=config.registry.deployment_id,
-                external_id=config.registry.external_id,
-            )
+            # Catch AgentCardRegistryError so the function group initialises
+            # in a degraded state instead of crashing (generic JSON-RPC -32603).
+            try:
+                registry = await get_default_registry()
+                pre_resolved_card = await registry.get(
+                    deployment_id=config.registry.deployment_id,
+                    external_id=config.registry.external_id,
+                )
+            except AgentCardRegistryError as exc:
+                error_msg = str(exc)
+                logger.error(
+                    "Agent card registry lookup failed: %s",
+                    error_msg,
+                )
+                # Install a placeholder client: registration succeeds, but
+                # every RPC call raises the error → caught by _wrap_a2a_function.
+                placeholder_card = _make_placeholder_agent_card(error_msg)
+                self._client = _FailedRegistryClient(placeholder_card, exc)  # type: ignore[assignment]
+                self._register_functions()
+                return self
+
             base_url = str(pre_resolved_card.url)
             logger.info(
                 "Agent card resolved via central registry (deployment_id=%s, external_id=%s), "
