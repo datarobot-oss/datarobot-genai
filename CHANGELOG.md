@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.76
+- Pin `starlette>=1.0.1` on the `drmcp` extra and use `request.scope["path"]` in MCP middleware to harden against CVE-2026-48710 (BadHost)
+
 ## 0.15.75
 - Upgrade to `nvidia-nat` 1.7.0, and pin `starlette>=1.0.1` to mitigate CVE-2026-48710
 
