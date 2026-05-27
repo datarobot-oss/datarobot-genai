@@ -43,7 +43,7 @@ class RequestHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         mcp_path = prefix_mount_path(MCP_PATH_ENDPOINT).rstrip("/") or "/"
-        # path checks use the ASGI request line and are not affected by Host-header poisoning attacks
+        # Use the ASGI request line and are not affected by Host-header poisoning attacks
         path = request.scope["path"]
         if path == mcp_path or path.startswith(mcp_path + "/"):
             return await call_next(request)
