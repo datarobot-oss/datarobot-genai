@@ -24,8 +24,8 @@ from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_WITH
 from tests.drmcp.integration.helper import get_or_create_prompt_template
 from tests.drmcp.integration.helper import get_or_create_prompt_template_version
 
-# Default to stub mode so session-scoped fixtures return stub data without calling the API.
-os.environ.setdefault("MCP_USE_CLIENT_STUBS", "true")
+# Integration tests must not pick up DATAROBOT_* from .env; acceptance tests load .env
+os.environ["MCP_USE_CLIENT_STUBS"] = "true"
 
 
 @pytest.fixture(scope="session")

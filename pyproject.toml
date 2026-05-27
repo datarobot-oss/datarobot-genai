@@ -192,8 +192,15 @@ omit = [
 drtools_allowed_subpackages = ["drtools"]
 drtools_forbidden = [
     "fastmcp",
+    "datarobot_genai.drmcpbase",
 ]
-drmcp_allowed_subpackages = ["drtools", "drmcp"]
+drmcp_allowed_subpackages = ["drtools", "drmcp", "drmcpbase"]
+drmcpbase_allowed_subpackages = ["drmcpbase"]
+drmcpbase_forbidden = [
+    "datarobot_genai.drtools",
+    "datarobot_genai.drmcp",
+    "datarobot_genai.core",
+]
 
 [tool.coverage.report]
 exclude_lines = [

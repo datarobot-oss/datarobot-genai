@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
 - Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
 
+## 0.15.79
+- Added `drmcpbase` subpackage and standalone extra `datarobot-genai[drmcpbase]` (`fastmcp` only, no core). The `drmcp` extra now composes `drmcpbase` + `drtools` + template-server dependencies. Documented both extras in `README.md`.
+- Import lint (`scripts/check_imports.py`): scans `drmcpbase`; `drmcp` may import `drtools`, `drmcp`, and `drmcpbase`; `drmcpbase` may only import `drmcpbase` (must not import `drtools`, `drmcp`, or `core`); `drtools` forbids `drmcpbase`.
+- CI / tests: `drmcpbase` added to the `test-module` matrix; `tests/drmcpbase/` smoke test runs with `--confcutdir` so the root `tests/conftest.py` (core) is not loaded under the `drmcpbase` extra.
+- `e2e-tests/uv.lock` regenerated to include the `drmcpbase` extra.
+- `drtools` Jira/Confluence: replaced `get_atlassian_access_token` with `get_jira_access_token` and `get_confluence_access_token` (OBO provider types `jira` / `confluence`; fallbacks `x-datarobot-jira-access-token` and `x-datarobot-confluence-access-token`).
+- `drtools`: `get_api_key_from_headers` now performs case-insensitive header lookup.
+- `drtools`: `list_use_cases`, `list_vector_databases`, and `query_vector_database` map `ClientError` to `ToolError` via `raise_tool_error_for_client_error`.
+- `drmcp`: `set_prompt_mapping` removes superseded prompt versions via FastMCP 3.x `local_provider.remove_prompt` instead of `prompt.disable()`.
+- DRMCP tests: shared stub `DATAROBOT_*` constants for integration subprocesses; integration tests force `MCP_USE_CLIENT_STUBS=true` so a developer `.env` is not used; acceptance tests set `MCP_USE_CLIENT_STUBS=false` and require real credentials.
+
 ## 0.15.78
 - `dragent/frontends/converters`: fixed dropped `datarobot_moderations` in dragent workflow chunk conversion paths by preserving moderation metadata on both NAT `ChatResponseChunk` and OpenAI `ChatCompletionChunk` streaming outputs.
 

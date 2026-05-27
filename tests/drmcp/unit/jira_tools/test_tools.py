@@ -28,7 +28,7 @@ from datarobot_genai.drtools.jira.tools import jira_update_issue
 @pytest.fixture
 def get_atlassian_access_token_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.jira.tools.get_atlassian_access_token",
+        "datarobot_genai.drtools.jira.tools.get_jira_access_token",
         return_value="token",
     ):
         yield

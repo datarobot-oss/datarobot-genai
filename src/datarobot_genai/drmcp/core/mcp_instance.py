@@ -246,7 +246,14 @@ class DataRobotMCP(FastMCP):
                         and prompt.meta.get("prompt_template_version_id", "")
                         == prompt_template_version_id
                     ):
-                        prompt.disable()
+                        try:
+                            # remove_prompt_mapping now removes the prompt via the FastMCP 3.x API
+                            self.local_provider.remove_prompt(prompt.name)
+                        except KeyError:
+                            logger.debug(
+                                f"Prompt {prompt.name!r} not found in local provider, "
+                                "skipping removal."
+                            )
 
                 self._prompts_map.pop(prompt_template_id, None)
 
