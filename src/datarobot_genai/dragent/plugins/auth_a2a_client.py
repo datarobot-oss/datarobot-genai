@@ -183,6 +183,7 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
                 user_id = Context.get().user_id or "default-user"
                 auth_result = await self._auth_provider.authenticate(user_id=user_id)
                 if auth_result:
+                    assert self._httpx_client is not None
                     self._httpx_client.headers.update(_extract_auth_headers(auth_result))
                 logger.info("No security schemes configured on the agent card, using default.")
 
