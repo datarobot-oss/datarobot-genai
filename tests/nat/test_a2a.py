@@ -28,9 +28,14 @@ from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.runtime.loader import load_config
 
 import datarobot_genai.dragent.plugins.auth_a2a_client  # noqa: F401 — registers authenticated_a2a_client
+import datarobot_genai.dragent.plugins.okta_a2a_auth  # noqa: F401 — registers okta_cross_app_access
 import datarobot_genai.nat.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
+from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessAuthProviderConfig,
+)
 from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
 
 # ---------------------------------------------------------------------------
@@ -151,16 +156,83 @@ async def function_group(nat_config, mock_a2a_endpoints):
 
 
 class TestConfigParsedFromYaml:
-    def test_function_group_is_authenticated_a2a_client(self, nat_config):
-        assert isinstance(nat_config.function_groups["a2a_agent"], AuthenticatedA2AClientConfig)
+    """Validate that all function_groups and auth providers in workflow_with_a2a.yaml
+    are parsed into the correct config types with the expected field values.
+    """
 
-    def test_auth_provider_is_datarobot_api_key(self, nat_config):
+    # -- auth providers --------------------------------------------------------
+
+    def test_auth_provider_datarobot_api_key(self, nat_config):
         assert isinstance(
             nat_config.authentication["datarobot_auth"], DataRobotAPIKeyAuthProviderConfig
         )
 
-    def test_function_group_references_auth_provider(self, nat_config):
+    def test_auth_provider_okta_cross_app_access(self, nat_config):
+        assert isinstance(
+            nat_config.authentication["okta_auth"],
+            OAuth2CrossApplicationAccessAuthProviderConfig,
+        )
+
+    # -- a2a_agent: direct URL + datarobot_auth --------------------------------
+
+    def test_a2a_agent_type(self, nat_config):
+        assert isinstance(nat_config.function_groups["a2a_agent"], AuthenticatedA2AClientConfig)
+
+    def test_a2a_agent_url(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent"]
+        assert str(cfg.url) == "http://agent.example.com:8080"
+
+    def test_a2a_agent_no_registry(self, nat_config):
+        assert nat_config.function_groups["a2a_agent"].registry is None
+
+    def test_a2a_agent_auth_provider(self, nat_config):
         assert nat_config.function_groups["a2a_agent"].auth_provider == "datarobot_auth"
+
+    # -- a2a_agent_with_registry1: deployment_id + datarobot_auth --------------
+
+    def test_registry1_type(self, nat_config):
+        assert isinstance(
+            nat_config.function_groups["a2a_agent_with_registry1"], AuthenticatedA2AClientConfig
+        )
+
+    def test_registry1_has_registry_lookup(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry1"]
+        assert isinstance(cfg.registry, AgentCardRegistryLookup)
+
+    def test_registry1_deployment_id(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry1"]
+        assert cfg.registry.deployment_id == "1234"
+        assert cfg.registry.external_id is None
+
+    def test_registry1_no_url(self, nat_config):
+        assert nat_config.function_groups["a2a_agent_with_registry1"].url is None
+
+    def test_registry1_auth_provider(self, nat_config):
+        assert (
+            nat_config.function_groups["a2a_agent_with_registry1"].auth_provider == "datarobot_auth"
+        )
+
+    # -- a2a_agent_with_registry2: external_id + okta_auth ---------------------
+
+    def test_registry2_type(self, nat_config):
+        assert isinstance(
+            nat_config.function_groups["a2a_agent_with_registry2"], AuthenticatedA2AClientConfig
+        )
+
+    def test_registry2_has_registry_lookup(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry2"]
+        assert isinstance(cfg.registry, AgentCardRegistryLookup)
+
+    def test_registry2_external_id(self, nat_config):
+        cfg = nat_config.function_groups["a2a_agent_with_registry2"]
+        assert cfg.registry.external_id == "abcd"
+        assert cfg.registry.deployment_id is None
+
+    def test_registry2_no_url(self, nat_config):
+        assert nat_config.function_groups["a2a_agent_with_registry2"].url is None
+
+    def test_registry2_auth_provider(self, nat_config):
+        assert nat_config.function_groups["a2a_agent_with_registry2"].auth_provider == "okta_auth"
 
 
 # ---------------------------------------------------------------------------
