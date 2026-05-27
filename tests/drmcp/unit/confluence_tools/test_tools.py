@@ -30,7 +30,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 @pytest.fixture
 def get_atlassian_access_token_mock() -> Iterator[None]:
     with patch(
-        "datarobot_genai.drtools.confluence.tools.get_atlassian_access_token",
+        "datarobot_genai.drtools.confluence.tools.get_confluence_access_token",
         return_value="token",
     ):
         yield

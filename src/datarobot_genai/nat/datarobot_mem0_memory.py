@@ -44,44 +44,12 @@ from nat.builder.context import Context
 from nat.cli.register_workflow import register_memory
 from nat.data_models.memory import MemoryBaseConfig
 from nat.data_models.retry_mixin import RetryMixin
-from nat.data_models.user_info import UserInfo
 from nat.memory.interfaces import MemoryEditor
 from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
 
-from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
-
 logger = logging.getLogger(__name__)
-
-
-def _memory_user_uuid() -> str | None:
-    """Derive NAT's canonical UUIDv5 from the current request's DR auth header.
-
-    Reads ``X-DataRobot-Authorization-Context`` from the active NAT
-    ``Context``, decodes it with :class:`AuthContextHeaderHandler`, and hashes
-    ``auth_ctx.user.id`` through :meth:`UserInfo._from_session_cookie` so the
-    raw DataRobot identity never leaves the process. Returns ``None`` when
-    the header is missing or undecodable (e.g. ``SESSION_SECRET_KEY`` is
-    unset in local dev) so the caller can fall back to the api-key owner.
-    """
-    metadata = Context.get().metadata
-    headers = getattr(metadata, "headers", None) if metadata else None
-    if headers is None:
-        return None
-    try:
-        header_dict = dict(headers)
-    except Exception:
-        logger.debug("Failed to normalize request headers", exc_info=True)
-        return None
-    try:
-        auth_ctx = AuthContextHeaderHandler().get_context(header_dict)
-    except Exception:
-        logger.debug("Failed to decode DR auth context", exc_info=True)
-        return None
-    if auth_ctx is None or auth_ctx.user is None or not auth_ctx.user.id:
-        return None
-    return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
 
 
 class Config(DataRobotAppFrameworkBaseSettings):
@@ -99,23 +67,23 @@ def _get_default_mem0_api_key() -> str | None:
 
 
 class _UserManagerShim:
-    """Bridge ``Context.user_manager`` to the DR-user UUIDv5 on NAT 1.6.
+    """Bridge ``Context.user_manager.get_id()`` to ``Context.user_id`` on NAT 1.6.
 
-    ``nvidia-nat-langchain`` 1.6.0's ``auto_memory_wrapper`` accesses
-    ``Context.user_manager.get_id()`` to resolve the user_id it passes to the
-    memory editor, but ``Context.user_manager`` only exists on newer NAT
-    versions. Return :func:`_memory_user_uuid`, NAT's canonical UUIDv5
-    derived from the request's ``X-DataRobot-Authorization-Context`` header,
-    so the wrapper feeds the editor a stable per-user identity (the raw id
-    never leaves the process). When the header is absent or undecodable,
-    return ``None`` and let the editor fall back to its api-key owner.
+    ``nvidia-nat-langchain`` 1.6.0's ``auto_memory_wrapper`` reads
+    ``Context.user_manager.get_id()``, but NAT 1.6 doesn't expose
+    ``user_manager`` on ``Context``. Identity resolution itself already happens
+    upstream in :class:`DRAgentAGUISessionManager` (decodes
+    ``X-DataRobot-Authorization-Context`` via ``DRAgentUserManager`` and stores
+    the resolved id on ``ContextState.user_id``), so this shim just forwards
+    that value. Falls through to the per-user-workflow ``default-user``
+    constant when no identity is available.
     """
 
     def __init__(self, context: Context) -> None:
         self._context = context
 
     def get_id(self) -> str | None:
-        return _memory_user_uuid()
+        return self._context.user_id
 
 
 if not hasattr(Context, "user_manager"):

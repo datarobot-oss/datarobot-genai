@@ -94,6 +94,12 @@ authentication:
 This is the simplest setup — no agent card extensions or multi-step flows
 involved.
 
+> **Important:** `datarobot_api_key` is the default authentication mechanism
+> for DataRobot-hosted agents. However, when the remote agent card declares a 
+> specific mechanism (e.g. OAuth2 via `cross_application_access`), security-scheme 
+> negotiation validates and requires a matching auth provider on the client side. 
+> Use `okta_cross_app_access` (Option 2) for OAuth2-protected agents. 
+
 ## Option 2: Okta cross-application access (XAA)
 
 Use this when calling an agent protected by Okta's federated identity model.
@@ -267,6 +273,7 @@ in `securitySchemes`, while flow-specific parameters go in
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| `Authorization` header missing on A2A RPC calls | The remote agent card declares `securitySchemes` but the client uses `datarobot_api_key`. When `securitySchemes` are present, the `A2ACredentialService` performs OAuth2 security-scheme negotiation and drops incompatible credentials. | Switch to an OAuth2-compatible auth provider (e.g. `okta_cross_app_access`) that matches the security scheme advertised by the remote agent card. |
 | `RuntimeError: Header 'x-datarobot-external-access-token' not found` | The incoming request doesn't carry the Okta token. | Ensure the upstream caller forwards the Okta access token in the expected header. |
 | `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
 | `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |

@@ -11,6 +11,7 @@
 # MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
 /src/datarobot_genai/drtools/ @datarobot-oss/mcp
+/src/datarobot_genai/drmcpbase/ @datarobot-oss/mcp
 /tests/drmcp/ @datarobot-oss/mcp
 /e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
