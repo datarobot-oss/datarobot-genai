@@ -84,7 +84,12 @@ def get_async_https_retry_client(session: ClientSession) -> RetryClient:
 
 
 class DataRobotClientWithAsyncAPI:
-    """A async wrapper of DR RESTFul APIs."""
+    """A async wrapper of DR RESTFul APIs.
+
+    This client was designed for internal use only (Some methods are created as private methods).
+    It is the interim solution before async support is added in
+    https://github.com/datarobot/public_api_client.
+    """
 
     def __init__(self, dr_host: str) -> None:
         self._dr_host = dr_host
@@ -127,7 +132,7 @@ class DataRobotClientWithAsyncAPI:
                 yield item
             url = resp_data.get("next")
 
-    async def get_feature_entitlement_evaluate_result(
+    async def _get_feature_entitlement_evaluate_result(
         self,
         feature_flag_name: str,
         dr_bearer_token: str,
@@ -141,14 +146,14 @@ class DataRobotClientWithAsyncAPI:
             resp.raise_for_status()
             return await resp.json()
 
-    async def is_feature_flag_enabled(self, feature_flag_name: str, dr_bearer_token: str) -> bool:
-        response = await self.get_feature_entitlement_evaluate_result(
+    async def _is_feature_flag_enabled(self, feature_flag_name: str, dr_bearer_token: str) -> bool:
+        response = await self._get_feature_entitlement_evaluate_result(
             feature_flag_name, dr_bearer_token
         )
         feature_flag_info = response["entitlements"][0]
         return bool(feature_flag_info["value"])
 
-    async def list_mcp_deployment_ids(self, dr_bearer_token: str) -> list[str]:
+    async def _list_mcp_deployment_ids(self, dr_bearer_token: str) -> list[str]:
         url = self.get_api_v2_endpoint(self._dr_host, "/deployments/")
         headers = {"Authorization": f"Bearer {dr_bearer_token}"}
         ids: list[str] = []
@@ -158,7 +163,7 @@ class DataRobotClientWithAsyncAPI:
                 ids.append(deployment["id"])
         return ids
 
-    async def list_mcp_tool_custom_model_deployment_ids(self, dr_bearer_token: str) -> list[str]:
+    async def _list_mcp_tool_custom_model_deployment_ids(self, dr_bearer_token: str) -> list[str]:
         url = self.get_api_v2_endpoint(self._dr_host, "/deployments")
         url = f"{url}?tagValues=tool&tagKeys=tool"
         headers = {"Authorization": f"Bearer {dr_bearer_token}"}
@@ -169,7 +174,7 @@ class DataRobotClientWithAsyncAPI:
                     ids.append(deployment["id"])
         return ids
 
-    async def get_datarobot_deployment(
+    async def _get_datarobot_deployment(
         self, deployment_id: str, dr_bearer_token: str
     ) -> dr.Deployment:
         url = self.get_api_v2_endpoint(self._dr_host, f"/deployments/{deployment_id}/")

@@ -80,7 +80,7 @@ class TestDataRobotClientWithAsyncAPI:
     def mock_get_feature_entitlement_evaluate_result(self) -> Iterator[Mock]:
         with patch.object(
             DataRobotClientWithAsyncAPI,
-            "get_feature_entitlement_evaluate_result",
+            "_get_feature_entitlement_evaluate_result",
             new_callable=AsyncMock,
         ) as mock_func:
             yield mock_func
@@ -163,7 +163,7 @@ class TestDataRobotClientWithAsyncAPI:
         api_client = DataRobotClientWithAsyncAPI(mock_dr_host)
         feature_flag_name = Mock()
         mock_token = Mock()
-        output = await api_client.get_feature_entitlement_evaluate_result(
+        output = await api_client._get_feature_entitlement_evaluate_result(
             feature_flag_name, mock_token
         )
 
@@ -190,7 +190,7 @@ class TestDataRobotClientWithAsyncAPI:
         api_client = DataRobotClientWithAsyncAPI(Mock())
         feature_flag_name = Mock()
         mock_token = Mock()
-        output = await api_client.is_feature_flag_enabled(feature_flag_name, mock_token)
+        output = await api_client._is_feature_flag_enabled(feature_flag_name, mock_token)
 
         mock_get_feature_entitlement_evaluate_result.assert_called_once_with(
             feature_flag_name,
@@ -235,7 +235,7 @@ class TestDataRobotClientWithAsyncAPI:
         mock_dr_host = Mock()
         api_client = DataRobotClientWithAsyncAPI(mock_dr_host)
         mock_token = Mock()
-        outputs = await api_client.list_mcp_deployment_ids(mock_token)
+        outputs = await api_client._list_mcp_deployment_ids(mock_token)
 
         mock_get_api_v2_endpoint.assert_called_once_with(mock_dr_host, "/deployments/")
         expected_url = mock_get_api_v2_endpoint.return_value
@@ -270,7 +270,7 @@ class TestDataRobotClientWithAsyncAPI:
         mock_dr_host = Mock()
         api_client = DataRobotClientWithAsyncAPI(mock_dr_host)
         mock_token = Mock()
-        outputs = await api_client.list_mcp_tool_custom_model_deployment_ids(mock_token)
+        outputs = await api_client._list_mcp_tool_custom_model_deployment_ids(mock_token)
 
         mock_get_api_v2_endpoint.assert_called_once_with(mock_dr_host, "/deployments")
         expected_url = f"{api_v2_endpoint}?tagValues=tool&tagKeys=tool"
@@ -296,7 +296,7 @@ class TestDataRobotClientWithAsyncAPI:
         api_client = DataRobotClientWithAsyncAPI(mock_dr_host)
         mock_deployment_id = Mock()
         mock_token = Mock()
-        output = await api_client.get_datarobot_deployment(mock_deployment_id, mock_token)
+        output = await api_client._get_datarobot_deployment(mock_deployment_id, mock_token)
 
         mock_get_api_v2_endpoint.assert_called_once_with(
             mock_dr_host,

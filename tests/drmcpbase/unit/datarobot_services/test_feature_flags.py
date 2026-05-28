@@ -42,7 +42,7 @@ class TestFeatureFlags:
             mock_datarobot_client_with_async_api_cls.return_value.__aenter__.return_value
         )
         expected_feature_flag_value = Mock()
-        mock_api_client.is_feature_flag_enabled = AsyncMock(
+        mock_api_client._is_feature_flag_enabled = AsyncMock(
             return_value=expected_feature_flag_value
         )
 
@@ -51,7 +51,7 @@ class TestFeatureFlags:
         output = await is_mcp_tools_gallery_support_enabled(mock_api_host, mock_api_token)
 
         mock_datarobot_client_with_async_api_cls.assert_called_once_with(mock_api_host)
-        mock_api_client.is_feature_flag_enabled.assert_called_once_with(
+        mock_api_client._is_feature_flag_enabled.assert_called_once_with(
             "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
             mock_api_token,
         )
