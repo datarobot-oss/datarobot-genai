@@ -22,7 +22,6 @@ from typing import ParamSpec
 from typing import TypedDict
 from typing import TypeVar
 
-from fastmcp import Context
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
@@ -41,52 +40,12 @@ from .enums import DataRobotMCPPromptCategory
 from .enums import DataRobotMCPResourceCategory
 from .enums import DataRobotMCPToolCategory
 from .logging import log_execution
-from .memory_management.manager import MemoryManager
-from .memory_management.manager import get_memory_manager
 from .telemetry import trace_execution
 
 P = ParamSpec("P")
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-
-async def get_agent_and_storage_ids(
-    args: tuple[Any, ...], kwargs: dict[str, Any]
-) -> tuple[str | None, str | None]:
-    """
-    Extract agent ID from request context and get corresponding storage ID.
-
-    Args:
-        args: Positional arguments that may contain a Context object
-        kwargs: Keyword arguments that may contain a Context object
-
-    Returns
-    -------
-        Tuple of (agent_id, storage_id), both may be None if not found
-    """
-    # Find the context argument if it exists
-    ctx = next((arg for arg in args if isinstance(arg, Context)), kwargs.get("ctx"))
-
-    # Extract X-Agent-Id if context and headers exist
-    agent_id = None
-    if (
-        ctx
-        and ctx.request_context
-        and ctx.request_context.request
-        and hasattr(ctx.request_context.request, "headers")
-    ):
-        headers = ctx.request_context.request.headers
-        agent_id = headers.get("x-agent-id")
-
-    # If agent_id was found, get the active storage_id
-    storage_id = None
-    if agent_id and MemoryManager.is_initialized():
-        memory_manager = get_memory_manager()
-        if memory_manager:
-            storage_id = await memory_manager.get_active_storage_id_for_agent(agent_id)
-
-    return agent_id, storage_id
 
 
 class DataRobotMCP(FastMCP):
@@ -392,32 +351,6 @@ def dr_core_mcp_tool(
     return decorator
 
 
-async def memory_aware_wrapper(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """
-    Add memory management capabilities to any async function.
-    Extracts agent and storage IDs from the context and adds them to kwargs if found.
-
-    Args:
-        func: The async function to wrap
-        *args: Positional arguments to pass to the function
-        **kwargs: Keyword arguments to pass to the function
-
-    Returns
-    -------
-        The result of calling the wrapped function
-    """
-    # Get agent and storage IDs from context
-    agent_id, storage_id = await get_agent_and_storage_ids(args, kwargs)
-
-    # Add IDs to kwargs if found
-    if agent_id and storage_id:
-        kwargs["agent_id"] = agent_id
-        kwargs["storage_id"] = storage_id
-
-    # Call the original function
-    return await func(*args, **kwargs)
-
-
 def update_mcp_tool_init_args_with_tool_category(
     tool_category: DataRobotMCPToolCategory,
     **mcp_tool_init_args: Unpack[ToolKwargs],
@@ -436,25 +369,20 @@ def dr_mcp_tool(
     tool_category: DataRobotMCPToolCategory = DataRobotMCPToolCategory.USER_TOOL,
     **mcp_tool_init_args: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Combine decorator that includes mcp.tool(), dr_mcp_extras(), and capture memory ids from
-    the request headers if they exist.
+    """Combine decorator that includes mcp.tool() and dr_mcp_extras().
 
     All keyword arguments are passed through to FastMCP's mcp.tool() decorator.
     See ToolKwargs for available parameters.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(func)
-        async def wrapper(*args: Any, **inner_kwargs: Any) -> Any:
-            return await memory_aware_wrapper(func, *args, **inner_kwargs)
-
         updated_kwargs = update_mcp_tool_init_args_with_tool_category(
             tool_category, **mcp_tool_init_args
         )
         # fastmcp 3.x removed 'enabled' from tool(); handle it separately
         enabled = updated_kwargs.pop("enabled", None)  # type: ignore[typeddict-item]
         # Apply the MCP decorators
-        instrumented = dr_mcp_extras()(wrapper)
+        instrumented = dr_mcp_extras()(func)
         mcp.tool(**updated_kwargs)(instrumented)
         if enabled is False:
             tool_name = updated_kwargs.get("name") or func.__name__
@@ -545,13 +473,7 @@ async def register_tools(
     tool_name = name or fn.__name__
     logger.info(f"Registering new tool: {tool_name}")
 
-    # Create a memory-aware version of the function
-    @wraps(fn)
-    async def memory_aware_fn(*args: Any, **kwargs: Any) -> Any:
-        return await memory_aware_wrapper(fn, *args, **kwargs)
-
-    # Apply dr_mcp_extras to the memory-aware function
-    wrapped_fn = dr_mcp_extras()(memory_aware_fn)
+    wrapped_fn = dr_mcp_extras()(fn)
 
     # Create annotations only when additional metadata is required
     annotations: ToolAnnotations | None = None  # type: ignore[assignment]

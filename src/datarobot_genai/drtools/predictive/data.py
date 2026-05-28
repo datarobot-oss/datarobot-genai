@@ -411,52 +411,15 @@ async def query_datastore(
         api_response = response.json()
         row_data = api_response.get("data", [])
 
-        final_results: dict[str, Any] = {
-            "rows": row_data,
-            "row_count": len(row_data) if isinstance(row_data, list) else 0,
-            "columns": api_response.get("columns", []),
-        }
-        return merge_pagination_metadata(
-            final_results=final_results,
-            api_response=api_response,
-            message=message,
-            offset=offset,
-            limit=limit,
-        )
-
-
-# from fastmcp import Context
-
-# from datarobot_genai.drmcp.core.memory_management import MemoryManager, get_memory_manager
-
-
-# @tool_metadata()
-# async def list_ai_catalog_items(
-#     ctx: Context, agent_id: str = None, storage_id: str = None
-# ) -> str:
-#     """
-#     List all AI Catalog items (datasets) for the authenticated user.
-
-#     Returns:
-#         a resource id that can be used to retrieve the list of AI Catalog items using the
-#         get_resource tool
-#     """
-#     token = await get_datarobot_access_token()
-#     client = DataRobotClient(token).get_client()
-#     datasets = client.Dataset.list()
-#     if not datasets:
-#         logger.info("No AI Catalog items found")
-#         return "No AI Catalog items found."
-#     result = "\n".join(f"{ds.id}: {ds.name}" for ds in datasets)
-
-#     if MemoryManager.is_initialized():
-#         resource_id = await get_memory_manager().store_resource(
-#             data=result,
-#             memory_storage_id=storage_id,
-#             agent_identifier=agent_id,
-#         )
-#     else:
-#         raise ValueError("MemoryManager is not initialized")
-
-#     logger.info(f"Found {len(datasets)} AI Catalog items")
-#     return resource_id
+    final_results: dict[str, Any] = {
+        "rows": row_data,
+        "row_count": len(row_data) if isinstance(row_data, list) else 0,
+        "columns": api_response.get("columns", []),
+    }
+    return merge_pagination_metadata(
+        final_results=final_results,
+        api_response=api_response,
+        message=message,
+        offset=offset,
+        limit=limit,
+    )
