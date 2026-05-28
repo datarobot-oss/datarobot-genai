@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.82
-- `dragent`: CLI now reads `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` (searched from CWD upward) at startup via `setdefault`, so local OTel tracing works without manual env var setup. Replaces the `dev.py` bridge approach.
+- `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.
 
 ## 0.15.81
 `drmcp`: `MCPServerConfig` now reads `pulumi_config.json` via `PulumiConfigSettingsSource` (lowest priority) and accepts standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` fields. Telemetry setup bridges these to `os.environ` so local OTel tracing works without manual env var configuration.
