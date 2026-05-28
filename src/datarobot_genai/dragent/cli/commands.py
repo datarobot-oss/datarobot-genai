@@ -48,7 +48,7 @@ def _bridge_pulumi_otel_env() -> None:
         config_path = directory / "pulumi_config.json"
         if config_path.is_file():
             try:
-                data = json.loads(config_path.read_text())
+                data = json.loads(config_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 return
             if not isinstance(data, dict):
