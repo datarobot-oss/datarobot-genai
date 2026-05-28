@@ -136,14 +136,27 @@ class DataRobotModerationConfig(
     )
 
 
+def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
+    """Return whether ``moderation`` defines at least one guard across all targets."""
+    return any(target.guards for target in moderation.targets)
+
+
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
-    """Build an LLM moderation pipeline via ``ModerationPipeline.from_config``."""
+    """Build an LLM moderation pipeline via ``ModerationPipeline.from_config``.
+
+    Returns ``None`` when moderation is disabled, omitted, or has no guards configured so the
+    middleware is a no-op and can be listed unconditionally in ``workflow.yaml``.
+    """
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
     if config.moderation is None:
-        _logger.warning("Middleware has no ``moderation`` block; moderations will not be enforced")
+        _logger.debug("No ``moderation`` block configured; moderation middleware is a no-op")
+        return None
+
+    if not moderation_config_has_guards(config.moderation):
+        _logger.debug("Moderation config has no guards; moderation middleware is a no-op")
         return None
 
     model_dir = os.path.abspath(os.getcwd())
