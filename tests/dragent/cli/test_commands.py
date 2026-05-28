@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import os
 from unittest.mock import patch
 
 import pytest
@@ -288,3 +289,63 @@ def test_query_accepts_underscore_aliases(mock_headers, mock_stream, monkeypatch
 
     result = CliRunner().invoke(dragent_command, args)
     assert result.exit_code == 0, result.output
+
+
+# --- _bridge_pulumi_otel_env ---
+
+
+class TestBridgePulumiOtelEnv:
+    """Tests for _bridge_pulumi_otel_env (imported lazily to avoid NAT dep in light envs)."""
+
+    @pytest.fixture(autouse=True)
+    def _import_bridge(self) -> None:
+        from datarobot_genai.dragent.cli.commands import _bridge_pulumi_otel_env
+
+        self._bridge = _bridge_pulumi_otel_env
+
+    def test_reads_from_pulumi_config(self, tmp_path: object) -> None:
+        import pathlib
+
+        tmp = pathlib.Path(str(tmp_path))
+        config = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "https://example.com/otel",
+            "OTEL_EXPORTER_OTLP_HEADERS": "x-key=abc",
+        }
+        (tmp / "pulumi_config.json").write_text(json.dumps(config))
+
+        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+            mock_path_cls.cwd.return_value = tmp
+            self._bridge()
+            assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://example.com/otel"
+            assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-key=abc"
+
+    def test_does_not_override_existing_env(self, tmp_path: object) -> None:
+        import pathlib
+
+        tmp = pathlib.Path(str(tmp_path))
+        config = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "https://from-pulumi.com/otel",
+        }
+        (tmp / "pulumi_config.json").write_text(json.dumps(config))
+
+        with (
+            patch.dict(
+                os.environ,
+                {"OTEL_EXPORTER_OTLP_ENDPOINT": "https://explicit.com/otel"},
+                clear=True,
+            ),
+            patch(f"{_COMMANDS}.Path") as mock_path_cls,
+        ):
+            mock_path_cls.cwd.return_value = tmp
+            self._bridge()
+            assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://explicit.com/otel"
+
+    def test_no_pulumi_config_is_noop(self) -> None:
+        import pathlib
+        import tempfile
+
+        empty_dir = pathlib.Path(tempfile.mkdtemp())
+        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+            mock_path_cls.cwd.return_value = empty_dir
+            self._bridge()
+            assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in os.environ
