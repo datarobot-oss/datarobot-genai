@@ -64,14 +64,12 @@ def get_datarobot_prompt_template(
     headers_auth_only: bool = False,
 ) -> dr.genai.PromptTemplate | None:
     try:
-        if headers_auth_only:
-            client = get_api_client(headers_auth_only=True)
-            response = client.get(
-                url=f"genai/promptTemplates/{prompt_template_id}/",
-                join_endpoint=True,
-            )
-            return dr.genai.PromptTemplate.from_server_data(response.json())
-        return dr.genai.PromptTemplate.get(prompt_template_id)
+        client = get_api_client(headers_auth_only=headers_auth_only)
+        response = client.get(
+            url=f"genai/promptTemplates/{prompt_template_id}/",
+            join_endpoint=True,
+        )
+        return dr.genai.PromptTemplate.from_server_data(response.json())
     except Exception as exc:
         logger.debug(
             "Failed to fetch prompt template %s (headers_auth_only=%s): %s",
@@ -89,17 +87,15 @@ def get_datarobot_prompt_template_version(
     headers_auth_only: bool = False,
 ) -> dr.genai.PromptTemplateVersion | None:
     try:
-        if headers_auth_only:
-            client = get_api_client(headers_auth_only=True)
-            response = client.get(
-                url=(
-                    f"genai/promptTemplates/{prompt_template_id}/"
-                    f"versions/{prompt_template_version_id}/"
-                ),
-                join_endpoint=True,
-            )
-            return dr.genai.PromptTemplateVersion.from_server_data(response.json())
-        return dr.genai.PromptTemplateVersion.get(prompt_template_id, prompt_template_version_id)
+        client = get_api_client(headers_auth_only=headers_auth_only)
+        response = client.get(
+            url=(
+                f"genai/promptTemplates/{prompt_template_id}/"
+                f"versions/{prompt_template_version_id}/"
+            ),
+            join_endpoint=True,
+        )
+        return dr.genai.PromptTemplateVersion.from_server_data(response.json())
     except Exception as exc:
         logger.debug(
             "Failed to fetch prompt template version %s/%s (headers_auth_only=%s): %s",

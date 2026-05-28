@@ -237,10 +237,13 @@ class TestProjectsE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        I'm working on a machine learning project named '{project_name}' and I need the
-        dataset by name '{dataset_name}'.
-        First call list_projects to find the project id for '{project_name}', then call
-        get_project_dataset_by_name with that project_id and dataset_name '{dataset_name}'.
+        I need the dataset '{dataset_name}' for the DataRobot project named '{project_name}'.
+        Step 1: call list_projects with no parameters to find the project_id for
+        '{project_name}'.
+        Step 2: call get_project_dataset_by_name using that project_id and dataset_name
+        '{dataset_name}'.
+        Do not give your final answer until step 2 has completed and you have the dataset
+        details from get_project_dataset_by_name.
         """
         ],
     )

@@ -26,15 +26,31 @@ from .utils import load_env
 
 load_env()
 
-
-def get_dr_mcp_server_url() -> str | None:
-    """Get DataRobot MCP server URL."""
-    return os.environ.get("DR_MCP_SERVER_URL")
+# Default port for acceptance ETE server (see .taskfiles/drmcp.yml drmcp-acceptance).
+_DEFAULT_MCP_SERVER_PORT = "8652"
 
 
-def get_dr_mcp_server_http_url() -> str | None:
-    """Get DataRobot MCP server http URL."""
-    return os.environ.get("DR_MCP_SERVER_HTTP_URL")
+def _acceptance_mcp_server_port() -> str:
+    port = (os.environ.get("MCP_SERVER_PORT") or _DEFAULT_MCP_SERVER_PORT).strip()
+    return port or _DEFAULT_MCP_SERVER_PORT
+
+
+def get_dr_mcp_server_url() -> str:
+    """Get DataRobot MCP streamable-HTTP URL for acceptance tests."""
+    url = (os.environ.get("DR_MCP_SERVER_URL") or "").strip()
+    if url:
+        return url
+    port = _acceptance_mcp_server_port()
+    return f"http://localhost:{port}/mcp"
+
+
+def get_dr_mcp_server_http_url() -> str:
+    """Get DataRobot MCP custom REST base URL for acceptance tests."""
+    url = (os.environ.get("DR_MCP_SERVER_HTTP_URL") or "").strip()
+    if url:
+        return url
+    port = _acceptance_mcp_server_port()
+    return f"http://localhost:{port}/"
 
 
 def get_openai_llm_client_config() -> dict[str, str]:

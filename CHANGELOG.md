@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.77
+- Refactored `DataRobotClient.get_client()` to use `client_configuration()` (ContextVar-based) instead of the global `dr.Client()`, preventing token mixing between concurrent MCP tool invocations.
+- Added `dr_client()` async context manager to eliminate repeated two-line boilerplate across predictive tool functions.
+- Fixed `get_datarobot_prompt_template` and `get_datarobot_prompt_template_version` in `dr_lib.py` to always use `get_api_client()` for token resolution.
+
 ## 0.15.76
 - Pinned `starlette>=1.0.1` on the `drmcp` extra and switched MCP middleware to `request.scope["path"]` to harden against CVE-2026-48710 (BadHost)
 

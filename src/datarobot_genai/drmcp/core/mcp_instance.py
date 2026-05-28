@@ -246,7 +246,14 @@ class DataRobotMCP(FastMCP):
                         and prompt.meta.get("prompt_template_version_id", "")
                         == prompt_template_version_id
                     ):
-                        prompt.disable()
+                        try:
+                            # FastMCP 3: disable() only hides prompts; remove so re-register can reuse the name.
+                            self._local_provider.remove_prompt(prompt.name)
+                        except KeyError:
+                            logger.debug(
+                                "Prompt %r not found in local provider during removal",
+                                prompt.name,
+                            )
 
                 self._prompts_map.pop(prompt_template_id, None)
 
@@ -598,6 +605,13 @@ async def register_prompt(
     logger.info(f"Registering new prompt: {prompt_name}")
     wrapped_fn = dr_mcp_extras(type="prompt")(fn)
 
+    # Remove any prior version mapping before duplicate-name checks so updates can reuse the name.
+    if prompt_template:
+        prompt_template_id, prompt_template_version_id = prompt_template
+        await mcp.set_prompt_mapping(
+            prompt_template_id, prompt_template_version_id, prompt_name
+        )
+
     prompt_name_no_duplicate = await get_prompt_name_no_duplicate(mcp, prompt_name)
 
     meta = meta or {}
@@ -612,11 +626,6 @@ async def register_prompt(
     )
 
     # Register the prompt
-    if prompt_template:
-        prompt_template_id, prompt_template_version_id = prompt_template
-        await mcp.set_prompt_mapping(
-            prompt_template_id, prompt_template_version_id, prompt_name_no_duplicate
-        )
 
     registered_prompt = mcp.add_prompt(prompt)
 

@@ -421,6 +421,41 @@ class TestLLMMCPClient:
         mock_save_file.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.test_utils.clients.base.save_response_to_file")
+    async def test_process_prompt_with_mcp_support_multiple_tool_rounds(
+        self,
+        mock_save_file,
+        mock_openai_patch,
+        mock_session,
+        mock_openai_client_instance,
+    ) -> None:
+        """Each tool round is processed before the next LLM turn (multi-step workflows)."""
+        config = {"openai_api_key": "test-key", "model": "gpt-4", "save_llm_responses": False}
+        client = OpenAILLMMCPClient(str(config))
+
+        mock_session.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+
+        mock_openai_client_instance.chat.completions.create.side_effect = [
+            create_mock_chat_completion(tool_calls=[create_mock_tool_call("list_projects")]),
+            create_mock_chat_completion(
+                tool_calls=[create_mock_tool_call("get_project_dataset_by_name")]
+            ),
+            create_mock_chat_completion(content="Done"),
+        ]
+
+        mock_session.call_tool.return_value = create_mock_call_tool_result(
+            [create_mock_text_content("ok")]
+        )
+
+        result = await client.process_prompt_with_mcp_support("multi-step prompt", mock_session)
+
+        assert result.content == "done"
+        assert len(result.tool_calls) == 2
+        assert result.tool_calls[0].tool_name == "list_projects"
+        assert result.tool_calls[1].tool_name == "get_project_dataset_by_name"
+        assert mock_openai_client_instance.chat.completions.create.call_count == 3
+
+    @pytest.mark.asyncio
     async def test_process_prompt_with_mcp_support_content_cleaning(
         self, mock_openai_patch, mock_session, mock_openai_client_instance
     ) -> None:

@@ -262,6 +262,9 @@ class BaseLLMMCPClient(ABC):
                     "If you need more information to provide a complete response, you can make "
                     "multiple tool calls or ask the user for more info, but prefer tool calls "
                     "when possible. "
+                    "When the user describes a multi-step workflow or names specific tools to "
+                    "call in sequence, run every required tool call and read each result before "
+                    "giving your final answer. "
                     "When dealing with file paths, use them as raw paths without converting "
                     "to file:// URLs."
                 ),
@@ -273,28 +276,16 @@ class BaseLLMMCPClient(ABC):
         all_tool_results = []
 
         while True:
-            # Get LLM response
             response = await self._get_llm_response(messages)
-
-            # If no tool calls in response, this is the final response
             if not response.choices[0].message.tool_calls:
                 final_response = response.choices[0].message.content
                 break
 
-            # Process tool calls
             tool_calls, tool_results = await self._process_tool_calls(
                 response, messages, mcp_session
             )
             all_tool_calls.extend(tool_calls)
             all_tool_results.extend(tool_results)
-
-            # Get another LLM response to see if we need more tool calls
-            response = await self._get_llm_response(messages, allow_tool_calls=True)
-
-            # If no more tool calls needed, this is the final response
-            if not response.choices[0].message.tool_calls:
-                final_response = response.choices[0].message.content
-                break
 
         clean_content = final_response.replace("*", "").lower()
 
