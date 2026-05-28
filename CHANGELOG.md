@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.80
+## 0.15.81
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
 - Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
+
+## 0.15.80
+- `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` is now a no-op when the `moderation` block is omitted or has no guards configured, so it can be listed unconditionally in `workflow.yaml` without requiring DataRobot credentials or emitting a warning. `load_llm_moderation_pipeline` returns `None` in those cases and skips `ModerationPipeline.from_config`.
 
 ## 0.15.79
 - Added `drmcpbase` subpackage and standalone extra `datarobot-genai[drmcpbase]` (`fastmcp` only, no core). The `drmcp` extra now composes `drmcpbase` + `drtools` + template-server dependencies. Documented both extras in `README.md`.

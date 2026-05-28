@@ -83,6 +83,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_
 from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
 from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
 from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
+from datarobot_genai.nat.datarobot_moderation_middleware import moderation_config_has_guards
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
 )
@@ -363,6 +364,46 @@ async def test_pre_invoke_unrecognized_workflow_input_raises(builder_mock: Magic
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
             await mw.pre_invoke(ctx)
+
+
+def test_moderation_config_has_guards() -> None:
+    assert moderation_config_has_guards(
+        ModerationConfig.model_validate(
+            {
+                "guards": [
+                    {
+                        "name": "Prompt Tokens",
+                        "description": "x",
+                        "ootb_type": "token_count",
+                        "stage": "prompt",
+                        "type": "ootb",
+                    }
+                ],
+            }
+        )
+    )
+    assert not moderation_config_has_guards(ModerationConfig.model_validate({"guards": []}))
+    assert not moderation_config_has_guards(ModerationConfig.model_validate({}))
+
+
+def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() -> None:
+    cfg = DataRobotModerationConfig(moderation=ModerationConfig.model_validate({"guards": []}))
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+        ) as from_config,
+    ):
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_config.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_missing_moderation_block_is_noop() -> None:
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+    ) as from_config:
+        assert load_llm_moderation_pipeline(DataRobotModerationConfig()) is None
+    from_config.assert_not_called()
 
 
 def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
