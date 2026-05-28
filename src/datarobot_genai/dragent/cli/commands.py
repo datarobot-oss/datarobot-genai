@@ -51,6 +51,8 @@ def _bridge_pulumi_otel_env() -> None:
                 data = json.loads(config_path.read_text())
             except (json.JSONDecodeError, OSError):
                 return
+            if not isinstance(data, dict):
+                return
             for key in _OTEL_ENV_KEYS:
                 if key in data and data[key]:
                     os.environ.setdefault(key, str(data[key]))
