@@ -28,6 +28,7 @@ jobs:
             drmcp:
               - 'src/datarobot_genai/drmcp/**'
               - 'src/datarobot_genai/drtools/**'
+              - 'src/datarobot_genai/drmcpbase/**'
               - 'setup.py'
               - 'tests/drmcp/integration/**'
               - '.github/workflows/integration.yml'

@@ -234,26 +234,27 @@ async def test_search_honors_explicit_filters() -> None:
     assert mem0.search_calls[0]["kwargs"]["filters"] == filters
 
 
-def test_user_manager_shim_get_id_returns_dr_memory_user_uuid(monkeypatch: Any) -> None:
-    # GIVEN the shim installed by ``datarobot_mem0_memory`` for NAT 1.6 and a
-    # request whose DR auth header decodes to a known UUIDv5.
-    monkeypatch.setattr(datarobot_mem0_memory, "_memory_user_uuid", lambda: "uuid-from-dr-auth")
-    shim = datarobot_mem0_memory._UserManagerShim(object())  # type: ignore[arg-type]
+def test_user_manager_shim_get_id_forwards_context_user_id() -> None:
+    # GIVEN a Context whose ``user_id`` was set by ``DRAgentAGUISessionManager``
+    # (which resolves the DR signed auth header via ``DRAgentUserManager``).
+    class FakeContext:
+        user_id = "uuid-from-dragent-session"
 
-    # THEN ``get_id`` returns the canonical DR-user UUID so ``auto_memory_wrapper``
-    # passes a stable per-user identity to the editor.
-    assert shim.get_id() == "uuid-from-dr-auth"
+    shim = datarobot_mem0_memory._UserManagerShim(FakeContext())  # type: ignore[arg-type]
+
+    # THEN ``get_id`` returns whatever the session manager wrote, so
+    # ``auto_memory_wrapper`` keys memory on the resolved per-user identity.
+    assert shim.get_id() == "uuid-from-dragent-session"
 
 
-def test_user_manager_shim_get_id_returns_none_when_dr_auth_header_missing(
-    monkeypatch: Any,
-) -> None:
-    # GIVEN no DR auth header on the current request (e.g. local dev).
-    monkeypatch.setattr(datarobot_mem0_memory, "_memory_user_uuid", lambda: None)
-    shim = datarobot_mem0_memory._UserManagerShim(object())  # type: ignore[arg-type]
+def test_user_manager_shim_get_id_returns_none_when_context_user_id_unset() -> None:
+    # GIVEN a Context with no resolved user_id (e.g. ran outside a session).
+    class FakeContext:
+        user_id = None
 
-    # THEN ``get_id`` returns None so the wrapper falls through to its default
-    # and the editor falls back to the api-key owner.
+    shim = datarobot_mem0_memory._UserManagerShim(FakeContext())  # type: ignore[arg-type]
+
+    # THEN ``get_id`` returns None so the wrapper falls through to its default.
     assert shim.get_id() is None
 
 
@@ -261,95 +262,6 @@ def test_context_user_manager_property_is_patched() -> None:
     # GIVEN ``datarobot_mem0_memory`` is imported (this test module imports it).
     # THEN every ``Context`` exposes a ``user_manager`` attribute that is a shim.
     assert isinstance(Context.get().user_manager, datarobot_mem0_memory._UserManagerShim)
-
-
-def test_memory_user_uuid_returns_uuid_for_decodable_dr_auth_header(
-    monkeypatch: Any,
-) -> None:
-    # GIVEN a request whose headers carry a decodable DR auth context.
-    class FakeUser:
-        id = "datarobot-user-abc"
-
-    class FakeAuthCtx:
-        user = FakeUser()
-
-    class FakeHandler:
-        def get_context(self, headers: dict[str, str]) -> Any:
-            assert headers == {"x-datarobot-authorization-context": "encoded-token"}
-            return FakeAuthCtx()
-
-    class FakeMetadata:
-        headers = {"x-datarobot-authorization-context": "encoded-token"}
-
-    class FakeContextInstance:
-        metadata = FakeMetadata()
-
-    monkeypatch.setattr(datarobot_mem0_memory, "AuthContextHeaderHandler", FakeHandler)
-    monkeypatch.setattr(datarobot_mem0_memory.Context, "get", staticmethod(FakeContextInstance))
-
-    # WHEN we resolve the memory user id.
-    user_id = datarobot_mem0_memory._memory_user_uuid()
-
-    # THEN it matches what NAT's ``UserInfo._from_session_cookie`` derives — a
-    # UUIDv5 over the raw DR user id (the raw id never leaves the process).
-    from nat.data_models.user_info import UserInfo
-
-    assert user_id == UserInfo._from_session_cookie("datarobot-user-abc").get_user_id()
-
-
-def test_memory_user_uuid_returns_none_when_no_metadata(monkeypatch: Any) -> None:
-    # GIVEN a Context with no metadata at all.
-    class FakeContextInstance:
-        metadata = None
-
-    monkeypatch.setattr(datarobot_mem0_memory.Context, "get", staticmethod(FakeContextInstance))
-
-    # WHEN we resolve the memory user id.
-    # THEN it returns None — caller will fall back to the api-key owner.
-    assert datarobot_mem0_memory._memory_user_uuid() is None
-
-
-def test_memory_user_uuid_returns_none_when_handler_returns_none(
-    monkeypatch: Any,
-) -> None:
-    # GIVEN a request whose DR auth header is missing/undecodable (handler returns None).
-    class FakeHandler:
-        def get_context(self, headers: dict[str, str]) -> Any:
-            return None
-
-    class FakeMetadata:
-        headers = {"other-header": "value"}
-
-    class FakeContextInstance:
-        metadata = FakeMetadata()
-
-    monkeypatch.setattr(datarobot_mem0_memory, "AuthContextHeaderHandler", FakeHandler)
-    monkeypatch.setattr(datarobot_mem0_memory.Context, "get", staticmethod(FakeContextInstance))
-
-    # WHEN we resolve the memory user id.
-    # THEN it returns None — caller will fall back to the api-key owner.
-    assert datarobot_mem0_memory._memory_user_uuid() is None
-
-
-def test_memory_user_uuid_returns_none_when_handler_raises(monkeypatch: Any) -> None:
-    # GIVEN a handler that crashes (e.g. SESSION_SECRET_KEY unset in local dev).
-    class FakeHandler:
-        def get_context(self, headers: dict[str, str]) -> Any:
-            raise RuntimeError("SESSION_SECRET_KEY not set")
-
-    class FakeMetadata:
-        headers = {"x-datarobot-authorization-context": "token"}
-
-    class FakeContextInstance:
-        metadata = FakeMetadata()
-
-    monkeypatch.setattr(datarobot_mem0_memory, "AuthContextHeaderHandler", FakeHandler)
-    monkeypatch.setattr(datarobot_mem0_memory.Context, "get", staticmethod(FakeContextInstance))
-
-    # WHEN we resolve the memory user id.
-    # THEN it swallows the error and returns None so memory writes don't crash
-    # the request — caller falls back to the api-key owner.
-    assert datarobot_mem0_memory._memory_user_uuid() is None
 
 
 async def test_remove_items_deletes_by_memory_id_or_session_user_id() -> None:

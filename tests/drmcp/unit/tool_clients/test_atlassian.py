@@ -27,14 +27,27 @@ from datarobot_genai.drtools.core.clients.atlassian import ATLASSIAN_API_BASE
 from datarobot_genai.drtools.core.clients.atlassian import OAUTH_ACCESSIBLE_RESOURCES_PATH
 from datarobot_genai.drtools.core.clients.atlassian import _find_first_resource_with_id
 from datarobot_genai.drtools.core.clients.atlassian import _find_resource_by_service
-from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_access_token
 from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_cloud_id
+from datarobot_genai.drtools.core.clients.atlassian import get_confluence_access_token
+from datarobot_genai.drtools.core.clients.atlassian import get_jira_access_token
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 
-class TestGetAtlassianAccessToken:
-    """Test get_atlassian_access_token function."""
+@pytest.mark.parametrize(
+    ("get_token", "provider_type", "access_token_header"),
+    [
+        pytest.param(get_jira_access_token, "jira", "x-datarobot-jira-access-token", id="jira"),
+        pytest.param(
+            get_confluence_access_token,
+            "confluence",
+            "x-datarobot-confluence-access-token",
+            id="confluence",
+        ),
+    ],
+)
+class TestGetAtlassianServiceAccessToken:
+    """Test per-service Atlassian access token helpers."""
 
     @pytest.fixture(autouse=True)
     def _clear_header_ctx(self) -> None:
@@ -42,20 +55,30 @@ class TestGetAtlassianAccessToken:
         set_request_headers_for_context({})
 
     @pytest.mark.asyncio
-    async def test_get_access_token_success(self) -> None:
+    async def test_get_access_token_success(
+        self,
+        get_token: object,
+        provider_type: str,
+        access_token_header: str,
+    ) -> None:
         """Test successful access token retrieval."""
         mock_token = "test_access_token_123"
+        mock_get_access_token = AsyncMock(return_value=mock_token)
         with patch(
             "datarobot_genai.drtools.core.auth.get_access_token",
-            new_callable=AsyncMock,
-            return_value=mock_token,
+            mock_get_access_token,
         ):
-            result = await get_atlassian_access_token()
-            assert result == mock_token
-            assert isinstance(result, str)
+            result = await get_token()
+        assert result == mock_token
+        mock_get_access_token.assert_awaited_once_with(provider_type)
 
     @pytest.mark.asyncio
-    async def test_get_access_token_empty_token(self) -> None:
+    async def test_get_access_token_empty_token(
+        self,
+        get_token: object,
+        provider_type: str,
+        access_token_header: str,
+    ) -> None:
         """Test handling of empty access token without header fallback."""
         with patch(
             "datarobot_genai.drtools.core.auth.get_access_token",
@@ -63,14 +86,19 @@ class TestGetAtlassianAccessToken:
             return_value="",
         ):
             with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
-                result = await get_atlassian_access_token()
+                result = await get_token()
         assert isinstance(result, ToolError)
         assert result.kind == ToolErrorKind.AUTHENTICATION
         assert "empty access token" in str(result).lower()
-        assert "x-datarobot-atlassian-access-token" in str(result)
+        assert access_token_header in str(result)
 
     @pytest.mark.asyncio
-    async def test_get_access_token_oauth_error(self) -> None:
+    async def test_get_access_token_oauth_error(
+        self,
+        get_token: object,
+        provider_type: str,
+        access_token_header: str,
+    ) -> None:
         """Test handling of OAuthServiceClientErr without header fallback."""
         oauth_error = OAuthServiceClientErr("OAuth error occurred")
         with patch(
@@ -79,13 +107,18 @@ class TestGetAtlassianAccessToken:
             side_effect=oauth_error,
         ):
             with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
-                result = await get_atlassian_access_token()
+                result = await get_token()
         assert isinstance(result, ToolError)
         assert "Could not obtain access token" in str(result)
-        assert "x-datarobot-atlassian-access-token" in str(result)
+        assert access_token_header in str(result)
 
     @pytest.mark.asyncio
-    async def test_get_access_token_unexpected_error(self) -> None:
+    async def test_get_access_token_unexpected_error(
+        self,
+        get_token: object,
+        provider_type: str,
+        access_token_header: str,
+    ) -> None:
         """Test handling of unexpected exceptions."""
         unexpected_error = ValueError("Unexpected error")
         with patch(
@@ -93,23 +126,26 @@ class TestGetAtlassianAccessToken:
             new_callable=AsyncMock,
             side_effect=unexpected_error,
         ):
-            result = await get_atlassian_access_token()
+            result = await get_token()
         assert isinstance(result, ToolError)
         assert result.kind == ToolErrorKind.INTERNAL
         assert "unexpected error" in str(result).lower()
 
     @pytest.mark.asyncio
-    async def test_header_fallback_when_oauth_raises(self) -> None:
-        """OBO failure is satisfied by x-datarobot-atlassian-access-token."""
+    async def test_header_fallback_when_oauth_raises(
+        self,
+        get_token: object,
+        provider_type: str,
+        access_token_header: str,
+    ) -> None:
+        """OBO failure is satisfied by the service-specific access-token header."""
         with patch(
             "datarobot_genai.drtools.core.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=RuntimeError("no auth ctx"),
         ):
-            set_request_headers_for_context(
-                {"x-datarobot-atlassian-access-token": "from-header"},
-            )
-            result = await get_atlassian_access_token()
+            set_request_headers_for_context({access_token_header: "from-header"})
+            result = await get_token()
         assert result == "from-header"
 
 

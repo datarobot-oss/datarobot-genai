@@ -15,9 +15,23 @@
 authentication:
   datarobot_auth:
     _type: datarobot_api_key
+  okta_auth:
+    _type: okta_cross_app_access
 
 function_groups:
   a2a_agent:
     _type: authenticated_a2a_client
     url: "http://agent.example.com:8080"
     auth_provider: datarobot_auth
+
+  a2a_agent_with_registry1:
+    _type: authenticated_a2a_client
+    registry:
+      deployment_id: "1234"
+    auth_provider: datarobot_auth
+
+  a2a_agent_with_registry2:
+    _type: authenticated_a2a_client
+    registry:
+      external_id: "abcd"
+    auth_provider: okta_auth

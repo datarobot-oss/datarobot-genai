@@ -84,13 +84,18 @@ async def test_auto_memory_agent_wrapper_round_trips_with_real_mem0(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # GIVEN a workflow.yaml with a real Mem0-backed NAT memory provider and
-    # auto-memory wrapper. The provider's ``_UserManagerShim`` resolves the
-    # per-user id via ``_memory_user_uuid``, which in production reads the DR
-    # auth header. Stub it to a stable per-test UUID so the round-trip proves
-    # memories are scoped per user rather than globally per api key.
+    # auto-memory wrapper. The provider's ``_UserManagerShim`` reads
+    # ``Context.user_id``, which in production is populated by
+    # ``DRAgentAGUISessionManager`` from the DR signed auth header. Stub the
+    # shim to a stable per-test UUID so the round-trip proves memories are
+    # scoped per user rather than globally per api key.
     test_id = uuid.uuid4().hex
     dr_memory_user_uuid = f"nat-auto-memory-{test_id}"
-    monkeypatch.setattr(datarobot_mem0_memory, "_memory_user_uuid", lambda: dr_memory_user_uuid)
+    monkeypatch.setattr(
+        datarobot_mem0_memory._UserManagerShim,
+        "get_id",
+        lambda self: dr_memory_user_uuid,
+    )
 
     secret_code = f"DRMEM-{test_id}"
     first_message = f"My NAT auto-memory integration secret code is {secret_code}."

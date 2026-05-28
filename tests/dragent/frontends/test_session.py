@@ -180,7 +180,7 @@ class TestDRAgentUserManager:
         mock_auth_ctx.user.id = "user-from-ctx"
 
         with patch(
-            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
+            "datarobot_genai.dragent.frontends.session.AuthContextHeaderHandler.get_context",
             return_value=mock_auth_ctx,
         ):
             result = DRAgentUserManager.extract_user_from_connection(mock_request)
@@ -266,7 +266,7 @@ class TestSessionPerUserWorkflowFallback:
             yield MagicMock()
 
         with patch(
-            "datarobot_genai.dragent.frontends.session._auth_handler.get_context",
+            "datarobot_genai.dragent.frontends.session.AuthContextHeaderHandler.get_context",
             return_value=mock_auth_ctx,
         ):
             with patch.object(SessionManager, "session", fake_nat_session):
@@ -274,3 +274,65 @@ class TestSessionPerUserWorkflowFallback:
                     pass
 
         assert captured.get("user_id") == UserInfo._from_session_cookie("real-user-1").get_user_id()
+
+    @pytest.mark.asyncio
+    async def test_dr_header_reaches_user_manager_shim_through_real_nat_session(
+        self, session_manager
+    ):
+        """End-to-end: DR header → DRAgentAGUISessionManager → real NAT session() → shim.
+
+        ``test_dr_signed_context_resolved_in_session`` stubs ``SessionManager.session``
+        and only checks the ``user_id`` kwarg, so it can't catch a regression where
+        NAT's base ``session()`` fails to write that kwarg into
+        ``ContextState.user_id`` (which is what the shim — and therefore
+        ``auto_memory_wrapper`` — actually reads). This test runs the real
+        ``super().session()`` and asserts the value that ends up on
+        ``Context.get().user_manager.get_id()`` inside the session block.
+        """
+        # Importing installs the property(_UserManagerShim) on Context.
+        from starlette.requests import Request as StarletteRequest
+
+        from datarobot_genai.nat import datarobot_mem0_memory  # noqa: F401
+
+        session_manager._is_workflow_per_user = False
+        session_manager._shared_workflow = MagicMock()
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/agent/run",
+            "raw_path": b"/agent/run",
+            "query_string": b"",
+            "path_params": {},
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+            "headers": [(b"x-datarobot-authorization-context", b"fake-jwt")],
+        }
+
+        async def _empty_receive() -> dict[str, object]:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = StarletteRequest(scope, receive=_empty_receive)
+
+        mock_auth_ctx = MagicMock()
+        mock_auth_ctx.user.id = "real-dr-user"
+        expected = UserInfo._from_session_cookie("real-dr-user").get_user_id()
+
+        captured: dict[str, object] = {}
+
+        with patch(
+            "datarobot_genai.dragent.frontends.session.AuthContextHeaderHandler.get_context",
+            return_value=mock_auth_ctx,
+        ):
+            async with session_manager.session(http_connection=request):
+                # The shim is what auto_memory_wrapper actually calls. Reading it
+                # inside the session block reproduces the call site exactly.
+                ctx = ContextState.get()
+                captured["context_state_user_id"] = ctx.user_id.get()
+                from nat.builder.context import Context as NATContext
+
+                captured["shim_get_id"] = NATContext.get().user_manager.get_id()
+
+        assert captured["context_state_user_id"] == expected
+        assert captured["shim_get_id"] == expected

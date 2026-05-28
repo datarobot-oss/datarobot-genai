@@ -13,16 +13,20 @@
 # limitations under the License.
 
 from contextlib import contextmanager
+from contextlib import nullcontext
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from a2a.types import AgentCapabilities
+from a2a.types import AgentCard
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
+from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
@@ -30,6 +34,9 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClie
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
 from datarobot_genai.dragent.plugins.auth_a2a_client import _AuthenticatedA2ABaseClient
 from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_headers
+from datarobot_genai.dragent.plugins.auth_a2a_client import _FailedRegistryClient
+from datarobot_genai.dragent.plugins.auth_a2a_client import _sanitize_a2a_error
+from datarobot_genai.dragent.plugins.auth_a2a_client import _wrap_a2a_function
 
 _AGENT_URL = "http://agent.example.com"
 
@@ -42,13 +49,21 @@ _MODULE = "datarobot_genai.dragent.plugins.auth_a2a_client"
 
 
 @contextmanager
-def _skip_agent_card_resolution(client):
-    """Patch _resolve_agent_card to set a mock agent card without network access."""
+def _skip_agent_card_resolution(client, *, security_schemes=None):
+    """Patch _resolve_agent_card to set a mock agent card without network access.
+
+    Parameters
+    ----------
+    security_schemes
+        Value for ``mock_card.security_schemes``.  ``None`` (default) means
+        no security schemes — the code falls back to direct header injection.
+        Pass a truthy value (e.g. ``{"oauth2": MagicMock()}``) to exercise the
+        ``A2ACredentialService`` / ``AuthInterceptor`` path.
+    """
 
     async def _set_mock_card():
         mock_card = MagicMock()
-        # Ensure A2ACredentialService skips compatibility validation (no security schemes).
-        mock_card.security_schemes = None
+        mock_card.security_schemes = security_schemes
         client._agent_card = mock_card
 
     with patch.object(client, "_resolve_agent_card", side_effect=_set_mock_card):
@@ -281,40 +296,64 @@ class TestAuthenticatedA2ABaseClientResolveCard:
 
 
 class TestAuthenticatedA2ABaseClientCallPhase:
-    async def test_call_auth_uses_auth_interceptor(
+    async def _enter_client(self, auth_provider, *, security_schemes=None):
+        """Enter a client with optional mocked card security schemes.
+
+        The ``httpx``, ``ClientFactory`` and ``Context`` patches from
+        ``patched_base_client_env`` must be active in the calling test.
+
+        When security schemes are present, ``A2ACredentialService`` is also
+        mocked so the test validates branch behaviour without coupling to NAT's
+        scheme-compatibility internals.
+        """
+        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=auth_provider)
+        credential_patch = (
+            patch(f"{_MODULE}.A2ACredentialService") if security_schemes else nullcontext()
+        )
+        with credential_patch:
+            with _skip_agent_card_resolution(client, security_schemes=security_schemes):
+                async with client:
+                    return client
+
+    async def test_auth_with_security_schemes_uses_interceptor_and_no_default_headers(
         self, bearer_auth_provider, patched_base_client_env
     ):
-        """When auth_provider is set, AuthInterceptor is added for RPC calls."""
+        """With security schemes, auth is delegated via interceptor (not client headers)."""
         mock_httpx, mock_factory = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
+
+        await self._enter_client(
+            bearer_auth_provider,
+            security_schemes={"oauth2": MagicMock()},
         )
-        with _skip_agent_card_resolution(client):
-            async with client:
-                create_kw = mock_factory.return_value.create.call_args.kwargs
-                assert len(create_kw["interceptors"]) == 1
+
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert len(create_kw["interceptors"]) == 1
+
+        _, httpx_kwargs = mock_httpx.AsyncClient.call_args
+        assert httpx_kwargs.get("headers", {}) == {}
+
+    async def test_auth_without_security_schemes_injects_header(
+        self, bearer_auth_provider, patched_base_client_env
+    ):
+        """Without security schemes, auth header is injected directly on httpx client."""
+        mock_httpx, mock_factory = patched_base_client_env
+        mock_client_instance = mock_httpx.AsyncClient.return_value
+        mock_client_instance.headers = {}
+
+        await self._enter_client(bearer_auth_provider)
+
+        assert mock_client_instance.headers.get("Authorization") == "Bearer test_token"
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert create_kw.get("interceptors") == []
 
     async def test_no_auth_empty_interceptors(self, patched_base_client_env):
         """When no auth_provider, no interceptors are added."""
-        mock_httpx, mock_factory = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=None)
-        with _skip_agent_card_resolution(client):
-            async with client:
-                create_kw = mock_factory.return_value.create.call_args.kwargs
-                assert create_kw.get("interceptors") == []
+        _, mock_factory = patched_base_client_env
 
-    async def test_task_httpx_client_has_no_default_headers(
-        self, bearer_auth_provider, patched_base_client_env
-    ):
-        """The long-lived task httpx client carries no default auth headers."""
-        mock_httpx, _ = patched_base_client_env
-        client = _AuthenticatedA2ABaseClient(
-            base_url=_AGENT_URL, auth_provider=bearer_auth_provider
-        )
-        with _skip_agent_card_resolution(client):
-            async with client:
-                _, httpx_kwargs = mock_httpx.AsyncClient.call_args
-                assert httpx_kwargs.get("headers", {}) == {}
+        await self._enter_client(None)
+
+        create_kw = mock_factory.return_value.create.call_args.kwargs
+        assert create_kw.get("interceptors") == []
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +387,179 @@ class TestAuthenticatedA2AClientFunctionGroup:
             fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
             with pytest.raises(RuntimeError, match="User ID not found in context"):
                 await fg.__aenter__()
+
+
+# ---------------------------------------------------------------------------
+# Tests: _sanitize_a2a_error — sensitive data stripping
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeA2AError:
+    """Verify that _sanitize_a2a_error never leaks tokens or response bodies."""
+
+    def test_runtime_error_does_not_expose_message(self):
+        """RuntimeError messages could originate from third-party SDKs — never trusted."""
+        exc = RuntimeError("token=eyJhbGciOi... failed at https://as.example.com")
+        result = _sanitize_a2a_error(exc)
+        assert "eyJhbGciOi" not in result
+        assert "RuntimeError" in result
+
+    def test_generic_exception_hides_message(self):
+        """Unknown exception types could carry token material — only class name survives."""
+        exc = ValueError("subject_token=eyJhbGciOi...")
+        result = _sanitize_a2a_error(exc)
+        assert "eyJhbGciOi" not in result
+        assert "ValueError" in result
+
+    def test_httpx_status_error_strips_body(self):
+        """Httpx errors could echo submitted form params — only status + host survive."""
+        import httpx
+
+        request = httpx.Request("POST", "https://as.example.com/oauth2/v1/token")
+        response = httpx.Response(
+            401,
+            request=request,
+            content=b'{"error":"invalid_client","assertion":"eyJ..."}',
+        )
+        exc = httpx.HTTPStatusError("401", request=request, response=response)
+        result = _sanitize_a2a_error(exc)
+        assert "401" in result
+        assert "as.example.com" in result
+        assert "eyJ" not in result
+        assert "invalid_client" not in result
+
+    def test_timeout_gives_actionable_message(self):
+        import httpx
+
+        exc = httpx.ReadTimeout("timed out")
+        result = _sanitize_a2a_error(exc)
+        assert "timed out" in result
+        assert "ReadTimeout" not in result  # generic, not class name
+
+    def test_network_error_gives_actionable_message(self):
+        import httpx
+
+        exc = httpx.ConnectError("Connection refused to host with token=secret")
+        result = _sanitize_a2a_error(exc)
+        assert "network error" in result
+        assert "secret" not in result
+
+    def test_agent_card_registry_error_surfaces_message(self):
+        """AgentCardRegistryError messages are safe — they contain only IDs and guidance."""
+        exc = AgentCardRegistryError(
+            "No agent card found in the central registry for "
+            "deployment_id='000000000000000000000000'. "
+            "Verify that the deployment exists and is registered in your organisation."
+        )
+        result = _sanitize_a2a_error(exc)
+        assert "000000000000000000000000" in result
+        assert "agent card registry error" in result
+        assert "Verify that the deployment exists" in result
+
+    def test_agent_card_registry_error_not_treated_as_generic_runtime_error(self):
+        """AgentCardRegistryError should NOT fall through to the generic RuntimeError branch."""
+        exc = AgentCardRegistryError("deployment not found")
+        result = _sanitize_a2a_error(exc)
+        # Must not hit the generic "authentication or protocol error" branch
+        assert "authentication or protocol error" not in result
+        assert "deployment not found" in result
+
+
+# ---------------------------------------------------------------------------
+# Tests: _wrap_a2a_function — error handling wrapper
+# ---------------------------------------------------------------------------
+
+
+class TestWrapA2AFunction:
+    """Verify that _wrap_a2a_function catches errors and returns them as values,
+    not raising exceptions that would crash the agent.
+    """
+
+    async def test_async_fn_success_passes_through(self):
+        async def ok(x: str) -> str:
+            return f"ok:{x}"
+
+        wrapped = _wrap_a2a_function(ok)
+        assert await wrapped("hello") == "ok:hello"
+
+    async def test_async_fn_error_returns_error_string(self):
+        async def boom(x: str) -> str:
+            raise RuntimeError("connection refused")
+
+        wrapped = _wrap_a2a_function(boom)
+        result = await wrapped("hello")
+
+        assert isinstance(result, str)
+        assert "Error" in result
+        # RuntimeError message is sanitised — not passed through verbatim
+        assert "connection refused" not in result
+
+    async def test_async_fn_does_not_leak_token_material(self):
+        """Exception messages containing tokens must be sanitised."""
+
+        async def leak(x: str) -> str:
+            raise ValueError("subject_token=eyJhbGciOiJSUzI1NiJ9.secret")
+
+        wrapped = _wrap_a2a_function(leak)
+        result = await wrapped("hello")
+
+        assert "eyJhbGciOi" not in result
+        assert "Error" in result
+
+    async def test_async_gen_success_passes_through(self):
+        async def gen(x: str):
+            yield "a"
+            yield "b"
+
+        wrapped = _wrap_a2a_function(gen)
+        events = [e async for e in wrapped("hello")]
+        assert events == ["a", "b"]
+
+    async def test_async_gen_error_yields_error_string(self):
+        async def gen(x: str):
+            yield "a"
+            raise RuntimeError("stream broken")
+
+        wrapped = _wrap_a2a_function(gen)
+        events = [e async for e in wrapped("hello")]
+
+        assert events[0] == "a"
+        assert "Error" in events[-1]
+        # RuntimeError message is sanitised — not passed through verbatim
+        assert "stream broken" not in events[-1]
+
+    def test_sync_fn_returned_unchanged(self):
+        def plain(x: str) -> str:
+            return x
+
+        assert _wrap_a2a_function(plain) is plain
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthenticatedA2AClientFunctionGroup.add_function wraps with error handling
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2AClientFunctionGroupAddFunction:
+    """Verify that add_function applies _wrap_a2a_function transparently."""
+
+    async def test_registered_fn_catches_error(self, a2a_config, mock_builder):
+        """A function added via add_function should return error strings on failure."""
+        fg = AuthenticatedA2AClientFunctionGroup(config=a2a_config, builder=mock_builder)
+
+        async def exploding(query: str) -> str:
+            raise RuntimeError("auth failed")
+
+        fg.add_function(name="test_fn", fn=exploding, description="test")
+
+        # The function was wrapped — invoke the underlying callable
+        fn_obj = fg._functions["test_fn"]
+        result = await fn_obj.ainvoke("hello")
+
+        assert isinstance(result, str)
+        assert "Error" in result
+        # RuntimeError message is sanitised — not passed through verbatim
+        assert "auth failed" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +630,8 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
     async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):
         """When registry provides a card, _AuthenticatedA2ABaseClient skips _resolve_agent_card."""
-        mock_auth_provider = MagicMock()
+        mock_auth_provider = AsyncMock()
+        mock_auth_provider.authenticate.return_value = None
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
         mock_card = MagicMock()
@@ -440,7 +653,8 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
             patch.object(AuthenticatedA2AClientFunctionGroup, "_register_functions"),
         ):
             mock_ctx.get.return_value.user_id = "test-user"
-            mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
+            mock_client_instance = MagicMock(aclose=AsyncMock(), headers={})
+            mock_httpx.AsyncClient.return_value = mock_client_instance
             mock_httpx.Timeout = MagicMock()
             mock_factory.return_value.create.return_value = MagicMock(aclose=AsyncMock())
 
@@ -449,3 +663,182 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
             # The client should have the pre-resolved card, not call _resolve_agent_card
             assert fg._client._agent_card is mock_card
+
+
+# ---------------------------------------------------------------------------
+# Tests: _FailedRegistryClient — placeholder client for failed registry lookups
+# ---------------------------------------------------------------------------
+
+
+class TestFailedRegistryClient:
+    """Verify _FailedRegistryClient provides agent_card for registration."""
+
+    def test_agent_card_property_returns_card(self):
+        card = AgentCard(
+            name="test",
+            description="test",
+            url="https://test/",
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+        )
+        client = _FailedRegistryClient(card)
+        assert client.agent_card is card
+
+    async def test_aexit_is_noop(self):
+        card = AgentCard(
+            name="test",
+            description="test",
+            url="https://test/",
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+        )
+        client = _FailedRegistryClient(card)
+        # Should not raise
+        await client.__aexit__(None, None, None)
+
+
+# ---------------------------------------------------------------------------
+# Tests: AuthenticatedA2AClientFunctionGroup — registry error (graceful degradation)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthenticatedA2AClientFunctionGroupRegistryError:
+    """Verify that a failed registry lookup produces a degraded function group.
+
+    The group should complete __aenter__, register functions via NAT, and
+    return actionable error messages when those functions are invoked.
+    Covered for both deployment_id and external_id lookup keys.
+    """
+
+    @pytest.fixture(
+        params=[
+            pytest.param(
+                {
+                    "key": "deployment_id",
+                    "value": "000000000000000000000000",
+                    "error_msg": (
+                        "No agent card found in the central registry for "
+                        "deployment_id='000000000000000000000000'. "
+                        "Verify that the deployment exists and is registered "
+                        "in your organisation."
+                    ),
+                },
+                id="deployment_id",
+            ),
+            pytest.param(
+                {
+                    "key": "external_id",
+                    "value": "my-external-agent",
+                    "error_msg": (
+                        "No agent card found in the central registry for "
+                        "external_id='my-external-agent'. "
+                        "Verify that the deployment exists and is registered "
+                        "in your organisation."
+                    ),
+                },
+                id="external_id",
+            ),
+        ]
+    )
+    def registry_scenario(self, request):
+        return request.param
+
+    @pytest.fixture
+    def registry_config(self, registry_scenario):
+        lookup_kwargs = {registry_scenario["key"]: registry_scenario["value"]}
+        return AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(**lookup_kwargs),
+        )
+
+    @pytest.fixture
+    def failing_registry(self, registry_scenario):
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(
+            side_effect=AgentCardRegistryError(registry_scenario["error_msg"])
+        )
+        return mock_registry
+
+    async def test_aenter_succeeds_on_registry_error(
+        self, registry_config, mock_builder, failing_registry
+    ):
+        """__aenter__ must return self, not raise."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            result = await fg.__aenter__()
+            assert result is fg
+
+    async def test_functions_are_registered_via_nat(
+        self, registry_config, mock_builder, failing_registry
+    ):
+        """NAT's _register_functions populates functions against the placeholder client."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            # Don't assert exact names — stay resilient to NAT upgrades.
+            assert len(fg._functions) > 0
+            assert "call" in fg._functions
+
+    async def test_call_stub_returns_error_with_original_message(
+        self, registry_config, registry_scenario, mock_builder, failing_registry
+    ):
+        """Invoking 'call' returns an error string with the original registry error message."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            fn_obj = fg._functions["call"]
+            result = await fn_obj.ainvoke({"query": "say hi"})
+
+            assert isinstance(result, str)
+            assert "Error" in result
+            assert registry_scenario["value"] in result
+            assert "Verify that the deployment exists" in result
+
+    async def test_client_is_failed_registry_client(
+        self, registry_config, mock_builder, failing_registry
+    ):
+        """self._client should be a _FailedRegistryClient, not a real A2A client."""
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(
+                f"{_MODULE}.get_default_registry",
+                new_callable=AsyncMock,
+                return_value=failing_registry,
+            ),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+            assert isinstance(fg._client, _FailedRegistryClient)

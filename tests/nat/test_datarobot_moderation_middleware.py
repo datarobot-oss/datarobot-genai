@@ -80,10 +80,10 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
 from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
-from datarobot_genai.nat.datarobot_moderation_middleware import (
-    chat_completion_to_dragent_event_response,
-)
+from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
+from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
 from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
+from datarobot_genai.nat.datarobot_moderation_middleware import moderation_config_has_guards
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
 )
@@ -321,14 +321,89 @@ def test_workflow_input_to_completion_dict_chat_request_or_message() -> None:
     params = workflow_input_to_completion_dict(crm)
     assert params["tools"] == []
     assert get_chat_prompt(params) == "hello gateway"
-    assert moderation_prompt_from_workflow_input(crm) == get_chat_prompt(params)
+    assert moderation_prompt_from_workflow_input(crm) == "hello gateway"
 
 
-def test_moderation_prompt_from_workflow_input_parity_with_completion_dict() -> None:
+def test_moderation_prompt_from_workflow_input_run_agent_input() -> None:
     run_input = _make_run_input("plan the thing")
-    direct = moderation_prompt_from_workflow_input(run_input)
-    via_ccp = get_chat_prompt(workflow_input_to_completion_dict(run_input))
-    assert direct == via_ccp
+    assert moderation_prompt_from_workflow_input(run_input) == "plan the thing"
+
+
+def test_moderation_prompt_from_workflow_input_input_message_only() -> None:
+    crm = ChatRequestOrMessage(input_message="gateway string only")
+    assert moderation_prompt_from_workflow_input(crm) == "gateway string only"
+
+
+def test_workflow_input_from_args_empty_returns_none() -> None:
+    assert _workflow_input_from_args(()) is None
+
+
+def test_workflow_input_from_args_unrecognized_type_raises() -> None:
+    with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
+        _workflow_input_from_args(("not a workflow input",))
+
+
+@pytest.mark.asyncio
+async def test_pre_invoke_unrecognized_workflow_input_raises(builder_mock: MagicMock) -> None:
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    ctx = InvocationContext(
+        function_context=_fn_context(),
+        original_args=("unexpected",),
+        original_kwargs={},
+        modified_args=("unexpected",),
+        modified_kwargs={},
+        output=None,
+    )
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
+            await mw.pre_invoke(ctx)
+
+
+def test_moderation_config_has_guards() -> None:
+    assert moderation_config_has_guards(
+        ModerationConfig.model_validate(
+            {
+                "guards": [
+                    {
+                        "name": "Prompt Tokens",
+                        "description": "x",
+                        "ootb_type": "token_count",
+                        "stage": "prompt",
+                        "type": "ootb",
+                    }
+                ],
+            }
+        )
+    )
+    assert not moderation_config_has_guards(ModerationConfig.model_validate({"guards": []}))
+    assert not moderation_config_has_guards(ModerationConfig.model_validate({}))
+
+
+def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() -> None:
+    cfg = DataRobotModerationConfig(moderation=ModerationConfig.model_validate({"guards": []}))
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+        ) as from_config,
+    ):
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_config.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_missing_moderation_block_is_noop() -> None:
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+    ) as from_config:
+        assert load_llm_moderation_pipeline(DataRobotModerationConfig()) is None
+    from_config.assert_not_called()
 
 
 def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
@@ -438,6 +513,7 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         try:
             out = await mw.pre_invoke(ctx)
+            assert _moderation_invoke_state_ctx.get() is None
         finally:
             _clear_moderation_invoke_state_if_set()
 
@@ -505,7 +581,7 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            assert st.input_df.loc[0, PROMPT_COL] == "[redacted]"
+            assert st.prompt == "[redacted]"
         finally:
             _clear_moderation_invoke_state_if_set()
 
@@ -547,7 +623,7 @@ async def test_pre_invoke_replaces_chat_request_or_message_input_message(
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            assert st.input_df.loc[0, PROMPT_COL] == "[redacted]"
+            assert st.prompt == "[redacted]"
         finally:
             _clear_moderation_invoke_state_if_set()
 
@@ -587,7 +663,7 @@ async def test_pre_invoke_replacement_apply_failure_clears_prescore_replaced_fla
             out = await mw.pre_invoke(ctx)
             st = _moderation_invoke_state_ctx.get()
             assert st is not None
-            assert st.input_df.loc[0, PROMPT_COL] == "secret"
+            assert st.prompt == "secret"
             assert bool(st.prescore_df.loc[0, f"replaced_{PROMPT_COL}"]) is False
         finally:
             _clear_moderation_invoke_state_if_set()
@@ -677,7 +753,7 @@ async def test_post_invoke_skips_dr_agent_when_joined_text_blank(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -731,7 +807,7 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -771,7 +847,7 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -811,7 +887,7 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -846,7 +922,7 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -882,7 +958,7 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         prescore = pd.DataFrame({PROMPT_COL: ["p"]})
         _set_moderation_invoke_state(
-            input_df=prescore,
+            prompt="p",
             prescore_df=prescore.copy(),
             latency_so_far=0.0,
         )
@@ -1940,7 +2016,7 @@ async def test_function_middleware_stream_preserves_step_order_at_agent_transiti
     assert writer_start_idx < writer_finish_idx
 
 
-def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
+def test_dome_chunk_to_dragent_event_response_keeps_tool_calls_with_text() -> None:
     """Moderation rehydration must not drop tool AG-UI events bundled with a text delta."""
     mid = "msg-1"
     source = [
@@ -1979,7 +2055,7 @@ def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() 
         model="test-model",
         object="chat.completion.chunk",
     )
-    out = chat_completion_to_dragent_event_response(
+    out = dome_chunk_to_dragent_event_response(
         moderated_chunk,
         source_ag_ui_events=source,
         stream_tool_index_map={},
@@ -1993,7 +2069,7 @@ def test_chat_completion_to_dragent_event_response_keeps_tool_calls_with_text() 
     assert starts[0].tool_call_name == "generate_objectid"
 
 
-def test_chat_completion_to_dragent_event_response_serializes_numpy_moderations() -> None:
+def test_dome_chunk_to_dragent_event_response_serializes_numpy_moderations() -> None:
     """datarobot_dome may attach numpy scalars; SSE must still serialize via model_dump_json."""
     chunk = ChatCompletionChunk(
         id="chunk-1",
@@ -2017,7 +2093,7 @@ def test_chat_completion_to_dragent_event_response_serializes_numpy_moderations(
             "ts": pd.Timestamp("2026-01-01T00:00:00Z"),
         },
     )
-    out = chat_completion_to_dragent_event_response(chunk)
+    out = dome_chunk_to_dragent_event_response(chunk)
     assert out.datarobot_moderations is not None
     assert out.datarobot_moderations["count"] == 42
     assert out.datarobot_moderations["nested"]["x"] == 1.5

@@ -14,6 +14,7 @@
 import re
 
 import pytest
+from fastmcp.prompts import Prompt
 from mcp import McpError
 
 from datarobot_genai.drmcp import integration_test_mcp_session
@@ -155,6 +156,50 @@ class TestMCPDRPromptManagementIntegration:
             matches = [s for s in prompts_names if pattern.search(s)]
 
             assert len(matches) == 1
+
+
+@pytest.mark.asyncio
+async def test_set_prompt_mapping_removes_previous_prompt_version() -> None:
+    """Updating a mapped prompt version must remove the old MCP prompt (fastmcp 3.x)."""
+    mcp = DataRobotMCP()
+
+    async def prompt_v1() -> str:
+        return "v1"
+
+    mcp.add_prompt(
+        Prompt.from_function(
+            prompt_v1,
+            name="my_prompt",
+            meta={
+                "prompt_template_id": "pt1",
+                "prompt_template_version_id": "v1",
+            },
+        )
+    )
+    await mcp.set_prompt_mapping("pt1", "v1", "my_prompt")
+
+    await mcp.set_prompt_mapping("pt1", "v2", "my_prompt")
+
+    async def prompt_v2() -> str:
+        return "v2"
+
+    mcp.add_prompt(
+        Prompt.from_function(
+            prompt_v2,
+            name="my_prompt",
+            meta={
+                "prompt_template_id": "pt1",
+                "prompt_template_version_id": "v2",
+            },
+        )
+    )
+
+    prompts = await mcp.get_prompts()
+    registered = [
+        p for p in prompts.values() if p.meta and p.meta.get("prompt_template_id") == "pt1"
+    ]
+    assert len(registered) == 1
+    assert registered[0].meta["prompt_template_version_id"] == "v2"
 
 
 @pytest.mark.asyncio

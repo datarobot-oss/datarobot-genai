@@ -4,8 +4,63 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.68
+## 0.15.82
 - `langgraph/agent.py`: handle reasoning content from reasoning models (Claude extended thinking, Qwen, OpenAI o1, GPT-OSS, DeepSeek). Two surfaces are normalized: native list-form `AIMessage.content` with `{"type": "thinking"/"reasoning", ...}` blocks (Anthropic/Bedrock SDK pass-through) and OpenAI-compatible flat shape where reasoning lives in `additional_kwargs["reasoning_content"]` (DataRobot LLM gateway and other OpenAI-style proxies). Thinking/reasoning blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s before the text lifecycle; list content is flattened to text before ragas conversion so evaluation traces stay valid (thinking is dropped from ragas; AG-UI stream still carries it). New helpers: `_iter_content_blocks`, `_iter_message_blocks`, `_flatten_to_text`.
+
+## 0.15.81
+`drmcp`: `MCPServerConfig` now reads `pulumi_config.json` via `PulumiConfigSettingsSource` (lowest priority) and accepts standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` fields. Telemetry setup bridges these to `os.environ` so local OTel tracing works without manual env var configuration.
+
+## 0.15.80
+- `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` is now a no-op when the `moderation` block is omitted or has no guards configured, so it can be listed unconditionally in `workflow.yaml` without requiring DataRobot credentials or emitting a warning. `load_llm_moderation_pipeline` returns `None` in those cases and skips `ModerationPipeline.from_config`.
+
+## 0.15.79
+- Added `drmcpbase` subpackage and standalone extra `datarobot-genai[drmcpbase]` (`fastmcp` only, no core). The `drmcp` extra now composes `drmcpbase` + `drtools` + template-server dependencies. Documented both extras in `README.md`.
+- Import lint (`scripts/check_imports.py`): scans `drmcpbase`; `drmcp` may import `drtools`, `drmcp`, and `drmcpbase`; `drmcpbase` may only import `drmcpbase` (must not import `drtools`, `drmcp`, or `core`); `drtools` forbids `drmcpbase`.
+- CI / tests: `drmcpbase` added to the `test-module` matrix; `tests/drmcpbase/` smoke test runs with `--confcutdir` so the root `tests/conftest.py` (core) is not loaded under the `drmcpbase` extra.
+- `e2e-tests/uv.lock` regenerated to include the `drmcpbase` extra.
+- `drtools` Jira/Confluence: replaced `get_atlassian_access_token` with `get_jira_access_token` and `get_confluence_access_token` (OBO provider types `jira` / `confluence`; fallbacks `x-datarobot-jira-access-token` and `x-datarobot-confluence-access-token`).
+- `drtools`: `get_api_key_from_headers` now performs case-insensitive header lookup.
+- `drtools`: `list_use_cases`, `list_vector_databases`, and `query_vector_database` map `ClientError` to `ToolError` via `raise_tool_error_for_client_error`.
+- `drmcp`: `set_prompt_mapping` removes superseded prompt versions via FastMCP 3.x `local_provider.remove_prompt` instead of `prompt.disable()`.
+- DRMCP tests: shared stub `DATAROBOT_*` constants for integration subprocesses; integration tests force `MCP_USE_CLIENT_STUBS=true` so a developer `.env` is not used; acceptance tests set `MCP_USE_CLIENT_STUBS=false` and require real credentials.
+
+## 0.15.78
+- `dragent/frontends/converters`: fixed dropped `datarobot_moderations` in dragent workflow chunk conversion paths by preserving moderation metadata on both NAT `ChatResponseChunk` and OpenAI `ChatCompletionChunk` streaming outputs.
+
+## 0.15.77
+- A non-existent `deployment_id` or `external_id` in the agent card registry now returns an actionable error message instead of a generic JSON-RPC `-32603 Internal error`.
+
+## 0.15.76
+- Pinned `starlette>=1.0.1` on the `drmcp` extra and switched MCP middleware to `request.scope["path"]` to harden against CVE-2026-48710 (BadHost)
+
+## 0.15.75
+- Upgrade to `nvidia-nat` 1.7.0, and pin `starlette>=1.0.1` to mitigate CVE-2026-48710
+
+## 0.15.74
+- Fixed `datarobot_api_key` auth provider not forwarding `Authorization: Bearer` header on A2A RPC calls when the agent card has no `security_schemes`.
+- Fixed `asyncio.isasyncgenfunction` error on Python 3.12+
+
+## 0.15.73
+- Unhandled exceptions in A2A remote calls (auth failures, network errors, timeouts) no longer crash the agent. Errors are caught and sanitised.
+- Fixed agent card registry returning at most 25 cards by adding pagination support.
+
+## 0.15.72
+- `dragent/plugins/streaming_memory_agent`: new `streaming_memory_agent` function (registered on the `nat.plugins` entry point) that wraps an inner agent with NAT's mem0 capture/retrieve semantics while preserving its `ChatResponseChunk` stream. The wrapper `astream`s the inner agent and pipes chunks through `convert_chunks_to_agui_events` so token deltas and tool-call deltas surface as AG-UI `TextMessage*` / `ToolCall*` events (NAT's upstream `auto_memory_agent` collapses the stream to a single `DEFAULT_NAT_RESPONSE`). `StreamingMemoryAgentConfig` inherits from upstream `AutoMemoryAgentConfig`, so the configuration surface (`memory_name`, `inner_agent_name`, `save_user_messages_to_memory`, `retrieve_memory_for_every_response`, `save_ai_messages_to_memory`, `search_params`, `add_params`) is identical to `auto_memory_agent`; switching wrappers is a `_type` rename in `workflow.yaml`. mem0 errors are logged and swallowed so partial output still reaches the client. Includes unit-test coverage for config registration/inheritance/defaults, the helper functions, all-flags-off streaming, user-message capture and AI-response persistence, memory retrieval and system-message injection, param forwarding, and the swallow-and-log error semantics.
+
+## 0.15.71
+- Fixed issue with empty `chunk.content` value for CrewAI.
+
+## 0.15.70
+- Added `prompt.py` for prompt templates integration in `langgraph` and `llamaindex`.
+
+## 0.15.69
+- `nat/datarobot_mem0_memory`: `_UserManagerShim.get_id()` now reads `Context.user_id` instead of re-decoding the `X-DataRobot-Authorization-Context` header. Identity resolution already happens upstream in `DRAgentAGUISessionManager` (via `DRAgentUserManager`, added in 0.15.60) and is stored on `ContextState.user_id`, so the shim just forwards it. Removed `_memory_user_uuid()` and the `AuthContextHeaderHandler` / `UserInfo` imports from the module. Per-user-workflow `default-user` fallback now flows through to the editor when no identity is present (previously the shim returned `None` and the editor fell back to the api-key owner).
+
+## 0.15.68
+- `nat/datarobot_moderation_middleware`: refactored DRAgent and NAT chat moderation to use OpenAI `ChatCompletionChunk` at the dome streaming boundary only. Shared AG-UI delta extraction and NAT↔OpenAI chunk converters live in `dragent/frontends/converters.py` (`convert_dragent_event_response_to_openai_chat_completion_chunk`, `convert_nat_chat_response_chunk_to_openai_chat_completion_chunk`).
+- Prescore prompt extraction now delegates to `get_chat_prompt` from `datarobot_moderation_interface` (via `workflow_input_to_completion_dict`), matching DRUM integration behavior for multimodal content and tool context.
+- Per-invoke moderation state stores the moderated prompt string instead of a prescore `DataFrame`; postscore reads `state.prompt`. Invoke context is not set when prescore blocks the prompt (post_invoke and streaming are skipped).
+- `pre_invoke` fails closed with `TypeError` when the workflow argument is not `RunAgentInput`, `ChatRequest`, or `ChatRequestOrMessage`.
 
 ## 0.15.67
 - Bump `datarobot-moderations` to 11.2.30 to use the async interface with `DataRobotModerationMiddleware`

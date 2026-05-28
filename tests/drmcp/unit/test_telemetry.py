@@ -24,6 +24,7 @@ from opentelemetry.trace import SpanContext
 
 from datarobot_genai.drmcp.core import telemetry
 from datarobot_genai.drmcp.core.telemetry import OpenTelemetryMiddleware
+from datarobot_genai.drmcp.core.telemetry import initialize_telemetry as _real_initialize_telemetry
 from datarobot_genai.drmcp.core.telemetry import with_otel_context
 
 
@@ -40,6 +41,8 @@ def test_setup_otel_env_variables() -> None:
     mock_config = MagicMock()
     mock_config.otel_collector_base_url = "http://test-collector:4318"
     mock_config.otel_entity_id = "test-entity"
+    mock_config.otel_exporter_otlp_endpoint = ""
+    mock_config.otel_exporter_otlp_headers = ""
 
     mock_credentials = MagicMock()
     mock_credentials.datarobot.application_api_token = "test-app-token"
@@ -60,6 +63,75 @@ def test_setup_otel_env_variables() -> None:
             os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
             == "X-DataRobot-Api-Key=test-app-token,X-DataRobot-Entity-Id=test-entity"
         )
+
+
+def test_setup_otel_env_variables_bridges_config_fields() -> None:
+    """When Config has standard OTel fields (e.g. from pulumi_config.json),
+    they are bridged to os.environ via setdefault.
+    """
+    mock_config = MagicMock()
+    mock_config.otel_exporter_otlp_endpoint = "https://config.example.com/otel"
+    mock_config.otel_exporter_otlp_headers = "x-key=config123"
+    mock_config.otel_collector_base_url = "http://fallback:4318"
+    mock_config.otel_entity_id = "fallback-entity"
+
+    with (
+        patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        telemetry._setup_otel_env_variables()
+
+        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://config.example.com/otel"
+        assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-key=config123"
+
+
+def test_setup_otel_env_variables_setdefault_no_override() -> None:
+    """Explicit env vars are NOT overridden by Config values (setdefault semantics)."""
+    mock_config = MagicMock()
+    mock_config.otel_exporter_otlp_endpoint = "https://config.example.com/otel"
+    mock_config.otel_exporter_otlp_headers = "x-key=config123"
+
+    with (
+        patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),
+        patch.dict(
+            "os.environ",
+            {
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "https://explicit.example.com/otel",
+                "OTEL_EXPORTER_OTLP_HEADERS": "x-key=explicit",
+            },
+            clear=True,
+        ),
+    ):
+        telemetry._setup_otel_env_variables()
+
+        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://explicit.example.com/otel"
+        assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-key=explicit"
+
+
+def test_initialize_telemetry_proceeds_with_config_headers() -> None:
+    """initialize_telemetry should NOT skip when otel_exporter_otlp_headers is set
+    in Config, even if otel_entity_id is empty.
+    """
+    mcp_mock = MagicMock()
+    mock_config = MagicMock()
+    mock_config.otel_enabled = True
+    mock_config.otel_entity_id = ""
+    mock_config.otel_exporter_otlp_headers = "x-key=from-config"
+    mock_config.otel_exporter_otlp_endpoint = "https://config.example.com/otel"
+    mock_config.mcp_server_name = "test-mcp"
+    mock_config.otel_attributes = {}
+    mock_config.otel_enabled_http_instrumentors = False
+
+    with (
+        patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_env_variables"),
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_exporter"),
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_logging"),
+        patch("datarobot_genai.drmcp.core.telemetry.trace") as mock_trace,
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        _real_initialize_telemetry(mcp_mock)
+        mock_trace.set_tracer_provider.assert_called_once()
 
 
 @pytest.mark.asyncio
