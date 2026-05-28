@@ -18,10 +18,13 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,10 @@ async def list_use_cases(
 
     async with dr_client() as dr_module:
         rest_client = dr_module.client.get_client()
-        response = rest_client.get("useCases/", params=params)
+        try:
+            response = rest_client.get("useCases/", params=params)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
         items = response.json().get("data", [])
 
     return {

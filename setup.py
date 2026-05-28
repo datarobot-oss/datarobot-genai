@@ -15,7 +15,8 @@
 """Setup script defining optional dependencies (extras) for the package.
 
 This script defines all extras and automatically merges 'core' dependencies
-into all other extras except 'drmcp' at build time.
+into all other extras except standalone extras (`auth`, `drtools`, `drmcpbase`, `drmcp`)
+at build time.
 """
 
 from setuptools import setup
@@ -125,10 +126,14 @@ drtools = auth + [
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
 ]
 
-# drmcp is standalone set of dependencies for MCP Server only (no core), only depends on drtools.
-drmcp = drtools + [
-    "starlette>=1.0.1",  # CVE-2026-48710 fixed in 1.0.1
+# drmcpbase is standalone set of dependencies for MCP Servers only (no core).
+drmcpbase = [
+    "starlette>=1.0.1", # CVE-2026-48710 fixed in 1.0.1
     "fastmcp>=3.2.0,<4.0.0",
+]
+
+# drmcp is standalone set of dependencies for MCP Template Server only (no core), only depends on drmcpbase and drtools.
+drmcp = drmcpbase + drtools + [
     "requests>=2.32.4,<3.0.0",
     "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",
@@ -155,6 +160,7 @@ extras_require = {
     "llamaindex": llamaindex,
     "nat": nat,
     "auth": auth,
+    "drmcpbase": drmcpbase,
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,

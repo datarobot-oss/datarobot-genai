@@ -197,7 +197,7 @@ def _apply_dr_client_stubs() -> None:
     def _stub_get_client(_self: Any) -> Generator[Any, None, None]:
         yield stub_dr
 
-    tools_datarobot_client.DataRobotClient.get_client = _stub_get_client  # type: ignore[method-assign]
+    tools_datarobot_client.DataRobotClient.get_client = _stub_get_client  # type: ignore[assignment]
     # async with dr_client() (predictive tools)
     tools_datarobot_client.dr_client = _stub_dr_client  # type: ignore[assignment]
     # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).

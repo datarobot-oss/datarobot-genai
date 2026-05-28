@@ -90,8 +90,7 @@ def get_datarobot_prompt_template_version(
         client = get_api_client(headers_auth_only=headers_auth_only)
         response = client.get(
             url=(
-                f"genai/promptTemplates/{prompt_template_id}/"
-                f"versions/{prompt_template_version_id}/"
+                f"genai/promptTemplates/{prompt_template_id}/versions/{prompt_template_version_id}/"
             ),
             join_endpoint=True,
         )

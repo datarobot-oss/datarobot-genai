@@ -26,9 +26,9 @@ from datarobot.context import Context as DRContext
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubDeployment
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubModel
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubProject
-from datarobot_genai.drtools.core.constants import DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.drtools.core.credentials import get_credentials
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
+from tests.drmcp.stub_credentials import force_stub_datarobot_credentials_env
 
 
 def _is_stub_token() -> bool:
@@ -115,14 +115,11 @@ def _stub_project_fixture_dict(
 
 def _make_dr_client() -> Any:
     """Build DataRobot client from credentials (env). No HTTP context in pytest."""
-    # Only set stub credentials when token is missing and stub mode is enabled (e.g. CI).
-    # Otherwise the ValueError below is reachable and gives a clear message.
-    if not os.environ.get("DATAROBOT_API_TOKEN"):
-        if os.environ.get("MCP_USE_CLIENT_STUBS", "true").lower() == "true":
-            os.environ["DATAROBOT_API_TOKEN"] = STUB_DATAROBOT_API_TOKEN
-            if not os.environ.get("DATAROBOT_ENDPOINT"):
-                os.environ["DATAROBOT_ENDPOINT"] = DEFAULT_DATAROBOT_ENDPOINT
-            # Stub env persists for the session so all code paths see the same credentials.
+    # Integration tests enable stub mode so credentials from a developer's .env are never used.
+    if os.environ.get("MCP_USE_CLIENT_STUBS", "false").lower() == "true":
+        force_stub_datarobot_credentials_env()
+    elif not os.environ.get("DATAROBOT_API_TOKEN"):
+        raise ValueError("Tests need DATAROBOT_API_TOKEN environment variable set.")
     creds = get_credentials()
     token = creds.datarobot.application_api_token
     if not token:

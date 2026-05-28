@@ -23,16 +23,18 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from .utils import load_env
-
-load_env()
+from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_API_TOKEN
+from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_ENDPOINT
 
 
 def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerParameters:
+    # When running with stubs, always use stub credentials so the subprocess never attempts
+    # a real dr.Client() version check against a staging/production endpoint from .env.
+    api_token = STUB_DATAROBOT_API_TOKEN if use_stub else os.environ["DATAROBOT_API_TOKEN"]
+    api_endpoint = STUB_DATAROBOT_ENDPOINT if use_stub else os.environ["DATAROBOT_ENDPOINT"]
     env = {
-        "DATAROBOT_API_TOKEN": os.environ.get("DATAROBOT_API_TOKEN") or "test-token",
-        "DATAROBOT_ENDPOINT": os.environ.get("DATAROBOT_ENDPOINT")
-        or "https://test.datarobot.com/api/v2",
+        "DATAROBOT_API_TOKEN": api_token,
+        "DATAROBOT_ENDPOINT": api_endpoint,
         "MCP_SERVER_LOG_LEVEL": os.environ.get("MCP_SERVER_LOG_LEVEL") or "WARNING",
         "APP_LOG_LEVEL": os.environ.get("APP_LOG_LEVEL") or "WARNING",
         # Disable all OTEL telemetry for integration tests

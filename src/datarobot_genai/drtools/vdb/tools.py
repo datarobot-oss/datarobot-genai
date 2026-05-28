@@ -18,6 +18,8 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot.errors import ClientError
+
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot import dr_client
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -25,6 +27,7 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
+from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_vector_databases(
+    *,
     offset: Annotated[
         int | None,
         "Skip this many VDBs (0-based). Use with limit for paged listing; omit for all.",
@@ -59,7 +63,10 @@ async def list_vector_databases(
 
     async with dr_client() as dr_module:
         rest_client = dr_module.client.get_client()
-        response = rest_client.get("deployments/", params=params)
+        try:
+            response = rest_client.get("deployments/", params=params)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
         api_response = response.json()
         vdbs = api_response.get("data", [])
         if not isinstance(vdbs, list):
@@ -116,10 +123,13 @@ async def query_vector_database(
 
     async with dr_client() as dr_module:
         rest_client = dr_module.client.get_client()
-        response = rest_client.post(
-            f"deployments/{deployment_id}/predictions/",
-            json=payload,
-        )
+        try:
+            response = rest_client.post(
+                f"deployments/{deployment_id}/predictions/",
+                json=payload,
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
         data = response.json()
         documents = data if isinstance(data, list) else data.get("data", [])
 

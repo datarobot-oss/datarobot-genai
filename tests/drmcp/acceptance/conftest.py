@@ -25,6 +25,9 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_llm_gateway_cl
 from datarobot_genai.drtools.core.credentials import get_credentials
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 
+# Acceptance tests require real DataRobot credentials from .env (mcp_utils_ete loads it on import).
+os.environ["MCP_USE_CLIENT_STUBS"] = "false"
+
 
 @pytest.fixture(scope="session")
 def llm_client() -> DRLLMGatewayMCPClient:

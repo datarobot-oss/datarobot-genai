@@ -25,3 +25,9 @@ def apply_stub_datarobot_credentials_env() -> None:
     """Set DATAROBOT_* env only when unset (does not override a developer's real token)."""
     os.environ.setdefault("DATAROBOT_API_TOKEN", STUB_DATAROBOT_API_TOKEN)
     os.environ.setdefault("DATAROBOT_ENDPOINT", DEFAULT_DATAROBOT_ENDPOINT)
+
+
+def force_stub_datarobot_credentials_env() -> None:
+    """Set stub DATAROBOT_* env (integration tests must not use .env credentials)."""
+    os.environ["DATAROBOT_API_TOKEN"] = STUB_DATAROBOT_API_TOKEN
+    os.environ["DATAROBOT_ENDPOINT"] = DEFAULT_DATAROBOT_ENDPOINT
