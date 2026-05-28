@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.82
+- `drmcp`: removed the `memory_management` package (`MemoryManager`, S3-backed agent storage, and memory MCP tools), the `enable_memory_management` / `ENABLE_MEMORY_MANAGEMENT` config flag, memory-aware tool wrapping (`agent_id` / `storage_id` injection from `X-Agent-Id`), and the `/agent/...` storage REST routes.
+- `drtools`: removed AWS/S3 credential fields and helpers from `MCPServerCredentials` (`aws_credential`, `aws_access_key_id`, `has_aws_credentials`, `get_aws_credentials`, `aws_predictions_s3_*`); they were only used by memory management.
+- `drmcp` extra: dropped the `boto3` dependency.
+
 ## 0.15.81
 `drmcp`: `MCPServerConfig` now reads `pulumi_config.json` via `PulumiConfigSettingsSource` (lowest priority) and accepts standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` fields. Telemetry setup bridges these to `os.environ` so local OTel tracing works without manual env var configuration.
 

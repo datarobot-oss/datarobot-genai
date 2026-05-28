@@ -23,8 +23,6 @@ from unittest.mock import patch
 
 import pytest
 from fastmcp.tools import Tool
-from mcp.server.fastmcp import Context
-from mcp.shared.context import RequestContext
 from mcp.types import Tool as MCPTool
 
 from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
@@ -54,31 +52,6 @@ class CharsetTestCase(NamedTuple):
 
 
 @pytest.fixture
-def mock_context() -> Context[MagicMock, MagicMock, MagicMock]:
-    """Create a mock Context with headers."""
-    mock_request = MagicMock()
-    mock_request.headers = {"x-agent-id": "test-agent-123"}
-    ctx = Context(
-        request_context=RequestContext(
-            request=mock_request,
-            request_id="req-123",
-            meta=None,
-            session=MagicMock(),
-            lifespan_context=MagicMock(),
-        )
-    )
-    return ctx
-
-
-@pytest.fixture
-def mock_memory_manager() -> MagicMock:
-    """Create a mock MemoryManager."""
-    mock = MagicMock()
-    mock.get_active_storage_id_for_agent = AsyncMock(return_value="test-storage-456")
-    return mock
-
-
-@pytest.fixture
 def mock_mcp() -> Generator[MagicMock, None, None]:
     """Set up mock MCP to handle tool registration verification.
 
@@ -105,14 +78,8 @@ def mock_mcp() -> Generator[MagicMock, None, None]:
 
 
 @pytest.mark.asyncio
-@patch("datarobot_genai.drmcp.core.mcp_instance.MemoryManager")
-@patch("datarobot_genai.drmcp.core.mcp_instance.get_memory_manager")
-async def test_register_tools_basic(
-    mock_get_memory_manager: MagicMock,
-    mock_memory_manager_cls: MagicMock,
-    mock_mcp: MagicMock,
-) -> None:
-    """Test basic tool registration without tags or memory management."""
+async def test_register_tools_basic(mock_mcp: MagicMock) -> None:
+    """Test basic tool registration without tags."""
 
     # Setup
     async def dummy_tool() -> None:
@@ -147,42 +114,6 @@ async def test_register_tools_with_tags(mock_mcp: MagicMock) -> None:
     assert registered_tool.name == "test_tool"
     # Tags are passed to Tool.from_function and exposed via meta._fastmcp.tags by FastMCP
     assert registered_tool.tags == test_tags
-
-
-@pytest.mark.asyncio
-@patch("datarobot_genai.drmcp.core.mcp_instance.MemoryManager")
-@patch("datarobot_genai.drmcp.core.mcp_instance.get_memory_manager")
-async def test_register_tools_with_memory_management(
-    mock_get_memory_manager: MagicMock,
-    mock_memory_manager_cls: MagicMock,
-    mock_mcp: MagicMock,
-    mock_context: MagicMock,
-    mock_memory_manager: MagicMock,
-) -> None:
-    """Test tool registration with memory management."""
-    # Setup
-    mock_memory_manager_cls.is_initialized = MagicMock(return_value=True)
-    mock_get_memory_manager.return_value = mock_memory_manager
-
-    # Create a tool that expects memory management args
-    async def dummy_tool(
-        ctx: Context[MagicMock, MagicMock, MagicMock],
-        agent_id: str | None = None,
-        storage_id: str | None = None,
-    ) -> dict[str, str | None]:
-        return {"agent_id": agent_id, "storage_id": storage_id}
-
-    # Execute
-    await register_tools(dummy_tool, name="test_tool")
-
-    # Get the wrapped function from add_tool call
-    registered_tool = mock_mcp.add_tool.call_args[0][0]
-
-    # Call the wrapped function with a context
-    result = await registered_tool.fn(ctx=mock_context)
-
-    # Verify memory IDs were properly injected
-    assert result == {"agent_id": "test-agent-123", "storage_id": "test-storage-456"}
 
 
 class TestFormatResponseAsToolResult:
