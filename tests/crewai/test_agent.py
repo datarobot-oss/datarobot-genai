@@ -831,6 +831,35 @@ async def test_invoke_streaming_emits_separate_messages_per_agent_role(
     assert planner_end_idx < planner_step_finish_idx < writer_step_start_idx
 
 
+async def test_invoke_streaming_skips_empty_text_chunks(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that emits empty TEXT chunks alongside real content
+    chunks = [
+        _text_chunk("", "Solo"),
+        _text_chunk("hello", "Solo"),
+        _text_chunk("", "Solo"),
+        _text_chunk(" world", "Solo"),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and empty chunks do not open a text message
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(starts) == 1
+    assert len(ends) == 1
+    assert [c.delta for c in contents] == ["hello", " world"]
+    assert all(c.delta for c in contents)
+
+
 async def test_invoke_streaming_single_agent_role_uses_single_message(
     mock_ragas_event_listener, run_agent_input
 ) -> None:

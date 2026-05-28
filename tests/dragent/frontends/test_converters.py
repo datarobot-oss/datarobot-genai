@@ -463,6 +463,41 @@ def test_convert_dragent_event_response_to_chat_response_chunk_returns_original_
     assert result.choices[0].delta.content == "from-stream"
 
 
+def test_convert_dragent_event_response_to_chat_response_chunk_attaches_datarobot_moderations() -> (
+    None
+):
+    # GIVEN original_chunk without moderations but response carries guard metadata
+    existing = _make_chat_response_chunk(content="from-stream")
+    moderations = {"Prompts_token_count": 3, "Responses_token_count": 50}
+    response = DRAgentEventResponse(
+        original_chunk=existing,
+        datarobot_moderations=moderations,
+        events=[TextMessageContentEvent(message_id="m1", delta="ignored when chunk set")],
+    )
+
+    # WHEN converting
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN moderations are merged onto the NAT chunk for chat/completions clients
+    assert result is not existing
+    assert result.choices[0].delta.content == "from-stream"
+    assert result.datarobot_moderations == moderations
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_moderations_from_events_only() -> (
+    None
+):
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        datarobot_moderations={"Prompts_token_count": 3},
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+    )
+
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    assert result.datarobot_moderations == {"Prompts_token_count": 3}
+
+
 # --- Tool-call event conversion ------------------------------------------
 
 
@@ -594,6 +629,35 @@ def test_convert_dragent_event_response_to_openai_chunk_returns_mapped_original_
     assert result.id == "nat-chunk-1"
     assert result.choices[0].delta.content == "from-stream"
     assert isinstance(result.created, int)
+
+
+def test_convert_dragent_event_response_to_openai_chunk_attaches_datarobot_moderations() -> None:
+    existing = _make_chat_response_chunk(content="from-stream", chunk_id="nat-chunk-1")
+    moderations = {"Prompts_token_count": 3, "Responses_token_count": 50}
+    response = DRAgentEventResponse(
+        original_chunk=existing,
+        datarobot_moderations=moderations,
+        events=[TextMessageContentEvent(message_id="m1", delta="ignored")],
+    )
+    result = convert_dragent_event_response_to_openai_chat_completion_chunk(response)
+    assert result.datarobot_moderations == moderations
+
+
+def test_convert_dragent_event_response_to_openai_chunk_preserves_empty_datarobot_moderations() -> (
+    None
+):
+    # GIVEN a response that explicitly sets empty moderation metadata
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        datarobot_moderations={},
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+    )
+
+    # WHEN converting to OpenAI chunk
+    result = convert_dragent_event_response_to_openai_chat_completion_chunk(response)
+
+    # THEN explicit empty metadata is preserved (not treated as falsy/missing)
+    assert result.datarobot_moderations == {}
 
 
 def test_openai_chunk_from_nat_matches_dragent_event_path_for_text() -> None:

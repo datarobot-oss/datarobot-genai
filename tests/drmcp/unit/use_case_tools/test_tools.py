@@ -17,8 +17,10 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.use_case import tools
 
 
@@ -173,6 +175,59 @@ async def test_list_use_case_assets_multiple_ids() -> None:
 async def test_list_use_case_assets_missing_id() -> None:
     with pytest.raises(ToolError, match="use_case_id.*or.*use_case_ids.*must be provided"):
         await tools.list_use_case_assets()
+
+
+@pytest.mark.asyncio
+async def test_list_use_cases_client_error_404() -> None:
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.side_effect = ClientError(
+        "404 client error: {'message': 'Not Found'}",
+        status_code=404,
+        json={"message": "Not Found"},
+    )
+    mock_dr_module = MagicMock()
+    mock_dr_module.client.get_client.return_value = mock_rest_client
+    with (
+        patch(
+            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
+    ):
+        mock_drc.return_value.get_client.return_value = mock_dr_module
+
+        with pytest.raises(ToolError) as exc_info:
+            await tools.list_use_cases()
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_list_use_case_assets_client_error_404() -> None:
+    with (
+        patch(
+            "datarobot_genai.drtools.use_case.tools.get_datarobot_access_token",
+            new_callable=AsyncMock,
+            return_value="token",
+        ),
+        patch("datarobot_genai.drtools.use_case.tools.DataRobotClient") as mock_drc,
+    ):
+        mock_client = MagicMock()
+        mock_client.UseCase.get.side_effect = ClientError(
+            "404 client error: {'message': 'Not Found'}",
+            status_code=404,
+            json={"message": "Not Found"},
+        )
+        mock_drc.return_value.get_client.return_value = mock_client
+
+        result = await tools.list_use_case_assets(use_case_id="missing-uc")
+
+    assert result["count"] == 1
+    use_case_data = result["use_cases"][0]
+    assert use_case_data["use_case_id"] == "missing-uc"
+    assert "error" in use_case_data
+    assert "404" in use_case_data["error"]
 
 
 @pytest.mark.asyncio

@@ -57,6 +57,12 @@ _DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
 # Default HTTP timeout for registry requests (in seconds).
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
+# Maximum page size accepted by the registry API.
+_MAX_PAGE_SIZE = 100
+
+# Safety limit to prevent infinite pagination loops.
+_MAX_PAGES = 100
+
 # Allowed strategies for duplicate external IDs.
 DuplicateStrategy = Literal["first", "last", "error"]
 
@@ -284,10 +290,17 @@ class AgentCardRegistry:
     # ------------------------------------------------------------------
 
     async def _fetch(self, params: dict[str, str]) -> dict[str, AgentCard]:
-        """Execute a single registry HTTP GET and return parsed cards."""
+        """Execute registry HTTP GET(s) with pagination and return all parsed cards.
+
+        Requests the maximum page size (100) to minimise round-trips, then
+        follows ``next`` links until all pages are consumed.  All entries are
+        accumulated and parsed together so that the ``on_duplicate`` strategy
+        is applied consistently across the full result set.
+        """
         token, endpoint = _resolve_settings(self._api_token, self._endpoint)
         registry_url = build_agent_cards_registry_url(endpoint)
         headers = {"Authorization": f"Bearer {token}"}
+        params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
         logger.info(
             "Fetching agent cards from registry: %s (params=%s)",
@@ -295,10 +308,33 @@ class AgentCardRegistry:
             params,
         )
 
+        all_entries: list[dict[str, Any]] = []
+
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
-                response = await client.get(registry_url, params=params, headers=headers)
+                response = await client.get(registry_url, params=params_with_limit, headers=headers)
                 response.raise_for_status()
+                body = response.json()
+                all_entries.extend(body.get("data", []))
+
+                next_url = body.get("next")
+                pages_fetched = 1
+                while next_url:
+                    if pages_fetched >= _MAX_PAGES:
+                        logger.warning(
+                            "Pagination safety limit reached (%d pages). "
+                            "Some agent cards may not have been fetched.",
+                            _MAX_PAGES,
+                        )
+                        break
+                    logger.debug("Following pagination link (page %d).", pages_fetched + 1)
+                    response = await client.get(next_url, headers=headers)
+                    response.raise_for_status()
+                    body = response.json()
+                    all_entries.extend(body.get("data", []))
+                    next_url = body.get("next")
+                    pages_fetched += 1
+
         except httpx.HTTPStatusError as exc:
             raise AgentCardRegistryError(
                 f"Agent card registry request failed with HTTP "
@@ -308,8 +344,8 @@ class AgentCardRegistry:
         except httpx.HTTPError as exc:
             raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
-        cards = _parse_registry_response(response.json(), on_duplicate=self._on_duplicate)
-        logger.info("Fetched %d agent card(s) from registry.", len(cards))
+        cards = _parse_registry_response({"data": all_entries}, on_duplicate=self._on_duplicate)
+        logger.info("Fetched %d agent card(s) from registry (%d pages).", len(cards), pages_fetched)
         return cards
 
     def _is_cached(self, key: str) -> bool:

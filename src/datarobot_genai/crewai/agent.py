@@ -537,7 +537,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         reasoning_started = False
 
                     # Display text chunks
-                    if chunk.chunk_type == StreamChunkType.TEXT:
+                    if chunk.chunk_type == StreamChunkType.TEXT and chunk.content:
                         if streaming_event_listener.reasoning_event:
                             yield (
                                 ReasoningMessageContentEvent(
