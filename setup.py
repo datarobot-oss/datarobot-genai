@@ -130,6 +130,9 @@ drtools = auth + [
 drmcpbase = [
     "starlette>=1.0.1", # CVE-2026-48710 fixed in 1.0.1
     "fastmcp>=3.2.0,<4.0.0",
+    "aiohttp>=3.13.3,<4.0.0",
+    "aiohttp-retry>=2.8.3,<3.0.0",
+    "datarobot>=3.10.0,<4.0.0",
 ]
 
 # drmcp is standalone set of dependencies for MCP Template Server only (no core), only depends on drmcpbase and drtools.
@@ -148,7 +151,6 @@ drmcp = drmcpbase + drtools + [
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
-    "aiohttp-retry>=2.8.3,<3.0.0",
     "datarobot-early-access==3.14.0.2026.3.18.162920",
     "async-lru>=2.3.0",
 ]

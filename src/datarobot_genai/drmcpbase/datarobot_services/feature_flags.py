@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClientWithAsyncAPI
+from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 
 
 async def is_mcp_tools_gallery_support_enabled(

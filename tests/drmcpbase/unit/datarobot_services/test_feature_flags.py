@@ -1,16 +1,3 @@
-# Copyright 2026 DataRobot, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 from collections.abc import Iterator
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
@@ -18,13 +5,15 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.core.feature_flags import is_mcp_tools_gallery_support_enabled
+from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
+    is_mcp_tools_gallery_support_enabled,
+)
 
 
 class TestFeatureFlags:
     @pytest.fixture
     def module_under_test(self) -> str:
-        return "datarobot_genai.drtools.core.feature_flags"
+        return "datarobot_genai.drmcpbase.datarobot_services.feature_flags"
 
     @pytest.fixture
     def mock_datarobot_client_with_async_api_cls(self, module_under_test: str) -> Iterator[Mock]:
