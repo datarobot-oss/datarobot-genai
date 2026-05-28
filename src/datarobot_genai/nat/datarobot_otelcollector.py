@@ -180,15 +180,19 @@ def prune_exporter_if_env_missing(config_yaml: dict) -> None:
     exporter without raising.
 
     An entry is pruned only when the auto-derive path can't produce values:
-    if the user pinned ``datarobot_api_key`` and ``datarobot_entity_id``
-    explicitly in the YAML, the entry is preserved regardless of env.
+    if the user pinned ``endpoint``, ``datarobot_api_key``, and
+    ``datarobot_entity_id`` explicitly in the YAML, the entry is preserved
+    regardless of env.
     """
     tracing = (config_yaml.get("telemetry") or {}).get("tracing") or {}
     if not tracing:
         return
     has_deployment = bool(os.getenv("MLOPS_DEPLOYMENT_ID"))
     has_api_key = bool(os.getenv("DATAROBOT_API_TOKEN"))
-    if has_deployment and has_api_key:
+    has_endpoint = bool(
+        os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
+    )
+    if has_deployment and has_api_key and has_endpoint:
         return
     for name in list(tracing.keys()):
         entry = tracing[name]
@@ -196,13 +200,18 @@ def prune_exporter_if_env_missing(config_yaml: dict) -> None:
             continue
         entity_id_pinned = bool(entry.get("datarobot_entity_id"))
         api_key_pinned = bool(entry.get("datarobot_api_key"))
-        if (has_deployment or entity_id_pinned) and (has_api_key or api_key_pinned):
+        endpoint_pinned = bool(entry.get("endpoint"))
+        if (
+            (has_deployment or entity_id_pinned)
+            and (has_api_key or api_key_pinned)
+            and (has_endpoint or endpoint_pinned)
+        ):
             continue
         logger.info(
             "Skipping datarobot_otelcollector tracing exporter %r: "
             "DataRobot deployment env (MLOPS_DEPLOYMENT_ID / "
-            "DATAROBOT_API_TOKEN) not set and the field is not pinned in "
-            "workflow.yaml.",
+            "DATAROBOT_API_TOKEN / DATAROBOT_(PUBLIC_)ENDPOINT) not fully "
+            "set and the field is not pinned in workflow.yaml.",
             name,
         )
         tracing.pop(name)

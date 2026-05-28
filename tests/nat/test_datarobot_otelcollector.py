@@ -165,24 +165,38 @@ class TestPruneExporterIfEnvMissing:
         prune_exporter_if_env_missing(cfg)
         assert cfg["telemetry"]["tracing"] == {}
 
-    def test_keeps_when_user_pinned_both_values(self, clean_env):
+    def test_keeps_when_user_pinned_all_values(self, clean_env):
         cfg = self._yaml(
             project="agent",
+            endpoint="https://pinned.test/otel/v1/traces",
             datarobot_api_key="pinned-key",
             datarobot_entity_id="deployment-pinned",
         )
         prune_exporter_if_env_missing(cfg)
         assert "otelcollector" in cfg["telemetry"]["tracing"]
 
-    def test_keeps_when_only_api_key_pinned_but_deployment_in_env(self, clean_env):
+    def test_keeps_when_api_key_pinned_but_deployment_and_endpoint_in_env(self, clean_env):
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
         cfg = self._yaml(project="agent", datarobot_api_key="pinned-key")
         prune_exporter_if_env_missing(cfg)
         assert "otelcollector" in cfg["telemetry"]["tracing"]
 
+    def test_prunes_when_endpoint_env_missing(self, clean_env):
+        # Regression: previously the pruner only checked MLOPS_DEPLOYMENT_ID
+        # and DATAROBOT_API_TOKEN, so an env with those two set but no
+        # DATAROBOT_(PUBLIC_)ENDPOINT would survive the prune and reach
+        # OTLPSpanAdapterExporter with endpoint="".
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        cfg = self._yaml(project="agent")
+        prune_exporter_if_env_missing(cfg)
+        assert cfg["telemetry"]["tracing"] == {}
+
     def test_keeps_when_env_present(self, clean_env):
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
         cfg = self._yaml(project="agent")
         prune_exporter_if_env_missing(cfg)
         assert "otelcollector" in cfg["telemetry"]["tracing"]
