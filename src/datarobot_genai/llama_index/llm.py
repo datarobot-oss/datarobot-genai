@@ -199,6 +199,16 @@ def get_router_llm(
                 model_name=self.model,
             )
 
+        def _prepare_chat_with_tools(self, tools: Any, **kwargs: Any) -> Any:
+            result = super()._prepare_chat_with_tools(tools, **kwargs)
+            # Some DR LLM gateway backends (e.g. Azure/GPT) reject tool_choice
+            # and parallel_tool_calls when no tools are present. LlamaIndex
+            # always emits both, so strip them.
+            if not result.get("tools"):
+                result.pop("tool_choice", None)
+                result.pop("parallel_tool_calls", None)
+            return result
+
         def _chat(self, messages: Any, **kwargs: Any) -> Any:
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
             from llama_index.core.base.llms.types import ChatResponse  # noqa: PLC0415
