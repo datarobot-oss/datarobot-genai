@@ -26,11 +26,6 @@ def isolate_credentials(monkeypatch):
     # Disable OpenTelemetry to prevent background export errors
     monkeypatch.setenv("OTEL_ENABLED", "false")
 
-    # Clear environment variables that might leak from .env or system
-    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
-    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
-    monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
-
     # Patch model_config to disable .env file loading during tests
     config_without_env = SettingsConfigDict(
         env_file=None,  # Don't load .env file in tests
@@ -69,60 +64,6 @@ def test_datarobot_credentials_custom_endpoint() -> None:
         assert creds.application_api_token == "test-token"
         # The endpoint will be the custom one we set in env vars
         assert creds.endpoint == "https://custom.endpoint.com/api/v2"
-
-
-def test_mcp_server_credentials_aws_defaults() -> None:
-    """Test AWS credentials with default values."""
-    env_vars = {
-        "DATAROBOT_API_TOKEN": "test-token",
-    }
-    with patch.dict("os.environ", env_vars, clear=True):  # Clear all env vars
-        creds = credentials.MCPServerCredentials()
-        assert creds.aws_access_key_id is None
-        assert creds.aws_secret_access_key is None
-        assert creds.aws_session_token is None
-        assert creds.aws_predictions_s3_bucket == "datarobot-rd"
-        assert creds.aws_predictions_s3_prefix == "dev/mcp-temp-storage/predictions/"
-
-
-def test_mcp_server_credentials_aws_custom_values() -> None:
-    """Test AWS credentials with custom values."""
-    env_vars = {
-        "DATAROBOT_API_TOKEN": "test-token",
-        "AWS_ACCESS_KEY_ID": "test-key-id",
-        "AWS_SECRET_ACCESS_KEY": "test-secret-key",
-        "AWS_SESSION_TOKEN": "test-session-token",
-        "AWS_PREDICTIONS_S3_BUCKET": "custom-bucket",
-        "AWS_PREDICTIONS_S3_PREFIX": "custom/prefix/",
-    }
-    with patch.dict("os.environ", env_vars, clear=True):
-        creds = credentials.MCPServerCredentials()
-        assert creds.aws_access_key_id == "test-key-id"
-        assert creds.aws_secret_access_key == "test-secret-key"
-        assert creds.aws_session_token == "test-session-token"
-        assert creds.aws_predictions_s3_bucket == "custom-bucket"
-        assert creds.aws_predictions_s3_prefix == "custom/prefix/"
-
-
-def test_mcp_server_credentials_has_aws_credentials() -> None:
-    """Test MCPServerCredentials.has_aws_credentials method."""
-    # Test with AWS credentials
-    env_vars = {
-        "DATAROBOT_API_TOKEN": "test-token",
-        "AWS_ACCESS_KEY_ID": "test-key-id",
-        "AWS_SECRET_ACCESS_KEY": "test-secret-key",
-    }
-    with patch.dict("os.environ", env_vars, clear=True):
-        creds = credentials.MCPServerCredentials()
-        assert creds.has_aws_credentials() is True
-
-    # Test without AWS credentials
-    env_vars = {
-        "DATAROBOT_API_TOKEN": "test-token",
-    }
-    with patch.dict("os.environ", env_vars, clear=True):
-        creds = credentials.MCPServerCredentials()
-        assert creds.has_aws_credentials() is False
 
 
 def test_get_credentials_singleton() -> None:

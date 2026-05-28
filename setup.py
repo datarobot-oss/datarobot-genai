@@ -143,7 +143,6 @@ drmcp = drmcpbase + drtools + [
     "rich>=13.0.0,<16.0.0",
     "datarobot-asgi-middleware>=0.2.0,<1.0.0",  # not imported in drmcp; used when running server in DataRobot ASGI env
     "python-dotenv>=1.1.0,<2.0.0",
-    "boto3>=1.34.0,<2.0.0",
     "pydantic-settings>=2.1.0,<3.0.0",
     "opentelemetry-api>=1.22.0,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
