@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.83
+## 0.15.84
 - Refactored `DataRobotClient.get_client()` to use `client_configuration()` (ContextVar-based) instead of the global `dr.Client()`, preventing token mixing between concurrent MCP tool invocations.
 - Added `dr_client()` async context manager to eliminate repeated two-line boilerplate across predictive tool functions.
 - Fixed `get_datarobot_prompt_template` and `get_datarobot_prompt_template_version` in `dr_lib.py` to always use `get_api_client()` for token resolution.
+
+## 0.15.83
+- `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.
 
 ## 0.15.82
 - `drmcp`: removed the `memory_management` package (`MemoryManager`, S3-backed agent storage, and memory MCP tools), the `enable_memory_management` / `ENABLE_MEMORY_MANAGEMENT` config flag, memory-aware tool wrapping (`agent_id` / `storage_id` injection from `X-Agent-Id`), and the `/agent/...` storage REST routes.

@@ -148,3 +148,66 @@ class TestRegisterPrompt:
         )
         mock_datarobot_mcp_server.notify_prompts_changed.assert_called_once_with()
         assert actual_output == mock_datarobot_mcp_server.add_prompt.return_value
+
+    @pytest.mark.asyncio
+    async def test_register_prompt_sets_mapping_with_deduplicated_name(
+        self,
+        mock_check_prompt_registration_status_after_it_finishes: Mock,
+        mock_datarobot_mcp_server: Mock,
+        mock_dr_mcp_extras: Mock,
+        mock_get_prompt_name_no_duplicate: AsyncMock,
+        mock_mcp_tool_callable: Mock,
+        mock_prompt_from_function: Mock,
+    ) -> None:
+        prompt_func_name = "my_prompt"
+        deduplicated_name = "my_prompt (abcd)"
+        mock_get_prompt_name_no_duplicate.return_value = deduplicated_name
+        mock_datarobot_mcp_server.get_prompt_mapping = AsyncMock(return_value={})
+        mock_datarobot_mcp_server.set_prompt_mapping = AsyncMock()
+
+        await register_prompt(
+            fn=mock_mcp_tool_callable,
+            name=prompt_func_name,
+            prompt_template=("pt1", "v1"),
+        )
+
+        mock_datarobot_mcp_server.set_prompt_mapping.assert_called_once_with(
+            "pt1", "v1", deduplicated_name
+        )
+        mock_prompt_from_function.assert_called_once_with(
+            fn=mock_dr_mcp_extras.return_value.return_value,
+            name=deduplicated_name,
+            title=None,
+            description=None,
+            tags=None,
+            meta={
+                "resource_category": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_register_prompt_removes_prior_mapping_before_deduplication(
+        self,
+        mock_check_prompt_registration_status_after_it_finishes: Mock,
+        mock_datarobot_mcp_server: Mock,
+        mock_dr_mcp_extras: Mock,
+        mock_get_prompt_name_no_duplicate: AsyncMock,
+        mock_mcp_tool_callable: Mock,
+        mock_prompt_from_function: Mock,
+    ) -> None:
+        mock_datarobot_mcp_server.get_prompt_mapping = AsyncMock(
+            return_value={"pt1": ("v0", "my_prompt")}
+        )
+        mock_datarobot_mcp_server.remove_prompt_mapping = AsyncMock()
+        mock_datarobot_mcp_server.set_prompt_mapping = AsyncMock()
+
+        await register_prompt(
+            fn=mock_mcp_tool_callable,
+            name="my_prompt",
+            prompt_template=("pt1", "v1"),
+        )
+
+        mock_datarobot_mcp_server.remove_prompt_mapping.assert_called_once_with("pt1", "v0")
+        mock_get_prompt_name_no_duplicate.assert_called_once_with(
+            mock_datarobot_mcp_server, "my_prompt"
+        )

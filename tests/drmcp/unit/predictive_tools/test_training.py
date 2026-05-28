@@ -68,25 +68,7 @@ async def test_suggest_use_cases() -> None:
     )
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    mock_insights = {
-        "total_columns": 4,
-        "total_rows": 3,
-        "numerical_columns": ["features"],
-        "categorical_columns": ["multi_target"],
-        "datetime_columns": [],
-        "text_columns": [],
-        "potential_targets": ["binary_target", "multi_target", "regression_target"],
-        "missing_data_summary": {},
-    }
-
-    with (
-        patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client,
-        patch(
-            "datarobot_genai.drtools.predictive.training.analyze_dataset",
-            new_callable=AsyncMock,
-            return_value=mock_insights,
-        ),
-    ):
+    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
         mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -107,25 +89,7 @@ async def test_get_exploratory_insights() -> None:
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    mock_insights = {
-        "total_columns": 2,
-        "total_rows": 3,
-        "numerical_columns": ["features", "target"],
-        "categorical_columns": [],
-        "datetime_columns": [],
-        "text_columns": [],
-        "potential_targets": ["target"],
-        "missing_data_summary": {},
-    }
-
-    with (
-        patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client,
-        patch(
-            "datarobot_genai.drtools.predictive.training.analyze_dataset",
-            new_callable=AsyncMock,
-            return_value=mock_insights,
-        ),
-    ):
+    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
         mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -168,25 +132,7 @@ async def test_get_exploratory_insights_catalog_feature_profile() -> None:
     mock_api_feat.get_histogram.return_value = mock_hist
     mock_dataset.iterate_all_features.return_value = iter([mock_api_feat, MagicMock(name="other")])
 
-    mock_insights = {
-        "total_columns": 2,
-        "total_rows": 3,
-        "numerical_columns": ["features", "target"],
-        "categorical_columns": [],
-        "datetime_columns": [],
-        "text_columns": [],
-        "potential_targets": ["target"],
-        "missing_data_summary": {},
-    }
-
-    with (
-        patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client,
-        patch(
-            "datarobot_genai.drtools.predictive.training.analyze_dataset",
-            new_callable=AsyncMock,
-            return_value=mock_insights,
-        ),
-    ):
+    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
         mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -212,25 +158,7 @@ async def test_get_exploratory_insights_feature_col_unknown_column() -> None:
     mock_df = pd.DataFrame({"a": [1]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    mock_insights = {
-        "total_columns": 1,
-        "total_rows": 1,
-        "numerical_columns": ["a"],
-        "categorical_columns": [],
-        "datetime_columns": [],
-        "text_columns": [],
-        "potential_targets": [],
-        "missing_data_summary": {},
-    }
-
-    with (
-        patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client,
-        patch(
-            "datarobot_genai.drtools.predictive.training.analyze_dataset",
-            new_callable=AsyncMock,
-            return_value=mock_insights,
-        ),
-    ):
+    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
         mock_client = MagicMock()
         mock_client.Dataset.get.return_value = mock_dataset
         mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)

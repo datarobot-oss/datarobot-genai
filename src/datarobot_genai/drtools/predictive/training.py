@@ -156,6 +156,42 @@ def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFra
         )
 
 
+def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
+    """Build structural dataset insights from an already-loaded dataframe."""
+    numerical_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    datetime_cols = df.select_dtypes(include=["datetime64"]).columns.tolist()
+
+    # Identify potential text columns (categorical with high cardinality)
+    text_cols = []
+    for col in categorical_cols:
+        if df[col].str.len().mean() > 20:  # Text detection
+            text_cols.append(col)
+            categorical_cols.remove(col)  # Remove from categorical columns
+
+    # Calculate missing data
+    missing_data = {}
+    for col in df.columns:
+        missing_pct = (df[col].isnull().sum() / len(df)) * 100
+        if missing_pct > 0:
+            missing_data[col] = missing_pct
+
+    # Identify potential target columns
+    potential_targets = _identify_potential_targets(df, numerical_cols, categorical_cols)
+
+    insights = DatasetInsight(
+        total_columns=len(df.columns),
+        total_rows=len(df),
+        numerical_columns=numerical_cols,
+        categorical_columns=categorical_cols,
+        datetime_columns=datetime_cols,
+        text_columns=text_cols,
+        potential_targets=potential_targets,
+        missing_data_summary=missing_data,
+    )
+    return asdict(insights)
+
+
 @tool_metadata(
     tags={"predictive", "training", "read", "analysis", "dataset"},
     description=(
@@ -174,43 +210,8 @@ async def analyze_dataset(
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     async with dr_client() as client:
-        dataset, df = _get_dataset_or_raise(client, dataset_id)
-
-        # Analyze dataset structure
-        numerical_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
-        categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
-        datetime_cols = df.select_dtypes(include=["datetime64"]).columns.tolist()
-
-        # Identify potential text columns (categorical with high cardinality)
-        text_cols = []
-        for col in categorical_cols:
-            if df[col].str.len().mean() > 20:  # Text detection
-                text_cols.append(col)
-                categorical_cols.remove(col)  # Remove from categorical columns
-
-        # Calculate missing data
-        missing_data = {}
-        for col in df.columns:
-            missing_pct = (df[col].isnull().sum() / len(df)) * 100
-            if missing_pct > 0:
-                missing_data[col] = missing_pct
-
-        # Identify potential target columns
-        potential_targets = _identify_potential_targets(df, numerical_cols, categorical_cols)
-
-        insights = DatasetInsight(
-            total_columns=len(df.columns),
-            total_rows=len(df),
-            numerical_columns=numerical_cols,
-            categorical_columns=categorical_cols,
-            datetime_columns=datetime_cols,
-            text_columns=text_cols,
-            potential_targets=potential_targets,
-            missing_data_summary=missing_data,
-        )
-        insights_dict = asdict(insights)
-
-        return insights_dict
+        _, df = _get_dataset_or_raise(client, dataset_id)
+        return _build_dataset_insights(df)
 
 
 @tool_metadata(
@@ -230,20 +231,18 @@ async def suggest_use_cases(
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
     async with dr_client() as client:
-        dataset, df = _get_dataset_or_raise(client, dataset_id)
-    # client no longer needed; analyze_dataset creates its own client
-    insights_result = await analyze_dataset(dataset_id=dataset_id)
-    insights = insights_result
+        _, df = _get_dataset_or_raise(client, dataset_id)
+        insights = _build_dataset_insights(df)
 
-    suggestions = []
-    for target_col in insights["potential_targets"]:
-        target_suggestions = _analyze_target_for_use_cases(df, target_col)
-        suggestions.extend([asdict(s) for s in target_suggestions])
+        suggestions = []
+        for target_col in insights["potential_targets"]:
+            target_suggestions = _analyze_target_for_use_cases(df, target_col)
+            suggestions.extend([asdict(s) for s in target_suggestions])
 
-    # Sort by confidence score
-    suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+        # Sort by confidence score
+        suggestions.sort(key=lambda x: x["confidence"], reverse=True)
 
-    return {"use_case_suggestions": suggestions}
+        return {"use_case_suggestions": suggestions}
 
 
 @tool_metadata(
@@ -282,10 +281,7 @@ async def get_exploratory_insights(
 
     async with dr_client() as client:
         dataset, df = _get_dataset_or_raise(client, dataset_id)
-
-        # Get dataset insights first
-        insights_result = await analyze_dataset(dataset_id=dataset_id)
-        insights = insights_result
+        insights = _build_dataset_insights(df)
 
         eda_insights = {
             "dataset_summary": {
