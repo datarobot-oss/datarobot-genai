@@ -55,7 +55,6 @@ from __future__ import annotations
 
 import logging
 import os
-import urllib.parse
 from collections.abc import AsyncGenerator
 
 from nat.builder.builder import Builder
@@ -70,34 +69,20 @@ from nat.plugins.opentelemetry.otel_span_exporter import get_opentelemetry_sdk_v
 from pydantic import Field
 from pydantic import field_validator
 
+# Resolver helpers live in core/ so telemetry_agent can reuse them without
+# importing from nat/. Keep underscore aliases so this module's existing
+# Field(default_factory=…) bindings stay stable.
+from datarobot_genai.core.datarobot_otel import (
+    resolve_api_key_from_env as _resolve_api_key_from_env,
+)
+from datarobot_genai.core.datarobot_otel import (
+    resolve_entity_id_from_env as _resolve_entity_id_from_env,
+)
+from datarobot_genai.core.datarobot_otel import (
+    resolve_otel_endpoint_from_env as _resolve_otel_endpoint_from_env,
+)
+
 logger = logging.getLogger(__name__)
-
-
-def _resolve_api_key_from_env() -> str:
-    return os.getenv("DATAROBOT_API_TOKEN", "")
-
-
-def _resolve_entity_id_from_env() -> str:
-    # MLOPS_DEPLOYMENT_ID holds the bare deployment ID inside a DR deployment;
-    # auto-prepend the 'deployment-' prefix required by the OTel ingest path.
-    # Mirrors the MLOPS_DEPLOYMENT_ID-driven pattern used by the A2A frontend.
-    deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    return f"deployment-{deployment_id}" if deployment_id else ""
-
-
-def _resolve_otel_endpoint_from_env() -> str:
-    # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
-    # → https://app.datarobot.com/otel/v1/traces. The OTel collector ingress
-    # lives at the same host, off /otel/v1/traces, not under /api/v2. We
-    # only honour explicitly set env vars (no built-in default) so an
-    # unconfigured env never silently targets app.datarobot.com.
-    base = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
-    if not base:
-        return ""
-    parsed = urllib.parse.urlsplit(base)
-    if not parsed.scheme or not parsed.netloc:
-        return ""
-    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
 
 
 class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
