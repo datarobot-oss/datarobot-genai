@@ -28,8 +28,8 @@ llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 planner = FunctionAgent(
     name="planner",
-    description="Completes tasks and outlines results",
-    system_prompt="Complete the task, calling any needed tools. Summarize the result in 1 bullet. Hand off to writer.",
+    description="Calls tools or replies briefly, then hands off",
+    system_prompt="Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed. Hand off to writer.",
     llm=llm,
     tools=[generate_objectid_tool],
     can_handoff_to=["writer"],
@@ -37,7 +37,7 @@ planner = FunctionAgent(
 writer = FunctionAgent(
     name="writer",
     description="Writes",
-    system_prompt="Reply in 1 short sentence using the outline.",
+    system_prompt="Reply with only the tool's result, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool],
 )

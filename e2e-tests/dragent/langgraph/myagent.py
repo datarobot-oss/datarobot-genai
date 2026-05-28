@@ -48,7 +48,7 @@ def graph_factory(
     agent_planner = create_agent(
         llm,
         tools=[generate_objectid_tool] + tools,
-        system_prompt="Complete the task, calling any needed tools. Summarize the result in 1 bullet.",
+        system_prompt="Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed.",
         name="planner",
         debug=verbose,
     )
@@ -56,7 +56,7 @@ def graph_factory(
     agent_writer = create_agent(
         llm,
         tools=[generate_objectid_tool] + tools,
-        system_prompt="Reply in 1 short sentence.",
+        system_prompt="Reply with only the tool's result, or 1 brief line.",
         name="writer",
         debug=verbose,
     )
