@@ -48,7 +48,7 @@ def graph_factory(
     agent_planner = create_agent(
         llm,
         tools=[generate_objectid_tool] + tools,
-        system_prompt="Outline the topic in 1 bullet.",
+        system_prompt="Complete the task, calling any needed tools. Summarize the result in 1 bullet.",
         name="planner",
         debug=verbose,
     )
