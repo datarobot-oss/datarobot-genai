@@ -313,9 +313,7 @@ class TestBridgePulumiOtelEnv:
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(os.environ, {}, clear=True), patch(
-            f"{_COMMANDS}.Path"
-        ) as mock_path_cls:
+        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://example.com/otel"
@@ -330,11 +328,14 @@ class TestBridgePulumiOtelEnv:
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(
-            os.environ,
-            {"OTEL_EXPORTER_OTLP_ENDPOINT": "https://explicit.com/otel"},
-            clear=True,
-        ), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+        with (
+            patch.dict(
+                os.environ,
+                {"OTEL_EXPORTER_OTLP_ENDPOINT": "https://explicit.com/otel"},
+                clear=True,
+            ),
+            patch(f"{_COMMANDS}.Path") as mock_path_cls,
+        ):
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://explicit.com/otel"
@@ -344,9 +345,7 @@ class TestBridgePulumiOtelEnv:
         import tempfile
 
         empty_dir = pathlib.Path(tempfile.mkdtemp())
-        with patch.dict(os.environ, {}, clear=True), patch(
-            f"{_COMMANDS}.Path"
-        ) as mock_path_cls:
+        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
             mock_path_cls.cwd.return_value = empty_dir
             self._bridge()
             assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in os.environ
