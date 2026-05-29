@@ -22,66 +22,52 @@ This page describes how **interrupt / resume** works when you use LangGraph insi
 
 LangGraph only **remembers** a paused run if the compiled graph was built with a [`Checkpointer`](https://langchain-ai.github.io/langgraph/reference/checkpoints/). The `LangGraphAgent` constructor accepts **`checkpointer=...`** and passes it to `StateGraph.compile(...)`.
 
-### Choosing `checkpointer` vs `use_datarobot_fs_checkpointer`
+### Passing a checkpointer
 
-`LangGraphAgent` resolves storage in this order (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)):
+`LangGraphAgent` forwards whatever you pass as `checkpointer=` to `StateGraph.compile(...)` (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)). If you omit it, the graph compiles **without** persistence and `interrupt()` / resume will not restore prior state.
 
 ```mermaid
 flowchart TD
     A["LangGraphAgent(...)"] --> B{"checkpointer set?"}
-    B -->|yes| C["Use your checkpointer"]
-    B -->|no| D{"use_datarobot_fs_checkpointer=True?"}
-    D -->|yes| E["default_langgraph_checkpointer()"]
-    D -->|no| F["No checkpointer — interrupt/resume state is not persisted"]
-    E --> G{"langgraph_checkpoint_base set?"}
-    G -->|no| H["root dr:// → catalog_id/langgraph_checkpoints/checkpoints/..."]
-    G -->|yes| I["root = your dr:// prefix + /checkpoints/..."]
+    B -->|yes| C["StateGraph.compile(checkpointer=...)"]
+    B -->|no| D["No persistence"]
 ```
 
 | Option | Constructor | Resume across requests? | Typical use |
 |--------|-------------|-------------------------|-------------|
-| **None** (default) | omit both flags | No | Graphs without `interrupt()` / HITL |
-| **DR FS default** | `use_datarobot_fs_checkpointer=True` | Yes, same process + `thread_id` | DataRobot apps with DR FS credentials |
-| **Explicit saver** | `checkpointer=...` | Depends on saver | E2E (`InMemorySaver`), Postgres, custom DR FS instance |
+| **None** (default) | omit `checkpointer` | No | Graphs without `interrupt()` / HITL |
+| **Any saver** | `checkpointer=...` | Depends on saver | E2E (`InMemorySaver`), DR FS, Postgres, etc. |
 
-**1. No checkpointer** (default) — graph compiles without persistence:
+**1. No checkpointer** (default):
 
 ```python
 agent = MyLangGraphAgent(llm=llm, tools=tools)
-# self.checkpointer is None → interrupt()/resume will not restore prior state
 ```
 
-**2. DataRobot File System** — opt in when `checkpointer` is omitted:
-
-```python
-agent = MyLangGraphAgent(
-    llm=llm,
-    tools=tools,
-    use_datarobot_fs_checkpointer=True,
-    # Optional: dr:// prefix from app settings (ignored if checkpointer= is set)
-    langgraph_checkpoint_base="dr://<catalog_id>/langgraph_checkpoints",
-)
-```
-
-If `langgraph_checkpoint_base` is omitted, the saver root is `dr://` and `DataRobotFileSystem` writes under `<catalog_id>/langgraph_checkpoints/checkpoints/...` (see [`dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)). The process-wide default is shared per root and registers **best-effort deletion** of only that `checkpoints/` subtree on normal exit (`atexit`), not the whole catalog prefix.
-
-**3. Explicit checkpointer** — always wins over `use_datarobot_fs_checkpointer`:
+**2. In-memory (e2e / single process)** — use one shared instance per process (see [`myagent.py`](../../e2e-tests/dragent/langgraph/myagent.py)):
 
 ```python
 from langgraph.checkpoint.memory import InMemorySaver
 
-# Module-level shared instance (e2e pattern — see dragent/langgraph/myagent.py)
 HITL_CHECKPOINTER = InMemorySaver()
 
-agent = MyLangGraphAgent(
-    llm=llm,
-    tools=tools,
-    checkpointer=HITL_CHECKPOINTER,
-    use_datarobot_fs_checkpointer=True,  # ignored when checkpointer is set
-)
+agent = MyLangGraphAgent(llm=llm, tools=tools, checkpointer=HITL_CHECKPOINTER)
 ```
 
-Use a **durable** saver (Postgres, Redis, your own `DataRobotFileSystemCheckpointSaver`, etc.) when checkpoints must survive restarts or multiple workers. DR FS default is intended for single-process dev / short-lived runs within one deployment.
+**3. DataRobot File System** — wire the saver yourself, for example the process-wide helper or a custom instance:
+
+```python
+from datarobot_genai.langgraph.dr_fs_checkpointer import default_langgraph_checkpointer
+
+# Optional checkpoint_base="dr://<catalog_id>/langgraph_checkpoints" from app settings
+checkpointer = default_langgraph_checkpointer()
+
+agent = MyLangGraphAgent(llm=llm, tools=tools, checkpointer=checkpointer)
+```
+
+With no `checkpoint_base`, the saver root is `dr://` and `DataRobotFileSystem` writes under `<catalog_id>/langgraph_checkpoints/checkpoints/...` (see [`dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)). `default_langgraph_checkpointer()` registers **best-effort deletion** of only that `checkpoints/` subtree on normal exit (`atexit`), not the whole catalog prefix.
+
+Use a **durable** saver when checkpoints must survive restarts or multiple workers. The DR FS helper is mainly for single-process dev / short-lived runs within one deployment.
 
 ## What clients see in the event stream
 

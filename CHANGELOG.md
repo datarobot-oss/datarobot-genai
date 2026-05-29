@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.15.88
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
 - Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
+- Removed `use_datarobot_fs_checkpointer` and its mentions
 
 ## 0.15.87
 - `dragent/plugins/streaming_memory_agent`: registered via `register_per_user_function` (instead of `register_function`) so the wrapper builds lazily inside a `PerUserWorkflowBuilder` and `builder.get_function(inner_agent_name)` resolves per-user inner agents from the per-user cache (shared inner agents still resolve via fall-through). Switched the wrapper's I/O from NAT `ChatRequest` / `ChatResponseChunk` to AG-UI `RunAgentInput` and `DRAgentEventResponse`, so inner agents' native AG-UI events pass straight through without the intermediate `convert_chunks_to_agui_events` step. Added `stream_to_single_fn` so the function is also usable in non-streaming contexts.
