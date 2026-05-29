@@ -12,18 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import AsyncMock
+from collections.abc import Iterator
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
+import datarobot as dr
 import pandas as pd
 import pytest
 
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import training
 
 
+@pytest.fixture
+def mock_get_client_context_with_token_from_request_header() -> Iterator[Mock]:
+    with patch.object(
+        ThreadSafeDataRobotClient,
+        "get_client_context_with_token_from_request_header",
+    ) as mock_func:
+        yield mock_func
+
+
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_analyze_dataset() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
@@ -37,11 +50,7 @@ async def test_analyze_dataset() -> None:
     )
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.get.return_value = mock_dataset
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         result = await training.analyze_dataset(dataset_id="test_dataset_id")
         assert isinstance(result, dict)
         insights = result
@@ -56,6 +65,7 @@ async def test_analyze_dataset() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_suggest_use_cases() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
@@ -68,11 +78,7 @@ async def test_suggest_use_cases() -> None:
     )
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.get.return_value = mock_dataset
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         result = await training.suggest_use_cases(dataset_id="test_dataset_id")
         assert isinstance(result, dict)
         suggestions = result["use_case_suggestions"]
@@ -84,16 +90,13 @@ async def test_suggest_use_cases() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_exploratory_insights() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.get.return_value = mock_dataset
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         result = await training.get_exploratory_insights(
             dataset_id="test_dataset_id", target_col="target"
         )
@@ -108,6 +111,7 @@ async def test_get_exploratory_insights() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_exploratory_insights_catalog_feature_profile() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
@@ -132,11 +136,7 @@ async def test_get_exploratory_insights_catalog_feature_profile() -> None:
     mock_api_feat.get_histogram.return_value = mock_hist
     mock_dataset.iterate_all_features.return_value = iter([mock_api_feat, MagicMock(name="other")])
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.get.return_value = mock_dataset
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         result = await training.get_exploratory_insights(
             dataset_id="test_dataset_id",
             feature_col="features",
@@ -153,16 +153,13 @@ async def test_get_exploratory_insights_catalog_feature_profile() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_exploratory_insights_feature_col_unknown_column() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"a": [1]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.get.return_value = mock_dataset
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         with pytest.raises(ToolError, match="feature_col"):
             await training.get_exploratory_insights(
                 dataset_id="test_dataset_id",
@@ -171,6 +168,7 @@ async def test_get_exploratory_insights_feature_col_unknown_column() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_start_autopilot_new_project() -> None:
     mock_dataset = MagicMock()
     mock_dataset.id = "test_dataset_id"
@@ -179,12 +177,10 @@ async def test_start_autopilot_new_project() -> None:
     mock_project.get_status.return_value = "running"
     mock_project.use_case_id = None
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.create_from_url.return_value = mock_dataset
-        mock_client.Project.create_from_dataset.return_value = mock_project
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(dr.Dataset, "create_from_url", return_value=mock_dataset),
+        patch.object(dr.Project, "create_from_dataset", return_value=mock_project),
+    ):
         result = await training.start_autopilot(
             target="target",
             dataset_url="http://test.com/data.csv",
@@ -200,17 +196,14 @@ async def test_start_autopilot_new_project() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_start_autopilot_existing_project() -> None:
     mock_project = MagicMock()
     mock_project.id = "test_project_id"
     mock_project.get_status.return_value = "running"
     mock_project.use_case_id = None
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Project.get.return_value = mock_project
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Project, "get", return_value=mock_project):
         result = await training.start_autopilot(
             target="target", project_id="test_project_id", mode="comprehensive"
         )
@@ -224,6 +217,7 @@ async def test_start_autopilot_existing_project() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_model_roc_curve() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -241,12 +235,10 @@ async def test_get_model_roc_curve() -> None:
     mock_roc_curve.positive_class_predictions = [0.8, 0.9]
     mock_model.get_roc_curve.return_value = mock_roc_curve
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Project.get.return_value = mock_project
-        mock_client.Model.get.return_value = mock_model
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project),
+        patch.object(dr.Model, "get", return_value=mock_model),
+    ):
         result = await training.get_model_roc_curve(
             project_id="test_project_id", model_id="test_model_id"
         )
@@ -259,6 +251,7 @@ async def test_get_model_roc_curve() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_model_feature_impact() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -268,12 +261,10 @@ async def test_get_model_feature_impact() -> None:
     ]
     mock_model.get_or_request_feature_impact.return_value = mock_feature_impact
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Project.get.return_value = mock_project
-        mock_client.Model.get.return_value = mock_model
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project),
+        patch.object(dr.Model, "get", return_value=mock_model),
+    ):
         result = await training.get_model_feature_impact(
             project_id="test_project_id", model_id="test_model_id"
         )
@@ -285,6 +276,7 @@ async def test_get_model_feature_impact() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_model_lift_chart() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
@@ -297,12 +289,10 @@ async def test_get_model_lift_chart() -> None:
     mock_lift_chart.target_class = "class1"
     mock_model.get_lift_chart.return_value = mock_lift_chart
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Project.get.return_value = mock_project
-        mock_client.Model.get.return_value = mock_model
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project),
+        patch.object(dr.Model, "get", return_value=mock_model),
+    ):
         result = await training.get_model_lift_chart(
             project_id="test_project_id", model_id="test_model_id"
         )
@@ -315,38 +305,37 @@ async def test_get_model_lift_chart() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_start_autopilot_validation() -> None:
     """Test validation of input parameters for start_autopilot."""
     # Test missing dataset info for new project
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
-        with pytest.raises(
-            ToolError,
-            match="Either dataset_url or dataset_id must be provided",
-        ):
-            await training.start_autopilot(target="target")
+    with pytest.raises(
+        ToolError,
+        match="Either dataset_url or dataset_id must be provided",
+    ):
+        await training.start_autopilot(target="target")
 
-        # Test conflicting dataset inputs
-        with pytest.raises(
-            ToolError,
-            match="Please provide either dataset_url or dataset_id, not both",
-        ):
-            await training.start_autopilot(
-                target="target",
-                dataset_url="http://test.com/data.csv",
-                dataset_id="test_dataset_id",
-            )
+    # Test conflicting dataset inputs
+    with pytest.raises(
+        ToolError,
+        match="Please provide either dataset_url or dataset_id, not both",
+    ):
+        await training.start_autopilot(
+            target="target",
+            dataset_url="http://test.com/data.csv",
+            dataset_id="test_dataset_id",
+        )
 
-        # Test missing target
-        with pytest.raises(
-            ToolError,
-            match="Target variable must be specified",
-        ):
-            await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
+    # Test missing target
+    with pytest.raises(
+        ToolError,
+        match="Target variable must be specified",
+    ):
+        await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_suggest_use_cases_dataset_not_found() -> None:
     """Test that suggest_use_cases provides a clear error message when dataset is not found."""
 
@@ -357,13 +346,11 @@ async def test_suggest_use_cases_dataset_not_found() -> None:
             self.status_code = status_code
             super().__init__(f"{status_code} client error: {message}")
 
-    with patch("datarobot_genai.drtools.predictive.training.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Dataset.get.side_effect = MockClientError(
-            "{'message': 'Not Found'}", status_code=404
-        )
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(
+        dr.Dataset,
+        "get",
+        side_effect=MockClientError("{'message': 'Not Found'}", status_code=404),
+    ):
         with pytest.raises(
             ToolError,
             match=r"Dataset 'nonexistent_dataset_id' not found",

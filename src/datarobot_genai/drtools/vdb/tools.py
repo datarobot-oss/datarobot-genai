@@ -18,10 +18,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
@@ -61,8 +62,8 @@ async def list_vector_databases(
     if offset is not None:
         params["offset"] = offset
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
         try:
             response = rest_client.get("deployments/", params=params)
         except ClientError as e:
@@ -121,8 +122,8 @@ async def query_vector_database(
         "retrieval_mode": retrieval_mode,
     }
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
         try:
             response = rest_client.post(
                 f"deployments/{deployment_id}/predictions/",

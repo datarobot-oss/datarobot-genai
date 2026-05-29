@@ -22,11 +22,12 @@ from datetime import timedelta
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 import polars as pl
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -64,9 +65,9 @@ async def get_deployment_info(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            deployment = client.Deployment.get(deployment_id)
+            deployment = dr.Deployment.get(deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 
@@ -91,8 +92,8 @@ async def get_deployment_info(
             target_type = ""
         else:
             try:
-                dr_project = client.Project.get(deployment.model["project_id"])
-                model = client.Model.get(project=dr_project, model_id=deployment.model["id"])
+                dr_project = dr.Project.get(deployment.model["project_id"])
+                model = dr.Model.get(project=dr_project, model_id=deployment.model["id"])
             except ClientError as e:
                 raise_tool_error_for_client_error(e)
             project = dr_project

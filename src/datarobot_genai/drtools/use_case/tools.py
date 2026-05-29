@@ -18,10 +18,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -52,8 +53,8 @@ async def list_use_cases(
     if search:
         params["search"] = search
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
         try:
             response = rest_client.get("useCases/", params=params)
         except ClientError as e:
@@ -104,12 +105,12 @@ async def list_use_case_assets(
         )
 
     results: list[dict] = []
-    async with dr_client() as dr_module:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         for uc_id in ids:
             entry: dict = {"use_case_id": uc_id}
 
             try:
-                use_case = dr_module.UseCase.get(uc_id)
+                use_case = dr.UseCase.get(uc_id)
             except Exception as exc:
                 entry["error"] = str(exc)
                 results.append(entry)

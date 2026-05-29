@@ -28,7 +28,6 @@ without injecting headers.
 
 import os
 from collections.abc import Generator
-from contextlib import asynccontextmanager
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -120,7 +119,7 @@ def detect_user_modules() -> Any:
     return None
 
 
-async def _get_datarobot_access_token_stdio_fallback() -> str:
+def _get_datarobot_access_token_stdio_fallback() -> str:
     """Return DataRobot token from credentials for stdio (no headers)."""
     creds = get_credentials()
     token = creds.datarobot.application_api_token
@@ -129,6 +128,16 @@ async def _get_datarobot_access_token_stdio_fallback() -> str:
 
         raise ToolError("DataRobot API token not available (stdio and no DATAROBOT_API_TOKEN).")
     return token
+
+
+@contextmanager
+def _stub_thread_safe_get_client_context(self: Any) -> Generator[None, None, None]:
+    """No-op stub for ThreadSafeDataRobotClient.get_client_context_with_token_from_request_header.
+
+    Tools use dr.X.Y() directly inside the with block; the real SDK classes are
+    monkey-patched in _apply_dr_client_stubs so no actual HTTP calls are made.
+    """
+    yield
 
 
 def _patch_get_sdk_client_for_stdio() -> None:
@@ -170,6 +179,20 @@ def apply_lineage_manager_stubs() -> None:
     LineageManager.sync_mcp_prompts = AsyncMock()  # type: ignore[assignment]
 
 
+def _apply_dr_sdk_stubs(stub_dr: Any, mock_rest: MagicMock) -> None:
+    """Monkey-patch datarobot SDK entry points used by ThreadSafeDataRobotClient tools."""
+    dr.Project.get = stub_dr.Project.get  # type: ignore[method-assign]
+    dr.Model.get = stub_dr.Model.get  # type: ignore[method-assign]
+    dr.Deployment.get = stub_dr.Deployment.get  # type: ignore[method-assign]
+    dr.Dataset.get = stub_dr.Dataset.get  # type: ignore[method-assign]
+    dr.Dataset.list = stub_dr.Dataset.list  # type: ignore[method-assign]
+    dr.Dataset.iterate = stub_dr.Dataset.iterate  # type: ignore[method-assign]
+    dr.DataStore.list = stub_dr.DataStore.list  # type: ignore[method-assign]
+    dr.UseCase.get = stub_dr.UseCase.get  # type: ignore[method-assign]
+    dr.BatchPredictionJob = stub_dr.BatchPredictionJob  # type: ignore[misc]
+    dr.client.get_client = lambda: mock_rest  # type: ignore[method-assign]
+
+
 def _apply_dr_client_stubs() -> None:
     """Replace the real DataRobot client with stubs (patches token + client for stdio)."""
     stub_dr = test_create_dr_client()
@@ -187,19 +210,20 @@ def _apply_dr_client_stubs() -> None:
     stub_dr.client = MagicMock()
     stub_dr.client.get_client = lambda: mock_rest
 
-    clients.get_sdk_client = lambda *args, **kwargs: stub_dr
+    _apply_dr_sdk_stubs(stub_dr, mock_rest)
 
-    @asynccontextmanager
-    async def _stub_dr_client() -> Any:
-        yield stub_dr
+    clients.get_sdk_client = lambda *args, **kwargs: stub_dr
 
     @contextmanager
     def _stub_get_client(_self: Any) -> Generator[Any, None, None]:
         yield stub_dr
 
     tools_datarobot_client.DataRobotClient.get_client = _stub_get_client  # type: ignore[assignment]
-    # async with dr_client() (predictive tools)
-    tools_datarobot_client.dr_client = _stub_dr_client  # type: ignore[assignment]
+    # Tools use ThreadSafeDataRobotClient; no-op context avoids header token lookup in stdio.
+    thread_safe_client = tools_datarobot_client.ThreadSafeDataRobotClient
+    thread_safe_client.get_client_context_with_token_from_request_header = (  # type: ignore[method-assign]
+        _stub_thread_safe_get_client_context
+    )
     # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()

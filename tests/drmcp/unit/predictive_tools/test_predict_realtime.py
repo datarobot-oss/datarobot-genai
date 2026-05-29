@@ -15,16 +15,18 @@
 import io
 import json
 from collections.abc import Generator
+from collections.abc import Iterator
 from typing import Any
-from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import datarobot as dr
 import pandas as pd
 import polars as pl
 import pytest
 
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import predict_realtime
@@ -34,24 +36,28 @@ THRESHOLD_HIGH = 0.8
 THRESHOLD_LOW = 0.2
 
 
+@pytest.fixture
+def mock_get_client_context_with_token_from_request_header() -> Iterator[Mock]:
+    with patch.object(
+        ThreadSafeDataRobotClient,
+        "get_client_context_with_token_from_request_header",
+    ) as mock_func:
+        yield mock_func
+
+
 @pytest.fixture()
 def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
-    mock_client = MagicMock()
-    mock_deployment = MagicMock()
-    mock_client.Deployment = mock_deployment
-    mock_deployment.get = MagicMock()
     with (
-        patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.dr_client",
-        ) as mock_dr_client,
+        patch.object(
+            ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
+        ),
+        patch.object(dr.Deployment, "get") as mock_deployment_get,
         patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv") as mock_read_csv,
         patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict") as mock_dr_predict,
     ):
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
         yield {
             "mock_read_csv": mock_read_csv,
-            "mock_deployment_get": mock_deployment,
+            "mock_deployment_get": mock_deployment_get,
             "mock_dr_predict": mock_dr_predict,
         }
 
@@ -617,12 +623,9 @@ class TestPredictByAiCatalogRt:
     ):
         """Test predict_by_ai_catalog_rt with get_as_dataframe method."""
         # Setup mocks
-        mock_client = Mock()
         mock_dataset = Mock()
         mock_dataset.get_as_dataframe.return_value = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
-        mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
-        mock_client.Deployment.get.return_value = mock_deployment
 
         mock_result = Mock()
         mock_result.dataframe = pd.DataFrame({"prediction": [0.8, 0.9]})
@@ -630,20 +633,22 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        with patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
-        ) as mock_dr_client:
-            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(
+                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
+            ),
+            patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
+            patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
+        ):
             # Call function
             result = await predict_by_ai_catalog_rt(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
         # Verify calls
-        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_ds_get.assert_called_once_with("dataset123")
         mock_dataset.get_as_dataframe.assert_called_once()
-        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dep_get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once_with(
             mock_deployment, mock_dataset.get_as_dataframe.return_value, timeout=600
         )
@@ -668,14 +673,11 @@ class TestPredictByAiCatalogRt:
     ):
         """Test predict_by_ai_catalog_rt with download method."""
         # Setup mocks
-        mock_client = Mock()
         mock_dataset = Mock()
         # Remove get_as_dataframe attribute entirely
         del mock_dataset.get_as_dataframe
         mock_dataset.download.return_value = "dataset.csv"
-        mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
-        mock_client.Deployment.get.return_value = mock_deployment
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -686,21 +688,23 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        with patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
-        ) as mock_dr_client:
-            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(
+                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
+            ),
+            patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
+            patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
+        ):
             # Call function
             result = await predict_by_ai_catalog_rt(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
         # Verify calls
-        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_ds_get.assert_called_once_with("dataset123")
         mock_dataset.download.assert_called_once_with("dataset.csv")
         mock_read_csv.assert_called_once_with("dataset.csv")
-        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dep_get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once()
         call_args, call_kwargs = mock_dr_predict.call_args
         assert call_args[0] is mock_deployment
@@ -725,14 +729,11 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response,
     ):
         """Test predict_by_ai_catalog_rt with get_file method."""
-        mock_client = Mock()
         mock_dataset = Mock()
         del mock_dataset.get_as_dataframe
         del mock_dataset.download
         mock_dataset.get_file.return_value = "dataset.csv"
-        mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
-        mock_client.Deployment.get.return_value = mock_deployment
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -743,20 +744,22 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        with patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
-        ) as mock_dr_client:
-            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(
+                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
+            ),
+            patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
+            patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
+        ):
             result = await predict_by_ai_catalog_rt(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
         # Verify calls
-        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_ds_get.assert_called_once_with("dataset123")
         mock_dataset.get_file.assert_called_once()
         mock_read_csv.assert_called_once_with("dataset.csv")
-        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dep_get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once()
         call_args = mock_dr_predict.call_args[0]
         assert call_args[0] is mock_deployment
@@ -781,16 +784,13 @@ class TestPredictByAiCatalogRt:
     ):
         """Test predict_by_ai_catalog_rt with get_bytes method."""
         # Setup mocks
-        mock_client = Mock()
         mock_dataset = Mock()
         # Remove get_as_dataframe, download, and get_file attributes entirely
         del mock_dataset.get_as_dataframe
         del mock_dataset.download
         del mock_dataset.get_file
         mock_dataset.get_bytes.return_value = b"col1,col2\n1,3\n2,4\n"
-        mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
-        mock_client.Deployment.get.return_value = mock_deployment
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -801,21 +801,23 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        with patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
-        ) as mock_dr_client:
-            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(
+                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
+            ),
+            patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
+            patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
+        ):
             # Call function
             result = await predict_by_ai_catalog_rt(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
         # Verify calls
-        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_ds_get.assert_called_once_with("dataset123")
         mock_dataset.get_bytes.assert_called_once()
         mock_read_csv.assert_called_once()
-        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dep_get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once()
         call_args = mock_dr_predict.call_args[0]
         assert call_args[0] is mock_deployment
@@ -840,7 +842,6 @@ class TestPredictByAiCatalogRt:
     ):
         """Test predict_by_ai_catalog_rt with URL fallback."""
         # Setup mocks
-        mock_client = Mock()
         mock_dataset = Mock()
         # Remove get_as_dataframe, download, get_file, and get_bytes attributes entirely
         del mock_dataset.get_as_dataframe
@@ -848,9 +849,7 @@ class TestPredictByAiCatalogRt:
         del mock_dataset.get_file
         del mock_dataset.get_bytes
         mock_dataset.url = "https://example.com/dataset.csv"
-        mock_client.Dataset.get.return_value = mock_dataset
         mock_deployment = Mock()
-        mock_client.Deployment.get.return_value = mock_deployment
 
         pl_df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_csv.return_value = pl_df
@@ -861,20 +860,22 @@ class TestPredictByAiCatalogRt:
 
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
-        with patch(
-            "datarobot_genai.drtools.predictive.predict_realtime.dr_client"
-        ) as mock_dr_client:
-            mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(
+                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
+            ),
+            patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
+            patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
+        ):
             # Call function
             result = await predict_by_ai_catalog_rt(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
         # Verify calls
-        mock_client.Dataset.get.assert_called_once_with("dataset123")
+        mock_ds_get.assert_called_once_with("dataset123")
         mock_read_csv.assert_called_once_with("https://example.com/dataset.csv")
-        mock_client.Deployment.get.assert_called_once_with(deployment_id="deployment123")
+        mock_dep_get.assert_called_once_with(deployment_id="deployment123")
         mock_dr_predict.assert_called_once()
         call_args = mock_dr_predict.call_args[0]
         assert call_args[0] is mock_deployment

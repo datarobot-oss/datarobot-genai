@@ -17,10 +17,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
@@ -111,10 +112,10 @@ async def predict_by_ai_catalog(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            dataset = client.Dataset.get(dataset_id)
-            job = client.BatchPredictionJob.score(
+            dataset = dr.Dataset.get(dataset_id)
+            job = dr.BatchPredictionJob.score(
                 deployment=deployment_id,
                 intake_settings={  # type: ignore[arg-type]
                     "type": "dataset",
@@ -173,7 +174,7 @@ async def predict_from_project_data(
             "Argument validation error: 'partition' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         intake_settings: dict[str, Any] = {
             "type": "dss",
             "project_id": project_id,
@@ -183,7 +184,7 @@ async def predict_from_project_data(
         if dataset_id:
             intake_settings["dataset_id"] = dataset_id
         try:
-            job = client.BatchPredictionJob.score(
+            job = dr.BatchPredictionJob.score(
                 deployment=deployment_id,
                 intake_settings=intake_settings,  # type: ignore[arg-type]
                 output_settings=None,
@@ -216,9 +217,9 @@ async def get_batch_prediction_job_status(
             "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            job = client.BatchPredictionJob.get(job_id.strip())
+            job = dr.BatchPredictionJob.get(job_id.strip())
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         status = job.get_status()
@@ -271,9 +272,9 @@ async def get_batch_prediction_results(
             "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            job = client.BatchPredictionJob.get(job_id.strip())
+            job = dr.BatchPredictionJob.get(job_id.strip())
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         download_url = _batch_job_download_url(job)

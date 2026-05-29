@@ -16,10 +16,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -37,8 +38,8 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_projects() -> dict[str, Any]:
-    async with dr_client() as client:
-        projects = client.Project.list()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        projects = dr.Project.list()
         projects = {p.id: p.project_name for p in projects}
 
         return projects
@@ -65,9 +66,9 @@ async def get_project_dataset_by_name(
     if not dataset_name:
         raise ToolError("Dataset name is required.", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
+            project = dr.Project.get(project_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         all_datasets = []

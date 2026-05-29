@@ -19,12 +19,13 @@ from dataclasses import dataclass
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 import polars as pl
 from datarobot.errors import ClientError
 from datarobot.models.model import Model
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
@@ -192,9 +193,9 @@ async def get_best_model(
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
+            project = dr.Project.get(project_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         if not project:
@@ -265,11 +266,11 @@ async def score_dataset_with_model(
     if not dataset_id or not dataset_id.strip():
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
-            dr_model = client.Model.get(project, model_id)
-            catalog_dataset = client.Dataset.get(dataset_id)
+            project = dr.Project.get(project_id)
+            dr_model = dr.Model.get(project, model_id)
+            catalog_dataset = dr.Dataset.get(dataset_id)
             prediction_dataset = project.upload_dataset_from_catalog(dataset_id=catalog_dataset.id)
             job = dr_model.request_predictions(dataset_id=prediction_dataset.id)
         except ClientError as e:
@@ -320,9 +321,9 @@ async def list_models(
 
     limit, message = clamp_limit(limit)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
+            project = dr.Project.get(project_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         iterate_offset = 0 if offset is None else offset
@@ -364,10 +365,10 @@ async def get_model_details(
         bool, "If true, include validation ROC points (classification)."
     ] = False,
 ) -> dict[str, Any]:
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
-            model = client.Model.get(project=project, model_id=model_id)
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 
@@ -428,9 +429,9 @@ async def is_eligible_for_timeseries_training(
     if not target_column:
         raise ToolError("Target column must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            dataset = client.Dataset.get(dataset_id)
+            dataset = dr.Dataset.get(dataset_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         try:

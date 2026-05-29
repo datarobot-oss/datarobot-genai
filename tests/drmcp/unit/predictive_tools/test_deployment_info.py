@@ -13,16 +13,20 @@
 # limitations under the License.
 
 import json
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
+import datarobot as dr
 import polars as pl
 import pytest
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive.deployment_info import generate_prediction_data_template
 from datarobot_genai.drtools.predictive.deployment_info import get_deployment_features
@@ -30,6 +34,15 @@ from datarobot_genai.drtools.predictive.deployment_info import get_deployment_in
 from datarobot_genai.drtools.predictive.deployment_info import validate_prediction_data
 
 IMPORTANCE_THRESHOLD_TEST = 0.8
+
+
+@pytest.fixture
+def mock_get_client_context_with_token_from_request_header() -> Iterator[Mock]:
+    with patch.object(
+        ThreadSafeDataRobotClient,
+        "get_client_context_with_token_from_request_header",
+    ) as mock_func:
+        yield mock_func
 
 
 def _extract_content(result_obj: dict | ToolResult | ToolError) -> str:
@@ -45,11 +58,10 @@ def _extract_content(result_obj: dict | ToolResult | ToolError) -> str:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_deployment_info_success() -> None:
     """Test successful retrieval of deployment features."""
     # Setup mocks
-    mock_client = MagicMock()
-
     mock_deployment = MagicMock()
     mock_deployment.model = {"project_id": "proj123", "id": "model123"}
 
@@ -85,13 +97,11 @@ async def test_get_deployment_info_success() -> None:
         mock_features.append(feature)
     mock_deployment.get_features.return_value = mock_features
 
-    mock_client.Deployment.get.return_value = mock_deployment
-    mock_client.Model.get.return_value = mock_model
-    mock_client.Project.get.return_value = mock_project
-
-    with patch("datarobot_genai.drtools.predictive.deployment_info.dr_client") as mock_dr_client:
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(dr.Deployment, "get", return_value=mock_deployment),
+        patch.object(dr.Model, "get", return_value=mock_model),
+        patch.object(dr.Project, "get", return_value=mock_project),
+    ):
         result = await get_deployment_info(deployment_id="dep123")
 
     # Handle potential error response
@@ -621,6 +631,7 @@ async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_deployment_info_custom_model() -> None:
     class DummyDeployment:
         model: dict[str, Any] = {}
@@ -631,11 +642,7 @@ async def test_get_deployment_info_custom_model() -> None:
         def get_capabilities(self) -> None:
             pass
 
-    with patch("datarobot_genai.drtools.predictive.deployment_info.dr_client") as mock_dr_client:
-        mock_client = MagicMock()
-        mock_client.Deployment.get.return_value = DummyDeployment()
-        mock_dr_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_dr_client.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(dr.Deployment, "get", return_value=DummyDeployment()):
         result = await get_deployment_info(deployment_id="custom_id")
         assert result["model_type"] == "custom"
         assert result["target"] == ""

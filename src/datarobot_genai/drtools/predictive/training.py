@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 import pandas as pd
 from datarobot.errors import ClientError
 from datarobot.utils import from_api
@@ -27,7 +28,7 @@ from datarobot.utils import is_convertable_to_api
 from datarobot.utils import to_api
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -209,8 +210,8 @@ async def analyze_dataset(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
-        _, df = _get_dataset_or_raise(client, dataset_id)
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        _, df = _get_dataset_or_raise(dr, dataset_id)
         return _build_dataset_insights(df)
 
 
@@ -230,8 +231,8 @@ async def suggest_use_cases(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
-        _, df = _get_dataset_or_raise(client, dataset_id)
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        _, df = _get_dataset_or_raise(dr, dataset_id)
         insights = _build_dataset_insights(df)
 
         suggestions = []
@@ -279,8 +280,8 @@ async def get_exploratory_insights(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
-        dataset, df = _get_dataset_or_raise(client, dataset_id)
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        dataset, df = _get_dataset_or_raise(dr, dataset_id)
         insights = _build_dataset_insights(df)
 
         eda_insights = {
@@ -640,7 +641,10 @@ async def start_autopilot(
     ]
     | None = None,
 ) -> dict[str, Any]:
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        if not target:
+            raise ToolError("Target variable must be specified", kind=ToolErrorKind.VALIDATION)
+
         if not project_id:
             if not dataset_url and not dataset_id:
                 raise ToolError(
@@ -654,24 +658,21 @@ async def start_autopilot(
                 )
 
             if dataset_url:
-                dataset = client.Dataset.create_from_url(dataset_url)
+                dataset = dr.Dataset.create_from_url(dataset_url)
             else:
                 try:
-                    dataset = client.Dataset.get(dataset_id)
+                    dataset = dr.Dataset.get(dataset_id)
                 except ClientError as e:
                     raise_tool_error_for_client_error(e)
 
-            project = client.Project.create_from_dataset(
+            project = dr.Project.create_from_dataset(
                 dataset.id, project_name=project_name, use_case=use_case_id
             )
         else:
             try:
-                project = client.Project.get(project_id)
+                project = dr.Project.get(project_id)
             except ClientError as e:
                 raise_tool_error_for_client_error(e)
-
-        if not target:
-            raise ToolError("Target variable must be specified", kind=ToolErrorKind.VALIDATION)
 
         try:
             # Start modeling
@@ -716,10 +717,10 @@ async def get_model_roc_curve(
     if not model_id:
         raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
-            model = client.Model.get(project=project, model_id=model_id)
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 
@@ -775,10 +776,10 @@ async def get_model_feature_impact(
     if not model_id:
         raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
-            model = client.Model.get(project=project, model_id=model_id)
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         # Get feature impact
@@ -813,10 +814,10 @@ async def get_model_lift_chart(
     if not model_id:
         raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            project = client.Project.get(project_id)
-            model = client.Model.get(project=project, model_id=model_id)
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 

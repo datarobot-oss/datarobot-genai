@@ -20,10 +20,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import is_valid_url
@@ -87,7 +88,7 @@ async def upload_dataset_to_ai_catalog(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         catalog_item = None
         if file_content_base64 is not None:
             raw_b64 = file_content_base64.strip()
@@ -112,7 +113,7 @@ async def upload_dataset_to_ai_catalog(
             buffer = io.BytesIO(raw)
             buffer.name = fname
             try:
-                catalog_item = client.Dataset.create_from_file(filelike=buffer)
+                catalog_item = dr.Dataset.create_from_file(filelike=buffer)
             except ClientError as e:
                 raise_tool_error_for_client_error(e)
         else:
@@ -120,7 +121,7 @@ async def upload_dataset_to_ai_catalog(
                 logger.error("Invalid file URL: %s", file_url)
                 raise ToolError(f"Invalid file URL: {file_url}", kind=ToolErrorKind.VALIDATION)
             try:
-                catalog_item = client.Dataset.create_from_url(file_url)
+                catalog_item = dr.Dataset.create_from_url(file_url)
             except ClientError as e:
                 raise_tool_error_for_client_error(e)
 
@@ -162,11 +163,11 @@ async def list_ai_catalog_items(
 
     limit, message = clamp_limit(limit)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         # DataRobot ``Dataset.iterate`` expects an int; do not pass ``None`` when offset is omitted.
         iterate_offset = 0 if offset is None else offset
         try:
-            gen = client.Dataset.iterate(offset=iterate_offset, limit=limit)
+            gen = dr.Dataset.iterate(offset=iterate_offset, limit=limit)
             datasets = list(itertools.islice(gen, limit))
         except ClientError as e:
             raise_tool_error_for_client_error(e)
@@ -218,9 +219,9 @@ async def get_dataset_details(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            dataset = client.Dataset.get(dataset_id)
+            dataset = dr.Dataset.get(dataset_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 
@@ -268,8 +269,8 @@ async def list_datastores(
 
     limit, message = clamp_limit(limit)
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
 
         params: dict[str, Any] = {"limit": limit}
         if offset is not None:
@@ -334,8 +335,8 @@ async def browse_datastore(
 
     limit, message = clamp_limit(limit)
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
 
         params: dict = {"offset": offset, "limit": limit}
         if path:
@@ -398,8 +399,8 @@ async def query_datastore(
 
     limit, message = clamp_limit(limit)
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
 
         payload = {"query": sql, "offset": offset, "limit": limit}
         try:

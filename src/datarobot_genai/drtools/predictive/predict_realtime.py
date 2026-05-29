@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 import polars as pl
 from datarobot.errors import ClientError
 from datarobot_predict import TimeSeriesType
@@ -26,7 +27,7 @@ from datarobot_predict.deployment import predict as dr_predict
 from dateutil import parser as dateutil_parser
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.utils import predictions_result_response
@@ -70,9 +71,9 @@ async def predict_by_ai_catalog_rt(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            dataset = client.Dataset.get(dataset_id)
+            dataset = dr.Dataset.get(dataset_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 
@@ -101,7 +102,7 @@ async def predict_by_ai_catalog_rt(
             df = pl.read_csv(url).to_pandas()
 
         try:
-            deployment = client.Deployment.get(deployment_id=deployment_id)
+            deployment = dr.Deployment.get(deployment_id=deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         result = dr_predict(deployment, df, timeout=timeout or 600)
@@ -242,9 +243,9 @@ async def predict_realtime(
     if series_id_column and series_id_column not in pl_df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            deployment = client.Deployment.get(deployment_id=deployment_id)
+            deployment = dr.Deployment.get(deployment_id=deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
 

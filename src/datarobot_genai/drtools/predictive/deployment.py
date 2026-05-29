@@ -17,10 +17,11 @@ import os
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import dr_client
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.deployment_utils import MODEL_EXTENSIONS
 from datarobot_genai.drtools.core.deployment_utils import REQUIRED_FILES
 from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
@@ -42,8 +43,8 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_deployments() -> dict[str, Any]:
-    async with dr_client() as client:
-        deployments = client.Deployment.list()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        deployments = dr.Deployment.list()
         if not deployments:
             return {"deployments": []}
         deployments_dict = {d.id: d.label for d in deployments}
@@ -65,9 +66,9 @@ async def get_model_info_from_deployment(
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         try:
-            deployment = client.Deployment.get(deployment_id)
+            deployment = dr.Deployment.get(deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         return deployment.model
@@ -94,14 +95,14 @@ async def deploy_model(
     if not label:
         raise ToolError("Model label must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as client:
-        prediction_servers = client.PredictionServer.list()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        prediction_servers = dr.PredictionServer.list()
         if not prediction_servers:
             raise ToolError(
                 "No prediction servers available for deployment.", kind=ToolErrorKind.UPSTREAM
             )
         try:
-            deployment = client.Deployment.create_from_learning_model(
+            deployment = dr.Deployment.create_from_learning_model(
                 model_id=model_id,
                 label=label,
                 description=description,
@@ -177,9 +178,9 @@ async def deploy_custom_model(
             "Add a model file to the folder or pass model_file_path.",
             kind=ToolErrorKind.VALIDATION,
         )
-    async with dr_client() as client:
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
         out = deploy_custom_model_impl(
-            client,
+            dr,
             model_folder=model_folder,
             model_file_path=resolved_path,
             name=name,
@@ -215,8 +216,8 @@ async def get_prediction_history(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    async with dr_client() as dr_module:
-        rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+        rest_client = dr.client.get_client()
 
         params: dict = {"limit": limit, "offset": offset}
         if start_time:

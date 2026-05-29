@@ -27,40 +27,37 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 class TestGetDatarobotAccessToken:
     """Test get_datarobot_access_token function."""
 
-    @pytest.mark.asyncio
-    async def test_returns_token_when_resolve_token_from_headers_returns_token(self) -> None:
+    def test_returns_token_when_resolve_token_from_headers_returns_token(self) -> None:
         """Test successful token retrieval from headers."""
         with patch(
             "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
             return_value="bearer-token-123",
         ):
-            result = await get_datarobot_access_token()
+            result = get_datarobot_access_token()
         assert result == "bearer-token-123"
         assert isinstance(result, str)
 
-    @pytest.mark.asyncio
-    async def test_raises_tool_error_when_no_token(self) -> None:
+    def test_raises_tool_error_when_no_token(self) -> None:
         """Test that ToolError is raised when resolve_token_from_headers returns None."""
         with patch(
             "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
             return_value=None,
         ):
             with pytest.raises(ToolError) as exc_info:
-                await get_datarobot_access_token()
+                get_datarobot_access_token()
         assert "DataRobot API token not found" in str(exc_info.value)
         assert "Authorization" in str(exc_info.value) or "x-datarobot-api-token" in str(
             exc_info.value
         )
 
-    @pytest.mark.asyncio
-    async def test_raises_tool_error_when_empty_token(self) -> None:
+    def test_raises_tool_error_when_empty_token(self) -> None:
         """Test that ToolError is raised when resolve_token_from_headers returns empty string."""
         with patch(
             "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
             return_value="",
         ):
             with pytest.raises(ToolError) as exc_info:
-                await get_datarobot_access_token()
+                get_datarobot_access_token()
         assert "DataRobot API token not found" in str(exc_info.value)
 
 

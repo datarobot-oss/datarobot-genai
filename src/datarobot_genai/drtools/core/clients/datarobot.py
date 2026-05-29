@@ -15,9 +15,7 @@
 """DataRobot API client for tools."""
 
 import logging
-from collections.abc import AsyncGenerator
 from collections.abc import Generator
-from contextlib import asynccontextmanager
 from contextlib import contextmanager
 from typing import Any
 
@@ -33,7 +31,7 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 logger = logging.getLogger(__name__)
 
 
-async def get_datarobot_access_token() -> str:
+def get_datarobot_access_token() -> str:
     """
     Get DataRobot API token from HTTP headers.
 
@@ -87,18 +85,14 @@ class DataRobotClient:
             yield dr
 
 
-@asynccontextmanager
-async def dr_client() -> AsyncGenerator[Any, None]:
-    """Async context manager that resolves the request token and yields a configured dr module.
+class ThreadSafeDataRobotClient:
+    def __init__(self) -> None:
+        self.endpoint = get_credentials().datarobot.endpoint
 
-    Combines get_datarobot_access_token() + DataRobotClient.get_client() into a single
-    entry point, eliminating the two-line boilerplate repeated across every tool function.
-
-    Usage::
-
-        async with dr_client() as client:
-            deployments = client.Deployment.list()
-    """
-    token = await get_datarobot_access_token()
-    with DataRobotClient(token).get_client() as client:
-        yield client
+    @contextmanager
+    def get_client_context_with_token_from_request_header(self) -> Generator[None, None, None]:
+        token = get_datarobot_access_token()
+        with client_configuration(token=token, endpoint=self.endpoint):
+            # Avoid use-case context from trafaret affecting tool calls.
+            DRContext.use_case = None
+            yield
