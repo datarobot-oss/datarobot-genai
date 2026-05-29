@@ -48,7 +48,10 @@ def graph_factory(
     agent_planner = create_agent(
         llm,
         tools=[generate_objectid_tool] + tools,
-        system_prompt="Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed.",
+        system_prompt=(
+            "Call any required tool. Reply with only the tool's result, "
+            "or 1 brief line if no tool is needed."
+        ),
         name="planner",
         debug=verbose,
     )
