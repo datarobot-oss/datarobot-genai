@@ -64,6 +64,7 @@ from nat.plugins.opentelemetry.otel_span_exporter import get_opentelemetry_sdk_v
 from pydantic import Field
 from pydantic import field_validator
 
+from datarobot_genai.core.datarobot_otel import ENTITY_ID_PREFIX
 from datarobot_genai.core.datarobot_otel import resolve_api_key_from_env
 from datarobot_genai.core.datarobot_otel import resolve_entity_id_from_env
 from datarobot_genai.core.datarobot_otel import resolve_otel_endpoint_from_env
@@ -79,9 +80,10 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
 ):
     """Telemetry exporter for the DataRobot OTel collector.
 
-    Inherits ``endpoint``, ``project``, ``resource_attributes`` (from
-    ``CollectorConfigMixin``), and batch tuning fields (from
-    ``BatchConfigMixin``). Adds the DataRobot-specific auth headers.
+    Inherits ``project`` and ``endpoint`` (from ``CollectorConfigMixin``,
+    though ``endpoint`` is overridden below to auto-derive from env) and batch
+    tuning fields (from ``BatchConfigMixin``). Adds the DataRobot-specific auth
+    headers plus ``resource_attributes``.
     """
 
     endpoint: str = Field(
@@ -131,7 +133,7 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
         # local dev). Any non-empty value must still match the
         # 'deployment-<id>' shape documented in the DR
         # external-agent-monitoring skill.
-        if value and not value.startswith("deployment-"):
+        if value and not value.startswith(ENTITY_ID_PREFIX):
             raise ValueError(
                 "datarobot_entity_id must be of the form 'deployment-<id>' "
                 f"(got {value!r}). Inside a DataRobot deployment, omit the "

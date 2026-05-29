@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 # warning.
 _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 
+# The DataRobot OTel ingest expects entity ids (and deployment-derived service
+# names) in the ``deployment-<id>`` shape. Single source of truth so the
+# resolver that produces it and the validator that checks it can't drift.
+ENTITY_ID_PREFIX = "deployment-"
+
 
 def resolve_api_key_from_env() -> str:
     return os.getenv("DATAROBOT_API_TOKEN", "")
@@ -57,7 +62,7 @@ def resolve_entity_id_from_env() -> str:
     # auto-prepend the 'deployment-' prefix required by the OTel ingest path.
     # Mirrors the MLOPS_DEPLOYMENT_ID-driven pattern used by the A2A frontend.
     deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    return f"deployment-{deployment_id}" if deployment_id else ""
+    return f"{ENTITY_ID_PREFIX}{deployment_id}" if deployment_id else ""
 
 
 def resolve_otel_endpoint_from_env() -> str:
@@ -81,7 +86,7 @@ def _resolve_service_name() -> str:
     if name := os.getenv("OTEL_SERVICE_NAME"):
         return name
     if deployment_id := os.getenv("MLOPS_DEPLOYMENT_ID"):
-        return f"deployment-{deployment_id}"
+        return f"{ENTITY_ID_PREFIX}{deployment_id}"
     return "datarobot-agent"
 
 
@@ -141,6 +146,18 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     from opentelemetry.trace import ProxyTracerProvider
 
     try:
+        # Inspect the global slot before building anything: a BatchSpanProcessor
+        # spawns a worker thread (and the exporter an HTTP session) at
+        # construction, so we must not build them on the skip path below.
+        current = trace.get_tracer_provider()
+        if not isinstance(current, (ProxyTracerProvider, TracerProvider)):
+            logger.debug(
+                "Skipping OTel TracerProvider bootstrap: non-SDK provider "
+                "already installed (%s); cannot attach a span processor.",
+                type(current).__name__,
+            )
+            return False
+
         exporter = OTLPSpanExporter(
             endpoint=endpoint,
             headers={
@@ -150,7 +167,6 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         )
         processor = BatchSpanProcessor(exporter)
 
-        current = trace.get_tracer_provider()
         if isinstance(current, ProxyTracerProvider):
             sdk_version = _get_opentelemetry_sdk_version()
             resource = Resource.create(
@@ -165,16 +181,9 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
             provider.add_span_processor(processor)
             trace.set_tracer_provider(provider)
             action = "installed"
-        elif isinstance(current, TracerProvider):
+        else:  # SDK TracerProvider already installed — attach to it.
             current.add_span_processor(processor)
             action = "attached"
-        else:
-            logger.debug(
-                "Skipping OTel TracerProvider bootstrap: non-SDK provider "
-                "already installed (%s); cannot attach a span processor.",
-                type(current).__name__,
-            )
-            return False
     except Exception:
         # Never let telemetry setup take down the agent. Log with traceback so
         # operators can diagnose without crashing user code.
