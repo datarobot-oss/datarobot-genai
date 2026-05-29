@@ -24,7 +24,6 @@ from pydantic import ValidationError
 
 from datarobot_genai.nat.datarobot_otelcollector import DataRobotOtelCollectorTelemetryExporter
 from datarobot_genai.nat.datarobot_otelcollector import datarobot_otelcollector_telemetry_exporter
-from datarobot_genai.nat.datarobot_otelcollector import prune_exporter_if_env_missing
 
 ENDPOINT = "https://staging.datarobot.com/otel/v1/traces"
 ENTITY_ID = "deployment-abc123"
@@ -152,77 +151,6 @@ class TestEnvDerivation:
             project="test-agent",
         )
         assert cfg.datarobot_entity_id == ""
-
-
-class TestPruneExporterIfEnvMissing:
-    def _yaml(self, **fields):
-        entry = {"_type": "datarobot_otelcollector"}
-        entry.update(fields)
-        return {"telemetry": {"tracing": {"otelcollector": entry}}}
-
-    def test_prunes_when_env_missing_and_no_overrides(self, clean_env):
-        cfg = self._yaml(project="agent")
-        prune_exporter_if_env_missing(cfg)
-        assert cfg["telemetry"]["tracing"] == {}
-
-    def test_keeps_when_user_pinned_all_values(self, clean_env):
-        cfg = self._yaml(
-            project="agent",
-            endpoint="https://pinned.test/otel/v1/traces",
-            datarobot_api_key="pinned-key",
-            datarobot_entity_id="deployment-pinned",
-        )
-        prune_exporter_if_env_missing(cfg)
-        assert "otelcollector" in cfg["telemetry"]["tracing"]
-
-    def test_keeps_when_api_key_pinned_but_deployment_and_endpoint_in_env(self, clean_env):
-        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-        cfg = self._yaml(project="agent", datarobot_api_key="pinned-key")
-        prune_exporter_if_env_missing(cfg)
-        assert "otelcollector" in cfg["telemetry"]["tracing"]
-
-    def test_prunes_when_endpoint_env_missing(self, clean_env):
-        # Regression: previously the pruner only checked MLOPS_DEPLOYMENT_ID
-        # and DATAROBOT_API_TOKEN, so an env with those two set but no
-        # DATAROBOT_(PUBLIC_)ENDPOINT would survive the prune and reach
-        # OTLPSpanAdapterExporter with endpoint="".
-        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
-        cfg = self._yaml(project="agent")
-        prune_exporter_if_env_missing(cfg)
-        assert cfg["telemetry"]["tracing"] == {}
-
-    def test_keeps_when_env_present(self, clean_env):
-        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
-        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-        cfg = self._yaml(project="agent")
-        prune_exporter_if_env_missing(cfg)
-        assert "otelcollector" in cfg["telemetry"]["tracing"]
-
-    def test_unrelated_exporters_untouched(self, clean_env):
-        cfg = {
-            "telemetry": {
-                "tracing": {
-                    "otelcollector": {"_type": "datarobot_otelcollector", "project": "agent"},
-                    "builtin": {"_type": "otelcollector", "endpoint": "http://x"},
-                }
-            }
-        }
-        prune_exporter_if_env_missing(cfg)
-        assert "otelcollector" not in cfg["telemetry"]["tracing"]
-        assert "builtin" in cfg["telemetry"]["tracing"]
-
-    def test_no_telemetry_block_is_noop(self, clean_env):
-        cfg = {"workflow": {"_type": "react_agent"}}
-        prune_exporter_if_env_missing(cfg)
-        assert cfg == {"workflow": {"_type": "react_agent"}}
-
-    def test_empty_tracing_block_is_noop(self, clean_env):
-        cfg = {"telemetry": {"tracing": {}}}
-        prune_exporter_if_env_missing(cfg)
-        assert cfg == {"telemetry": {"tracing": {}}}
 
 
 class TestExporterFactory:

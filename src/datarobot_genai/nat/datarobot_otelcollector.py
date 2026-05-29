@@ -43,18 +43,13 @@ Inside a DataRobot deployment, the minimal ``workflow.yaml`` is::
           _type: datarobot_otelcollector
           project: "agent"
 
-Outside a deployment (local dev, CI without DR env), the exporter is
-silently pruned from the loaded config by
-:func:`prune_exporter_if_env_missing` so listing it unconditionally is
-safe. Explicit overrides for any of the three auto-derived fields are
-still honored — pin them in ``workflow.yaml`` to point at a non-default
-collector.
+Explicit overrides for any of the three auto-derived fields are honored —
+pin them in ``workflow.yaml`` to point at a non-default collector.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import AsyncGenerator
 
 from nat.builder.builder import Builder
@@ -140,10 +135,11 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
     @field_validator("datarobot_entity_id")
     @classmethod
     def _validate_entity_id_prefix(cls, value: str) -> str:
-        # Empty is permitted so prune_exporter_if_env_missing can drop the
-        # exporter at config-load time without a pydantic ValidationError.
-        # Any non-empty value must still match the 'deployment-<id>' shape
-        # documented in the DR external-agent-monitoring skill.
+        # Empty is permitted because the auto-derive path may legitimately
+        # return an empty string when MLOPS_DEPLOYMENT_ID is not set (e.g.
+        # local dev). Any non-empty value must still match the
+        # 'deployment-<id>' shape documented in the DR
+        # external-agent-monitoring skill.
         if value and not value.startswith("deployment-"):
             raise ValueError(
                 "datarobot_entity_id must be of the form 'deployment-<id>' "
@@ -153,53 +149,6 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
                 "datarobot-external-agent-monitoring skill."
             )
         return value
-
-
-def prune_exporter_if_env_missing(config_yaml: dict) -> None:
-    """Drop ``datarobot_otelcollector`` tracing entries from a YAML config
-    dict when essential DataRobot env is not present (e.g. local dev).
-
-    Mutates *config_yaml* in place. Called from
-    :func:`datarobot_genai.nat.helpers.load_config` before NAT's pydantic
-    validation runs, since NAT has no built-in way to skip a misconfigured
-    exporter without raising.
-
-    An entry is pruned only when the auto-derive path can't produce values:
-    if the user pinned ``endpoint``, ``datarobot_api_key``, and
-    ``datarobot_entity_id`` explicitly in the YAML, the entry is preserved
-    regardless of env.
-    """
-    tracing = (config_yaml.get("telemetry") or {}).get("tracing") or {}
-    if not tracing:
-        return
-    has_deployment = bool(os.getenv("MLOPS_DEPLOYMENT_ID"))
-    has_api_key = bool(os.getenv("DATAROBOT_API_TOKEN"))
-    has_endpoint = bool(
-        os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
-    )
-    if has_deployment and has_api_key and has_endpoint:
-        return
-    for name in list(tracing.keys()):
-        entry = tracing[name]
-        if not isinstance(entry, dict) or entry.get("_type") != "datarobot_otelcollector":
-            continue
-        entity_id_pinned = bool(entry.get("datarobot_entity_id"))
-        api_key_pinned = bool(entry.get("datarobot_api_key"))
-        endpoint_pinned = bool(entry.get("endpoint"))
-        if (
-            (has_deployment or entity_id_pinned)
-            and (has_api_key or api_key_pinned)
-            and (has_endpoint or endpoint_pinned)
-        ):
-            continue
-        logger.info(
-            "Skipping datarobot_otelcollector tracing exporter %r: "
-            "DataRobot deployment env (MLOPS_DEPLOYMENT_ID / "
-            "DATAROBOT_API_TOKEN / DATAROBOT_(PUBLIC_)ENDPOINT) not fully "
-            "set and the field is not pinned in workflow.yaml.",
-            name,
-        )
-        tracing.pop(name)
 
 
 @register_telemetry_exporter(config_type=DataRobotOtelCollectorTelemetryExporter)

@@ -29,7 +29,6 @@ from nat.utils.type_utils import StrPath
 
 from datarobot_genai.core.chat.auth import get_authorization_context_from_headers
 from datarobot_genai.core.utils.auth import prepare_identity_header
-from datarobot_genai.nat.datarobot_otelcollector import prune_exporter_if_env_missing
 
 
 def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:
@@ -54,10 +53,6 @@ def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> 
 
     add_headers_to_datarobot_mcp_auth(config_yaml, headers)
     add_headers_to_datarobot_llm_deployment(config_yaml, headers)
-    # Silently drop datarobot_otelcollector tracing entries when the
-    # required DR deployment env is missing — listing the exporter
-    # unconditionally in workflow.yaml should be safe across all envs.
-    prune_exporter_if_env_missing(config_yaml)
 
     # Validate configuration adheres to NAT schemas
     validated_nat_config = validate_schema(config_yaml, Config)
