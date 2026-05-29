@@ -11,8 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import os
+import subprocess
+import sys
 import uuid
+from pathlib import Path
 
 import httpx
 from ag_ui.core import Event
@@ -31,6 +35,63 @@ AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"
 LLM = os.environ.get("LLM")
 
 ALL_TEST_CASES = LLM == "llmgw"
+
+E2E_ROOT = Path(__file__).resolve().parent.parent
+RUNNER_MODULE = "dragent.run_agent"
+
+
+def agent_dir(agent: str | None = None) -> Path:
+    """Path to the dragent agent config directory for *agent* (defaults to AGENT/base)."""
+    return E2E_ROOT / "dragent" / (agent or AGENT or "base")
+
+
+def build_chat_completion(content: str = "Say 'hello world' and nothing else.") -> dict:  # type: ignore[type-arg]
+    """Build the one-shot chat completion payload used by the inline runner tests."""
+    return {
+        "model": "unknown",
+        "messages": [{"role": "user", "content": content}],
+    }
+
+
+def spawn_runner(
+    *,
+    chat_completion: dict[str, object],
+    output_path: Path,
+    custom_model_dir: Path | None = None,
+    config_file: Path | None = None,
+    env: dict[str, str] | None = None,
+    timeout: float = 180.0,
+) -> subprocess.CompletedProcess[str]:
+    """Spawn ``python -m dragent.run_agent`` and return the completed process.
+
+    Invoked as ``-m`` (not as a script) so ``cwd=e2e-tests`` lands on
+    ``sys.path`` instead of ``e2e-tests/dragent/``; the latter contains a local
+    ``nat/`` subpackage that otherwise shadows the third-party ``nvidia-nat``
+    and breaks ``import nat.data_models``.
+    """
+    custom_model_dir = custom_model_dir or agent_dir()
+    cmd = [
+        sys.executable,
+        "-m",
+        RUNNER_MODULE,
+        "--chat_completion",
+        json.dumps(chat_completion),
+        "--custom_model_dir",
+        str(custom_model_dir),
+        "--output_path",
+        str(output_path),
+    ]
+    if config_file is not None:
+        cmd.extend(["--config_file", str(config_file)])
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=str(E2E_ROOT),
+        env=env if env is not None else {**os.environ},
+        check=False,
+    )
 
 # Prompt/response OOTB token_count guards only in e2e dragent workflow moderation blocks.
 EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS = frozenset(

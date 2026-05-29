@@ -20,7 +20,9 @@ chat completion params come in as JSON on the command line and the resulting
 ``ChatCompletion`` is written to disk as JSON for the test to read back.
 
 CLI shape intentionally matches the relevant subset of ``run_agent.py``:
-``--chat_completion``, ``--custom_model_dir``, ``--output_path``.
+``--chat_completion``, ``--custom_model_dir``, ``--output_path``. An optional
+``--config_file`` overrides the default ``workflow.yaml`` lookup so tracing
+variants of the same agent (e.g. ``workflow-tracing.yaml``) can be exercised.
 
 When executed as ``__main__``, the runner wraps ``main()`` in a short
 ipykernel-like host (sync code on a thread that already has a running asyncio
@@ -84,6 +86,15 @@ def _parse_args() -> argparse.Namespace:
         required=True,
         help="File to write the result JSON to (matches run_agent.py's --output_path).",
     )
+    parser.add_argument(
+        "--config_file",
+        required=False,
+        default=None,
+        help=(
+            "Optional path to a workflow YAML; defaults to "
+            "<custom_model_dir>/workflow.yaml when omitted."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -94,15 +105,40 @@ def main() -> int:
     custom_model_dir = Path(args.custom_model_dir)
     output_path = Path(args.output_path)
 
-    logger.info("Executing dragent inline from %s", custom_model_dir)
+    config_file = Path(args.config_file) if args.config_file else None
+    logger.info(
+        "Executing dragent inline from %s (config_file=%s)", custom_model_dir, config_file
+    )
     result = execute_dragent_inline(
         chat_completion=chat_completion,
         custom_model_dir=custom_model_dir,
+        config_file=config_file,
     )
 
     output_path.write_text(json.dumps(result.model_dump(mode="json"), indent=2))
     logger.info("Wrote result to %s", output_path)
+    _flush_otel_tracer_provider()
     return 0
+
+
+def _flush_otel_tracer_provider() -> None:
+    """Force-flush the global OTel SDK TracerProvider so spans land before exit.
+
+    NAT's own exporter pipeline flushes via its async lifecycle; the
+    bootstrap-installed ``BatchSpanProcessor`` (from
+    ``datarobot_genai.core.datarobot_otel``) does not get torn down here, so we
+    call ``shutdown()`` explicitly. Wrapped in a broad except because telemetry
+    setup must never break the subprocess exit path.
+    """
+    try:
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+
+        provider = trace.get_tracer_provider()
+        if isinstance(provider, TracerProvider):
+            provider.shutdown()
+    except Exception:  # pragma: no cover — diagnostic-only path
+        logger.exception("Failed to flush OTel TracerProvider before exit")
 
 
 if __name__ == "__main__":
