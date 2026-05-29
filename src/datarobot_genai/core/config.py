@@ -55,7 +55,7 @@ class LLMConfig(BaseModel):
             return LLMType.DEPLOYMENT
         elif self.nim_deployment_id:
             return LLMType.NIM
-        model = getattr(self, "model_name", None) or self.llm_default_model or ""
+        model = getattr(self, "model_name", None) or self.llm_default_model or Config().llm_default_model or ""
         return LLMType.GATEWAY if model.startswith("datarobot/") else LLMType.EXTERNAL
 
     def to_litellm_params(self) -> dict:

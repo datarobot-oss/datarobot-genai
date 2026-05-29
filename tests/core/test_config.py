@@ -89,7 +89,16 @@ def test_get_llm_type_returns_external_when_model_has_no_datarobot_prefix() -> N
 
 def test_get_llm_type_returns_external_when_no_model_set() -> None:
     cfg = _make_config()
-    assert cfg.get_llm_type() == LLMType.EXTERNAL
+    env = _make_config(llm_default_model=None)
+    with patch.object(config_mod, "Config", return_value=env):
+        assert cfg.get_llm_type() == LLMType.EXTERNAL
+
+
+def test_get_llm_type_returns_gateway_when_no_instance_model_but_env_model_prefixed() -> None:
+    cfg = _make_config()
+    env = _make_config(llm_default_model="datarobot/azure/gpt-4o")
+    with patch.object(config_mod, "Config", return_value=env):
+        assert cfg.get_llm_type() == LLMType.GATEWAY
 
 
 def test_get_llm_type_deployment_takes_priority_over_nim() -> None:
