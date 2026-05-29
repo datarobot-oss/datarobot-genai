@@ -37,9 +37,6 @@ from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
-from datarobot_genai.langgraph.agent import _flatten_to_text
-from datarobot_genai.langgraph.agent import _iter_content_blocks
-from datarobot_genai.langgraph.agent import _iter_message_blocks
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 
 
@@ -855,115 +852,7 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
 
 
 # --- BUZZOK-30788: list-form AIMessage.content handling ---
-
-
-@pytest.mark.parametrize(
-    "content, expected",
-    [
-        (None, []),
-        ("", []),
-        ([], []),
-        ("hi", [("text", "hi")]),
-        (["a", "b"], [("text", "a"), ("text", "b")]),
-        (["", "b"], [("text", "b")]),
-        ([{"type": "text", "text": "hi"}], [("text", "hi")]),
-        ([{"type": "thinking", "thinking": "t"}], [("thinking", "t")]),
-        ([{"type": "reasoning", "reasoning": "r"}], [("thinking", "r")]),
-        ([{"type": "thinking", "thinking": ""}], []),
-        ([{"type": "text", "text": ""}], []),
-        (
-            [
-                {"type": "thinking", "thinking": "think"},
-                {"type": "text", "text": "say"},
-            ],
-            [("thinking", "think"), ("text", "say")],
-        ),
-        ([{"type": "unknown_future", "value": "x"}], []),
-        ([{"no_type_key": "x"}], []),
-        (
-            [
-                {"type": "text", "text": "a"},
-                "b",
-                {"type": "thinking", "thinking": "t"},
-            ],
-            [("text", "a"), ("text", "b"), ("thinking", "t")],
-        ),
-    ],
-)
-def test_iter_content_blocks(content, expected):
-    assert list(_iter_content_blocks(content)) == expected
-
-
-@pytest.mark.parametrize(
-    "content, expected",
-    [
-        (None, ""),
-        ("", ""),
-        ("hi", "hi"),
-        (["a", "b"], "ab"),
-        ([{"type": "text", "text": "hi"}], "hi"),
-        ([{"type": "thinking", "thinking": "t"}], ""),
-        (
-            [
-                {"type": "thinking", "thinking": "think"},
-                {"type": "text", "text": "say"},
-            ],
-            "say",
-        ),
-        (
-            [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}],
-            "ab",
-        ),
-    ],
-)
-def test_flatten_to_text(content, expected):
-    assert _flatten_to_text(content) == expected
-
-
-@pytest.mark.parametrize(
-    "message, expected",
-    [
-        # Plain text content, no reasoning.
-        (AIMessage(content="hi"), [("text", "hi")]),
-        # OpenAI-compatible flat shape: text in content, reasoning in additional_kwargs.
-        # Reasoning is yielded BEFORE text so AG-UI emits REASONING_* before TEXT_*.
-        (
-            AIMessage(
-                content="say",
-                additional_kwargs={"reasoning_content": "think"},
-            ),
-            [("thinking", "think"), ("text", "say")],
-        ),
-        # Native list-form content (Anthropic/Bedrock blocks). Reasoning may also
-        # appear in additional_kwargs from some providers; emit both, ordered.
-        (
-            AIMessage(
-                content=[
-                    {"type": "thinking", "thinking": "t"},
-                    {"type": "text", "text": "say"},
-                ]
-            ),
-            [("thinking", "t"), ("text", "say")],
-        ),
-        # Pure-reasoning chunk: empty content, only reasoning_content delta.
-        (
-            AIMessageChunk(
-                content="",
-                additional_kwargs={"reasoning_content": "delta"},
-            ),
-            [("thinking", "delta")],
-        ),
-        # Empty additional_kwargs reasoning_content is ignored.
-        (
-            AIMessage(content="hi", additional_kwargs={"reasoning_content": ""}),
-            [("text", "hi")],
-        ),
-        # Message without additional_kwargs attribute (e.g. plain object): no crash.
-        (AIMessage(content="hi"), [("text", "hi")]),
-    ],
-)
-def test_iter_message_blocks(message, expected):
-    assert list(_iter_message_blocks(message)) == expected
+# (block-parsing unit tests moved to tests/core/agents/test_reasoning.py)
 
 
 def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:

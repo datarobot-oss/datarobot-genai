@@ -19,11 +19,9 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
-from collections.abc import Iterator
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Literal
 from typing import cast
 
 from ag_ui.core import EventType
@@ -54,6 +52,8 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.reasoning import _flatten_to_text
+from datarobot_genai.core.agents.reasoning import _iter_message_blocks
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.dr_fs_checkpointer import default_langgraph_checkpointer
 
@@ -65,77 +65,6 @@ logger = logging.getLogger(__name__)
 # Must match the AG-UI client: useAgUiTool({ name: "confirmation" }) registers "ui-confirmation"
 # (e.g. ConfirmationWidget with { message: string }).
 INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME = "ui-confirmation"
-
-
-def _iter_content_blocks(
-    content: str | list[Any] | None,
-) -> Iterator[tuple[Literal["text", "thinking"], str]]:
-    """Yield typed (kind, delta) pairs for any AIMessage/ToolMessage content shape.
-
-    Normalizes the union of shapes LangChain/LiteLLM produce for ``AIMessage.content``:
-    plain string, list of strings, or list of structured blocks. Thinking and
-    reasoning blocks both map to ``("thinking", delta)``. Empty deltas are filtered
-    so callers never need to emit zero-content events. Unknown block shapes are
-    skipped with a debug log to keep the stream resilient.
-    """
-    if not content:
-        return
-    if isinstance(content, str):
-        yield "text", content
-        return
-    for block in content:
-        if isinstance(block, str):
-            if block:
-                yield "text", block
-            continue
-        if not isinstance(block, dict):
-            logger.debug("Skipping unknown content item: %r", block)
-            continue
-        block_type = block.get("type")
-        if block_type == "text":
-            text = block.get("text", "")
-            if text:
-                yield "text", text
-        elif block_type == "thinking":
-            thinking = block.get("thinking", "")
-            if thinking:
-                yield "thinking", thinking
-        elif block_type == "reasoning":
-            reasoning = block.get("reasoning", "")
-            if reasoning:
-                yield "thinking", reasoning
-        else:
-            logger.debug("Skipping unknown content block type: %r", block_type)
-
-
-def _flatten_to_text(content: str | list[Any] | None) -> str:
-    """Collapse any content shape to its text portion, dropping thinking blocks."""
-    return "".join(delta for kind, delta in _iter_content_blocks(content) if kind == "text")
-
-
-def _iter_message_blocks(
-    message: Any,
-) -> Iterator[tuple[Literal["text", "thinking"], str]]:
-    """Yield typed (kind, delta) pairs for any AIMessage/AIMessageChunk shape.
-
-    Combines two surfaces LangChain/LiteLLM produce for reasoning models:
-
-    - **Native list-form content**: e.g. Anthropic/Bedrock blocks
-      ``[{"type": "thinking", ...}, {"type": "text", ...}]`` — delegated to
-      ``_iter_content_blocks(message.content)``.
-    - **OpenAI-compatible flat shape**: text in ``message.content`` (string) and
-      reasoning hoisted to ``message.additional_kwargs["reasoning_content"]``
-      (string). This is what the DataRobot LLM gateway returns over its
-      OpenAI-style HTTP API, even when the underlying model is Anthropic.
-
-    Reasoning is yielded before content so consumers can route REASONING_*
-    events ahead of the matching text in the AG-UI stream.
-    """
-    ak = getattr(message, "additional_kwargs", None) or {}
-    reasoning_text = ak.get("reasoning_content")
-    if reasoning_text:
-        yield "thinking", reasoning_text
-    yield from _iter_content_blocks(getattr(message, "content", None))
 
 
 def _confirmation_args_from_interrupt_value(value: Any) -> dict[str, str]:
