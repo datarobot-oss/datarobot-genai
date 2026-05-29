@@ -4,12 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.85
+## 0.15.86
 - `core/datarobot_otel`: `bootstrap_otel_provider_for_datarobot()` now attaches a DataRobot-pointed `BatchSpanProcessor` to a pre-existing SDK `TracerProvider` instead of skipping. The `dragent_fastapi` server installs its own provider at startup before the agent module loads; under the previous skip behaviour, framework auto-instrumentor spans (CrewAI, Langchain, LlamaIndex) bound to that provider and never reached the DataRobot OTel ingest. Framework spans now show up in the deployment's Tracing tab alongside the existing exporter's output.
-
-## 0.15.84
 - `dragent/plugins/datarobot_otelcollector`: new NAT telemetry exporter that sends OTLP traces to the DataRobot OTel ingest endpoint with `X-DataRobot-Api-Key` / `X-DataRobot-Entity-Id` headers (NAT's built-in `otelcollector` doesn't support headers). `endpoint`, `datarobot_api_key`, and `datarobot_entity_id` auto-derive from deployment env (`MLOPS_DEPLOYMENT_ID`, `DATAROBOT_API_TOKEN`, `DATAROBOT_(PUBLIC_)ENDPOINT`), so the minimal `workflow.yaml` block is `_type: datarobot_otelcollector` + `project`. `project` maps to `service.name`.
 - `core/telemetry_agent`: `instrument()` installs a global `TracerProvider` wired to the same DataRobot OTel endpoint when deployment env is present, so framework auto-instrumentors (Langchain, CrewAI, LlamaIndex) emit spans to the deployment's Tracing tab alongside the NAT exporter. No-ops when env is incomplete or another component has already set a `TracerProvider`. Shared env-resolution helpers live in `core/datarobot_otel`.
+
+## 0.15.85
+- Expanded the `e2e-dragent-llmgw` job in `.github/workflows/e2e.yml` to cover multiple model providers. Matrix is now loaded from a new `e2e-tests/llmgw_matrix.yaml` file (5 agents × 4 models). The `default` model (bedrock) runs the full `dragent_tests` suite; other models (gpt, sonnet, gemini) run `test_streaming.py` only as a fast cross-model smoke check. This pre-empts model-specific framework bugs (like the LlamaIndex `tool_choice` issue below) before they reach downstream consumers.
+- Tightened the planner/writer system prompts in `e2e-tests/dragent/{langgraph,crewai,llamaindex,nat}/` to reduce input tokens, output verbosity, and TTFT during e2e runs. Dropped the `make_system_prompt` boilerplate wrapper from test agents and shortened outputs to "1 bullet" + "1 short sentence". Test contracts (tool calls, HITL interrupt, multi-agent handoff) are preserved.
+- `llama_index/llm.py`: Fixed `DataRobotLiteLLM` sending `tool_choice` and `parallel_tool_calls` in requests when no tools are provided. LlamaIndex's `_prepare_chat_with_tools` unconditionally emits both fields, which the DR LLM gateway rejects for Azure/GPT backends. Override strips both from the request when `tools` is absent.
+
+## 0.15.84
+- Refactored DataRobot feature flag logic and moved it to drmcpbase
+- Added datarobot api client with async API in drmcpbase
 
 ## 0.15.83
 - `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.
