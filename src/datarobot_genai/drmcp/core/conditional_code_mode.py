@@ -26,8 +26,6 @@ re-entrant calls from `get_tool_catalog()`, so `super().transform_tools()` can
 read the real catalog without recursing through this gate.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from fastmcp.experimental.transforms.code_mode import CodeMode
@@ -36,7 +34,7 @@ from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
 
 from datarobot_genai.drtools.core.mode import MCPMode
-from datarobot_genai.drtools.core.mode import get_mcp_mode
+from datarobot_genai.drtools.core.mode import get_mcp_mode_from_headers
 
 
 class ConditionalCodeMode(CodeMode):
@@ -49,7 +47,7 @@ class ConditionalCodeMode(CodeMode):
     """
 
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
-        if get_mcp_mode() is MCPMode.CODE_EXECUTE:
+        if get_mcp_mode_from_headers() is MCPMode.CODE_EXECUTE:
             return await super().transform_tools(tools)
         return tools
 
@@ -60,6 +58,6 @@ class ConditionalCodeMode(CodeMode):
         *,
         version: VersionSpec | None = None,
     ) -> Tool | None:
-        if get_mcp_mode() is MCPMode.CODE_EXECUTE:
+        if get_mcp_mode_from_headers() is MCPMode.CODE_EXECUTE:
             return await super().get_tool(name, call_next, version=version)
         return await call_next(name, version=version)

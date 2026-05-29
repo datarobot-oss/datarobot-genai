@@ -16,6 +16,7 @@
 
 from collections.abc import Iterator
 from typing import Any
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
@@ -66,16 +67,21 @@ def _make_server() -> FastMCP:
 
 
 @pytest.fixture
-def mode_returns() -> Iterator[Any]:
-    """Patch get_mcp_mode used inside ConditionalCodeMode and yield the mock."""
-    with patch("datarobot_genai.drmcp.core.conditional_code_mode.get_mcp_mode") as m:
+def module_under_test() -> str:
+    return "datarobot_genai.drmcp.core.conditional_code_mode"
+
+
+@pytest.fixture
+def mock_get_mcp_mode_from_headers(module_under_test) -> Iterator[Mock]:
+    with patch(f"{module_under_test}.get_mcp_mode_from_headers") as m:
+        m.return_value = MCPMode.TOOLS
         yield m
 
 
 @pytest.mark.asyncio
-async def test_tools_mode_exposes_real_catalog(mode_returns: Any) -> None:
+async def test_tools_mode_exposes_real_catalog(mock_get_mcp_mode_from_headers: Any) -> None:
     """No header (default TOOLS) → real tools visible, CodeMode meta-tools hidden."""
-    mode_returns.return_value = MCPMode.TOOLS
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.TOOLS
     mcp = _make_server()
 
     listed = await mcp.list_tools(run_middleware=False)
@@ -88,9 +94,9 @@ async def test_tools_mode_exposes_real_catalog(mode_returns: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_code_execute_mode_collapses_catalog(mode_returns: Any) -> None:
+async def test_code_execute_mode_collapses_catalog(mock_get_mcp_mode_from_headers: Any) -> None:
     """code_execute → catalog collapses to search + get_schema + execute."""
-    mode_returns.return_value = MCPMode.CODE_EXECUTE
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.CODE_EXECUTE
     mcp = _make_server()
 
     listed = await mcp.list_tools(run_middleware=False)
@@ -100,27 +106,27 @@ async def test_code_execute_mode_collapses_catalog(mode_returns: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mode_switch_between_calls(mode_returns: Any) -> None:
+async def test_mode_switch_between_calls(mock_get_mcp_mode_from_headers: Any) -> None:
     """The same server instance returns different catalogs as the mode changes."""
     mcp = _make_server()
 
-    mode_returns.return_value = MCPMode.TOOLS
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.TOOLS
     tools_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
     assert {"add", "greet"} <= tools_view
 
-    mode_returns.return_value = MCPMode.CODE_EXECUTE
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.CODE_EXECUTE
     code_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
     assert code_view == {"search", "get_schema", "execute"}
 
-    mode_returns.return_value = MCPMode.TOOLS
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.TOOLS
     back_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
     assert back_view == tools_view
 
 
 @pytest.mark.asyncio
-async def test_get_tool_passes_through_in_tools_mode(mode_returns: Any) -> None:
+async def test_get_tool_passes_through_in_tools_mode(mock_get_mcp_mode_from_headers: Any) -> None:
     """Tools mode: get_tool resolves real tools and NOT CodeMode meta-tools."""
-    mode_returns.return_value = MCPMode.TOOLS
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.TOOLS
     mcp = _make_server()
 
     add_tool = await mcp.get_tool("add")
@@ -134,10 +140,10 @@ async def test_get_tool_passes_through_in_tools_mode(mode_returns: Any) -> None:
 
 @pytest.mark.asyncio
 async def test_get_tool_resolves_meta_tools_in_code_execute_mode(
-    mode_returns: Any,
+    mock_get_mcp_mode_from_headers: Any,
 ) -> None:
     """code_execute mode: get_tool resolves CodeMode meta-tools by name."""
-    mode_returns.return_value = MCPMode.CODE_EXECUTE
+    mock_get_mcp_mode_from_headers.return_value = MCPMode.CODE_EXECUTE
     mcp = _make_server()
 
     for name in ("search", "get_schema", "execute"):
