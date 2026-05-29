@@ -86,25 +86,36 @@ def _resolve_service_name() -> str:
 
 
 def bootstrap_otel_provider_for_datarobot() -> bool:
-    """Install a global OTel ``TracerProvider`` wired to the DataRobot OTel ingest.
+    """Ensure framework auto-instrumentor spans reach the DataRobot OTel ingest.
 
     Sibling to (not replacing) the NAT-side ``datarobot_otelcollector`` exporter:
     NAT pipes its own ``IntermediateStep``-derived spans through its own
-    channel; this provider serves framework auto-instrumentors that emit spans
-    through the OTel SDK's standard ``trace.get_tracer(...)`` API. Both land
-    in the same ingest with the same auth.
+    channel; this path serves framework auto-instrumentors that emit spans
+    through the OTel SDK's standard ``trace.get_tracer(...)`` API.
 
-    Returns ``True`` if a provider was newly installed by this call. Returns
+    Two modes, picked at call time based on what's already in the global
+    ``TracerProvider`` slot:
+
+    * **install** — slot still holds the default ``ProxyTracerProvider``: we
+      create a new SDK ``TracerProvider`` with the DataRobot exporter and set
+      it globally.
+    * **attach** — slot already holds an SDK ``TracerProvider`` (e.g. the
+      ``dragent_fastapi`` server's startup telemetry layer installs one before
+      NAT plugin discovery happens): we add our own ``BatchSpanProcessor`` to
+      it instead of replacing it. The pre-existing provider's resource
+      (including its ``service.name``) is kept — DataRobot's OTel ingest
+      routes off the ``X-DataRobot-*`` headers we set on the exporter, not off
+      resource attributes, so the merge is safe.
+
+    Returns ``True`` when a processor was installed or attached by this call,
     ``False`` (silently) when:
 
     * the DataRobot deployment env is incomplete (``MLOPS_DEPLOYMENT_ID``,
       ``DATAROBOT_API_TOKEN``, or ``DATAROBOT_(PUBLIC_)ENDPOINT`` missing) —
-      this is the local-dev / CI shape, parallel to
-      ``prune_exporter_if_env_missing``;
-    * a non-default ``TracerProvider`` is already installed (e.g. by
-      ``datarobot_genai.drmcp.core.telemetry``) — first-wins keeps the two
-      paths from fighting over the global slot;
-    * this function has already installed a provider in this process.
+      the local-dev / CI shape;
+    * something other than an SDK ``TracerProvider`` or the default proxy is
+      already installed (we can't attach to an unknown provider type);
+    * this function has already run successfully in this process.
     """
     if _BOOTSTRAP_STATE["installed"]:
         return False
@@ -129,25 +140,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.trace import ProxyTracerProvider
 
-    current = trace.get_tracer_provider()
-    if not isinstance(current, ProxyTracerProvider):
-        logger.debug(
-            "Skipping OTel TracerProvider bootstrap: a non-default provider is "
-            "already installed (%s).",
-            type(current).__name__,
-        )
-        return False
-
     try:
-        sdk_version = _get_opentelemetry_sdk_version()
-        resource = Resource.create(
-            {
-                "telemetry.sdk.language": "python",
-                "telemetry.sdk.name": "opentelemetry",
-                "telemetry.sdk.version": sdk_version,
-                "service.name": _resolve_service_name(),
-            }
-        )
         exporter = OTLPSpanExporter(
             endpoint=endpoint,
             headers={
@@ -155,9 +148,33 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
                 "X-DataRobot-Entity-Id": entity_id,
             },
         )
-        provider = TracerProvider(resource=resource)
-        provider.add_span_processor(BatchSpanProcessor(exporter))
-        trace.set_tracer_provider(provider)
+        processor = BatchSpanProcessor(exporter)
+
+        current = trace.get_tracer_provider()
+        if isinstance(current, ProxyTracerProvider):
+            sdk_version = _get_opentelemetry_sdk_version()
+            resource = Resource.create(
+                {
+                    "telemetry.sdk.language": "python",
+                    "telemetry.sdk.name": "opentelemetry",
+                    "telemetry.sdk.version": sdk_version,
+                    "service.name": _resolve_service_name(),
+                }
+            )
+            provider = TracerProvider(resource=resource)
+            provider.add_span_processor(processor)
+            trace.set_tracer_provider(provider)
+            action = "installed"
+        elif isinstance(current, TracerProvider):
+            current.add_span_processor(processor)
+            action = "attached"
+        else:
+            logger.debug(
+                "Skipping OTel TracerProvider bootstrap: non-SDK provider "
+                "already installed (%s); cannot attach a span processor.",
+                type(current).__name__,
+            )
+            return False
     except Exception:
         # Never let telemetry setup take down the agent. Log with traceback so
         # operators can diagnose without crashing user code.
@@ -166,7 +183,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
 
     _BOOTSTRAP_STATE["installed"] = True
     logger.info(
-        "Installed DataRobot OTel TracerProvider → %s (entity_id=%s)",
+        "DataRobot OTel span processor %s → %s (entity_id=%s)",
+        action,
         endpoint,
         entity_id,
     )

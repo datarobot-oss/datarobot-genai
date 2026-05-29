@@ -160,13 +160,65 @@ class TestBootstrapOtelProvider:
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert trace.get_tracer_provider() is provider_first
 
-    def test_skips_when_provider_already_set(self, clean_env):
-        # Simulate DRMCP / another component installing its own provider before
-        # instrument() runs. Bootstrap should detect the non-Proxy provider
-        # and step aside.
-        pre_existing = TracerProvider()
+    def test_attaches_processor_to_existing_sdk_provider(self, clean_env, monkeypatch):
+        # Simulate the dragent_fastapi server installing its own SDK provider
+        # before NAT plugin discovery runs. Bootstrap should keep that provider
+        # in place (we don't fight the FastAPI layer) but attach a DR-pointed
+        # BatchSpanProcessor so framework spans still reach DR.
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        sentinel_resource = Resource.create(
+            {"service.name": "preexisting-service", "test.sentinel": "yes"}
+        )
+        pre_existing = TracerProvider(resource=sentinel_resource)
         trace.set_tracer_provider(pre_existing)
+
+        # Spy the exporter so we can assert on endpoint + DR auth headers.
+        from opentelemetry.exporter.otlp.proto.http import trace_exporter as exporter_module
+
+        real_exporter_cls = exporter_module.OTLPSpanExporter
+        captured: dict = {}
+
+        def spy_exporter(**kwargs):
+            captured.update(kwargs)
+            return real_exporter_cls(**kwargs)
+
+        monkeypatch.setattr(exporter_module, "OTLPSpanExporter", spy_exporter)
+
+        self._set_full_env(clean_env)
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
+
+        # Provider was kept (not replaced); sentinel resource attrs survive.
+        assert trace.get_tracer_provider() is pre_existing
+        assert pre_existing.resource.attributes["test.sentinel"] == "yes"
+        assert pre_existing.resource.attributes["service.name"] == "preexisting-service"
+
+        # The DR exporter was constructed with the right endpoint + headers.
+        assert captured["endpoint"] == "https://example.test/otel/v1/traces"
+        assert captured["headers"]["X-DataRobot-Api-Key"] == "tok"
+        assert captured["headers"]["X-DataRobot-Entity-Id"] == "deployment-abc123"
+
+        # And the new BatchSpanProcessor is registered on the existing provider.
+        # The SDK keeps span processors in a multiprocessor at
+        # ``_active_span_processor._span_processors`` (tuple of processors).
+        active = pre_existing._active_span_processor
+        registered = getattr(active, "_span_processors", (active,))
+        assert any(isinstance(p, BatchSpanProcessor) for p in registered)
+
+    def test_skips_when_non_sdk_provider_installed(self, clean_env):
+        # Some third-party non-SDK TracerProvider implementation. We can't
+        # attach a span processor to an unknown provider type, so the
+        # bootstrap should bail without modifying it.
+        class _ThirdPartyProvider:
+            def get_tracer(self, *args, **kwargs):  # pragma: no cover - not called
+                raise AssertionError("should not be invoked in this test")
+
+        third_party = _ThirdPartyProvider()
+        # bypass set_tracer_provider's Once() guard by writing the private
+        # global directly (the clean_env fixture already reset Once()).
+        trace._TRACER_PROVIDER = third_party
 
         self._set_full_env(clean_env)
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
-        assert trace.get_tracer_provider() is pre_existing
+        assert trace.get_tracer_provider() is third_party
