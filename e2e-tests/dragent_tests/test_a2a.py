@@ -67,11 +67,14 @@ def test_a2a_message_send(http_client: httpx.Client) -> None:
     # No error
     assert "error" not in data, f"JSON-RPC error: {data.get('error')}"
 
-    # Result present with a completed status
+    # Result is a Message with agent text
     result = data.get("result")
     assert result is not None, f"JSON-RPC response missing 'result'. Keys: {sorted(data.keys())}"
-    assert result.get("status", {}).get("state") == "completed", (
-        f"Expected task state 'completed', got: {result.get('status')}"
-    )
+    assert result.get("kind") == "message", f"Expected kind 'message', got: {result.get('kind')}"
+    assert result.get("role") == "agent", f"Expected role 'agent', got: {result.get('role')}"
+
+    parts = result.get("parts", [])
+    text_parts = [p for p in parts if p.get("kind") == "text" and p.get("text")]
+    assert text_parts, f"Expected at least one text part. Got: {parts}"
 
 

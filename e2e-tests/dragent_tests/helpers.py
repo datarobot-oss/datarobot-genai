@@ -99,7 +99,7 @@ def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> d
                 "messageId": message_id or f"e2e-msg-{uid}",
                 "role": "user",
                 "parts": [{"kind": "text", "text": text}],
-            }
+            },
         },
     }
 
