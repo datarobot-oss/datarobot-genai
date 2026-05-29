@@ -370,7 +370,7 @@ class TestConnectionSetupRelated:
         mock_ssl_context = mock_get_ssl_context_from_ca_file.return_value
         mock_tcp_connector_cls.assert_called_once_with(ssl=mock_ssl_context)
         mock_client_timeout_cls.assert_called_once_with(connect=30, sock_read=60)
-        expected_headers = {"User-Agent": "global-mcp"}
+        expected_headers = {"User-Agent": "datarobot-mcp"}
         mock_client_session_cls.assert_called_once_with(
             headers=expected_headers,
             connector=mock_tcp_connector_cls.return_value,

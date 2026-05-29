@@ -58,7 +58,7 @@ def get_read_timeout_in_second() -> int:
 
 
 def get_async_https_session(root_ca: str | None = None) -> ClientSession:
-    headers = {"User-Agent": "global-mcp"}
+    headers = {"User-Agent": "datarobot-mcp"}
 
     ssl_arg = get_ssl_context_from_ca_file(root_ca) if root_ca is not None else True
     connector = TCPConnector(ssl=ssl_arg)
