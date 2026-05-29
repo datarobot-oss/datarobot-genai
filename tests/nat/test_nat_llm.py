@@ -204,9 +204,7 @@ async def test_datarobot_llm_component_langchain_use_gateway():
         pytest.param("anthropic/claude-3", None, None, id="external"),
     ],
 )
-async def test_datarobot_llm_component_langchain(
-    model_name, llm_deployment_id, nim_deployment_id
-):
+async def test_datarobot_llm_component_langchain(model_name, llm_deployment_id, nim_deployment_id):
     with patch.dict(
         os.environ,
         {
@@ -274,9 +272,7 @@ async def test_datarobot_llm_component_langchain(
         pytest.param("anthropic/claude-3", None, None, id="external"),
     ],
 )
-async def test_datarobot_llm_component_crewai(
-    model_name, llm_deployment_id, nim_deployment_id
-):
+async def test_datarobot_llm_component_crewai(model_name, llm_deployment_id, nim_deployment_id):
     with patch.dict(
         os.environ,
         {
@@ -350,9 +346,7 @@ async def test_datarobot_llm_component_crewai(
         pytest.param("azure/gpt-5-mini", None, None, id="external"),
     ],
 )
-async def test_datarobot_llm_component_llamaindex(
-    model_name, llm_deployment_id, nim_deployment_id
-):
+async def test_datarobot_llm_component_llamaindex(model_name, llm_deployment_id, nim_deployment_id):
     # Pin endpoint so test is independent of .env (e.g. DATAROBOT_ENDPOINT)
     with patch.dict(
         os.environ,
