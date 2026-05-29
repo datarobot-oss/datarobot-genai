@@ -215,9 +215,7 @@ class TestMCPToolDecorator:
 
         mock_dr_mcp_extras.assert_called_with()
         mock_dr_mcp_extras_decorator = mock_dr_mcp_extras.return_value
-        dr_mcp_extras_decorator_call_args = mock_dr_mcp_extras_decorator.call_args.args
-        (inner_wrapper_func,) = dr_mcp_extras_decorator_call_args
-        assert inner_wrapper_func.__qualname__ == "dr_mcp_tool.<locals>.decorator.<locals>.wrapper"
+        mock_dr_mcp_extras_decorator.assert_called_once_with(mock_mcp_tool_callable)
 
         mock_datarobot_mcp_server_tool.assert_called_once_with(
             **mock_update_mcp_tool_init_args_with_tool_category.return_value
